@@ -5,6 +5,7 @@ import numpy as np
 from typing import Tuple
 
 from .custom_types import Array, PyTree, SquashTreeDef
+from .misc import safe_concatenate
 
 
 def tree_squash(tree: PyTree) -> Tuple[Array, SquashTreeDef]:
@@ -19,7 +20,7 @@ def tree_squash(tree: PyTree) -> Tuple[Array, SquashTreeDef]:
         shapes = [flat_i.shape for flat_i in flat]
         splits = np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum()
         flat = [flat_i.flatten() for flat_i in flat]
-        flat = jax.concatenate(flat)
+        flat = safe_concatenate(flat)
         treedef = (treedef, shapes, splits)
     return flat, treedef
 

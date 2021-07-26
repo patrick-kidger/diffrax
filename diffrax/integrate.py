@@ -58,7 +58,7 @@ def diffeqint(
     # variable step size solvers have a variable-size computation graph so they're
     # never going to be jit-able anyway.
     not_done = tprev < t1
-    while not_done.any():
+    while jnp.any(not_done):
         y_candidate, solver_state_candidate = solver.step(treedef, tprev, tnext, y, solver_state)
         (keep_step, tprev, tnext, controller_state_candidate) = stepsize_controller.adapt_step_size(
             tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, controller_state
@@ -70,7 +70,7 @@ def diffeqint(
         y = keep(y_candidate, y)
         solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
         controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
-        if saveat.steps & keep_step.any():
+        if saveat.steps & jnp.any(keep_step):
             ts.append(tprev)
             ys.append(tree_unsquash(treedef, y))
             if saveat.controller_state:

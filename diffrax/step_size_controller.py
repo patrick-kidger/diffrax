@@ -10,7 +10,7 @@ T2 = TypeVar('T2', bound=PyTree)
 
 class AbstractStepSizeController(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def init(t0: Scalar, dt0: Optional[Scalar]) -> Tuple[Scalar, T]:
+    def init(self, t0: Scalar, dt0: Optional[Scalar]) -> Tuple[Scalar, T]:
         pass
 
     @abc.abstractmethod
@@ -28,7 +28,7 @@ class AbstractStepSizeController(metaclass=abc.ABCMeta):
 
 
 class ConstantStepSize(AbstractStepSizeController):
-    def init(t0: Scalar, dt0: Scalar) -> Tuple[Scalar, Scalar]:
+    def init(self, t0: Scalar, dt0: Scalar) -> Tuple[Scalar, Scalar]:
         controller_state = dt0
         return t0 + dt0, controller_state
 
