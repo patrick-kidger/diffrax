@@ -1,6 +1,6 @@
 from typing import Optional
 
-from .custom_types import Array, Scalar, PyTree
+from .custom_types import Array, PyTree, Scalar
 from .path import AbstractPath
 
 

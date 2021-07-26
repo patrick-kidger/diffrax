@@ -1,5 +1,5 @@
-from .base import AbstractBrownianPath
 from ..custom_types import PyTree, Scalar
+from .base import AbstractBrownianPath
 
 
 class BrownianInterval(AbstractBrownianPath):

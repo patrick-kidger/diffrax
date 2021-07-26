@@ -1,12 +1,13 @@
 import functools as ft
-import jax
 from typing import Callable, Tuple
 
-from .base import AbstractSolver, SplittingMethod
+import jax
+
 from ..brownian import AbstractBrownianPath
-from ..custom_types import Array, Scalar, SquashTreeDef, PyTree
+from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..interpolation import LinearInterpolation
 from ..term import AbstractTerm, ControlTerm, ODETerm
+from .base import AbstractSolver, SplittingMethod
 
 
 @ft.partial(jax.jit, static_argnums=[0, 1])

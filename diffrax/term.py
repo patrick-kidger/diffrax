@@ -1,7 +1,8 @@
 import abc
+from typing import Callable
+
 import jax
 import jax.numpy as jnp
-from typing import Callable
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .path import AbstractPath

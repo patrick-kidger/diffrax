@@ -1,8 +1,9 @@
+import math
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
-import math
 import numpy as np
-from typing import Tuple
 
 from .custom_types import Array, PyTree, SquashTreeDef
 from .misc import safe_concatenate

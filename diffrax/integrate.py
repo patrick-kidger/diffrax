@@ -1,6 +1,7 @@
+from typing import Optional, Type
+
 import jax
 import jax.numpy as jnp
-from typing import Optional, Type
 
 from .custom_types import PyTree, Scalar
 from .interpolation import AbstractInterpolation

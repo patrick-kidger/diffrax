@@ -1,12 +1,13 @@
 import abc
 import functools as ft
-import jax
 from typing import Tuple, TypeVar
+
+import jax
 
 from ..custom_types import Array, PyTree, Scalar
 from ..interpolation import AbstractInterpolation
 
-# Abusing slightly to represent PyTrees with the same structure
+# Abusing types slightly to represent PyTrees with the same structure
 T = TypeVar('T', bound=PyTree)
 T2 = TypeVar('T2', bound=PyTree)
 
