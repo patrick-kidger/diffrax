@@ -4,6 +4,7 @@ from typing import Optional, Type
 
 from .custom_types import PyTree, Scalar
 from .interpolation import AbstractInterpolation
+from .misc import stack_pytrees
 from .saveat import SaveAt
 from .solution import Solution
 from .solver import AbstractSolver
@@ -12,10 +13,6 @@ from .tree import tree_squash
 
 
 def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: Optional[Scalar], stepsize_controller: AbstractStepSizeController = ConstantStepSize(), interpolation: Optional[Type[AbstractInterpolation]] = None, solver_state: Optional[PyTree] = None, controller_state: Optional[PyTree] = None, saveat: SaveAt = SaveAt(t1=True)) -> Solution:
-
-    y = y0
-    if not saveat.t0:
-        y0 = None
 
     if interpolation is None:
         interpolation = solver.recommended_interpolation
@@ -27,11 +24,28 @@ def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: O
         assert dt0 is not None
         tnext = t0 + dt0
 
+    y, treedef = tree_squash(y0)
+
     if solver_state is None:
-        solver_state = solver.init(t0, y0)
+        solver_state = solver.init(t0, y)
 
-    y, treedef = tree_squash(y)
+    ts = []
+    ys = []
+    controller_states = []
+    solver_states = []
+    if saveat.t0:
+        ts.append(t0)
+        ys.append(y0)
+        if saveat.controller_state:
+            controller_states.append(controller_state)
+        if saveat.solver_state:
+            solver_states.append(solver_state)
+    else:
+        del t0, y0, dt0
 
+    # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
+    # variable step size solvers have a variable-size computation graph so they're
+    # never going to be jit-able anyway.
     not_done = tprev < t1
     while not_done.any():
         y_candidate, solver_state_candidate = solver.step(treedef, tprev, tnext, y, solver_state)
@@ -43,12 +57,35 @@ def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: O
         y = keep(y_candidate, y)
         solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
         controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
-    # TODO: record into ts and ys
+        if saveat.steps & keep_step.any():
+            ts.append(tprev)
+            ys.append(tree_unsquash(treedef, y))
+            if saveat.controller_state:
+                controller_states.append(controller_state)
+            if saveat.solver_state:
+                solver_states.append(solver_state)
+
+    # TODO: interpolate into ts and ys
         
-    if not saveat.controller_state:
-        controller_state = None
-    if not saveat.solver_state:
-        solver_state = None
+    if saveat.t1:
+        ts.append(tprev)
+        ys.append(tree_unsquash(treedef, y))
+        if saveat.controller_state:
+            controller_states.append(controller_state)
+        if saveat.solver_state:
+            solver_states.append(solver_state)
+
+    ts = jnp.stack(ts)
+    ys = stack_pytrees(ys)
+    if saveat.controller_state:
+        controller_states = stack_pytrees(controller_states)
+    else:
+        controller_states = None
+    if saveat.solver_state:
+        solver_states = stack_pytrees(solver_states)
+    else:
+        solver_states = None
+
     interpolation = interpolation(ts=ts, ys=ys)
-    return Solution(ts=ts, ys=ys, controller_state=controller_state, solver_state=solver_state, interpolation=interpolation)
+    return Solution(ts=ts, ys=ys, controller_states=controller_states, solver_states=solver_states, interpolation=interpolation)
 

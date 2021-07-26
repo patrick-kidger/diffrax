@@ -1,4 +1,5 @@
 import abc
+from typing import Optional
 
 from .custom_types import Array, Scalar, PyTree
 from .path import AbstractPath
@@ -15,5 +16,5 @@ class LinearInterpolation(AbstractInterpolation):
     def derivative(self, t: Scalar) -> PyTree:
         ...
 
-    def evaluate(self, t0: Scalar, t1: Scalar) -> PyTree:
+    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
         ...  # TODO. Think about point evaluations?
