@@ -36,7 +36,7 @@ def diffeqint(
         assert dt0 is not None
         tnext = t0 + dt0
 
-    y, treedef = tree_squash(y0)
+    y, y_treedef = tree_squash(y0)
 
     if solver_state is None:
         solver_state = solver.init(t0, y)
@@ -60,7 +60,7 @@ def diffeqint(
     # never going to be jit-able anyway.
     not_done = tprev < t1
     while jnp.any(not_done):
-        y_candidate, solver_state_candidate = solver.step(treedef, tprev, tnext, y, solver_state)
+        y_candidate, solver_state_candidate = solver.step(y_treedef, tprev, tnext, y, solver_state)
         (keep_step, tprev, tnext, controller_state_candidate) = stepsize_controller.adapt_step_size(
             tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, controller_state
         )
@@ -73,7 +73,7 @@ def diffeqint(
         controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
         if saveat.steps & jnp.any(keep_step):
             ts.append(tprev)
-            ys.append(tree_unsquash(treedef, y))
+            ys.append(tree_unsquash(y_treedef, y))
             if saveat.controller_state:
                 controller_states.append(controller_state)
             if saveat.solver_state:
@@ -83,7 +83,7 @@ def diffeqint(
 
     if saveat.t1:
         ts.append(tprev)
-        ys.append(tree_unsquash(treedef, y))
+        ys.append(tree_unsquash(y_treedef, y))
         if saveat.controller_state:
             controller_states.append(controller_state)
         if saveat.solver_state:

@@ -4,7 +4,7 @@ from typing import Tuple, TypeVar
 
 import jax
 
-from ..custom_types import Array, PyTree, Scalar
+from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..interpolation import AbstractInterpolation
 
 # Abusing types slightly to represent PyTrees with the same structure
@@ -20,9 +20,14 @@ class AbstractSolver(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def step(self, t0: Scalar, t1: Scalar, y0: Array["state":...],  # noqa: F821
-             solver_state: T) -> Tuple[Array["state":...], T]:  # noqa: F821
+    def step(
+        self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state":...],  # noqa: F821
+        solver_state: T
+    ) -> Tuple[Array["state":...], T]:  # noqa: F821
         pass
+
+
+# TODO: fix splitting methods
 
 
 @ft.partial(jax.jit, static_argnums=0)

@@ -18,8 +18,8 @@ def tree_squash(tree: PyTree) -> Tuple[Array, SquashTreeDef]:
         treedef = (treedef, shapes, splits)
         flat = flat[0]
     else:
-        shapes = [flat_i.shape for flat_i in flat]
-        splits = np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum()
+        shapes = tuple(flat_i.shape for flat_i in flat)
+        splits = tuple(np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum())
         flat = [flat_i.flatten() for flat_i in flat]
         flat = safe_concatenate(flat)
         treedef = (treedef, shapes, splits)

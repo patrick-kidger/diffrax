@@ -1,6 +1,8 @@
 import diffrax
+import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import operator
 
 from helpers import random_pytree, treedefs
 
@@ -17,7 +19,7 @@ def test_basic():
 
 def _test_basic(solver_ctr, t_dtype, treedef):
     def f(t, y):
-        return -y
+        return jax.tree_map(operator.neg, y)
 
     solver = solver_ctr(f)
     if t_dtype is int:
