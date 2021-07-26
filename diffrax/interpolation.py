@@ -1,4 +1,3 @@
-import abc
 from typing import Optional
 
 from .custom_types import Array, Scalar, PyTree

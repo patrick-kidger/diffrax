@@ -7,3 +7,6 @@ from .solution import Solution
 from .solver import AbstractSolver, Euler, euler, euler_maruyama, SplittingMethod
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 from .term import AbstractTerm, ControlTerm, ODETerm
+
+
+__version__ = '0.0.1'

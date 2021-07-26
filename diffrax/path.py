@@ -11,4 +11,3 @@ class AbstractPath(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
         pass
-

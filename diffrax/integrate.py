@@ -9,10 +9,21 @@ from .saveat import SaveAt
 from .solution import Solution
 from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
-from .tree import tree_squash
+from .tree import tree_squash, tree_unsquash
 
 
-def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: Optional[Scalar], stepsize_controller: AbstractStepSizeController = ConstantStepSize(), interpolation: Optional[Type[AbstractInterpolation]] = None, solver_state: Optional[PyTree] = None, controller_state: Optional[PyTree] = None, saveat: SaveAt = SaveAt(t1=True)) -> Solution:
+def diffeqint(
+    solver: AbstractSolver,
+    t0: Scalar,
+    t1: Scalar,
+    y0: PyTree,
+    dt0: Optional[Scalar],
+    stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
+    interpolation: Optional[Type[AbstractInterpolation]] = None,
+    solver_state: Optional[PyTree] = None,
+    controller_state: Optional[PyTree] = None,
+    saveat: SaveAt = SaveAt(t1=True)
+) -> Solution:
 
     if interpolation is None:
         interpolation = solver.recommended_interpolation
@@ -49,7 +60,9 @@ def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: O
     not_done = tprev < t1
     while not_done.any():
         y_candidate, solver_state_candidate = solver.step(treedef, tprev, tnext, y, solver_state)
-        keep_step, tprev, tnext, controller_state_candidate = stepsize_controller.adapt_step_size(tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, controller_state)
+        (keep_step, tprev, tnext, controller_state_candidate) = stepsize_controller.adapt_step_size(
+            tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, controller_state
+        )
         tnext = jnp.minimum(tnext, t1)
         not_done = tprev < t1
         keep_step = keep_step & not_done
@@ -66,7 +79,7 @@ def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: O
                 solver_states.append(solver_state)
 
     # TODO: interpolate into ts and ys
-        
+
     if saveat.t1:
         ts.append(tprev)
         ys.append(tree_unsquash(treedef, y))
@@ -87,5 +100,6 @@ def diffeqint(solver: AbstractSolver, t0: Scalar, t1: Scalar, y0: PyTree, dt0: O
         solver_states = None
 
     interpolation = interpolation(ts=ts, ys=ys)
-    return Solution(ts=ts, ys=ys, controller_states=controller_states, solver_states=solver_states, interpolation=interpolation)
-
+    return Solution(
+        ts=ts, ys=ys, controller_states=controller_states, solver_states=solver_states, interpolation=interpolation
+    )

@@ -1,12 +1,19 @@
-from typing import Any, Optional
+from typing import Optional
 
-from .custom_types import Array, PyTree
+from .custom_types import Array, PyTree, Scalar
 from .interpolation import AbstractInterpolation
 from .path import AbstractPath
 
 
 class Solution(AbstractPath):
-    def __init__(self, ts: Array, ys: PyTree, controller_states: Optional[list[PyTree]], solver_states: Optional[list[PyTree]], interpolation: AbstractInterpolation):
+    def __init__(
+        self,
+        ts: Array,
+        ys: PyTree,
+        controller_states: Optional[list[PyTree]],
+        solver_states: Optional[list[PyTree]],
+        interpolation: AbstractInterpolation
+    ):
         super().__init__()
         self.ts = ts
         self.ys = ys
@@ -19,4 +26,3 @@ class Solution(AbstractPath):
 
     def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
         return self.interpolation.evaluate(t0, t1)
-

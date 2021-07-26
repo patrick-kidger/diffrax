@@ -13,6 +13,4 @@ class PyTree:
 
 Scalar = Array[()]
 
-
 SquashTreeDef = Tuple[Any, Optional[Tuple[int]], Optional[Tuple[int]]]
-

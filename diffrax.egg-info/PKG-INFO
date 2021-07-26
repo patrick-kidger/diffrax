@@ -1,0 +1,49 @@
+Metadata-Version: 2.1
+Name: diffrax
+Version: 0.0.1
+Summary: GPU/autodiff-capable ODE/SDE/CDE solvers written in JAX.
+Home-page: https://github.com/patrick-kidger/diffrax
+Author: Patrick Kidger
+Author-email: contact@kidger.site
+Maintainer: Patrick Kidger
+Maintainer-email: contact@kidger.site
+License: Apache-2.0
+Description: <h1 align='center'>Diffrax</h1>
+        <h2 align='center'>Autodifferentiable GPU-capable differential equation solvers in JAX</h2>
+        
+        Diffrax is a [JAX](https://github.com/google/jax)-based library providing solvers for:
+        - ordinary differential equations
+        - stochastic differential equations
+        - controlled differential equations
+        including:
+        - fixed step size solvers
+        - adaptive step size solvers
+        - splitting methods
+        - reversible solvers
+        - discretise-then-optimise backpropagation
+        - continuous adjoint backpropagation
+        - interpolated adjoint backpropagation
+        - reversible adjoint backpropagation
+        - efficient Brownian Interval-based sampling
+        - using a PyTree as the state
+        
+        From a technical point of view, its unique selling point is the way all kinds of equations (ODEs, SDEs, CDEs) are solved in a unified way (rather than being treated separately), producing a small tightly-written library.
+        
+        ---
+        
+        Example
+        
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: Intended Audience :: Information Technology
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Requires-Python: ~=3.9
+Description-Content-Type: text/markdown
