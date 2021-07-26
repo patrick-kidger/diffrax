@@ -21,7 +21,12 @@ class AbstractSolver(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def step(
-        self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state":...],  # noqa: F821
+        self,
+        y_treedef: SquashTreeDef,
+        t0: Scalar,
+        t1: Scalar,
+        y0: Array["state":...],  # noqa: F821
+        args: PyTree,
         solver_state: T
     ) -> Tuple[Array["state":...], T]:  # noqa: F821
         pass

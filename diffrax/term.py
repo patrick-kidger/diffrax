@@ -16,7 +16,7 @@ def _prod(vf: Array["state":...,  # noqa: F821
 
 class AbstractTerm(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def vector_field(self, t: Scalar, y: PyTree) -> PyTree:
+    def vector_field(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
 
     @abc.abstractmethod
@@ -31,13 +31,13 @@ class AbstractTerm(metaclass=abc.ABCMeta):
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         pass
 
-    def vector_field_prod(self, t: Scalar, y: PyTree, control: PyTree) -> PyTree:
-        return self.prod(self.vector_field(t, y), control)
+    def vector_field_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
+        return self.prod(self.vector_field(t, y, args), control)
 
-    def vector_field_(self, y_treedef: SquashTreeDef, t: Scalar,
-                      y_: Array["state"]) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
+    def vector_field_(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+                      args: PyTree) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
-        vf = self.vector_field(t, y)
+        vf = self.vector_field(t, y, args)
         return tree_squash(vf)
 
     def diff_control_(self, t: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
@@ -67,10 +67,11 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         control_treedef: SquashTreeDef,
         t: Scalar,
         y_: Array["state"],  # noqa: F821
+        args: PyTree,
         control_: Array["control"]  # noqa: F821
     ) -> Array["state"]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
-        vf = self.vector_field(t, y)
+        vf = self.vector_field(t, y, args)
         control = tree_unsquash(control_treedef, control_)
         prod = self.prod(vf, control)
         prod_, _ = tree_squash(prod)
@@ -78,13 +79,13 @@ class AbstractTerm(metaclass=abc.ABCMeta):
 
 
 class ControlTerm(AbstractTerm):
-    def __init__(self, *, vector_field: Callable[[Scalar, PyTree], PyTree], control: AbstractPath, **kwargs):
+    def __init__(self, *, vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], control: AbstractPath, **kwargs):
         super().__init__(**kwargs)
         self.vector_field = vector_field
         self.control = control
 
     # To avoid abstractmethod errors
-    def vector_field(self, t: Scalar, y: PyTree) -> PyTree:
+    def vector_field(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
 
     def diff_control(self, t: Scalar) -> PyTree:
@@ -98,12 +99,12 @@ class ControlTerm(AbstractTerm):
 
 
 class ODETerm(AbstractTerm):
-    def __init__(self, *, vector_field: Callable[[Scalar, PyTree], PyTree], **kwargs):
+    def __init__(self, *, vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
         super().__init__(**kwargs)
         self.vector_field = vector_field
 
     # To avoid abstractmethod errors
-    def vector_field(self, t: Scalar, y: PyTree) -> PyTree:
+    def vector_field(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
 
     def diff_control(self, t: Scalar) -> Scalar:

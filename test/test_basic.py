@@ -18,7 +18,7 @@ def test_basic():
 
 
 def _test_basic(solver_ctr, t_dtype, treedef):
-    def f(t, y):
+    def f(t, y, args):
         return jax.tree_map(operator.neg, y)
 
     solver = solver_ctr(f)

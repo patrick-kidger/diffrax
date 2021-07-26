@@ -17,11 +17,12 @@ def _euler_diff_step(
     y_treedef: SquashTreeDef,
     t0: Scalar,
     t1: Scalar,
-    y0: Array["state":...]  # noqa: F821
+    y0: Array["state":...],  # noqa: F821
+    args: PyTree,
 ) -> Array["state":...]:  # noqa: F821
 
     control0_, control_treedef = diff_control_(t0)
-    return y0 + vector_field_prod_(y_treedef, control_treedef, t0, y0, control0_) * (t1 - t0)
+    return y0 + vector_field_prod_(y_treedef, control_treedef, t0, y0, args, control0_) * (t1 - t0)
 
 
 @ft.partial(jax.jit, static_argnums=[0, 1, 2])
@@ -32,11 +33,12 @@ def _euler_eval_step(
     y_treedef: SquashTreeDef,
     t0: Scalar,
     t1: Scalar,
-    y0: Array["state":...]  # noqa: F821
+    y0: Array["state":...],  # noqa: F821
+    args: PyTree,
 ) -> Array["state":...]:  # noqa: F821
 
     control_, control_treedef = eval_control_(t0, t1)
-    return y0 + vector_field_prod_(y_treedef, control_treedef, t0, y0, control_)
+    return y0 + vector_field_prod_(y_treedef, control_treedef, t0, y0, args, control_)
 
 
 class Euler(AbstractSolver):
@@ -51,7 +53,7 @@ class Euler(AbstractSolver):
         self.recommended_interpolation = LinearInterpolation
 
     # To avoid errors due to lacking an abstractmethod
-    def step(self, y_treedef, t0, t1, y0):
+    def step(self, y_treedef, t0, t1, y0, args, solver_state):
         pass
 
     def init(self, t0: Scalar, y0: Array["state":...]) -> None:  # noqa: F821
@@ -63,9 +65,12 @@ class Euler(AbstractSolver):
         t0: Scalar,
         t1: Scalar,
         y0: Array["state":...],  # noqa: F821
+        args: PyTree,
         solver_state: None
     ) -> Tuple[Array["state":...], None]:  # noqa: F821
-        return _euler_diff_step(self.term.diff_control_, self.term.vector_field_prod_, y_treedef, t0, t1, y0), None
+        return (
+            _euler_diff_step(self.term.diff_control_, self.term.vector_field_prod_, y_treedef, t0, t1, y0, args), None
+        )
 
     def eval_step(
         self,
@@ -73,17 +78,22 @@ class Euler(AbstractSolver):
         t0: Scalar,
         t1: Scalar,
         y0: Array["state":...],  # noqa: F821
+        args: PyTree,
         solver_state: None
     ) -> Tuple[Array["state":...], None]:  # noqa: F821
-        return _euler_eval_step(self.term.eval_control_, self.term.vector_field_prod_, y_treedef, t0, t1, y0), None
+        return (
+            _euler_eval_step(self.term.eval_control_, self.term.vector_field_prod_, y_treedef, t0, t1, y0, args), None
+        )
 
 
-def euler(vector_field: Callable[[Scalar, PyTree], PyTree]):
+def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]):
     return Euler(term=ODETerm(vector_field=vector_field))
 
 
 def euler_maruyama(
-    drift: Callable[[Scalar, PyTree], PyTree], diffusion: Callable[[Scalar, PyTree], PyTree], bm: AbstractBrownianPath
+    drift: Callable[[Scalar, PyTree, PyTree], PyTree],
+    diffusion: Callable[[Scalar, PyTree, PyTree], PyTree],
+    bm: AbstractBrownianPath
 ):
     drift = Euler(term=ODETerm(vector_field=drift))
     diffusion = Euler(term=ControlTerm(vector_field=diffusion, control=bm))
