@@ -47,11 +47,10 @@ class Euler(AbstractSolver):
 
 
 def euler(vector_field: Callable[[Scalar, PyTree], PyTree]):
-    term = ODETerm(vector_field=vector_field)
-    return Euler(term=term)
+    return Euler(term=ODETerm(vector_field=vector_field))
 
 
 def euler_maruyama(drift: Callable[[Scalar, PyTree], PyTree], diffusion: Callable[[Scalar, PyTree], PyTree], bm: AbstractBrownianPath):
-    drift = ODETerm(vector_field=drift)
-    diffusion = ControlTerm(vector_field=diffusion, control=bm)
-    return SplittingMethod(terms=[drift, diffusion])
+    drift = Euler(term=ODETerm(vector_field=drift))
+    diffusion = Euler(term=ControlTerm(vector_field=diffusion, control=bm))
+    return SplittingMethod(solvers=[[drift, diffusion]])
