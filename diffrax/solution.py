@@ -6,6 +6,13 @@ from .path import AbstractPath
 from .tree import tree_dataclass
 
 
+# We use magic numbers, rather than informative strings, as these can be vmap'd etc. through JAX.
+# Same reason we don't use enum.Enum here.
+class RESULTS:
+    successful = 0
+    max_steps_reached = 1
+
+
 @tree_dataclass
 class Solution(AbstractPath):
     ts: Array
@@ -13,6 +20,7 @@ class Solution(AbstractPath):
     controller_states: Optional[list[PyTree]]
     solver_states: Optional[list[PyTree]]
     interpolation: AbstractInterpolation
+    result: int  # from RESULTS
 
     def derivative(self, t: Scalar) -> PyTree:
         return self.interpolation.derivative(t)

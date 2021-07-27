@@ -9,7 +9,7 @@ from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .interpolation import AbstractInterpolation
 from .misc import stack_pytrees
 from .saveat import SaveAt
-from .solution import Solution
+from .solution import RESULTS, Solution
 from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 from .tree import tree_squash, tree_unsquash
@@ -57,6 +57,7 @@ def diffeqint(
     controller_state: Optional[PyTree] = None,
     saveat: SaveAt = SaveAt(t1=True),
     jit: bool = True,
+    max_steps: Scalar = 2**31 - 1
 ) -> Solution:
 
     if interpolation is None:
@@ -98,7 +99,9 @@ def diffeqint(
     # variable step size solvers have a variable-size computation graph so they're
     # never going to be jit-able anyway.
     not_done = tprev < t1
-    while jnp.any(not_done):
+    num_steps = 0
+    while jnp.any(not_done) and num_steps < max_steps:
+        num_steps = num_steps + 1
         (tprev, tnext, y, solver_state, controller_state, keep_step, not_done) = step_maybe_jit(
             tprev, tnext, y, solver_state, controller_state, solver, stepsize_controller, y_treedef, t1, args
         )
@@ -109,6 +112,11 @@ def diffeqint(
                 controller_states.append(controller_state)
             if saveat.solver_state:
                 solver_states.append(solver_state)
+
+    if num_steps >= max_steps:
+        result = RESULTS.max_steps_reached
+    else:
+        result = RESULTS.successful
 
     # TODO: interpolate into ts and ys
 
@@ -133,5 +141,10 @@ def diffeqint(
 
     interpolation = interpolation(ts=ts, ys=ys)
     return Solution(
-        ts=ts, ys=ys, controller_states=controller_states, solver_states=solver_states, interpolation=interpolation
+        ts=ts,
+        ys=ys,
+        controller_states=controller_states,
+        solver_states=solver_states,
+        interpolation=interpolation,
+        result=result
     )
