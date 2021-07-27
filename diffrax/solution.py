@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
@@ -5,21 +6,13 @@ from .interpolation import AbstractInterpolation
 from .path import AbstractPath
 
 
+@dataclass(frozen=True)
 class Solution(AbstractPath):
-    def __init__(
-        self,
-        ts: Array,
-        ys: PyTree,
-        controller_states: Optional[list[PyTree]],
-        solver_states: Optional[list[PyTree]],
-        interpolation: AbstractInterpolation
-    ):
-        super().__init__()
-        self.ts = ts
-        self.ys = ys
-        self.controller_states = controller_states
-        self.solver_states = solver_states
-        self.interpolation = interpolation
+    ts: Array
+    ys: PyTree
+    controller_states: Optional[list[PyTree]]
+    solver_states: Optional[list[PyTree]]
+    interpolation: AbstractInterpolation
 
     def derivative(self, t: Scalar) -> PyTree:
         return self.interpolation.derivative(t)

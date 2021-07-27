@@ -1,14 +1,14 @@
+from dataclasses import dataclass
 from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .path import AbstractPath
 
 
+@dataclass(frozen=True)
 class AbstractInterpolation(AbstractPath):
-    def __init__(self, *, ts: Array, ys: PyTree, **kwargs):
-        super().__init__(**kwargs)
-        self.ts = ts
-        self.ys = ys
+    ts: Array
+    ys: PyTree
 
 
 class LinearInterpolation(AbstractInterpolation):

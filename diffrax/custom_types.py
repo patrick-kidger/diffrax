@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 
 class Array:
@@ -11,6 +11,6 @@ class PyTree:
         return Any
 
 
-Scalar = Array[()]
+Scalar = Union[int, float, Array[()]]
 
 SquashTreeDef = Tuple[Any, Optional[Tuple[int]], Optional[Tuple[int]]]
