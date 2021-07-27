@@ -23,12 +23,7 @@ class AbstractTerm(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     @tree_method
-    def diff_control(self, t: Scalar) -> PyTree:
-        pass
-
-    @abc.abstractmethod
-    @tree_method
-    def eval_control(self, t0: Scalar, t1: Scalar) -> PyTree:
+    def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
         pass
 
     @abc.abstractmethod
@@ -48,14 +43,8 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         return tree_squash(vf)
 
     @tree_method
-    def diff_control_(self, t: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
-        control = self.diff_control(t)
-        return tree_squash(control)
-
-    @tree_method
-    def eval_control_(self, t0: Scalar, t1: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
-        control = self.eval_control(t0, t1)
-        return tree_squash(control)
+    def contr_(self, t0: Scalar, t1: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
+        return tree_squash(self.contr(t0, t1))
 
     @tree_method
     def prod_(
@@ -90,6 +79,23 @@ class AbstractTerm(metaclass=abc.ABCMeta):
 
 
 @tree_dataclass
+class ODETerm(AbstractTerm):
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
+
+    @tree_method
+    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
+        return self.vector_field(t, y, args)
+
+    @staticmethod
+    def contr(t0: Scalar, t1: Scalar) -> Scalar:
+        return t1 - t0
+
+    @staticmethod
+    def prod(vf: PyTree, control: Scalar) -> PyTree:
+        return jax.tree_map(lambda v: control * v, vf)
+
+
+@tree_dataclass
 class ControlTerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
     control: AbstractPath
@@ -99,34 +105,23 @@ class ControlTerm(AbstractTerm):
         return self.vector_field(t, y, args)
 
     @tree_method
-    def diff_control(self, t: Scalar) -> PyTree:
-        return self.control.derivative(t)
-
-    @tree_method
-    def eval_control(self, t0: Scalar, t1: Scalar) -> PyTree:
+    def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
         return self.control.evaluate(t0, t1)
 
     @staticmethod
     def prod(vf: PyTree, control: PyTree) -> PyTree:
         return jax.tree_map(_prod, vf, control)
 
+    def to_ode(self):
+        vector_field = _ControlToODE(self)
+        return ODETerm(vector_field=vector_field)
+
 
 @tree_dataclass
-class ODETerm(AbstractTerm):
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
+class _ControlToODE:
+    control_term: ControlTerm
 
     @tree_method
-    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        return self.vector_field(t, y, args)
-
-    @staticmethod
-    def diff_control(t: Scalar) -> Scalar:
-        return 1
-
-    @staticmethod
-    def eval_control(t0: Scalar, t1: Scalar) -> Scalar:
-        return t1 - t0
-
-    @staticmethod
-    def prod(vf: PyTree, control: Scalar) -> PyTree:
-        return jax.tree_map(lambda v: control * v, vf)
+    def __call__(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
+        control = self.control_term.control.derivative(t)
+        return self.control_term.vf_prod(t, y, args, control)

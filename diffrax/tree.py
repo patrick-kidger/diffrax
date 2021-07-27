@@ -1,4 +1,4 @@
-from dataclasses import astuple, dataclass
+from dataclasses import dataclass, fields
 import jax
 import jax.numpy as jnp
 import math
@@ -36,11 +36,17 @@ def tree_unsquash(treedef: SquashTreeDef, flat: Array) -> PyTree:
     return jax.tree_unflatten(treedef, flat)
 
 
+# dataclasses.astuple operates recursively, which destroys information about
+# nested tree_dataclasses. This is just a shallow tuplification.
+def _dataclass_astuple(datacls):
+    return tuple(getattr(datacls, field.name) for field in fields(datacls))
+
+
 def tree_dataclass(cls: type):
     datacls = dataclass(frozen=True)(cls)
 
     def flatten(self):
-        return astuple(self), None
+        return _dataclass_astuple(self), None
 
     def unflatten(_, fields):
         return cls(*fields)
