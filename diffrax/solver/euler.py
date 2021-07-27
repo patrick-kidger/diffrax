@@ -1,9 +1,8 @@
-from typing import Callable, Tuple, Type
+from typing import Callable, Tuple
 
 from ..autojit import autojit
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..interpolation import AbstractInterpolation, LinearInterpolation
 from ..term import AbstractTerm, ControlTerm, ODETerm
 from ..tree import tree_dataclass
 from .base import AbstractSolver
@@ -16,7 +15,6 @@ from .base import AbstractSolver
 @tree_dataclass
 class Euler(AbstractSolver):
     terms: tuple[AbstractTerm]
-    recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
 
     @autojit
     def step(

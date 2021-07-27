@@ -11,7 +11,7 @@ key = jrandom.PRNGKey(56789)
 
 
 def test_basic():
-    for solver_ctr in (diffrax.euler,):
+    for solver_ctr in (diffrax.euler, diffrax.heun):
         for t_dtype in (int, float, jnp.int32, jnp.float32):
             for treedef in treedefs:
                 _test_basic(solver_ctr, t_dtype, treedef)
