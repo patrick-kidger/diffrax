@@ -5,7 +5,7 @@ from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
 from .solver import AbstractSolver, ButcherTableau, Euler, euler, euler_maruyama, heun, RungeKutta
-from .step_size_controller import AbstractStepSizeController, ConstantStepSize
+from .step_size_controller import AbstractStepSizeController, ConstantStepSize, IController
 from .term import AbstractTerm, ControlTerm, ODETerm
 
 

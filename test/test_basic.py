@@ -14,10 +14,13 @@ def test_basic():
     for solver_ctr in (diffrax.euler, diffrax.heun):
         for t_dtype in (int, float, jnp.int32, jnp.float32):
             for treedef in treedefs:
-                _test_basic(solver_ctr, t_dtype, treedef)
+                for stepsize_controller in (diffrax.ConstantStepSize(), diffrax.IController()):
+                    if solver_ctr is diffrax.euler and isinstance(stepsize_controller, diffrax.IController):
+                        continue
+                    _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller)
 
 
-def _test_basic(solver_ctr, t_dtype, treedef):
+def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller):
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)
 
@@ -41,4 +44,4 @@ def _test_basic(solver_ctr, t_dtype, treedef):
     else:
         raise ValueError
     y0 = random_pytree(key, treedef)
-    diffrax.diffeqint(solver, t0, t1, y0, dt0)
+    diffrax.diffeqint(solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller)

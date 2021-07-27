@@ -16,7 +16,6 @@ from .base import AbstractSolver
 class Euler(AbstractSolver):
     terms: tuple[AbstractTerm]
     recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
-    jit: bool = True
 
     def step(
         self,
@@ -32,6 +31,15 @@ class Euler(AbstractSolver):
             control_, control_treedef = term.contr_(t0, t1)
             y1 = y1 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
         return y1, None
+
+    order = 1
+
+    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+                      args: PyTree) -> Array["state"]:  # noqa: F821
+        vf = 0
+        for term in self.terms:
+            vf = vf + term.func_for_init(y_treedef, t, y_, args)
+        return vf
 
 
 def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):

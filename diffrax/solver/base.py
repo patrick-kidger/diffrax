@@ -1,24 +1,22 @@
 import abc
-from typing import Tuple, TypeVar
+from typing import Optional, Tuple, TypeVar
 
-from ..autojit import autojit
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..tree import tree_dataclass
 
 
-T = TypeVar('T', bound=PyTree)
+@tree_dataclass
+class AbstractSolverState(metaclass=abc.ABCMeta):
+    y_error: Array["state"]  # noqa: F821
+
+
+T = TypeVar('T', bound=Optional[AbstractSolverState])
 
 
 @tree_dataclass
 class AbstractSolver(metaclass=abc.ABCMeta):
-    # Subclasses must define:
-    # (cannot put them here because of default-before-non-default problems with dataclasses)
+    # Subclasses must define the data attribute:
     # recommended_interpolation: Type[AbstractInterpolation]
-    # jit: bool
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.jit_step = autojit(cls.step)
 
     def init(
         self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state"], args: PyTree  # noqa: F821
@@ -37,8 +35,11 @@ class AbstractSolver(metaclass=abc.ABCMeta):
     ) -> Tuple[Array["state"], T]:  # noqa: F821
         pass
 
-    def step_maybe_jit(self, *args, **kwargs):
-        if self.jit:
-            return self.jit_step(*args, **kwargs)
-        else:
-            return self.step(*args, **kwargs)
+    @property
+    @abc.abstractmethod
+    def order(self) -> int:
+        pass
+
+    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+                      args: PyTree) -> Array["state"]:  # noqa: F821
+        raise ValueError(f"func_for_init does not exist for solver of type {type(self)}.")

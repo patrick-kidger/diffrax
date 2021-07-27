@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import jax.numpy as jnp
 import numpy as np
 from typing import Any, Tuple, Type
@@ -8,7 +8,7 @@ from ..interpolation import AbstractInterpolation, LinearInterpolation
 from ..misc import frozenndarray
 from ..term import AbstractTerm
 from ..tree import tree_dataclass
-from .base import AbstractSolver
+from .base import AbstractSolver, AbstractSolverState
 
 
 # Not a tree_dataclass as we want to compile against the values of alpha, beta etc.
@@ -18,6 +18,28 @@ class ButcherTableau:
     beta: tuple[frozenndarray]
     c_sol: frozenndarray
     c_error: frozenndarray
+    order: int = field(init=False)
+
+    def __post_init__(self):
+        alpha = np.asarray(self.alpha)
+        beta = tuple(np.asarray(beta_i) for beta_i in self.beta)
+        c_sol = np.asarray(self.c_sol)
+        c_error = np.asarray(self.c_error)
+        assert alpha.ndim == 1
+        for beta_i in beta:
+            assert beta_i.ndim == 1
+        assert c_sol.ndim == 1
+        assert c_error.ndim == 1
+        assert all(alpha.shape[0] == beta_i.shape[0] for beta_i in beta)
+        assert alpha.shape[0] + 1 == c_sol.shape[0]
+        assert alpha.shape[0] + 1 == c_error.shape[0]
+        object.__setattr__(self, "order", len(alpha) + 1)
+
+
+@tree_dataclass
+class RungeKuttaSolverState(AbstractSolverState):
+    f0: Array["state"]  # noqa: F821
+    dt: Scalar
 
 
 @tree_dataclass
@@ -25,15 +47,15 @@ class RungeKutta(AbstractSolver):
     terms: list[AbstractTerm]
     tableau: ButcherTableau
     recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
-    jit: bool = True
 
     def init(self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state"], args: PyTree):  # noqa: F821
-        f0s = []
+        f0 = 0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
-            f0 = term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
-            f0s.append(f0)
-        return [jnp.zeros(y0.shape) for _ in range(len(self.terms))], f0s, t1 - t0
+            f0 = f0 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
+        y_error = jnp.zeros(y0.shape)
+        dt = t1 - t0
+        return RungeKuttaSolverState(y_error=y_error, f0=f0, dt=dt)
 
     def step(
         self,
@@ -53,42 +75,46 @@ class RungeKutta(AbstractSolver):
 
         controls_ = []
         control_treedefs = []
-        ks = []
-        _, f0s, prev_dt = solver_state
+        f0 = solver_state.f0
+        prev_dt = solver_state.dt
         dt = t1 - t0
-        for term, f0 in zip(self.terms, f0s):
+        for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
-            k = jnp.empty(y0.shape + (len(alpha) + 1,))
-            k = k.at[..., 0].set(f0 * (dt / prev_dt))
             controls_.append(control_)
             control_treedefs.append(control_treedef)
-            ks.append(k)
+
+        k = jnp.zeros(y0.shape + (len(alpha) + 1,))
+        k = k.at[..., 0].add(f0 * (dt / prev_dt))
+
         # lax.fori_loop is not reverse differentiable
         # Since we're JITing I'm not sure it'd necessarily be faster anyway.
-        for tableau_index, (alpha_i, beta_i) in enumerate(zip(alpha, beta)):
+        for i, (alpha_i, beta_i) in enumerate(zip(alpha, beta)):
             if alpha_i == 1:
                 # No floating point error
                 ti = t1
             else:
                 ti = t0 + alpha_i * dt
-            yi = y0
-            for k in ks:
-                yi = yi + k[..., :tableau_index + 1] @ beta_i
-            for term_index, (term, control_, control_treedef, k) in enumerate(zip(self.terms,
-                                                                                  controls_,
-                                                                                  control_treedefs,
-                                                                                  ks)):
+            yi = y0 + k[..., :i + 1] @ beta_i
+            for term, control_, control_treedef in zip(self.terms, controls_, control_treedefs):
                 fi = term.vf_prod_(y_treedef, control_treedef, ti, yi, args, control_)
-                k = k.at[..., tableau_index + 1].set(fi)
-                ks[term_index] = k
+                k = k.at[..., i + 1].add(fi)
 
         if not (c_sol[-1] == 0 and (c_sol[:-1] == beta[-1]).all()):
-            yi = y0
-            for k in ks:
-                yi = yi + k @ c_sol
+            yi = y0 + k @ c_sol
 
         y1 = yi
-        f1s = [k[..., -1] for k in ks]
-        y1_error = [k @ (c_error * dt) for k in ks]
-        solver_state = (y1_error, f1s, dt)
+        f1 = k[..., -1]
+        y_error = k @ c_error
+        solver_state = RungeKuttaSolverState(y_error=y_error, f0=f1, dt=dt)
         return y1, solver_state
+
+    @property
+    def order(self):
+        return self.tableau.order
+
+    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+                      args: PyTree) -> Array["state"]:  # noqa: F821
+        vf = 0
+        for term in self.terms:
+            vf = vf + term.func_for_init(y_treedef, t, y_, args)
+        return vf
