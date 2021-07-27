@@ -10,9 +10,22 @@ class AbstractInterpolation(AbstractPath):
     ts: Array
     ys: PyTree
 
+    requested_state = frozenset()
+
 
 @tree_dataclass
 class LinearInterpolation(AbstractInterpolation):
+    def derivative(self, t: Scalar) -> PyTree:
+        ...
+
+    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
+        ...  # TODO. Think about point evaluations?
+
+
+@tree_dataclass
+class FourthOrderPolynomialInterpolation(AbstractInterpolation):
+    requested_state = frozenset({"k"})
+
     def derivative(self, t: Scalar) -> PyTree:
         ...
 

@@ -1,6 +1,6 @@
 from .brownian import AbstractBrownianPath, BrownianInterval
 from .integrate import diffeqint
-from .interpolation import AbstractInterpolation, LinearInterpolation
+from .interpolation import AbstractInterpolation, FourthOrderPolynomialInterpolation, LinearInterpolation
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution

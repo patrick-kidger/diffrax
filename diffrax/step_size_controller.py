@@ -13,6 +13,8 @@ T2 = TypeVar('T2', bound=PyTree)
 
 @tree_dataclass
 class AbstractStepSizeController(metaclass=abc.ABCMeta):
+    requested_state = frozenset()
+
     @abc.abstractmethod
     def init(
         self,
@@ -138,6 +140,8 @@ class IController(AbstractStepSizeController):
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
 
+    requested_state = frozenset({"y_error"})
+
     def init(
         self,
         func_for_init: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
@@ -167,7 +171,7 @@ class IController(AbstractStepSizeController):
     ) -> Tuple[bool, Scalar, Scalar, None]:
         del solver_state0, controller_state
         prev_dt = t1 - t0
-        y_error = solver_state1_candidate.y_error
+        y_error = solver_state1_candidate.extras["y_error"]
 
         scaled_error = _scale_error_estimate(y_error, y0, y1_candidate, self.rtol, self.atol, self.norm)
         keep_step = scaled_error < 1

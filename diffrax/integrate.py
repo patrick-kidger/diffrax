@@ -1,8 +1,8 @@
-from typing import Optional, Type
-
+from dataclasses import fields
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+from typing import Optional, Type
 
 from .autojit import autojit
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
@@ -10,7 +10,7 @@ from .interpolation import AbstractInterpolation
 from .misc import stack_pytrees
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
-from .solver import AbstractSolver
+from .solver import AbstractSolver, AbstractSolverState
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 from .tree import tree_squash, tree_unsquash
 
@@ -25,9 +25,10 @@ def _step(
     stepsize_controller: AbstractStepSizeController,
     y_treedef: SquashTreeDef,
     t1: Scalar,
-    args: PyTree
+    args: PyTree,
+    requested_state: frozenset,
 ):
-    y_candidate, solver_state_candidate = solver.step(y_treedef, tprev, tnext, y, args, solver_state)
+    y_candidate, solver_state_candidate = solver.step(y_treedef, tprev, tnext, y, args, solver_state, requested_state)
     (keep_step, tprev, tnext, controller_state_candidate) = stepsize_controller.adapt_step_size(
         tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, solver.order, controller_state
     )
@@ -53,7 +54,7 @@ def diffeqint(
     *,
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     interpolation: Optional[Type[AbstractInterpolation]] = None,
-    solver_state: Optional[PyTree] = None,
+    solver_state: Optional[AbstractSolverState] = None,
     controller_state: Optional[PyTree] = None,
     saveat: SaveAt = SaveAt(t1=True),
     jit: bool = True,
@@ -62,6 +63,17 @@ def diffeqint(
 
     if interpolation is None:
         interpolation = solver.recommended_interpolation
+
+    requested_state = interpolation.requested_state | stepsize_controller.requested_state
+    if solver.state_type is None:
+        available_state = {}
+    else:
+        available_state = {field.name for field in fields(solver.state_type)}
+    if not requested_state.issubset(available_state):
+        raise ValueError(
+            f"This combination of interpolation={type(interpolation)}, "
+            f"stepsize_controller={type(stepsize_controller)}, solver={type(solver)} is not valid."
+        )
 
     y, y_treedef = tree_squash(y0)
 
@@ -74,7 +86,7 @@ def diffeqint(
         tnext = t0 + dt0
 
     if solver_state is None:
-        solver_state = solver.init(y_treedef, t0, tnext, y, args)
+        solver_state = solver.init(y_treedef, t0, tnext, y, args, requested_state)
 
     ts = []
     ys = []
@@ -91,19 +103,28 @@ def diffeqint(
         del t0, y0, dt0
 
     if jit:
-        step_maybe_jit = autojit(_step)
+        # TODO: understand warnings being throw about donated argnums not being used.
+        step_maybe_jit = autojit(_step, donate_argnums=(0, 1, 2, 3, 4))
     else:
         step_maybe_jit = _step
 
-    # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    # variable step size solvers have a variable-size computation graph so they're
-    # never going to be jit-able anyway.
     not_done = tprev < t1
     num_steps = 0
+    # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while jnp.any(not_done) and num_steps < max_steps:
         num_steps = num_steps + 1
         (tprev, tnext, y, solver_state, controller_state, keep_step, not_done) = step_maybe_jit(
-            tprev, tnext, y, solver_state, controller_state, solver, stepsize_controller, y_treedef, t1, args
+            tprev,
+            tnext,
+            y,
+            solver_state,
+            controller_state,
+            solver,
+            stepsize_controller,
+            y_treedef,
+            t1,
+            args,
+            requested_state
         )
         if saveat.steps & jnp.any(keep_step):
             ts.append(tprev)

@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Tuple, TypeVar
+from typing import Any, Optional, Tuple, TypeVar
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..tree import tree_dataclass
@@ -7,7 +7,7 @@ from ..tree import tree_dataclass
 
 @tree_dataclass
 class AbstractSolverState(metaclass=abc.ABCMeta):
-    y_error: Array["state"]  # noqa: F821
+    extras: dict[str, Any]
 
 
 T = TypeVar('T', bound=Optional[AbstractSolverState])
@@ -15,11 +15,29 @@ T = TypeVar('T', bound=Optional[AbstractSolverState])
 
 @tree_dataclass
 class AbstractSolver(metaclass=abc.ABCMeta):
-    # Subclasses must define the data attribute:
-    # recommended_interpolation: Type[AbstractInterpolation]
+    @property
+    @abc.abstractmethod
+    def order(self) -> int:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def state_type(self) -> T:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def recommended_interpolation(self) -> T:
+        pass
 
     def init(
-        self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state"], args: PyTree  # noqa: F821
+        self,
+        y_treedef: SquashTreeDef,
+        t0: Scalar,
+        t1: Scalar,
+        y0: Array["state"],  # noqa: F821
+        args: PyTree,
+        requested_state: frozenset,
     ) -> T:  # noqa: F821
         return None
 
@@ -31,13 +49,9 @@ class AbstractSolver(metaclass=abc.ABCMeta):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        solver_state: T
+        solver_state: T,
+        requested_state: frozenset,
     ) -> Tuple[Array["state"], T]:  # noqa: F821
-        pass
-
-    @property
-    @abc.abstractmethod
-    def order(self) -> int:
         pass
 
     def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821

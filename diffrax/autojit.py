@@ -6,8 +6,8 @@ from typing import Any
 
 
 @ft.lru_cache(maxsize=4096)
-def _autojit_cache(f, args_treedef, static_argnums, **jitkwargs):
-    @ft.partial(jax.jit, static_argnums=static_argnums, **jitkwargs)
+def _autojit_cache(f, args_treedef, **jitkwargs):
+    @ft.partial(jax.jit, **jitkwargs)
     def f_wrapped(*args):
         args = jax.tree_unflatten(args_treedef, args)
         return f(*args)
@@ -18,6 +18,9 @@ def _autojit_cache(f, args_treedef, static_argnums, **jitkwargs):
 @dataclass(frozen=True)
 class _UnPyTreeAble:
     value: Any
+
+
+_marker_sentinel = object()
 
 
 def autojit(f, static_argnums=None, static_argnames=None, donate_argnums=(), **jitkwargs):
@@ -33,11 +36,19 @@ def autojit(f, static_argnums=None, static_argnames=None, donate_argnums=(), **j
         static_argnums = (static_argnums,)
     if static_argnames is not None:
         raise NotImplementedError
-    if donate_argnums != ():
-        raise NotImplementedError
+    if isinstance(donate_argnums, int):
+        donate_argnums = (donate_argnums,)
 
     @ft.wraps(f)
     def f_wrapper(*args):
+        if donate_argnums != ():
+            marker_args = list(args)
+            for i in donate_argnums:
+                marker_args[i] = jax.tree_map(lambda _: _marker_sentinel, marker_args[i])
+            marker_args_flat, _ = jax.tree_flatten(marker_args)
+            new_donate_argnums = tuple(i for i, arg in enumerate(marker_args_flat) if arg is _marker_sentinel)
+        else:
+            new_donate_argnums = ()
         if static_argnums is not None:
             args = list(args)
             for index in static_argnums:
@@ -52,7 +63,9 @@ def autojit(f, static_argnums=None, static_argnames=None, donate_argnums=(), **j
         new_static_argnums = tuple(new_static_argnums)
         if static_argnums is not None:
             args_flat = [arg.value if isinstance(arg, _UnPyTreeAble) else arg]
-        f_jitted = _autojit_cache(f, args_treedef, new_static_argnums, **jitkwargs)
+        f_jitted = _autojit_cache(
+            f, args_treedef, static_argnums=new_static_argnums, donate_argnums=new_donate_argnums, **jitkwargs
+        )
         return f_jitted(*args_flat)
 
     return f_wrapper

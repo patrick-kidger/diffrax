@@ -1,8 +1,8 @@
-from typing import Callable, Tuple, Type
+from typing import Callable, Tuple
 
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..interpolation import AbstractInterpolation, LinearInterpolation
+from ..interpolation import LinearInterpolation
 from ..term import AbstractTerm, ControlTerm, ODETerm
 from ..tree import tree_dataclass
 from .base import AbstractSolver
@@ -15,7 +15,10 @@ from .base import AbstractSolver
 @tree_dataclass
 class Euler(AbstractSolver):
     terms: tuple[AbstractTerm]
-    recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
+
+    order = 1
+    state_type = None
+    recommended_interpolation = LinearInterpolation
 
     def step(
         self,
@@ -24,15 +27,15 @@ class Euler(AbstractSolver):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        solver_state: None
+        solver_state: None,
+        requested_state: frozenset,
     ) -> Tuple[Array["state"], None]:  # noqa: F821
+        del requested_state
         y1 = y0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
             y1 = y1 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
         return y1, None
-
-    order = 1
 
     def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
                       args: PyTree) -> Array["state"]:  # noqa: F821

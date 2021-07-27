@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 import jax.numpy as jnp
 import numpy as np
-from typing import Any, Tuple, Type
+from typing import Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..interpolation import AbstractInterpolation, LinearInterpolation
+from ..interpolation import FourthOrderPolynomialInterpolation
 from ..misc import frozenndarray
 from ..term import AbstractTerm
 from ..tree import tree_dataclass
@@ -46,16 +46,34 @@ class RungeKuttaSolverState(AbstractSolverState):
 class RungeKutta(AbstractSolver):
     terms: list[AbstractTerm]
     tableau: ButcherTableau
-    recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
 
-    def init(self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state"], args: PyTree):  # noqa: F821
+    @property
+    def order(self):
+        return self.tableau.order
+
+    state_type = RungeKuttaSolverState
+    recommended_interpolation = FourthOrderPolynomialInterpolation
+
+    def init(
+        self,
+        y_treedef: SquashTreeDef,
+        t0: Scalar,
+        t1: Scalar,
+        y0: Array["state"],  # noqa: F821
+        args: PyTree,
+        requested_state: frozenset
+    ):  # noqa: F821
         f0 = 0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
             f0 = f0 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
-        y_error = jnp.zeros(y0.shape)
         dt = t1 - t0
-        return RungeKuttaSolverState(y_error=y_error, f0=f0, dt=dt)
+        extras = {}
+        if "y_error" in requested_state:
+            extras["y_error"] = jnp.zeros(y0.shape)
+        if "k" in requested_state:
+            extras["k"] = jnp.zeros(y0.shape + (self.tableau.order,))
+        return RungeKuttaSolverState(f0=f0, dt=dt, extras=extras)
 
     def step(
         self,
@@ -64,8 +82,9 @@ class RungeKutta(AbstractSolver):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        solver_state,
-    ) -> Tuple[Array["state"], Any]:  # noqa: F821
+        solver_state: RungeKuttaSolverState,
+        requested_state: frozenset,
+    ) -> Tuple[Array["state"], RungeKuttaSolverState]:  # noqa: F821
         # Convert from frozenarray to array
         # Operations (+,*,@ etc.) aren't defined for frozenarray
         alpha = np.asarray(self.tableau.alpha)
@@ -83,7 +102,7 @@ class RungeKutta(AbstractSolver):
             controls_.append(control_)
             control_treedefs.append(control_treedef)
 
-        k = jnp.zeros(y0.shape + (len(alpha) + 1,))
+        k = jnp.zeros(y0.shape + (self.tableau.order,))
         k = k.at[..., 0].add(f0 * (dt / prev_dt))
 
         # lax.fori_loop is not reverse differentiable
@@ -104,13 +123,13 @@ class RungeKutta(AbstractSolver):
 
         y1 = yi
         f1 = k[..., -1]
-        y_error = k @ c_error
-        solver_state = RungeKuttaSolverState(y_error=y_error, f0=f1, dt=dt)
+        extras = {}
+        if "y_error" in requested_state:
+            extras["y_error"] = k @ c_error
+        if "k" in requested_state:
+            extras["k"] = k
+        solver_state = RungeKuttaSolverState(f0=f1, dt=dt, extras=extras)
         return y1, solver_state
-
-    @property
-    def order(self):
-        return self.tableau.order
 
     def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
                       args: PyTree) -> Array["state"]:  # noqa: F821
