@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 import jax.numpy as jnp
 import numpy as np
-from typing import Any, Tuple
+from typing import Any, Tuple, Type
 
-from ..autojit import autojit
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
+from ..interpolation import AbstractInterpolation, LinearInterpolation
 from ..misc import frozenndarray
 from ..term import AbstractTerm
 from ..tree import tree_dataclass
@@ -24,6 +24,8 @@ class ButcherTableau:
 class RungeKutta(AbstractSolver):
     terms: list[AbstractTerm]
     tableau: ButcherTableau
+    recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
+    jit: bool = True
 
     def init(self, y_treedef: SquashTreeDef, t0: Scalar, t1: Scalar, y0: Array["state"], args: PyTree):  # noqa: F821
         f0s = []
@@ -31,9 +33,8 @@ class RungeKutta(AbstractSolver):
             control_, control_treedef = term.contr_(t0, t1)
             f0 = term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
             f0s.append(f0)
-        return [jnp.zeros(y0.shape) for _ in range(len(self.terms))], f0s
+        return [jnp.zeros(y0.shape) for _ in range(len(self.terms))], f0s, t1 - t0
 
-    @autojit
     def step(
         self,
         y_treedef: SquashTreeDef,
@@ -53,15 +54,15 @@ class RungeKutta(AbstractSolver):
         controls_ = []
         control_treedefs = []
         ks = []
-        _, f0s = solver_state
+        _, f0s, prev_dt = solver_state
+        dt = t1 - t0
         for term, f0 in zip(self.terms, f0s):
             control_, control_treedef = term.contr_(t0, t1)
             k = jnp.empty(y0.shape + (len(alpha) + 1,))
-            k = k.at[..., 0].set(f0)
+            k = k.at[..., 0].set(f0 * (dt / prev_dt))
             controls_.append(control_)
             control_treedefs.append(control_treedef)
             ks.append(k)
-        dt = t1 - t0
         # lax.fori_loop is not reverse differentiable
         # Since we're JITing I'm not sure it'd necessarily be faster anyway.
         for tableau_index, (alpha_i, beta_i) in enumerate(zip(alpha, beta)):
@@ -72,7 +73,7 @@ class RungeKutta(AbstractSolver):
                 ti = t0 + alpha_i * dt
             yi = y0
             for k in ks:
-                yi = yi + k[..., :tableau_index + 1] @ (beta_i * dt)
+                yi = yi + k[..., :tableau_index + 1] @ beta_i
             for term_index, (term, control_, control_treedef, k) in enumerate(zip(self.terms,
                                                                                   controls_,
                                                                                   control_treedefs,
@@ -84,10 +85,10 @@ class RungeKutta(AbstractSolver):
         if not (c_sol[-1] == 0 and (c_sol[:-1] == beta[-1]).all()):
             yi = y0
             for k in ks:
-                yi = yi + k @ (c_sol * dt)
+                yi = yi + k @ c_sol
 
         y1 = yi
         f1s = [k[..., -1] for k in ks]
         y1_error = [k @ (c_error * dt) for k in ks]
-        solver_state = (y1_error, f1s)
+        solver_state = (y1_error, f1s, dt)
         return y1, solver_state

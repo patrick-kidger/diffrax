@@ -61,7 +61,7 @@ def diffeqint(
     # never going to be jit-able anyway.
     not_done = tprev < t1
     while jnp.any(not_done):
-        y_candidate, solver_state_candidate = solver.step(y_treedef, tprev, tnext, y, args, solver_state)
+        y_candidate, solver_state_candidate = solver.step_maybe_jit(y_treedef, tprev, tnext, y, args, solver_state)
         (keep_step, tprev, tnext, controller_state_candidate) = stepsize_controller.adapt_step_size(
             tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, controller_state
         )

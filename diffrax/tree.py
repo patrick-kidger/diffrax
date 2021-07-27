@@ -16,7 +16,7 @@ def tree_squash(tree: PyTree) -> Tuple[Array, SquashTreeDef]:
         shapes = None
         splits = None
         treedef = (treedef, shapes, splits)
-        flat = flat[0]
+        flat = jnp.asarray(flat[0])
     else:
         shapes = tuple(flat_i.shape for flat_i in flat)
         splits = tuple(np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum())

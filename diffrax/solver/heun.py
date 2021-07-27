@@ -15,13 +15,16 @@ _heun_tableau = ButcherTableau(
 def heun(
     drift: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,
-    bm: Optional[AbstractBrownianPath] = None
+    bm: Optional[AbstractBrownianPath] = None,
+    **kwargs,
 ):
     if diffusion is None:
         assert bm is None
-        return RungeKutta(terms=(ODETerm(vector_field=drift),), tableau=_heun_tableau)
+        return RungeKutta(terms=(ODETerm(vector_field=drift),), tableau=_heun_tableau, **kwargs)
     else:
         assert bm is not None
         return RungeKutta(
-            terms=(ODETerm(vector_field=drift), ControlTerm(vector_field=diffusion, control=bm)), tableau=_heun_tableau
+            terms=(ODETerm(vector_field=drift), ControlTerm(vector_field=diffusion, control=bm)),
+            tableau=_heun_tableau,
+            **kwargs
         )
