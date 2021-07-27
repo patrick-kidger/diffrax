@@ -4,7 +4,7 @@ from .interpolation import AbstractInterpolation, LinearInterpolation
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
-from .solver import AbstractSolver, Euler, euler, euler_maruyama
+from .solver import AbstractSolver, Euler, euler
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 from .term import AbstractTerm, ControlTerm, ODETerm
 

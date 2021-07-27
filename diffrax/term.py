@@ -1,13 +1,11 @@
 import abc
-from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 from typing import Callable, Tuple
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
-from .misc import stable_method_hash
 from .path import AbstractPath
-from .tree import tree_squash, tree_unsquash
+from .tree import tree_dataclass, tree_method, tree_squash, tree_unsquash
 
 
 def _prod(vf: Array["state":...,  # noqa: F821
@@ -16,45 +14,50 @@ def _prod(vf: Array["state":...,  # noqa: F821
     return jnp.tensordot(vf, control, axes=control.ndim)
 
 
+@tree_dataclass
 class AbstractTerm(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def vector_field(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
+    @tree_method
+    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
 
     @abc.abstractmethod
+    @tree_method
     def diff_control(self, t: Scalar) -> PyTree:
         pass
 
     @abc.abstractmethod
+    @tree_method
     def eval_control(self, t0: Scalar, t1: Scalar) -> PyTree:
         pass
 
     @abc.abstractmethod
+    @tree_method
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         pass
 
-    @stable_method_hash
-    def vector_field_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
+    @tree_method
+    def vf_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
         return self.prod(self.vector_field(t, y, args), control)
 
-    @stable_method_hash
-    def vector_field_(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-                      args: PyTree) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
+    @tree_method
+    def vf_(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+            args: PyTree) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vector_field(t, y, args)
         return tree_squash(vf)
 
-    @stable_method_hash
+    @tree_method
     def diff_control_(self, t: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
         control = self.diff_control(t)
         return tree_squash(control)
 
-    @stable_method_hash
+    @tree_method
     def eval_control_(self, t0: Scalar, t1: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
         control = self.eval_control(t0, t1)
         return tree_squash(control)
 
-    @stable_method_hash
+    @tree_method
     def prod_(
         self,
         vf_treedef: SquashTreeDef,
@@ -68,8 +71,8 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         prod_, _ = tree_squash(prod)
         return prod_
 
-    @stable_method_hash
-    def vector_field_prod_(
+    @tree_method
+    def vf_prod_(
         self,
         y_treedef: SquashTreeDef,
         control_treedef: SquashTreeDef,
@@ -86,44 +89,44 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         return prod_
 
 
-@dataclass(frozen=True)
+@tree_dataclass
 class ControlTerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
     control: AbstractPath
 
-    # To avoid abstractmethod errors
-    def vector_field(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        pass
+    @tree_method
+    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
+        return self.vector_field(t, y, args)
 
-    @stable_method_hash
+    @tree_method
     def diff_control(self, t: Scalar) -> PyTree:
         return self.control.derivative(t)
 
-    @stable_method_hash
+    @tree_method
     def eval_control(self, t0: Scalar, t1: Scalar) -> PyTree:
         return self.control.evaluate(t0, t1)
 
-    @stable_method_hash
-    def prod(self, vf: PyTree, control: PyTree) -> PyTree:
+    @staticmethod
+    def prod(vf: PyTree, control: PyTree) -> PyTree:
         return jax.tree_map(_prod, vf, control)
 
 
-@dataclass(frozen=True)
+@tree_dataclass
 class ODETerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
 
-    # To avoid abstractmethod errors
-    def vector_field(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        pass
+    @tree_method
+    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
+        return self.vector_field(t, y, args)
 
-    @stable_method_hash
-    def diff_control(self, t: Scalar) -> Scalar:
+    @staticmethod
+    def diff_control(t: Scalar) -> Scalar:
         return 1
 
-    @stable_method_hash
-    def eval_control(self, t0: Scalar, t1: Scalar) -> Scalar:
+    @staticmethod
+    def eval_control(t0: Scalar, t1: Scalar) -> Scalar:
         return t1 - t0
 
-    @stable_method_hash
-    def prod(self, vf: PyTree, control: Scalar) -> PyTree:
+    @staticmethod
+    def prod(vf: PyTree, control: Scalar) -> PyTree:
         return jax.tree_map(lambda v: control * v, vf)

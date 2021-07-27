@@ -1,2 +1,2 @@
 from .base import AbstractSolver
-from .euler import Euler, euler, euler_maruyama
+from .euler import Euler, euler

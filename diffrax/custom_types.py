@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
 
@@ -13,4 +14,13 @@ class PyTree:
 
 Scalar = Union[int, float, Array[()]]
 
-SquashTreeDef = Tuple[Any, Optional[Tuple[int]], Optional[Tuple[int]]]
+
+# Not a tree_dataclass as we don't want to convert shapes, splits into jnp.arrays
+@dataclass(frozen=True)
+class SquashTreeDef:
+    treedef: Any
+    shapes: Optional[Tuple[int]]
+    splits: Optional[Tuple[int]]
+
+    def __iter__(self):
+        return iter((self.treedef, self.shapes, self.splits))
