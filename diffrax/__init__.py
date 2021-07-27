@@ -4,7 +4,9 @@ from .interpolation import AbstractInterpolation, FourthOrderPolynomialInterpola
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
-from .solver import AbstractSolver, ButcherTableau, Euler, euler, euler_maruyama, heun, RungeKutta
+from .solver import (
+    AbstractSolver, bosh3, ButcherTableau, dopri5, dopri8, Euler, euler, euler_maruyama, fehlberg2, heun, RungeKutta
+)
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize, IController
 from .term import AbstractTerm, ControlTerm, ODETerm
 

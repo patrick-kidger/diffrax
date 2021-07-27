@@ -190,4 +190,4 @@ class IController(AbstractStepSizeController):
         order, keep_step, scaled_error = operand
         dfactor = jnp.where(keep_step, 1, self.dfactor)
         exponent = 1 / order
-        return jnp.minimum(self.ifactor, jnp.maximum(self.safety / scaled_error * exponent, dfactor))
+        return jnp.clip(self.safety / scaled_error**exponent, a_min=dfactor, a_max=self.ifactor)
