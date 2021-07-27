@@ -5,7 +5,7 @@ from typing import Callable, Tuple
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .path import AbstractPath
-from .tree import tree_dataclass, tree_method, tree_squash, tree_unsquash
+from .tree import tree_dataclass, tree_squash, tree_unsquash
 
 
 def _prod(vf: Array["state":...,  # noqa: F821
@@ -17,36 +17,29 @@ def _prod(vf: Array["state":...,  # noqa: F821
 @tree_dataclass
 class AbstractTerm(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    @tree_method
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
 
     @abc.abstractmethod
-    @tree_method
     def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
         pass
 
     @abc.abstractmethod
-    @tree_method
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         pass
 
-    @tree_method
     def vf_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
         return self.prod(self.vector_field(t, y, args), control)
 
-    @tree_method
     def vf_(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
             args: PyTree) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vector_field(t, y, args)
         return tree_squash(vf)
 
-    @tree_method
     def contr_(self, t0: Scalar, t1: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
         return tree_squash(self.contr(t0, t1))
 
-    @tree_method
     def prod_(
         self,
         vf_treedef: SquashTreeDef,
@@ -60,7 +53,6 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         prod_, _ = tree_squash(prod)
         return prod_
 
-    @tree_method
     def vf_prod_(
         self,
         y_treedef: SquashTreeDef,
@@ -82,7 +74,6 @@ class AbstractTerm(metaclass=abc.ABCMeta):
 class ODETerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
 
-    @tree_method
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         return self.vector_field(t, y, args)
 
@@ -100,11 +91,9 @@ class ControlTerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
     control: AbstractPath
 
-    @tree_method
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         return self.vector_field(t, y, args)
 
-    @tree_method
     def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
         return self.control.evaluate(t0, t1)
 
@@ -121,7 +110,6 @@ class ControlTerm(AbstractTerm):
 class _ControlToODE:
     control_term: ControlTerm
 
-    @tree_method
     def __call__(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         control = self.control_term.control.derivative(t)
         return self.control_term.vf_prod(t, y, args, control)

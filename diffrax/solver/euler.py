@@ -1,9 +1,10 @@
 from typing import Callable, Tuple, Type
 
 from ..autojit import autojit
+from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..interpolation import AbstractInterpolation, LinearInterpolation
-from ..term import AbstractTerm, ODETerm
+from ..term import AbstractTerm, ControlTerm, ODETerm
 from ..tree import tree_dataclass
 from .base import AbstractSolver
 
@@ -14,7 +15,7 @@ from .base import AbstractSolver
 
 @tree_dataclass
 class Euler(AbstractSolver):
-    term: AbstractTerm
+    terms: tuple[AbstractTerm]
     recommended_interpolation: Type[AbstractInterpolation] = LinearInterpolation
 
     @autojit
@@ -27,10 +28,20 @@ class Euler(AbstractSolver):
         args: PyTree,
         solver_state: None
     ) -> Tuple[Array["state"], None]:  # noqa: F821
-        control_, control_treedef = self.term.contr_(t0, t1)
-        y1 = y0 + self.term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
+        y1 = y0
+        for term in self.terms:
+            control_, control_treedef = term.contr_(t0, t1)
+            y1 = y1 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
         return y1, None
 
 
 def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]):
-    return Euler(term=ODETerm(vector_field=vector_field))
+    return Euler(terms=(ODETerm(vector_field=vector_field),))
+
+
+def euler_maruyama(
+    drift: Callable[[Scalar, PyTree, PyTree], PyTree],
+    diffusion: Callable[[Scalar, PyTree, PyTree], PyTree],
+    bm: AbstractBrownianPath
+):
+    return Euler(terms=(ODETerm(vector_field=drift), ControlTerm(vector_field=diffusion, control=bm)))
