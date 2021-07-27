@@ -15,9 +15,8 @@ T2 = TypeVar('T2', bound=PyTree)
 class AbstractSolver(metaclass=abc.ABCMeta):
     recommended_interpolation: AbstractInterpolation
 
-    @abc.abstractmethod
-    def init(self, t0: Scalar, y0: Array["state":...]) -> T:  # noqa: F821
-        pass
+    def init(self, y_treedef: SquashTreeDef, t0: Scalar, y0: Array["state":...], args: PyTree) -> T:  # noqa: F821
+        return None
 
     @abc.abstractmethod
     def step(

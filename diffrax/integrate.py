@@ -40,7 +40,7 @@ def diffeqint(
     y, y_treedef = tree_squash(y0)
 
     if solver_state is None:
-        solver_state = solver.init(t0, y)
+        solver_state = solver.init(y_treedef, t0, y, args)
 
     ts = []
     ys = []

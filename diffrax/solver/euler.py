@@ -22,7 +22,7 @@ def _euler_diff_step(
 ) -> Array["state":...]:  # noqa: F821
 
     control0_, control_treedef = diff_control_(t0)
-    return y0 + vector_field_prod_(y_treedef, control_treedef, t0, y0, args, control0_) * (t1 - t0)
+    return y0 + vector_field_prod_(y_treedef, control_treedef, t0, y0, args, control0_ * (t1 - t0))
 
 
 @ft.partial(jax.jit, static_argnums=[0, 1, 2])
@@ -53,11 +53,16 @@ class Euler(AbstractSolver):
         self.recommended_interpolation = LinearInterpolation
 
     # To avoid errors due to lacking an abstractmethod
-    def step(self, y_treedef, t0, t1, y0, args, solver_state):
+    def step(
+        self,
+        y_treedef: SquashTreeDef,
+        t0: Scalar,
+        t1: Scalar,
+        y0: Array["state":...],  # noqa: F821
+        args: PyTree,
+        solver_state: None
+    ) -> Tuple[Array["state":...], None]:  # noqa: F821
         pass
-
-    def init(self, t0: Scalar, y0: Array["state":...]) -> None:  # noqa: F821
-        return None
 
     def diff_step(
         self,
