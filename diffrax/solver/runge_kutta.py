@@ -51,7 +51,10 @@ class RungeKutta(AbstractSolver):
     def order(self):
         return self.tableau.order
 
-    state_type = RungeKuttaSolverState
+    @property
+    def available_state(self) -> frozenset:
+        return frozenset({"y_error", "k"}) | super().available_state
+
     recommended_interpolation = FourthOrderPolynomialInterpolation
 
     def init(

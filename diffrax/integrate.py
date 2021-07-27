@@ -1,4 +1,3 @@
-from dataclasses import fields
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -65,14 +64,13 @@ def diffeqint(
         interpolation = solver.recommended_interpolation
 
     requested_state = interpolation.requested_state | stepsize_controller.requested_state
-    if solver.state_type is None:
-        available_state = {}
-    else:
-        available_state = {field.name for field in fields(solver.state_type)}
-    if not requested_state.issubset(available_state):
+    missing_state = requested_state - solver.available_state
+    if missing_state:
+        missing_state = set(missing_state)
         raise ValueError(
-            f"This combination of interpolation={type(interpolation)}, "
-            f"stepsize_controller={type(stepsize_controller)}, solver={type(solver)} is not valid."
+            f"This combination of interpolation={interpolation}, stepsize_controller={type(stepsize_controller)}, "
+            f"solver={type(solver)} is not valid. This interpolation and stepsize_controller needs {missing_state} "
+            "which this solver does not provide."
         )
 
     y, y_treedef = tree_squash(y0)
@@ -104,7 +102,8 @@ def diffeqint(
 
     if jit:
         # TODO: understand warnings being throw about donated argnums not being used.
-        step_maybe_jit = autojit(_step, donate_argnums=(0, 1, 2, 3, 4))
+        # step_maybe_jit = autojit(_step, donate_argnums=(0, 1, 2, 3, 4))
+        step_maybe_jit = autojit(_step)
     else:
         step_maybe_jit = _step
 

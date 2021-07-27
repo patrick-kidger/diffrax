@@ -17,7 +17,6 @@ class Euler(AbstractSolver):
     terms: tuple[AbstractTerm]
 
     order = 1
-    state_type = None
     recommended_interpolation = LinearInterpolation
 
     def step(

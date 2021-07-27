@@ -21,9 +21,8 @@ class AbstractSolver(metaclass=abc.ABCMeta):
         pass
 
     @property
-    @abc.abstractmethod
-    def state_type(self) -> T:
-        pass
+    def available_state(self) -> frozenset:
+        return frozenset()
 
     @property
     @abc.abstractmethod

@@ -1,3 +1,4 @@
+import jax.numpy as jnp
 from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
@@ -12,6 +13,10 @@ class AbstractInterpolation(AbstractPath):
 
     requested_state = frozenset()
 
+    def _interpret_t(self, t: Array):
+        jnp.searchsorted(self.ts, t)
+        ...
+
 
 @tree_dataclass
 class LinearInterpolation(AbstractInterpolation):
@@ -19,7 +24,9 @@ class LinearInterpolation(AbstractInterpolation):
         ...
 
     def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
-        ...  # TODO. Think about point evaluations?
+        if t1 is not None:
+            return self.evaluate(t1) - self.evaluate(t0)
+        ...
 
 
 @tree_dataclass
@@ -30,4 +37,6 @@ class FourthOrderPolynomialInterpolation(AbstractInterpolation):
         ...
 
     def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
-        ...  # TODO. Think about point evaluations?
+        if t1 is not None:
+            return self.evaluate(t1) - self.evaluate(t0)
+        ...
