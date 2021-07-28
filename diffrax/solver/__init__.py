@@ -6,3 +6,4 @@ from .euler import Euler, euler, euler_maruyama
 from .fehlberg2 import fehlberg2
 from .heun import heun
 from .runge_kutta import ButcherTableau, RungeKutta
+from .tsit5 import tsit5

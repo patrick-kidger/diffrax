@@ -11,7 +11,13 @@ key = jrandom.PRNGKey(56789)
 
 
 def test_basic():
-    for solver_ctr in (diffrax.bosh3, diffrax.dopri5, diffrax.dopri8, diffrax.euler, diffrax.fehlberg2, diffrax.heun):
+    for solver_ctr in (diffrax.bosh3,
+                       diffrax.dopri5,
+                       diffrax.dopri8,
+                       diffrax.euler,
+                       diffrax.fehlberg2,
+                       diffrax.heun,
+                       diffrax.tsit5):
         for t_dtype in (int, float, jnp.int32, jnp.float32):
             for treedef in treedefs:
                 for stepsize_controller in (diffrax.ConstantStepSize(), diffrax.IController()):

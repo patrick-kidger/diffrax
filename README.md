@@ -1,14 +1,14 @@
 <h1 align='center'>Diffrax</h1>
 <h2 align='center'>Autodifferentiable GPU-capable differential equation solvers in JAX</h2>
 
-Diffrax is a [JAX](https://github.com/google/jax)-based library providing solvers for:
+Diffrax is a [JAX](https://github.com/google/jax)-based library providing numerical solvers for:
 - ordinary differential equations
 - stochastic differential equations
 - controlled differential equations
-including:
+
+Features include:
 - fixed step size solvers
 - adaptive step size solvers
-- splitting methods
 - reversible solvers
 - discretise-then-optimise backpropagation
 - continuous adjoint backpropagation
