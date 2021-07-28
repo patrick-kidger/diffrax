@@ -21,5 +21,7 @@ from .solver import (
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize, IController
 from .term import AbstractTerm, ControlTerm, ODETerm
 
+from . import extras
+
 
 __version__ = '0.0.1'

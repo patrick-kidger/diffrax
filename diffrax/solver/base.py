@@ -10,6 +10,11 @@ class AbstractSolverState(metaclass=abc.ABCMeta):
     extras: dict[str, Any]
 
 
+@tree_dataclass
+class EmptySolverState(AbstractSolverState):
+    pass
+
+
 T = TypeVar('T', bound=Optional[AbstractSolverState])
 
 
@@ -37,7 +42,7 @@ class AbstractSolver(metaclass=abc.ABCMeta):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         requested_state: frozenset,
-    ) -> T:  # noqa: F821
+    ) -> T:
         return None
 
     @abc.abstractmethod
@@ -53,6 +58,6 @@ class AbstractSolver(metaclass=abc.ABCMeta):
     ) -> Tuple[Array["state"], T]:  # noqa: F821
         pass
 
-    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-                      args: PyTree) -> Array["state"]:  # noqa: F821
-        raise ValueError(f"func_for_init does not exist for solver of type {type(self)}.")
+    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+             args: PyTree) -> Array["state"]:  # noqa: F821
+        raise ValueError(f"func does not exist for solver of type {type(self)}.")

@@ -135,9 +135,9 @@ class RungeKutta(AbstractSolver):
         solver_state = RungeKuttaSolverState(f0=f1, dt=dt, extras=extras)
         return y1, solver_state
 
-    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-                      args: PyTree) -> Array["state"]:  # noqa: F821
+    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+             args: PyTree) -> Array["state"]:  # noqa: F821
         vf = 0
         for term in self.terms:
-            vf = vf + term.func_for_init(y_treedef, t, y_, args)
+            vf = vf + term.func(y_treedef, t, y_, args)
         return vf

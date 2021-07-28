@@ -77,8 +77,7 @@ def diffeqint(
 
     tprev = t0
     if controller_state is None:
-        (tnext,
-         controller_state) = stepsize_controller.init(solver.func_for_init, y_treedef, t0, y, args, dt0, solver.order)
+        (tnext, controller_state) = stepsize_controller.init(solver.func, y_treedef, t0, y, dt0, args, solver.order)
     else:
         assert dt0 is not None
         tnext = t0 + dt0

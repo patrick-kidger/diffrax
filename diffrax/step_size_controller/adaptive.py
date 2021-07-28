@@ -1,77 +1,11 @@
-import abc
 import jax.lax as lax
 import jax.numpy as jnp
-from typing import Callable, Optional, Tuple, TypeVar
+from typing import Callable, Optional, Tuple
 
-from .custom_types import Array, PyTree, Scalar, SquashTreeDef
-from .tree import tree_dataclass
-
-
-T = TypeVar('T', bound=PyTree)
-T2 = TypeVar('T2', bound=PyTree)
-
-
-@tree_dataclass
-class AbstractStepSizeController(metaclass=abc.ABCMeta):
-    requested_state = frozenset()
-
-    @abc.abstractmethod
-    def init(
-        self,
-        func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
-        y_treedef: SquashTreeDef,
-        t0: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
-        dt0: Optional[Scalar],
-        solver_order: int
-    ) -> Tuple[Scalar, T]:
-        pass
-
-    @abc.abstractmethod
-    def adapt_step_size(
-        self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: Array["state":...],  # noqa: F821
-        y1_candidate: Array["state":...],  # noqa: F821
-        solver_state0: T2,
-        solver_state1_candidate: T2,
-        solver_order: int,
-        controller_state: T
-    ) -> Tuple[bool, Scalar, Scalar, T]:
-        pass
-
-
-@tree_dataclass
-class ConstantStepSize(AbstractStepSizeController):
-    def init(
-        self,
-        func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
-        y_treedef: SquashTreeDef,
-        t0: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
-        dt0: Optional[Scalar],
-        solver_order: int
-    ) -> Tuple[Scalar, Scalar]:
-        del func, y_treedef, y0, args, solver_order
-        assert dt0 is not None
-        return t0 + dt0, dt0
-
-    def adapt_step_size(
-        self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: Array["state":...],  # noqa: F821
-        y1_candidate: Array["state":...],  # noqa: F821
-        solver_state0: T2,
-        solver_state1_candidate: T2,
-        solver_order: int,
-        controller_state: Scalar
-    ) -> Tuple[bool, Scalar, Scalar, Scalar]:
-        del t0, y0, solver_state0, solver_state1_candidate, solver_order
-        return True, t1, t1 + controller_state, controller_state
+from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
+from ..solver import AbstractSolverState
+from ..tree import tree_dataclass
+from .base import AbstractStepSizeController
 
 
 def _rms_norm(x: Array) -> Scalar:
@@ -82,7 +16,7 @@ def _rms_norm(x: Array) -> Scalar:
 # E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential Equations I: Nonstiff Problems", Sec. II.4,
 # 2nd edition.
 def _select_initial_step(
-    func_for_init: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
+    func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
     y_treedef: SquashTreeDef,
     t0: Scalar,
     y0: Array["state"],  # noqa: F821
@@ -92,7 +26,7 @@ def _select_initial_step(
     atol: Scalar,
     norm: Callable[[Array], Scalar]
 ):
-    f0 = func_for_init(y_treedef, t0, y0, args)
+    f0 = func(y_treedef, t0, y0, args)
     scale = atol + jnp.abs(y0) * rtol
     d0 = norm(y0 / scale)
     d1 = norm(f0 / scale)
@@ -104,7 +38,7 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
-    f1 = func_for_init(y_treedef, t1, y1, args)
+    f1 = func(y_treedef, t1, y1, args)
     d2 = norm((f1 - f0) / scale) / h0
 
     if d1 <= 1e-15 and d2 <= 1e-15:
@@ -144,7 +78,7 @@ class IController(AbstractStepSizeController):
 
     def init(
         self,
-        func_for_init: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
+        func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
         y_treedef: SquashTreeDef,
         t0: Scalar,
         y0: Array["state"],  # noqa: F821
@@ -153,10 +87,8 @@ class IController(AbstractStepSizeController):
         solver_order: int
     ) -> Tuple[Scalar, None]:
         if dt0 is None:
-            dt0 = _select_initial_step(
-                func_for_init, y_treedef, t0, y0, args, solver_order, self.rtol, self.atol, self.norm
-            )
-        return dt0, None
+            dt0 = _select_initial_step(func, y_treedef, t0, y0, args, solver_order, self.rtol, self.atol, self.norm)
+        return t0 + dt0, None
 
     def adapt_step_size(
         self,
@@ -164,8 +96,8 @@ class IController(AbstractStepSizeController):
         t1: Scalar,
         y0: Array["state":...],  # noqa: F821
         y1_candidate: Array["state":...],  # noqa: F821
-        solver_state0: T2,
-        solver_state1_candidate: T2,
+        solver_state0: AbstractSolverState,
+        solver_state1_candidate: AbstractSolverState,
         solver_order: int,
         controller_state: None
     ) -> Tuple[bool, Scalar, Scalar, None]:

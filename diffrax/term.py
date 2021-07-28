@@ -69,10 +69,11 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         prod_, _ = tree_squash(prod)
         return prod_
 
-    # This exists just to get out of an annoying catch-22, and shouldn't be used much in general.
-    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-                      args: PyTree) -> Array["state"]:  # noqa: F821
-        raise ValueError(f"func_for_init does not exist for term of type {type(self)}")
+    # This exists primarily to get out of an annoying catch-22 for picking initial step sizes, and shouldn't be used
+    # much in general.
+    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+             args: PyTree) -> Array["state"]:  # noqa: F821
+        raise ValueError(f"func does not exist for term of type {type(self)}")
 
 
 @tree_dataclass
@@ -90,8 +91,8 @@ class ODETerm(AbstractTerm):
     def prod(vf: PyTree, control: Scalar) -> PyTree:
         return jax.tree_map(lambda v: control * v, vf)
 
-    def func_for_init(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-                      args: PyTree) -> Array["state"]:  # noqa: F821
+    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
+             args: PyTree) -> Array["state"]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vf(t, y, args)
         vf, _ = tree_squash(vf)
