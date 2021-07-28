@@ -30,7 +30,8 @@ class ButcherTableau:
             assert beta_i.ndim == 1
         assert c_sol.ndim == 1
         assert c_error.ndim == 1
-        assert all(alpha.shape[0] == beta_i.shape[0] for beta_i in beta)
+        assert alpha.shape[0] == len(beta_i)
+        assert all(i + 1 == beta_i.shape[0] for i, beta_i in enumerate(beta))
         assert alpha.shape[0] + 1 == c_sol.shape[0]
         assert alpha.shape[0] + 1 == c_error.shape[0]
         object.__setattr__(self, "order", len(alpha) + 1)

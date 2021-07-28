@@ -47,7 +47,6 @@ class LinearInterpolation(AbstractInterpolation):
 @tree_dataclass
 class FourthOrderPolynomialInterpolation(AbstractInterpolation):
     ys: PyTree
-    fs: PyTree
 
     requested_state = frozenset({"k"})
 
