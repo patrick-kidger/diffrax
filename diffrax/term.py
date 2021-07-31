@@ -1,11 +1,11 @@
 import abc
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from typing import Callable, Tuple
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
-from .jax_tricks import tree_dataclass
-from .misc import tree_squash, tree_unsquash
+from .misc import ABCModule, tree_squash, tree_unsquash
 from .path import AbstractPath
 
 
@@ -15,8 +15,7 @@ def _prod(vf: Array["state":...,  # noqa: F821
     return jnp.tensordot(vf, control, axes=control.ndim)
 
 
-@tree_dataclass
-class AbstractTerm(metaclass=abc.ABCMeta):
+class AbstractTerm(ABCModule):
     @abc.abstractmethod
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
@@ -77,7 +76,6 @@ class AbstractTerm(metaclass=abc.ABCMeta):
         raise ValueError(f"func does not exist for term of type {type(self)}")
 
 
-@tree_dataclass
 class ODETerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
 
@@ -100,7 +98,6 @@ class ODETerm(AbstractTerm):
         return vf
 
 
-@tree_dataclass
 class ControlTerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
     control: AbstractPath
@@ -120,8 +117,7 @@ class ControlTerm(AbstractTerm):
         return ODETerm(vector_field=vector_field)
 
 
-@tree_dataclass
-class _ControlToODE:
+class _ControlToODE(eqx.Module):
     control_term: ControlTerm
 
     def __call__(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:

@@ -3,11 +3,9 @@ import jax.numpy as jnp
 from typing import Optional, Tuple
 
 from .custom_types import Array, PyTree, Scalar
-from .jax_tricks import tree_dataclass
 from .path import AbstractPath
 
 
-@tree_dataclass
 class AbstractInterpolation(AbstractPath):
     ts: Array["times"]  # noqa: F821
 
@@ -22,7 +20,6 @@ class AbstractInterpolation(AbstractPath):
         return index, fractional_part
 
 
-@tree_dataclass
 class LinearInterpolation(AbstractInterpolation):
     ys: PyTree
 
@@ -44,7 +41,6 @@ class LinearInterpolation(AbstractInterpolation):
         )
 
 
-@tree_dataclass
 class FourthOrderPolynomialInterpolation(AbstractInterpolation):
     ys: PyTree
 

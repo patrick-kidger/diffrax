@@ -2,7 +2,7 @@ import abc
 from typing import Callable, Optional, Tuple, TypeVar
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..jax_tricks import tree_dataclass
+from ..misc import ABCModule
 from ..solver import AbstractSolverState
 
 
@@ -10,8 +10,7 @@ T = TypeVar('T', bound=PyTree)
 T2 = TypeVar('T2', bound=AbstractSolverState)
 
 
-@tree_dataclass
-class AbstractStepSizeController(metaclass=abc.ABCMeta):
+class AbstractStepSizeController(ABCModule):
     requested_state = frozenset()
 
     @abc.abstractmethod

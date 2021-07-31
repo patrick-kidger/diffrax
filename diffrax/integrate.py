@@ -1,3 +1,4 @@
+import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -5,8 +6,7 @@ from typing import Optional, Type
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .interpolation import AbstractInterpolation
-from .jax_tricks import autojit, vmap_any
-from .misc import stack_pytrees, tree_squash, tree_unsquash
+from .misc import stack_pytrees, tree_squash, tree_unsquash, vmap_any
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver, AbstractSolverState
@@ -102,8 +102,8 @@ def diffeqsolve(
 
     if jit:
         # TODO: understand warnings being throw about donated argnums not being used.
-        # step_maybe_jit = autojit(_step, donate_argnums=(0, 1, 2, 3, 4))
-        step_maybe_jit = autojit(_step)
+        # step_maybe_jit = eqx.jitf(_step, donate_argnums=(0, 1, 2, 3, 4), filter_fn=eqx.is_array_like)
+        step_maybe_jit = eqx.jitf(_step, filter_fn=eqx.is_array_like)
     else:
         step_maybe_jit = _step
 

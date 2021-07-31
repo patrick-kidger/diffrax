@@ -1,11 +1,9 @@
 from typing import Callable, Optional, Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..jax_tricks import tree_dataclass
 from .base import AbstractStepSizeController
 
 
-@tree_dataclass
 class ConstantStepSize(AbstractStepSizeController):
     def init(
         self,

@@ -3,7 +3,6 @@ import jax.numpy as jnp
 from typing import Callable, Optional, Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..jax_tricks import tree_dataclass
 from ..solution import RESULTS
 from ..solver import AbstractSolverState
 from .base import AbstractStepSizeController
@@ -63,7 +62,6 @@ def _scale_error_estimate(
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
 # are good notes on different step size control algorithms.
-@tree_dataclass
 class IController(AbstractStepSizeController):
     # Default tolerances taken from scipy.integrate.solve_ivp
     rtol: Scalar = 1e-3

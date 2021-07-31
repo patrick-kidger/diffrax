@@ -2,11 +2,10 @@ import abc
 from typing import Optional
 
 from .custom_types import PyTree, Scalar
-from .jax_tricks import tree_dataclass
+from .misc import ABCModule
 
 
-@tree_dataclass
-class AbstractPath(metaclass=abc.ABCMeta):
+class AbstractPath(ABCModule):
     def derivative(self, t: Scalar) -> PyTree:
         raise NotImplementedError("derivative has not been implemented")
 

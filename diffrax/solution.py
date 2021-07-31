@@ -2,7 +2,6 @@ from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .interpolation import AbstractInterpolation
-from .jax_tricks import tree_dataclass
 from .misc import ContainerMeta
 from .path import AbstractPath
 
@@ -15,7 +14,6 @@ class RESULTS(metaclass=ContainerMeta):
     dt_min_reached = 2
 
 
-@tree_dataclass
 class Solution(AbstractPath):
     ts: Array
     ys: PyTree

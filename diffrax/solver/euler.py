@@ -3,7 +3,6 @@ from typing import Callable, Tuple
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..interpolation import LinearInterpolation
-from ..jax_tricks import tree_dataclass
 from ..term import AbstractTerm, ControlTerm, ODETerm
 from .base import AbstractSolver, EmptySolverState
 
@@ -16,7 +15,6 @@ from .base import AbstractSolver, EmptySolverState
 # that, and so on.
 # This is useful when some other part of the ecosystem wants to use the end-of-interval evaluation for something.
 # For example the Adam step size controller uses it to scale the learning rate.
-@tree_dataclass
 class Euler(AbstractSolver):
     terms: tuple[AbstractTerm]
 

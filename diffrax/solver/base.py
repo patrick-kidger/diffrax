@@ -2,15 +2,13 @@ import abc
 from typing import Any, Optional, Tuple, TypeVar
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..jax_tricks import tree_dataclass
+from ..misc import ABCModule
 
 
-@tree_dataclass
-class AbstractSolverState(metaclass=abc.ABCMeta):
+class AbstractSolverState(ABCModule):
     extras: dict[str, Any]
 
 
-@tree_dataclass
 class EmptySolverState(AbstractSolverState):
     pass
 
@@ -18,8 +16,7 @@ class EmptySolverState(AbstractSolverState):
 T = TypeVar('T', bound=Optional[AbstractSolverState])
 
 
-@tree_dataclass
-class AbstractSolver(metaclass=abc.ABCMeta):
+class AbstractSolver(ABCModule):
     @property
     @abc.abstractmethod
     def order(self) -> int:
