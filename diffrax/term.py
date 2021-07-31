@@ -4,8 +4,9 @@ import jax.numpy as jnp
 from typing import Callable, Tuple
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
+from .jax_tricks import tree_dataclass
+from .misc import tree_squash, tree_unsquash
 from .path import AbstractPath
-from .tree import tree_dataclass, tree_squash, tree_unsquash
 
 
 def _prod(vf: Array["state":...,  # noqa: F821

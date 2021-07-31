@@ -45,7 +45,7 @@ classifiers = [
 
 python_requires = "~=3.9"
 
-install_requires = ['jax>=0.2.18']
+install_requires = ['jax>=0.2.18', 'equinox @ git+https://github.com/patrick-kidger/equinox.git']
 
 setuptools.setup(
     name=name,

@@ -2,15 +2,17 @@ from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .interpolation import AbstractInterpolation
+from .jax_tricks import tree_dataclass
+from .misc import ContainerMeta
 from .path import AbstractPath
-from .tree import tree_dataclass
 
 
 # We use magic numbers, rather than informative strings, as these can be vmap'd etc. through JAX.
 # Same reason we don't use enum.Enum here.
-class RESULTS:
+class RESULTS(metaclass=ContainerMeta):
     successful = 0
     max_steps_reached = 1
+    dt_min_reached = 2
 
 
 @tree_dataclass

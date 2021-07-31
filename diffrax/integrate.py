@@ -3,15 +3,14 @@ import jax.lax as lax
 import jax.numpy as jnp
 from typing import Optional, Type
 
-from .autojit import autojit
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .interpolation import AbstractInterpolation
-from .misc import stack_pytrees
+from .jax_tricks import autojit, vmap_any
+from .misc import stack_pytrees, tree_squash, tree_unsquash
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver, AbstractSolverState
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
-from .tree import tree_squash, tree_unsquash
 
 
 def _step(
@@ -28,9 +27,10 @@ def _step(
     requested_state: frozenset,
 ):
     y_candidate, solver_state_candidate = solver.step(y_treedef, tprev, tnext, y, args, solver_state, requested_state)
-    (keep_step, tprev, tnext, controller_state_candidate) = stepsize_controller.adapt_step_size(
-        tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, solver.order, controller_state
-    )
+    (keep_step, tprev, tnext, controller_state_candidate,
+     stepsize_controller_result) = stepsize_controller.adapt_step_size(
+         tprev, tnext, y, y_candidate, solver_state, solver_state_candidate, solver.order, controller_state
+     )
     tprev = lax.stop_gradient(tprev)
     tnext = lax.stop_gradient(tnext)
     tnext = jnp.minimum(tnext, t1)
@@ -40,10 +40,10 @@ def _step(
     y = keep(y_candidate, y)
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
-    return tprev, tnext, y, solver_state, controller_state, keep_step, not_done
+    return tprev, tnext, y, solver_state, controller_state, keep_step, not_done, stepsize_controller_result
 
 
-def diffeqint(
+def diffeqsolve(
     solver: AbstractSolver,
     t0: Scalar,
     t1: Scalar,
@@ -57,7 +57,8 @@ def diffeqint(
     controller_state: Optional[PyTree] = None,
     saveat: SaveAt = SaveAt(t1=True),
     jit: bool = True,
-    max_steps: Scalar = 2**31 - 1
+    max_steps: Scalar = 2**31 - 1,
+    throw: bool = True,
 ) -> Solution:
 
     if interpolation is None:
@@ -108,34 +109,40 @@ def diffeqint(
 
     not_done = tprev < t1
     num_steps = 0
+    result = RESULTS.successful
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while jnp.any(not_done) and num_steps < max_steps:
+    while vmap_any(not_done) and num_steps < max_steps:
         num_steps = num_steps + 1
-        (tprev, tnext, y, solver_state, controller_state, keep_step, not_done) = step_maybe_jit(
-            tprev,
-            tnext,
-            y,
-            solver_state,
-            controller_state,
-            solver,
-            stepsize_controller,
-            y_treedef,
-            t1,
-            args,
-            requested_state
-        )
-        if saveat.steps & jnp.any(keep_step):
+        (tprev, tnext, y, solver_state, controller_state, keep_step, not_done,
+         stepsize_controller_result) = step_maybe_jit(
+             tprev,
+             tnext,
+             y,
+             solver_state,
+             controller_state,
+             solver,
+             stepsize_controller,
+             y_treedef,
+             t1,
+             args,
+             requested_state
+         )
+        if saveat.steps & vmap_any(keep_step):
             ts.append(tprev)
             ys.append(tree_unsquash(y_treedef, y))
             if saveat.controller_state:
                 controller_states.append(controller_state)
             if saveat.solver_state:
                 solver_states.append(solver_state)
+        if vmap_any(stepsize_controller_result > 0):
+            result = jnp.max(stepsize_controller_result)
+            break
 
     if num_steps >= max_steps:
         result = RESULTS.max_steps_reached
-    else:
-        result = RESULTS.successful
+
+    if throw and result > 0:
+        raise RuntimeError(f"diffeqsolve did not succeed. Error: {RESULTS[result]}")
 
     # TODO: interpolate into ts and ys
 

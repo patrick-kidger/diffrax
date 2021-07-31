@@ -26,7 +26,7 @@
 ###########
 
 from dataclasses import dataclass
-import diffrax
+from diffrax import diffeqsolve, euler
 import fire
 import time
 import jax
@@ -112,7 +112,7 @@ def main(
     #
     # Try running this with jit=True/False. You should probably see a ~2x speedup using JIT.
     ###########
-    solution = diffrax.diffeqint(diffrax.euler(vector_field), t0=0, t1=steps, y0=params, dt0=1, args=data, jit=jit)
+    solution = diffeqsolve(euler(vector_field), t0=0, t1=steps, y0=params, dt0=1, args=data, jit=jit)
 
     params = jax.tree_map(lambda x: x[0], solution.ys)
     value, _ = loss(params, *data(0))

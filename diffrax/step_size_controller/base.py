@@ -2,8 +2,8 @@ import abc
 from typing import Callable, Optional, Tuple, TypeVar
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
+from ..jax_tricks import tree_dataclass
 from ..solver import AbstractSolverState
-from ..tree import tree_dataclass
 
 
 T = TypeVar('T', bound=PyTree)
@@ -38,5 +38,5 @@ class AbstractStepSizeController(metaclass=abc.ABCMeta):
         solver_state1_candidate: T2,
         solver_order: int,
         controller_state: T
-    ) -> Tuple[bool, Scalar, Scalar, T]:
+    ) -> Tuple[bool, Scalar, Scalar, T, int]:
         pass

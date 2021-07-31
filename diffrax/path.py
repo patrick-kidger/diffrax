@@ -2,7 +2,7 @@ import abc
 from typing import Optional
 
 from .custom_types import PyTree, Scalar
-from .tree import tree_dataclass
+from .jax_tricks import tree_dataclass
 
 
 @tree_dataclass

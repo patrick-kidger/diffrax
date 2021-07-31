@@ -3,8 +3,8 @@ from typing import Callable, Tuple
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..interpolation import LinearInterpolation
+from ..jax_tricks import tree_dataclass
 from ..term import AbstractTerm, ControlTerm, ODETerm
-from ..tree import tree_dataclass
 from .base import AbstractSolver, EmptySolverState
 
 

@@ -1,6 +1,6 @@
 from ..custom_types import PyTree, Scalar
+from ..jax_tricks import tree_dataclass
 from ..path import AbstractPath
-from ..tree import tree_dataclass
 
 
 @tree_dataclass

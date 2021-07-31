@@ -1,5 +1,5 @@
 from .brownian import AbstractBrownianPath, BrownianInterval
-from .integrate import diffeqint
+from .integrate import diffeqsolve
 from .interpolation import AbstractInterpolation, FourthOrderPolynomialInterpolation, LinearInterpolation
 from .path import AbstractPath
 from .saveat import SaveAt
@@ -21,7 +21,7 @@ from .solver import (
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize, IController
 from .term import AbstractTerm, ControlTerm, ODETerm
 
-from . import extras
+from . import jax_tricks
 
 
 __version__ = '0.0.1'

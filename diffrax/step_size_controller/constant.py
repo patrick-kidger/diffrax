@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..tree import tree_dataclass
+from ..jax_tricks import tree_dataclass
 from .base import AbstractStepSizeController
 
 
@@ -31,6 +31,6 @@ class ConstantStepSize(AbstractStepSizeController):
         solver_state1_candidate,
         solver_order: int,
         controller_state: Scalar
-    ) -> Tuple[bool, Scalar, Scalar, Scalar]:
+    ) -> Tuple[bool, Scalar, Scalar, Scalar, int]:
         del t0, y0, solver_state0, solver_state1_candidate, solver_order
-        return True, t1, t1 + controller_state, controller_state
+        return True, t1, t1 + controller_state, controller_state, 0

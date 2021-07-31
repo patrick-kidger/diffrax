@@ -3,8 +3,9 @@ import jax.numpy as jnp
 from typing import Callable, Optional, Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
+from ..jax_tricks import tree_dataclass
+from ..solution import RESULTS
 from ..solver import AbstractSolverState
-from ..tree import tree_dataclass
 from .base import AbstractStepSizeController
 
 
@@ -73,6 +74,7 @@ class IController(AbstractStepSizeController):
     norm: Callable = _rms_norm
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
+    force_dtimin: bool = True
 
     requested_state = frozenset({"y_error"})
 
@@ -100,7 +102,7 @@ class IController(AbstractStepSizeController):
         solver_state1_candidate: AbstractSolverState,
         solver_order: int,
         controller_state: None
-    ) -> Tuple[bool, Scalar, Scalar, None]:
+    ) -> Tuple[bool, Scalar, Scalar, None, int]:
         del solver_state0, controller_state
         prev_dt = t1 - t0
         y_error = solver_state1_candidate.extras["y_error"]
@@ -111,12 +113,18 @@ class IController(AbstractStepSizeController):
             scaled_error == 0, lambda _: self.ifactor, self._scale_factor, (solver_order, keep_step, scaled_error)
         )
         dt = prev_dt * factor
+        result = 0
         if self.dtmin is not None:
+            if not self.force_dtmin:
+                # Done as a multiplication rather than an if statement (`if dt < self.dtmin`) to work with the
+                # JIT tracing.
+                result = RESULTS.dt_min_reached * (dt < self.dtmin)
             dt = jnp.maximum(dt, self.dtmin)
+
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
 
-        return keep_step, t1, t1 + dt, None
+        return keep_step, t1, t1 + dt, None, result
 
     def _scale_factor(self, operand):
         order, keep_step, scaled_error = operand

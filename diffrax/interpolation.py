@@ -3,8 +3,8 @@ import jax.numpy as jnp
 from typing import Optional, Tuple
 
 from .custom_types import Array, PyTree, Scalar
+from .jax_tricks import tree_dataclass
 from .path import AbstractPath
-from .tree import tree_dataclass
 
 
 @tree_dataclass

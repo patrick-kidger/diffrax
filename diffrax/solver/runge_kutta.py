@@ -5,13 +5,15 @@ from typing import Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
 from ..interpolation import FourthOrderPolynomialInterpolation
+from ..jax_tricks import tree_dataclass
 from ..misc import frozenndarray
 from ..term import AbstractTerm
-from ..tree import tree_dataclass
 from .base import AbstractSolver, AbstractSolverState
 
 
 # Not a tree_dataclass as we want to compile against the values of alpha, beta etc.
+# The entries are frozen so that they can be hashed, which is needed because the whole
+# ButcherTableau will be treated as a static_argnum and therefore used as a dictionary key.
 @dataclass(frozen=True)
 class ButcherTableau:
     alpha: frozenndarray
@@ -98,13 +100,13 @@ class RungeKutta(AbstractSolver):
 
         controls_ = []
         control_treedefs = []
-        f0 = solver_state.f0
-        prev_dt = solver_state.dt
-        dt = t1 - t0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
             controls_.append(control_)
             control_treedefs.append(control_treedef)
+        f0 = solver_state.f0
+        prev_dt = solver_state.dt
+        dt = t1 - t0
 
         k = jnp.zeros(y0.shape + (self.tableau.order,))
         k = k.at[..., 0].add(f0 * (dt / prev_dt))

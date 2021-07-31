@@ -2,7 +2,7 @@ import abc
 from typing import Any, Optional, Tuple, TypeVar
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..tree import tree_dataclass
+from ..jax_tricks import tree_dataclass
 
 
 @tree_dataclass
