@@ -1,13 +1,13 @@
 from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
-from .interpolation import DenseInterpolation
+from .global_interpolation import DenseInterpolation
 from .misc import ContainerMeta
 from .path import AbstractPath
 
 
-# We use magic numbers, rather than informative strings, as these can be vmap'd etc. through JAX.
-# Same reason we don't use enum.Enum here.
+# We use magic numbers, rather than informative strings, as these can be vmap'd etc.
+# through JAX. Same reason we don't use enum.Enum here.
 class RESULTS(metaclass=ContainerMeta):
     successful = 0
     max_steps_reached = 1
@@ -24,10 +24,16 @@ class Solution(AbstractPath):
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         if self.interpolation is None:
-            raise ValueError("Dense solution has not been saved; pass saveat.dense=True.")
+            raise ValueError(
+                "Dense solution has not been saved; pass saveat.dense=True."
+            )
         return self.interpolation.derivative(t, left)
 
-    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True) -> PyTree:
+    def evaluate(
+        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+    ) -> PyTree:
         if self.interpolation is None:
-            raise ValueError("Dense solution has not been saved; pass saveat.dense=True.")
+            raise ValueError(
+                "Dense solution has not been saved; pass saveat.dense=True."
+            )
         return self.interpolation.evaluate(t0, t1, left)

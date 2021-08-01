@@ -1,6 +1,7 @@
 import abc
-import jax.numpy as jnp
 from typing import Optional, Tuple
+
+import jax.numpy as jnp
 
 from .custom_types import Array, Scalar
 from .misc import frozenndarray
@@ -16,9 +17,13 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
     y0: Array["state"]  # noqa: F821
     y1: Array["state"]  # noqa: F821
 
-    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> Array["state"]:  # noqa: F821
+    def evaluate(
+        self, t0: Scalar, t1: Optional[Scalar] = None
+    ) -> Array["state"]:  # noqa: F821
         if t1 is None:
-            return self.y0 + ((t0 - self.t0) / (self.t1 - self.t0)) * (self.y1 - self.y0)
+            return self.y0 + ((t0 - self.t0) / (self.t1 - self.t0)) * (
+                self.y1 - self.y0
+            )
         else:
             return ((t1 - t0) / (self.t1 - self.t0)) * (self.y1 - self.y0)
 
@@ -27,7 +32,13 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
 
 
 class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
-    coeffs: Tuple[Array["state"], Array["state"], Array["state"], Array["state"], Array["state"]]  # noqa: F821
+    coeffs: Tuple[
+        Array["state"],  # noqa: F821
+        Array["state"],  # noqa: F821
+        Array["state"],  # noqa: F821
+        Array["state"],  # noqa: F821
+        Array["state"],  # noqa: F821
+    ]
 
     def __init__(self, *, y0, y1, k, **kwargs):
         super().__init__(**kwargs)
@@ -44,7 +55,9 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
     def c_mid(self) -> frozenndarray:
         pass
 
-    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> Array["state"]:  # noqa: F821
+    def evaluate(
+        self, t0: Scalar, t1: Optional[Scalar] = None
+    ) -> Array["state"]:  # noqa: F821
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
         return jnp.polyval(self.coeffs, (t0 - self.t0) / (self.t1 - self.t0))

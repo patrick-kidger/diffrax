@@ -14,4 +14,14 @@ def random_pytree(key, treedef):
     return jax.tree_unflatten(treedef, leaves)
 
 
-treedefs = [jax.tree_structure(x) for x in (None, 0, [0], {'a': 0}, {'a': 0, 'b': 0}, {'a': [0, 0], 'b': 0},)]
+treedefs = [
+    jax.tree_structure(x)
+    for x in (
+        None,
+        0,
+        [0],
+        {"a": 0},
+        {"a": 0, "b": 0},
+        {"a": [0, 0], "b": 0},
+    )
+]

@@ -1,14 +1,22 @@
+from typing import Optional
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
-from .interpolation import DenseInterpolation
-from .misc import stack_pytrees, tree_squash, tree_unsquash, vmap_all, vmap_any, vmap_max
+from .global_interpolation import DenseInterpolation
+from .misc import (
+    stack_pytrees,
+    tree_squash,
+    tree_unsquash,
+    vmap_all,
+    vmap_any,
+    vmap_max,
+)
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
-from .solver import AbstractSolver, AbstractSolverState
+from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 
 
@@ -25,13 +33,27 @@ def _step(
     args: PyTree,
 ):
 
-    (y_candidate, y_error, dense_info,
-     solver_state_candidate) = solver.step(tprev, tnext, y, args, y_treedef, solver_state)
+    (y_candidate, y_error, dense_info, solver_state_candidate) = solver.step(
+        tprev, tnext, y, args, y_treedef, solver_state
+    )
 
-    (keep_step, tprev_candidate, tnext_candidate, controller_state_candidate,
-     stepsize_controller_result) = stepsize_controller.adapt_step_size(
-         tprev, tnext, y, y_candidate, args, y_error, y_treedef, solver.order, controller_state
-     )
+    (
+        keep_step,
+        tprev_candidate,
+        tnext_candidate,
+        controller_state_candidate,
+        stepsize_controller_result,
+    ) = stepsize_controller.adapt_step_size(
+        tprev,
+        tnext,
+        y,
+        y_candidate,
+        args,
+        y_error,
+        y_treedef,
+        solver.order,
+        controller_state,
+    )
 
     tnext_candidate = jnp.minimum(tnext_candidate, t1)
     not_done = tnext < t1
@@ -43,7 +65,17 @@ def _step(
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
 
-    return tprev, tnext, y, solver_state, controller_state, keep_step, not_done, dense_info, stepsize_controller_result
+    return (
+        tprev,
+        tnext,
+        y,
+        solver_state,
+        controller_state,
+        keep_step,
+        not_done,
+        dense_info,
+        stepsize_controller_result,
+    )
 
 
 _jit_step = eqx.jitf(_step, filter_fn=eqx.is_array_like)
@@ -61,9 +93,9 @@ def diffeqsolve(
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
-    solver_state: Optional[AbstractSolverState] = None,
+    solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
-    max_steps: Scalar = 2**31 - 1,
+    max_steps: Scalar = 2 ** 31 - 1,
     jit: bool = True,
     throw: bool = True,
 ) -> Solution:
@@ -72,8 +104,9 @@ def diffeqsolve(
 
     tprev = t0
     if controller_state is None:
-        (tnext,
-         controller_state) = stepsize_controller.init(t0, y, dt0, args, y_treedef, solver.order, solver.func_for_init)
+        (tnext, controller_state) = stepsize_controller.init(
+            t0, y, dt0, args, y_treedef, solver.order, solver.func_for_init
+        )
     else:
         assert dt0 is not None
         tnext = t0 + dt0
@@ -111,34 +144,57 @@ def diffeqsolve(
         tinterp_index = 0
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while vmap_any(not_done) and num_steps < max_steps:
-        # We have to keep track of several different times -- tprev, tnext, tprev_before, tnext_before, t1.
+        # We have to keep track of several different times -- tprev, tnext,
+        # tprev_before, tnext_before, t1.
         #
-        # tprev and tnext are the start and end points of the interval we're about to step over.
-        # tprev_before and tnext_before are tprev and tnext from the previous iteration.
-        # t1 is the terminal time.
+        # tprev and tnext are the start and end points of the interval we're about to
+        # step over. tprev_before and tnext_before are tprev and tnext from the
+        # previous iteration. t1 is the terminal time.
         #
-        # Note that t_after != tprev in general. If we have discontinuities in the vector field then
-        # it may be the case that tprev = nextafter(t_after). (They should never differe by more than
-        # this though.)
+        # Note that t_after != tprev in general. If we have discontinuities in the
+        # vector field then it may be the case that tprev = nextafter(t_after). (They
+        # should never differ by more than this though.)
         #
-        # In particular this means that y technically corresponds to the value of the solution at tnext_before.
+        # In particular this means that y technically corresponds to the value of the
+        # solution at tnext_before.
         num_steps = num_steps + 1
         tprev_before = tprev
         tnext_before = tnext
-        (tprev, tnext, y, solver_state, controller_state, keep_step, not_done, dense_info,
-         stepsize_controller_result) = step_maybe_jit(
-             tprev, tnext, y, solver_state, controller_state, solver, stepsize_controller, y_treedef, t1, args,
-         )
+        (
+            tprev,
+            tnext,
+            y,
+            solver_state,
+            controller_state,
+            keep_step,
+            not_done,
+            dense_info,
+            stepsize_controller_result,
+        ) = step_maybe_jit(
+            tprev,
+            tnext,
+            y,
+            solver_state,
+            controller_state,
+            solver,
+            stepsize_controller,
+            y_treedef,
+            t1,
+            args,
+        )
 
         if vmap_any(keep_step):
             if saveat.t is not None:
                 tinterp = saveat.t[tinterp_index]
                 interp_cond = tinterp < tprev
                 while vmap_any(interp_cond):
-                    interpolator = solver.interpolation_cls(t0=tprev_before, t1=tnext_before, **dense_info)
-                    # Note that interp_cond will only be True if we've made a step in that batch element.
-                    # If the step is rejected then tprev == tprev_before, and tinterp >= tprev_before, due
-                    # to the previous iteration through this loop on the previous step.
+                    interpolator = solver.interpolation_cls(
+                        t0=tprev_before, t1=tnext_before, **dense_info
+                    )
+                    # Note that interp_cond will only be True if we've made a step in
+                    # that batch element. If the step is rejected then tprev == tprev
+                    # before, and tinterp >= tprev_before, due to the previous
+                    # iteration through this loop on the previous step.
                     tinterp = jnp.where(interp_cond, tinterp, tnext_before)
                     yinterp = jnp.where(interp_cond, interpolator.evaluate(tinterp), y)
                     ts.append(tinterp)
@@ -191,7 +247,9 @@ def diffeqsolve(
         dense_ts.append(t1)
         dense_ts = jnp.stack(dense_ts)
         dense_infos = stack_pytrees(dense_infos)
-        interpolation = DenseInterpolation(interpolation_cls=solver.interpolation_cls, ts=dense_ts, infos=dense_infos)
+        interpolation = DenseInterpolation(
+            interpolation_cls=solver.interpolation_cls, ts=dense_ts, infos=dense_infos
+        )
     else:
         interpolation = None
     return Solution(
@@ -200,5 +258,5 @@ def diffeqsolve(
         controller_states=controller_states,
         solver_states=solver_states,
         interpolation=interpolation,
-        result=result
+        result=result,
     )

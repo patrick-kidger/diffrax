@@ -25,16 +25,18 @@
 #
 ###########
 
-from dataclasses import dataclass
-from diffrax import diffeqsolve, euler
-import fire
 import time
+from dataclasses import dataclass
+from typing import Any
+
+import fire
 import jax
 import jax.experimental.stax as stax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
-from typing import Any
+
+from diffrax import diffeqsolve, euler
 
 
 def get_data(key, dataset_size):
@@ -46,8 +48,9 @@ def get_data(key, dataset_size):
 ###########
 # Functionally pure dataloader.
 # - Wraps some state (arrays, key, batch_size).
-# - Produces a pseudorandom batch of data every time it is called. (In this case random sampling with replacement.
-#   A more sophisticated implementatation could follow normal iteration-over-dataset behaviour.)
+# - Produces a pseudorandom batch of data every time it is called. (In this case random
+#   sampling with replacement. A more sophisticated implementatation could follow normal
+#   iteration-over-dataset behaviour.)
 # - Has __hash__ and __eq__ set so that the JIT is happy to use this as a static_argnum.
 ###########
 @dataclass(frozen=True)
@@ -63,7 +66,9 @@ class dataloader:
     def __call__(self, step):
         key = jrandom.fold_in(self.key, step)
         dataset_size = self.arrays[0].shape[0]
-        batch_indices = jrandom.randint(key, (self.batch_size,), minval=0, maxval=dataset_size)
+        batch_indices = jrandom.randint(
+            key, (self.batch_size,), minval=0, maxval=dataset_size
+        )
         return tuple(array[batch_indices] for array in self.arrays)
 
     def __hash__(self):
@@ -89,7 +94,9 @@ def main(
     data = get_data(data_key, dataset_size)
     data = dataloader(arrays=data, key=loader_key, batch_size=batch_size)
 
-    init_model, apply_model = stax.serial(stax.Dense(width_size), stax.elementwise(jnn.relu), stax.Dense(1))
+    init_model, apply_model = stax.serial(
+        stax.Dense(width_size), stax.elementwise(jnn.relu), stax.Dense(1)
+    )
     _, params = init_model(init_key, (1,))
     vmap_apply_model = jax.vmap(apply_model, in_axes=(None, 0))
 
@@ -97,7 +104,7 @@ def main(
     @jax.value_and_grad
     def loss(params, x, y):
         pred_y = vmap_apply_model(params, x)
-        return jnp.mean((y - pred_y)**2)
+        return jnp.mean((y - pred_y) ** 2)
 
     def vector_field(step, params, data):
         x, y = data(step)
@@ -107,12 +114,16 @@ def main(
         return jax.tree_map(lambda g: -learning_rate * g, grad)
 
     ###########
-    # Note that we can safely jit because vector_field has only benign side-effects (the print statement). This will
-    # mean that we don't get to see the print statements as training progresses, however.
+    # Note that we can safely jit because vector_field has only benign side-effects
+    # (the print statement). This will mean that we don't get to see the print
+    # statements as training progresses, however.
     #
-    # Try running this with jit=True/False. You should probably see a ~2x speedup using JIT.
+    # Try running this with jit=True/False. You should probably see a ~2x speedup
+    # using JIT.
     ###########
-    solution = diffeqsolve(euler(vector_field), t0=0, t1=steps, y0=params, dt0=1, args=data, jit=jit)
+    solution = diffeqsolve(
+        euler(vector_field), t0=0, t1=steps, y0=params, dt0=1, args=data, jit=jit
+    )
 
     params = jax.tree_map(lambda x: x[0], solution.ys)
     value, _ = loss(params, *data(0))
@@ -121,5 +132,5 @@ def main(
     print(f"Training completed in {end - start} seconds")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     fire.Fire(main)

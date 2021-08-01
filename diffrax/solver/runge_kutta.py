@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
+from typing import Dict, Tuple
+
 import jax.numpy as jnp
 import numpy as np
-from typing import Dict, Tuple
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
 from ..misc import frozenndarray
@@ -10,7 +11,8 @@ from .base import AbstractSolver
 
 
 # The entries are frozen so that they can be hashed, which is needed because the whole
-# ButcherTableau will be treated as a static_argnum and therefore used as a dictionary key.
+# ButcherTableau will be treated as a static_argnum and therefore used as a dictionary
+# key.
 @dataclass(frozen=True)
 class ButcherTableau:
     alpha: frozenndarray
@@ -48,8 +50,12 @@ class RungeKutta(AbstractSolver):
         return self.tableau.order
 
     def init(
-        self, t0: Scalar, t1: Scalar, y0: Array["state"],  # noqa: F821
-        args: PyTree, y_treedef: SquashTreeDef,
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        y0: Array["state"],  # noqa: F821
+        args: PyTree,
+        y_treedef: SquashTreeDef,
     ) -> _SolverState:  # noqa: F821
         f0 = 0
         for term in self.terms:
@@ -84,10 +90,12 @@ class RungeKutta(AbstractSolver):
         prev_dt = solver_state.dt
         dt = t1 - t0
 
-        # Note that our `k` is (for an ODE) `dt` times smaller than the usual implementation
-        # (e.g. what you see in torchdiffeq or in the reference texts).
+        # Note that our `k` is (for an ODE) `dt` times smaller than the usual
+        # implementation (e.g. what you see in torchdiffeq or in the reference texts).
         # This is because of our vector-field-control approach.
-        k = jnp.zeros((self.tableau.order,) + y0.shape)  # y0.shape is single-dimensional
+        k = jnp.zeros(
+            (self.tableau.order,) + y0.shape
+        )  # y0.shape is single-dimensional
         k = k.at[0].set(f0 * (dt / prev_dt))
 
         # lax.fori_loop is not reverse differentiable
@@ -98,8 +106,10 @@ class RungeKutta(AbstractSolver):
                 ti = t1
             else:
                 ti = t0 + alpha_i * dt
-            yi = y0 + beta_i @ k[:i + 1]
-            for term, control_, control_treedef in zip(self.terms, controls_, control_treedefs):
+            yi = y0 + beta_i @ k[: i + 1]
+            for term, control_, control_treedef in zip(
+                self.terms, controls_, control_treedefs
+            ):
                 fi = term.vf_prod_(y_treedef, control_treedef, ti, yi, args, control_)
                 k = k.at[i + 1].add(fi)
 
@@ -112,8 +122,13 @@ class RungeKutta(AbstractSolver):
         dense_info = {"y0": y0, "y1": y1, "k": k}
         return y1, y_error, dense_info, dict(f0=f1, dt=dt)
 
-    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
-                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
+    def func_for_init(
+        self,
+        t: Scalar,
+        y_: Array["state"],  # noqa: F821
+        args: PyTree,
+        y_treedef: SquashTreeDef,
+    ) -> Array["state"]:  # noqa: F821
         vf = 0
         for term in self.terms:
             vf = vf + term.func_for_init(t, y_, args, y_treedef)

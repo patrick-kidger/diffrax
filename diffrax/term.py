@@ -1,16 +1,18 @@
 import abc
+from typing import Callable, Tuple
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from typing import Callable, Tuple
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .misc import tree_squash, tree_unsquash
 from .path import AbstractPath
 
 
-def _prod(vf: Array["state":..., "control":...],  # noqa: F821
-          control: Array["control":...]) -> Array["state":...]:  # noqa: F821
+def _prod(
+    vf: Array["state":..., "control":...], control: Array["control":...]  # noqa: F821
+) -> Array["state":...]:  # noqa: F821
     return jnp.tensordot(vf, control, axes=control.ndim)
 
 
@@ -30,13 +32,20 @@ class AbstractTerm(eqx.Module):
     def vf_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
         return self.prod(self.vector_field(t, y, args), control)
 
-    def vf_(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-            args: PyTree) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
+    def vf_(
+        self,
+        y_treedef: SquashTreeDef,
+        t: Scalar,
+        y_: Array["state"],  # noqa: F821
+        args: PyTree,
+    ) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vector_field(t, y, args)
         return tree_squash(vf)
 
-    def contr_(self, t0: Scalar, t1: Scalar) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
+    def contr_(
+        self, t0: Scalar, t1: Scalar
+    ) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
         return tree_squash(self.contr(t0, t1))
 
     def prod_(
@@ -44,7 +53,7 @@ class AbstractTerm(eqx.Module):
         vf_treedef: SquashTreeDef,
         control_treedef: SquashTreeDef,
         vf_: Array["state*control"],  # noqa: F821
-        control_: Array["control"]  # noqa: F821
+        control_: Array["control"],  # noqa: F821
     ) -> Array["state"]:  # noqa: F821
         vf = tree_unsquash(vf_treedef, vf_)
         control = tree_unsquash(control_treedef, control_)
@@ -59,7 +68,7 @@ class AbstractTerm(eqx.Module):
         t: Scalar,
         y_: Array["state"],  # noqa: F821
         args: PyTree,
-        control_: Array["control"]  # noqa: F821
+        control_: Array["control"],  # noqa: F821
     ) -> Array["state"]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vector_field(t, y, args)
@@ -69,15 +78,21 @@ class AbstractTerm(eqx.Module):
         return prod_
 
     # This is a pinhole break in our vector-field/control abstraction.
-    # Everywhere else we get to evaluate over some interval, which allows us to evaluate our control over that interval.
-    # However to select the initial point in an adapative step size scheme, the standard heuristic is to start by making
+    # Everywhere else we get to evaluate over some interval, which allows us to
+    # evaluate our control over that interval. However to select the initial point in
+    # an adapative step size scheme, the standard heuristic is to start by making
     # evaluations at just the initial point -- no intervals involved.
-    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
-                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
+    def func_for_init(
+        self,
+        t: Scalar,
+        y_: Array["state"],  # noqa: F821
+        args: PyTree,
+        y_treedef: SquashTreeDef,
+    ) -> Array["state"]:  # noqa: F821
         raise ValueError(
-            "An initial step size cannot be selected automatically. The most common scenario for "
-            "this error to occur is when trying to use adaptive step size solvers with SDEs. Please "
-            "specify an initial `dt0` instead."
+            "An initial step size cannot be selected automatically. The most common "
+            "scenario for this error to occur is when trying to use adaptive step "
+            "size solvers with SDEs. Please specify an initial `dt0` instead."
         )
 
 
@@ -95,8 +110,13 @@ class ODETerm(AbstractTerm):
     def prod(vf: PyTree, control: Scalar) -> PyTree:
         return jax.tree_map(lambda v: control * v, vf)
 
-    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
-                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
+    def func_for_init(
+        self,
+        t: Scalar,
+        y_: Array["state"],  # noqa: F821
+        args: PyTree,
+        y_treedef: SquashTreeDef,
+    ) -> Array["state"]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vf(t, y, args)
         vf, _ = tree_squash(vf)

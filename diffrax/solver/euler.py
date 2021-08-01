@@ -32,8 +32,13 @@ class Euler(AbstractSolver):
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None
 
-    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
-                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
+    def func_for_init(
+        self,
+        t: Scalar,
+        y_: Array["state"],  # noqa: F821
+        args: PyTree,
+        y_treedef: SquashTreeDef,
+    ) -> Array["state"]:  # noqa: F821
         vf = 0
         for term in self.terms:
             vf = vf + term.func_for_init(t, y_, args, y_treedef)
@@ -50,4 +55,10 @@ def euler_maruyama(
     bm: AbstractBrownianPath,
     **kwargs
 ):
-    return Euler(terms=(ODETerm(vector_field=drift), ControlTerm(vector_field=diffusion, control=bm)), **kwargs)
+    return Euler(
+        terms=(
+            ODETerm(vector_field=drift),
+            ControlTerm(vector_field=diffusion, control=bm),
+        ),
+        **kwargs
+    )

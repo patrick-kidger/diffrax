@@ -1,5 +1,6 @@
-import equinox as eqx
 from typing import Optional
+
+import equinox as eqx
 
 from .custom_types import Array
 from .misc import vmap_any

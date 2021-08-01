@@ -9,17 +9,17 @@ from .runge_kutta import ButcherTableau, RungeKutta
 
 
 _heun_tableau = ButcherTableau(
-    alpha=frozenarray([1.]),
-    beta=(frozenarray([1.]),),
+    alpha=frozenarray([1.0]),
+    beta=(frozenarray([1.0]),),
     c_sol=frozenarray([0.5, 0.5]),
     c_error=frozenarray([0.5, -0.5]),
-    c_mid=frozenarray([0.5, 0])
 )
 
 
 class _HeunInterpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get an
-    # approximation for y at the middle of each step, and that better choices are probably available.
+    # I don't think this is well-chosen -- I think this is just a simple choice to get
+    # an approximation for y at the middle of each step, and that better choices are
+    # probably available.
     c_mid = frozenarray([0, 0.5])
 
 
@@ -35,13 +35,16 @@ def heun(
             terms=(ODETerm(vector_field=vector_field),),
             tableau=_heun_tableau,
             interpolation_cls=_HeunInterpolation,
-            **kwargs
+            **kwargs,
         )
     else:
         assert bm is not None
         return RungeKutta(
-            terms=(ODETerm(vector_field=vector_field), ControlTerm(vector_field=diffusion, control=bm)),
+            terms=(
+                ODETerm(vector_field=vector_field),
+                ControlTerm(vector_field=diffusion, control=bm),
+            ),
             tableau=_heun_tableau,
             interpolation_cls=_HeunInterpolation,
-            **kwargs
+            **kwargs,
         )

@@ -1,8 +1,9 @@
+import math
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
-import math
 import numpy as np
-from typing import Tuple
 
 from .custom_types import Array, PyTree, SquashTreeDef
 
@@ -72,10 +73,12 @@ def frozenarray(*args, **kwargs):
 
 class ContainerMeta(type):
     def __new__(cls, name, bases, dict):
-        assert '_reverse_lookup' not in dict
-        dict['_reverse_lookup'] = {value: key for key, value in dict.items()}
+        assert "_reverse_lookup" not in dict
+        dict["_reverse_lookup"] = {value: key for key, value in dict.items()}
         # Check that all values are unique
-        assert len(dict) == len(dict['_reverse_lookup']) + 1  # +1 for dict['_reverse_lookup'] itself.
+        assert (
+            len(dict) == len(dict["_reverse_lookup"]) + 1
+        )  # +1 for dict['_reverse_lookup'] itself.
         return super().__new__(cls, name, bases, dict)
 
     def __getitem__(cls, item):
@@ -83,18 +86,24 @@ class ContainerMeta(type):
 
 
 def vmap_all(x):
-    while hasattr(x, '_trace') and isinstance(x._trace, jax.interpreters.batching.BatchTrace):
+    while hasattr(x, "_trace") and isinstance(
+        x._trace, jax.interpreters.batching.BatchTrace
+    ):
         x = x.val
     return jnp.all(x)
 
 
 def vmap_any(x):
-    while hasattr(x, '_trace') and isinstance(x._trace, jax.interpreters.batching.BatchTrace):
+    while hasattr(x, "_trace") and isinstance(
+        x._trace, jax.interpreters.batching.BatchTrace
+    ):
         x = x.val
     return jnp.any(x)
 
 
 def vmap_max(x):
-    while hasattr(x, '_trace') and isinstance(x._trace, jax.interpreters.batching.BatchTrace):
+    while hasattr(x, "_trace") and isinstance(
+        x._trace, jax.interpreters.batching.BatchTrace
+    ):
         x = x.val
     return jnp.max(x)

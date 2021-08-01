@@ -1,13 +1,12 @@
 import abc
-import equinox as eqx
 from typing import Callable, Optional, Tuple, TypeVar
 
+import equinox as eqx
+
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..solver import AbstractSolverState
 
 
-T = TypeVar('T', bound=PyTree)
-T2 = TypeVar('T2', bound=AbstractSolverState)
+_ControllerState = TypeVar("_ControllerState", bound=PyTree)
 
 
 class AbstractStepSizeController(eqx.Module):
@@ -22,8 +21,11 @@ class AbstractStepSizeController(eqx.Module):
         args: PyTree,
         y_treedef: SquashTreeDef,
         solver_order: int,
-        func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
-    ) -> Tuple[Scalar, T]:
+        func: Callable[
+            [SquashTreeDef, Scalar, Array["state"], PyTree],  # noqa: F821
+            Array["state"],  # noqa: F821
+        ],
+    ) -> Tuple[Scalar, _ControllerState]:
         pass
 
     @abc.abstractmethod
@@ -37,6 +39,6 @@ class AbstractStepSizeController(eqx.Module):
         y_error: Array["state"],  # noqa: F821
         y_treedef: SquashTreeDef,
         solver_order: int,
-        controller_state: T
-    ) -> Tuple[bool, Scalar, Scalar, T, int]:
+        controller_state: _ControllerState,
+    ) -> Tuple[bool, Scalar, Scalar, _ControllerState, int]:
         pass
