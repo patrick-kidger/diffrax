@@ -1,11 +1,19 @@
-from typing import Callable
+import jax
+import jax.numpy as jnp
+import numpy as np
+from typing import Callable, Optional
 
-from ..custom_types import PyTree, Scalar
+from ..custom_types import Array, PyTree, Scalar
+from ..local_interpolation import AbstractLocalInterpolation
 from ..misc import frozenarray
 from ..term import ODETerm
 from .runge_kutta import ButcherTableau, RungeKutta
 
-
+# Alpha/beta/c_sol/c_error coefficients are from
+# J. Dormand and P. Prince, High order embedded Runge-Kutta formulae (1981)
+#
+# Interpolation scheme is from
+# P. Bogacki and L. Shampine, Interpolating high-order Runge-Kutta formulas (1990)
 _dopri8_tableau = ButcherTableau(
     alpha=frozenarray([
         1 / 18,
@@ -148,6 +156,116 @@ _dopri8_tableau = ButcherTableau(
     ])
 )
 
+_vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
+
+
+class _Dopri8Interpolation(AbstractLocalInterpolation):
+    y0: Array["state"]  # noqa: F821
+    y1: Array["state"]  # noqa: F821  # Unused, just here for API compatibility
+    k: Array["order":14, "state"]  # noqa: F821
+
+    eval_coeffs = np.array([[
+        -6.3448349392860401388,
+        22.1396504998094068976,
+        -30.0610568289666450593,
+        19.9990069333683970610,
+        -6.6910181737837595697,
+        1
+    ], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0],
+                            [
+                                -39.6107919852202505218,
+                                116.4422149550342161651,
+                                -121.4999627731334642623,
+                                52.2273532792945524050,
+                                -7.6142658045872677172,
+                                0
+                            ],
+                            [
+                                20.3761213808791436958,
+                                -67.1451318825957197185,
+                                83.1721004639847717481,
+                                -46.8919164181093621583,
+                                10.7281392630428866124,
+                                0
+                            ],
+                            [
+                                7.3347098826795362023,
+                                -16.5672243527496524646,
+                                9.5724507555993664382,
+                                -0.1890893225010595467,
+                                0.5526637063753648783,
+                                0
+                            ],
+                            [
+                                32.8801774352459155182,
+                                -89.9916014847245016028,
+                                87.8406057677205645007,
+                                -35.7075975946222072821,
+                                4.2186562625665153803,
+                                0
+                            ],
+                            [
+                                -10.1588990526426760954,
+                                22.6237489648532849093,
+                                -17.4152107770762969005,
+                                6.2736448083240352160,
+                                -0.6627209125361597559,
+                                0
+                            ],
+                            [
+                                -12.5401268098782561200,
+                                32.2362340167355370113,
+                                -28.5903289514790976966,
+                                10.3160881272450748458,
+                                -1.2636789001135462218,
+                                0
+                            ],
+                            [
+                                29.5553001484516038033,
+                                -82.1020315488359848644,
+                                81.6630950584341412934,
+                                -34.7650769866611817349,
+                                5.4106037898590422230,
+                                0
+                            ],
+                            [
+                                -41.7923486424390588923,
+                                116.2662185791119533462,
+                                -114.9375291377009418170,
+                                47.7457971078225540396,
+                                -7.0321379067945741781,
+                                0
+                            ],
+                            [
+                                20.3006925822100825485,
+                                -53.9020777466385396792,
+                                50.2558364226176017553,
+                                -19.0082099341608028453,
+                                2.3537586759714983486,
+                                0
+                            ]])
+    diff_coeffs = eval_coeffs * np.array([6, 5, 4, 3, 2, 1])
+    eval_coeffs = frozenarray(eval_coeffs)
+    diff_coeffs = frozenarray(diff_coeffs)
+
+    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> Array["state"]:  # noqa: F821
+        if t1 is not None:
+            return self.evaluate(t1) - self.evaluate(t0)
+        t = (t0 - self.t0) / (self.t1 - self.t0)
+        coeffs = _vmap_polyval(self.eval_coeffs, t) * t
+        return self.y0 + coeffs @ self.k
+
+    def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
+        _rt = 1 / (self.t1 - self.t0)
+        t = (t - self.t0) * _rt
+        coeffs = _vmap_polyval(self.diff_coeffs, t)
+        return coeffs @ (self.k * _rt)
+
 
 def dopri8(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs,):
-    return RungeKutta(terms=(ODETerm(vector_field=vector_field),), tableau=_dopri8_tableau, **kwargs)
+    return RungeKutta(
+        terms=(ODETerm(vector_field=vector_field),),
+        tableau=_dopri8_tableau,
+        interpolation_clos=_Dopri8Interpolation,
+        **kwargs
+    )

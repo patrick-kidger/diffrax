@@ -1,13 +1,13 @@
 import abc
+import equinox as eqx
 from typing import Optional
 
 from .custom_types import PyTree, Scalar
-from .misc import ABCModule
 
 
-class AbstractPath(ABCModule):
+class AbstractPath(eqx.Module):
     def derivative(self, t: Scalar) -> PyTree:
-        raise NotImplementedError("derivative has not been implemented")
+        raise NotImplementedError("Derivative does not exist for path of type {type(self)}.")
 
     @abc.abstractmethod
     def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:

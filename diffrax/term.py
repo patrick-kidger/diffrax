@@ -5,17 +5,16 @@ import jax.numpy as jnp
 from typing import Callable, Tuple
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
-from .misc import ABCModule, tree_squash, tree_unsquash
+from .misc import tree_squash, tree_unsquash
 from .path import AbstractPath
 
 
-def _prod(vf: Array["state":...,  # noqa: F821
-                    "control":...],  # noqa: F821
+def _prod(vf: Array["state":..., "control":...],  # noqa: F821
           control: Array["control":...]) -> Array["state":...]:  # noqa: F821
     return jnp.tensordot(vf, control, axes=control.ndim)
 
 
-class AbstractTerm(ABCModule):
+class AbstractTerm(eqx.Module):
     @abc.abstractmethod
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         pass
@@ -69,11 +68,17 @@ class AbstractTerm(ABCModule):
         prod_, _ = tree_squash(prod)
         return prod_
 
-    # This exists primarily to get out of an annoying catch-22 for picking initial step sizes, and shouldn't be used
-    # much in general.
-    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-             args: PyTree) -> Array["state"]:  # noqa: F821
-        raise ValueError(f"func does not exist for term of type {type(self)}")
+    # This is a pinhole break in our vector-field/control abstraction.
+    # Everywhere else we get to evaluate over some interval, which allows us to evaluate our control over that interval.
+    # However to select the initial point in an adapative step size scheme, the standard heuristic is to start by making
+    # evaluations at just the initial point -- no intervals involved.
+    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
+                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
+        raise ValueError(
+            "An initial step size cannot be selected automatically. The most common scenario for "
+            "this error to occur is when trying to use adaptive step size solvers with SDEs. Please "
+            "specify an initial `dt0` instead."
+        )
 
 
 class ODETerm(AbstractTerm):
@@ -90,8 +95,8 @@ class ODETerm(AbstractTerm):
     def prod(vf: PyTree, control: Scalar) -> PyTree:
         return jax.tree_map(lambda v: control * v, vf)
 
-    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-             args: PyTree) -> Array["state"]:  # noqa: F821
+    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
+                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vf(t, y, args)
         vf, _ = tree_squash(vf)

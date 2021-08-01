@@ -1,5 +1,3 @@
-import abc
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import math
@@ -7,14 +5,6 @@ import numpy as np
 from typing import Tuple
 
 from .custom_types import Array, PyTree, SquashTreeDef
-
-
-class _ABCModuleMeta(abc.ABCMeta, type(eqx.Module)):
-    pass
-
-
-class ABCModule(eqx.Module, metaclass=_ABCModuleMeta):
-    pass
 
 
 def _stack_pytrees(*arrays):
@@ -92,7 +82,19 @@ class ContainerMeta(type):
         return cls._reverse_lookup[item]
 
 
+def vmap_all(x):
+    while hasattr(x, '_trace') and isinstance(x._trace, jax.interpreters.batching.BatchTrace):
+        x = x.val
+    return jnp.all(x)
+
+
 def vmap_any(x):
     while hasattr(x, '_trace') and isinstance(x._trace, jax.interpreters.batching.BatchTrace):
         x = x.val
     return jnp.any(x)
+
+
+def vmap_max(x):
+    while hasattr(x, '_trace') and isinstance(x._trace, jax.interpreters.batching.BatchTrace):
+        x = x.val
+    return jnp.max(x)

@@ -1,7 +1,7 @@
 from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
-from .interpolation import AbstractInterpolation
+from .interpolation import DenseInterpolation
 from .misc import ContainerMeta
 from .path import AbstractPath
 
@@ -19,11 +19,15 @@ class Solution(AbstractPath):
     ys: PyTree
     controller_states: Optional[list[PyTree]]
     solver_states: Optional[list[PyTree]]
-    interpolation: AbstractInterpolation
+    interpolation: Optional[DenseInterpolation]
     result: int  # from RESULTS
 
-    def derivative(self, t: Scalar) -> PyTree:
-        return self.interpolation.derivative(t)
+    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+        if self.interpolation is None:
+            raise ValueError("Dense solution has not been saved; pass saveat.dense=True.")
+        return self.interpolation.derivative(t, left)
 
-    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:
-        return self.interpolation.evaluate(t0, t1)
+    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True) -> PyTree:
+        if self.interpolation is None:
+            raise ValueError("Dense solution has not been saved; pass saveat.dense=True.")
+        return self.interpolation.evaluate(t0, t1, left)

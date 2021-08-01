@@ -1,6 +1,8 @@
-from typing import Callable
+import jax.numpy as jnp
+from typing import Callable, Optional
 
-from ..custom_types import PyTree, Scalar
+from ..custom_types import Array, PyTree, Scalar
+from ..local_interpolation import AbstractLocalInterpolation
 from ..misc import frozenarray
 from ..term import ODETerm
 from .runge_kutta import ButcherTableau, RungeKutta
@@ -74,5 +76,33 @@ _tsit5_tableau = ButcherTableau(
 )
 
 
+class _Tsit5Interpolation(AbstractLocalInterpolation):
+    y0: Array["state"]  # noqa: F821
+    y1: Array["state"]  # noqa: F821  # Unused, just here for API compatibility
+    k: Array["order":7, "state"]  # noqa: F821
+
+    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> Array["state"]:  # noqa: F821
+        if t1 is not None:
+            return self.evaluate(t1) - self.evaluate(t0)
+
+        t = (t0 - self.t0) / (self.t1 - self.t0)
+        # TODO: write as a matrix-multiply or vmap'd polyval
+        b1 = -1.0530884977290216 * t * (t - 1.3299890189751412) * (t**2 - 1.4364028541716351 * t + 0.7139816917074209)
+        b2 = 0.1017 * t**2 * (t**2 - 2.1966568338249754 * t + 1.2949852507374631)
+        b3 = 2.490627285651252793 * t**2 * (t**2 - 2.38535645472061657 * t + 1.57803468208092486)
+        b4 = -16.54810288924490272 * (t - 1.21712927295533244) * (t - 0.61620406037800089) * t**2
+        b5 = 47.37952196281928122 * (t - 1.203071208372362603) * (t - 0.658047292653547382) * t**2
+        b6 = -34.87065786149660974 * (t - 1.2) * (t - 0.666666666666666667) * t**2
+        b7 = 2.5 * (t - 1) * (t - 0.6) * t**2
+        return self.y0 + jnp.stack([b1, b2, b3, b4, b5, b6, b7]) @ self.k
+
+    # TODO: implement derivative
+
+
 def tsit5(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs,):
-    return RungeKutta(terms=(ODETerm(vector_field=vector_field),), tableau=_tsit5_tableau, **kwargs)
+    return RungeKutta(
+        terms=(ODETerm(vector_field=vector_field),),
+        tableau=_tsit5_tableau,
+        interpolation_cls=_Tsit5Interpolation,
+        **kwargs
+    )

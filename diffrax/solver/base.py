@@ -1,60 +1,43 @@
 import abc
-from typing import Any, Optional, Tuple, TypeVar
+import equinox as eqx
+from typing import Optional, Tuple, Type, TypeVar
 
-from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..misc import ABCModule
-
-
-class AbstractSolverState(ABCModule):
-    extras: dict[str, Any]
+from ..custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
+from ..local_interpolation import AbstractLocalInterpolation
 
 
-class EmptySolverState(AbstractSolverState):
-    pass
+_SolverState = TypeVar('_SolverState', bound=Optional[PyTree])
 
 
-T = TypeVar('T', bound=Optional[AbstractSolverState])
-
-
-class AbstractSolver(ABCModule):
+class AbstractSolver(eqx.Module):
     @property
     @abc.abstractmethod
     def order(self) -> int:
         pass
 
     @property
-    def available_state(self) -> frozenset:
-        return frozenset()
-
-    @property
     @abc.abstractmethod
-    def recommended_interpolation(self) -> T:
+    def interpolation_cls(self) -> Type[AbstractLocalInterpolation]:
         pass
 
     def init(
-        self,
-        y_treedef: SquashTreeDef,
-        t0: Scalar,
-        t1: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
-        requested_state: frozenset,
-    ) -> T:
+        self, t0: Scalar, t1: Scalar, y0: Array["state"],  # noqa: F821
+        args: PyTree, y_treedef: SquashTreeDef,
+    ) -> _SolverState:
         return None
 
     @abc.abstractmethod
     def step(
         self,
-        y_treedef: SquashTreeDef,
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        solver_state: T,
-        requested_state: frozenset,
-    ) -> Tuple[Array["state"], T]:  # noqa: F821
+        y_treedef: SquashTreeDef,
+        solver_state: _SolverState,
+    ) -> Tuple[Array["state"], Optional[Array["state"]], DenseInfo, _SolverState]:  # noqa: F821
         pass
 
-    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-             args: PyTree) -> Array["state"]:  # noqa: F821
-        raise ValueError(f"func does not exist for solver of type {type(self)}.")
+    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
+                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
+        raise ValueError("func_for_init does not exist.")

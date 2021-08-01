@@ -1,58 +1,42 @@
 from typing import Callable, Tuple
 
 from ..brownian import AbstractBrownianPath
-from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..interpolation import LinearInterpolation
+from ..custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
+from ..local_interpolation import LocalLinearInterpolation
 from ..term import AbstractTerm, ControlTerm, ODETerm
-from .base import AbstractSolver, EmptySolverState
+from .base import AbstractSolver
 
 
-# This solver has two modes of operation. In both cases it computes the same thing,
-# it just does them in a slightly different order.
-# By default (when `"f1" not in requested_state`) it's just the Euler solver the way you'd usually write it down.
-# When `"f1" in requested_state`, then after each step it evaluates the vector field at the end point, and stores
-# the result. Then on the next step it uses the cached result, and evaluates at the end of the step it makes after
-# that, and so on.
-# This is useful when some other part of the ecosystem wants to use the end-of-interval evaluation for something.
-# For example the Adam step size controller uses it to scale the learning rate.
+_SolverState = None
+
+
 class Euler(AbstractSolver):
-    terms: tuple[AbstractTerm]
+    terms: Tuple[AbstractTerm]
 
     order = 1
-    recommended_interpolation = LinearInterpolation
-
-    def init(
-        self,
-        y_treedef: SquashTreeDef,
-        t0: Scalar,
-        t1: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
-        requested_state: frozenset,
-    ) -> EmptySolverState:
-        return EmptySolverState(extras={})
+    interpolation_cls = LocalLinearInterpolation
 
     def step(
         self,
-        y_treedef: SquashTreeDef,
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        solver_state: EmptySolverState,
-        requested_state: frozenset,
-    ) -> Tuple[Array["state"], EmptySolverState]:  # noqa: F821
+        y_treedef: SquashTreeDef,
+        solver_state: _SolverState,
+    ) -> Tuple[Array["state"], None, DenseInfo, _SolverState]:  # noqa: F821
         y1 = y0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
             y1 = y1 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
-        return y1, solver_state
+        dense_info = dict(y0=y0, y1=y1)
+        return y1, None, dense_info, None
 
-    def func(self, y_treedef: SquashTreeDef, t: Scalar, y_: Array["state"],  # noqa: F821
-             args: PyTree) -> Array["state"]:  # noqa: F821
+    def func_for_init(self, t: Scalar, y_: Array["state"], args: PyTree,  # noqa: F821
+                      y_treedef: SquashTreeDef) -> Array["state"]:  # noqa: F821
         vf = 0
         for term in self.terms:
-            vf = vf + term.func(y_treedef, t, y_, args)
+            vf = vf + term.func_for_init(t, y_, args, y_treedef)
         return vf
 
 

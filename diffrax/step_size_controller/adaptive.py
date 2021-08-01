@@ -3,12 +3,13 @@ import jax.numpy as jnp
 from typing import Callable, Optional, Tuple
 
 from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
+from ..misc import tree_squash, tree_unsquash
 from ..solution import RESULTS
-from ..solver import AbstractSolverState
 from .base import AbstractStepSizeController
 
 
-def _rms_norm(x: Array) -> Scalar:
+def _rms_norm(x: PyTree) -> Scalar:
+    x, _ = tree_squash(x)
     return jnp.sqrt(jnp.mean(x**2))
 
 
@@ -16,17 +17,17 @@ def _rms_norm(x: Array) -> Scalar:
 # E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential Equations I: Nonstiff Problems", Sec. II.4,
 # 2nd edition.
 def _select_initial_step(
-    func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
-    y_treedef: SquashTreeDef,
     t0: Scalar,
     y0: Array["state"],  # noqa: F821
     args: PyTree,
+    y_treedef: SquashTreeDef,
     solver_order: int,
+    func_for_init: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
     rtol: Scalar,
     atol: Scalar,
     norm: Callable[[Array], Scalar]
 ):
-    f0 = func(y_treedef, t0, y0, args)
+    f0 = func_for_init(y_treedef, t0, y0, args)
     scale = atol + jnp.abs(y0) * rtol
     d0 = norm(y0 / scale)
     d1 = norm(f0 / scale)
@@ -38,7 +39,7 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
-    f1 = func(y_treedef, t1, y1, args)
+    f1 = func_for_init(y_treedef, t1, y1, args)
     d2 = norm((f1 - f0) / scale) / h0
 
     if d1 <= 1e-15 and d2 <= 1e-15:
@@ -53,11 +54,14 @@ def _scale_error_estimate(
     y_error: Array["state"],  # noqa: F821
     y0: Array["state"],  # noqa: F821
     y1_candidate: Array["state"],  # noqa: F821
+    y_treedef: SquashTreeDef,
     rtol: Scalar,
     atol: Scalar,
     norm: Callable[[Array], Scalar]
 ) -> Scalar:
-    return norm(y_error / (atol + jnp.maximum(y0, y1_candidate) * rtol))
+    scale = y_error / (atol + jnp.maximum(y0, y1_candidate) * rtol)
+    scale = tree_unsquash(y_treedef, scale)
+    return norm(scale)
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
@@ -78,45 +82,47 @@ class IController(AbstractStepSizeController):
 
     def init(
         self,
-        func: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
-        y_treedef: SquashTreeDef,
         t0: Scalar,
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,
-        solver_order: int
+        y_treedef: SquashTreeDef,
+        solver_order: int,
+        func_for_init: Callable[[SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]],  # noqa: F821
     ) -> Tuple[Scalar, None]:
         if dt0 is None:
-            dt0 = _select_initial_step(func, y_treedef, t0, y0, args, solver_order, self.rtol, self.atol, self.norm)
+            dt0 = _select_initial_step(
+                t0, y0, args, y_treedef, solver_order, func_for_init, self.rtol, self.atol, self.norm
+            )
         return t0 + dt0, None
 
     def adapt_step_size(
         self,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state":...],  # noqa: F821
-        y1_candidate: Array["state":...],  # noqa: F821
-        solver_state0: AbstractSolverState,
-        solver_state1_candidate: AbstractSolverState,
+        y0: Array["state"],  # noqa: F821
+        y1_candidate: Array["state"],  # noqa: F821
+        args: PyTree,
+        y_error: Optional[Array["state"]],  # noqa: F821
+        y_treedef: SquashTreeDef,
         solver_order: int,
         controller_state: None
     ) -> Tuple[bool, Scalar, Scalar, None, int]:
-        del solver_state0, controller_state
+        del args, controller_state
+        if y_error is None:
+            raise ValueError("Cannot use adaptive step sizes with a solver that does not provide error estimates.")
         prev_dt = t1 - t0
-        y_error = solver_state1_candidate.extras["y_error"]
 
-        scaled_error = _scale_error_estimate(y_error, y0, y1_candidate, self.rtol, self.atol, self.norm)
+        scaled_error = _scale_error_estimate(y_error, y0, y1_candidate, y_treedef, self.rtol, self.atol, self.norm)
         keep_step = scaled_error < 1
         factor = lax.cond(
             scaled_error == 0, lambda _: self.ifactor, self._scale_factor, (solver_order, keep_step, scaled_error)
         )
         dt = prev_dt * factor
-        result = 0
+        results = jnp.full_like(t0, RESULTS.successful)
         if self.dtmin is not None:
             if not self.force_dtmin:
-                # Done as a multiplication rather than an if statement (`if dt < self.dtmin`) to work with the
-                # JIT tracing.
-                result = RESULTS.dt_min_reached * (dt < self.dtmin)
+                result = results.at[dt < self.dtmin].set(RESULTS.dt_min_reached)
             dt = jnp.maximum(dt, self.dtmin)
 
         if self.dtmax is not None:
