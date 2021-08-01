@@ -56,8 +56,7 @@ def _step(
     )
 
     tnext_candidate = jnp.minimum(tnext_candidate, t1)
-    not_done = tnext < t1
-    keep_step = keep_step & not_done
+    keep_step = keep_step & (tprev < t1)
     keep = lambda a, b: jnp.where(keep_step, a, b)
     y = keep(y_candidate, y)
     tprev = keep(tprev_candidate, tprev)
@@ -72,7 +71,6 @@ def _step(
         solver_state,
         controller_state,
         keep_step,
-        not_done,
         dense_info,
         stepsize_controller_result,
     )
@@ -110,6 +108,7 @@ def diffeqsolve(
     else:
         assert dt0 is not None
         tnext = t0 + dt0
+    tnext = jnp.minimum(tnext, t1)
 
     if solver_state is None:
         solver_state = solver.init(t0, tnext, y, args, y_treedef)
@@ -135,15 +134,14 @@ def diffeqsolve(
     else:
         step_maybe_jit = _step
 
-    not_done = tprev < t1
     num_steps = 0
-    result = jnp.full_like(t0, RESULTS.successful)
+    result = jnp.full_like(t1, RESULTS.successful)
     if saveat.t:
         if not vmap_all((saveat.t < t1) & (saveat.t > t0)):
             raise ValueError("saveat.t must lie between t0 and t1.")
         tinterp_index = 0
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while vmap_any(not_done) and num_steps < max_steps:
+    while vmap_any(tnext < t1) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -167,7 +165,6 @@ def diffeqsolve(
             solver_state,
             controller_state,
             keep_step,
-            not_done,
             dense_info,
             stepsize_controller_result,
         ) = step_maybe_jit(
@@ -221,7 +218,7 @@ def diffeqsolve(
             break
 
     if num_steps >= max_steps:
-        result = result.at[not_done].set(RESULTS.max_steps_reached)
+        result = result.at[tnext < t1].set(RESULTS.max_steps_reached)
 
     if throw and vmap_any(result != RESULTS.successful):
         raise RuntimeError(f"diffeqsolve did not succeed. Error: {RESULTS[result]}")

@@ -141,10 +141,10 @@ class IController(AbstractStepSizeController):
             (solver_order, keep_step, scaled_error),
         )
         dt = prev_dt * factor
-        results = jnp.full_like(t0, RESULTS.successful)
+        result = jnp.full_like(t0, RESULTS.successful)
         if self.dtmin is not None:
             if not self.force_dtmin:
-                result = results.at[dt < self.dtmin].set(RESULTS.dt_min_reached)
+                result = result.at[dt < self.dtmin].set(RESULTS.dt_min_reached)
             dt = jnp.maximum(dt, self.dtmin)
 
         if self.dtmax is not None:

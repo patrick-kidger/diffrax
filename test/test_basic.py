@@ -58,4 +58,6 @@ def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller):
     else:
         raise ValueError
     y0 = random_pytree(key, treedef)
-    diffrax.diffeqint(solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller)
+    diffrax.diffeqsolve(
+        solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=False
+    )

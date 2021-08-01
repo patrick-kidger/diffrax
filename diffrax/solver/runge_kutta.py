@@ -86,8 +86,8 @@ class RungeKutta(AbstractSolver):
             control_, control_treedef = term.contr_(t0, t1)
             controls_.append(control_)
             control_treedefs.append(control_treedef)
-        f0 = solver_state.f0
-        prev_dt = solver_state.dt
+        f0 = solver_state["f0"]
+        prev_dt = solver_state["dt"]
         dt = t1 - t0
 
         # Note that our `k` is (for an ODE) `dt` times smaller than the usual
