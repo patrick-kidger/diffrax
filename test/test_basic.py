@@ -31,10 +31,13 @@ def test_basic():
                         stepsize_controller, diffrax.IController
                     ):
                         continue
-                    _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller)
+                    for jit in (False, True):
+                        _test_basic(
+                            solver_ctr, t_dtype, treedef, stepsize_controller, jit
+                        )
 
 
-def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller):
+def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit):
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)
 
@@ -59,5 +62,5 @@ def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller):
         raise ValueError
     y0 = random_pytree(key, treedef)
     diffrax.diffeqsolve(
-        solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=False
+        solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=jit
     )

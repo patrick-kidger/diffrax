@@ -310,6 +310,6 @@ def dopri8(
     return RungeKutta(
         terms=(ODETerm(vector_field=vector_field),),
         tableau=_dopri8_tableau,
-        interpolation_clos=_Dopri8Interpolation,
+        interpolation_cls=_Dopri8Interpolation,
         **kwargs,
     )

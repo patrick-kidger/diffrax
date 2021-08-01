@@ -85,25 +85,9 @@ class ContainerMeta(type):
         return cls._reverse_lookup[item]
 
 
-def vmap_all(x):
-    while hasattr(x, "_trace") and isinstance(
-        x._trace, jax.interpreters.batching.BatchTrace
-    ):
-        x = x.val
-    return jnp.all(x)
-
-
 def vmap_any(x):
     while hasattr(x, "_trace") and isinstance(
         x._trace, jax.interpreters.batching.BatchTrace
     ):
         x = x.val
     return jnp.any(x)
-
-
-def vmap_max(x):
-    while hasattr(x, "_trace") and isinstance(
-        x._trace, jax.interpreters.batching.BatchTrace
-    ):
-        x = x.val
-    return jnp.max(x)

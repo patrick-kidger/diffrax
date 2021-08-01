@@ -150,7 +150,9 @@ class IController(AbstractStepSizeController):
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
 
-        return keep_step, t1, t1 + dt, None, result
+        next_t0 = jnp.where(keep_step, t1, t0)
+
+        return keep_step, next_t0, next_t0 + dt, None, result
 
     def _scale_factor(self, operand):
         order, keep_step, scaled_error = operand

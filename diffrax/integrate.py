@@ -6,14 +6,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .global_interpolation import DenseInterpolation
-from .misc import (
-    stack_pytrees,
-    tree_squash,
-    tree_unsquash,
-    vmap_all,
-    vmap_any,
-    vmap_max,
-)
+from .misc import stack_pytrees, tree_squash, tree_unsquash, vmap_any
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
@@ -54,16 +47,51 @@ def _step(
         solver.order,
         controller_state,
     )
+    # We have different update rules for
+    # - the solution y and the controller state
+    # - time
+    # The solution and controller state only update if we keep the step.
+    # However the time step updates unconditionally. (tprev should probably remain the
+    # the same, but tnext will be over a small step if the step is rejected)
+    # This means we let stepsize_controller handle the updates to tprev and tnext,
+    # and then handle the rest of it here.
 
+    tprev_candidate = jnp.minimum(tprev_candidate, t1)
     tnext_candidate = jnp.minimum(tnext_candidate, t1)
-    keep_step = keep_step & (tprev < t1)
     keep = lambda a, b: jnp.where(keep_step, a, b)
-    y = keep(y_candidate, y)
+    y_candidate = keep(y_candidate, y)
+    solver_state_candidate = jax.tree_map(keep, solver_state_candidate, solver_state)
+    controller_state_candidate = jax.tree_map(
+        keep, controller_state_candidate, controller_state
+    )
+
+    # Next: we need to consider the fact that one batch element may have finished
+    # integrating even whilst other batch elements are still going. In this case we
+    # just have the "done" batch elements just stay constant (in every respect: time,
+    # solution, controller state etc.) whilst we wait.
+
+    not_done = tprev < t1
+    keep = lambda a, b: jnp.where(not_done, a, b)
     tprev = keep(tprev_candidate, tprev)
     tnext = keep(tnext_candidate, tnext)
+    y = keep(y_candidate, y)
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
+    stepsize_controller_result = keep(stepsize_controller_result, RESULTS.successful)
 
+    # The one exception to the above discussion is dense_info.
+    # This is difficult to apply the same logic to: unlike the others pieces, it isn't
+    # initialised.
+    # If we reject the first step, then there's no previous step we can roll back to.
+    # (And we still have to store *something* as other batch elements may have been
+    # accepted.)
+    # Fortunately, it doesn't matter. dense_info is stored against a sequence of
+    # timestamps, so any time a dense interpolation is evaluated, repeated times (i.e.
+    # rejected or after-batch-element-is-done steps) are never found. When evaluating
+    # at some time t, then the dense interpolation routines seek some i for which
+    # t_{i-1} < t <= t_i or t_{i-1} <= t < t_i (depending on mode). In particular this
+    # implies t_{i-1} != t_i, so repeated timestamps are never found. (And the
+    # corresponding junk data never used.)
     return (
         tprev,
         tnext,
@@ -97,6 +125,16 @@ def diffeqsolve(
     jit: bool = True,
     throw: bool = True,
 ) -> Solution:
+
+    # TODO: support reverse integration
+    if vmap_any(t0 > t1):
+        raise ValueError("Must have t0 <= t1")
+    if dt0 is not None and dt0 <= 0:
+        raise ValueError("Must have dt0 > 0")
+    if saveat.t:
+        if vmap_any((saveat.t >= t1) | (saveat.t <= t0)):
+            raise ValueError("saveat.t must lie strictly between t0 and t1.")
+        tinterp_index = 0
 
     y, y_treedef = tree_squash(y0)
 
@@ -136,10 +174,6 @@ def diffeqsolve(
 
     num_steps = 0
     result = jnp.full_like(t1, RESULTS.successful)
-    if saveat.t:
-        if not vmap_all((saveat.t < t1) & (saveat.t > t0)):
-            raise ValueError("saveat.t must lie between t0 and t1.")
-        tinterp_index = 0
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while vmap_any(tnext < t1) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
@@ -213,8 +247,8 @@ def diffeqsolve(
             if saveat.dense:
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
-        if vmap_any(stepsize_controller_result > 0):
-            result = vmap_max(stepsize_controller_result).item()
+        if vmap_any(stepsize_controller_result != RESULTS.successful):
+            result = jnp.maximum(result, stepsize_controller_result)
             break
 
     if num_steps >= max_steps:
