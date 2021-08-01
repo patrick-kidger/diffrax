@@ -1,3 +1,4 @@
+from dataclasses import field
 from typing import Optional
 
 from .custom_types import Array, PyTree, Scalar
@@ -15,6 +16,8 @@ class RESULTS(metaclass=ContainerMeta):
 
 
 class Solution(AbstractPath):
+    t0: Scalar = field(init=True)
+    t1: Scalar = field(init=True)  # override init=False in AbstractPath
     ts: Optional[Array]
     ys: Optional[PyTree]
     controller_states: Optional[list[PyTree]]

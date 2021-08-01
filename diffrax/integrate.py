@@ -56,8 +56,8 @@ def _step(
     # This means we let stepsize_controller handle the updates to tprev and tnext,
     # and then handle the rest of it here.
 
+    tnext_candidate = jnp.where(tnext_candidate > t1 - 1e-6, t1, tnext_candidate)
     tprev_candidate = jnp.minimum(tprev_candidate, t1)
-    tnext_candidate = jnp.minimum(tnext_candidate, t1)
     keep = lambda a, b: jnp.where(keep_step, a, b)
     y_candidate = keep(y_candidate, y)
     solver_state_candidate = jax.tree_map(keep, solver_state_candidate, solver_state)
@@ -166,7 +166,7 @@ def diffeqsolve(
         if saveat.solver_state:
             solver_states.append(solver_state)
     else:
-        del t0, y0, dt0
+        del y0, dt0
 
     if jit:
         step_maybe_jit = _jit_step
@@ -253,7 +253,7 @@ def diffeqsolve(
             break
 
     if num_steps >= max_steps:
-        result = result.at[tnext < t1].set(RESULTS.max_steps_reached)
+        result = jnp.where(tnext < t1, RESULTS.max_steps_reached, result)
 
     if throw and vmap_any(result != RESULTS.successful):
         raise RuntimeError(f"diffeqsolve did not succeed. Error: {RESULTS[result]}")
@@ -295,6 +295,8 @@ def diffeqsolve(
     else:
         interpolation = None
     return Solution(
+        t0=t0,
+        t1=t1,
         ts=ts,
         ys=ys,
         controller_states=controller_states,

@@ -20,6 +20,14 @@ class AbstractGlobalInterpolation(AbstractPath):
         fractional_part = t - self.ts[index]
         return index, fractional_part
 
+    @property
+    def t0(self):
+        return self.ts[0]
+
+    @property
+    def t1(self):
+        return self.ts[-1]
+
 
 class LinearInterpolation(AbstractGlobalInterpolation):
     ys: PyTree

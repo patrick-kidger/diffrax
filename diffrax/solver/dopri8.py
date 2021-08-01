@@ -293,13 +293,13 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
         t = (t0 - self.t0) / (self.t1 - self.t0)
-        coeffs = _vmap_polyval(self.eval_coeffs, t) * t
+        coeffs = _vmap_polyval(np.asarray(self.eval_coeffs), t) * t
         return self.y0 + coeffs @ self.k
 
     def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
         _rt = 1 / (self.t1 - self.t0)
         t = (t - self.t0) * _rt
-        coeffs = _vmap_polyval(self.diff_coeffs, t)
+        coeffs = _vmap_polyval(np.asarray(self.diff_coeffs), t)
         return coeffs @ (self.k * _rt)
 
 

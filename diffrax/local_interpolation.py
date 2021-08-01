@@ -1,4 +1,5 @@
 import abc
+from dataclasses import field
 from typing import Optional, Tuple
 
 import jax.numpy as jnp
@@ -10,8 +11,8 @@ from .path import AbstractPath
 
 
 class AbstractLocalInterpolation(AbstractPath):
-    t0: Scalar
-    t1: Scalar
+    t0: Scalar = field(init=True)
+    t1: Scalar = field(init=True)  # override init=False on AbstractPath
 
 
 class LocalLinearInterpolation(AbstractLocalInterpolation):
