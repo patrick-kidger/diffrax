@@ -2,6 +2,7 @@ import abc
 from typing import Optional, Tuple
 
 import jax.numpy as jnp
+import numpy as np
 
 from .custom_types import Array, Scalar
 from .misc import frozenndarray
@@ -40,9 +41,17 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         Array["state"],  # noqa: F821
     ]
 
-    def __init__(self, *, y0, y1, k, **kwargs):
+    def __init__(
+        self,
+        *,
+        y0: Array["state"],  # noqa: F821
+        y1: Array["state"],  # noqa: F821
+        k: Array["order", "state"],  # noqa: F821
+        **kwargs
+    ):
         super().__init__(**kwargs)
-        ymid = jnp.tensordot(self.c_mid, k, axes=1)
+        c_mid = np.asarray(self.c_mid)
+        ymid = c_mid @ k
         f0 = k[0]
         f1 = k[1]
         a = 2 * (f1 - f0) - 8 * (y1 + y0) + 16 * ymid

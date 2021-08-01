@@ -6,7 +6,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, PyTree, Scalar, SquashTreeDef
 from .global_interpolation import DenseInterpolation
-from .misc import stack_pytrees, tree_squash, tree_unsquash, vmap_any
+from .misc import stack_pytrees, tree_squash, tree_unsquash, vmap_all, vmap_any
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
@@ -266,21 +266,31 @@ def diffeqsolve(
         if saveat.solver_state:
             solver_states.append(solver_state)
 
-    ts = jnp.stack(ts)
-    ys = stack_pytrees(ys)
-    if not saveat.controller_state:
-        assert len(controller_states) == 0
+    if len(ts):
+        ts = jnp.stack(ts)
+    else:
+        ts = None
+    if len(ys):
+        ys = stack_pytrees(ys)
+    else:
+        ys = None
+    if not len(controller_states):
         controller_states = None
-    if not saveat.solver_state:
-        assert len(solver_states) == 0
+    if not len(solver_states):
         solver_states = None
 
     if saveat.dense:
         dense_ts.append(t1)
         dense_ts = jnp.stack(dense_ts)
+        if not len(dense_infos):
+            assert vmap_all(t0 == t1)
+            raise ValueError("Cannot save dense output when t0 == t1")
         dense_infos = stack_pytrees(dense_infos)
         interpolation = DenseInterpolation(
-            interpolation_cls=solver.interpolation_cls, ts=dense_ts, infos=dense_infos
+            ts=dense_ts,
+            interpolation_cls=solver.interpolation_cls,
+            infos=dense_infos,
+            y_treedef=y_treedef,
         )
     else:
         interpolation = None

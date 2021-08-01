@@ -15,8 +15,8 @@ class RESULTS(metaclass=ContainerMeta):
 
 
 class Solution(AbstractPath):
-    ts: Array
-    ys: PyTree
+    ts: Optional[Array]
+    ys: Optional[PyTree]
     controller_states: Optional[list[PyTree]]
     solver_states: Optional[list[PyTree]]
     interpolation: Optional[DenseInterpolation]
