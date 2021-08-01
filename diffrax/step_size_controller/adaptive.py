@@ -30,10 +30,10 @@ def _select_initial_step(
     atol: Scalar,
     norm: Callable[[Array], Scalar],
 ):
-    f0 = func_for_init(y_treedef, t0, y0, args)
+    f0 = func_for_init(t0, y0, args, y_treedef)
     scale = atol + jnp.abs(y0) * rtol
-    d0 = norm(y0 / scale)
-    d1 = norm(f0 / scale)
+    d0 = norm(tree_unsquash(y_treedef, y0 / scale))
+    d1 = norm(tree_unsquash(y_treedef, f0 / scale))
 
     if d0 < 1e-5 or d1 < 1e-5:
         h0 = 1e-6
@@ -42,8 +42,8 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
-    f1 = func_for_init(y_treedef, t1, y1, args)
-    d2 = norm((f1 - f0) / scale) / h0
+    f1 = func_for_init(t1, y1, args, y_treedef)
+    d2 = norm(tree_unsquash(y_treedef, (f1 - f0) / scale)) / h0
 
     if d1 <= 1e-15 and d2 <= 1e-15:
         h1 = jnp.maximum(1e-6, h0 * 1e-3)

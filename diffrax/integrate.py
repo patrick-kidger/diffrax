@@ -92,13 +92,14 @@ def _step(
     # t_{i-1} < t <= t_i or t_{i-1} <= t < t_i (depending on mode). In particular this
     # implies t_{i-1} != t_i, so repeated timestamps are never found. (And the
     # corresponding junk data never used.)
+    made_step = keep_step & not_done
     return (
         tprev,
         tnext,
         y,
         solver_state,
         controller_state,
-        keep_step,
+        made_step,
         dense_info,
         stepsize_controller_result,
     )
@@ -175,7 +176,7 @@ def diffeqsolve(
     num_steps = 0
     result = jnp.full_like(t1, RESULTS.successful)
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while vmap_any(tnext < t1) and num_steps < max_steps:
+    while vmap_any(tprev < t1) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -198,7 +199,7 @@ def diffeqsolve(
             y,
             solver_state,
             controller_state,
-            keep_step,
+            made_step,
             dense_info,
             stepsize_controller_result,
         ) = step_maybe_jit(
@@ -214,7 +215,7 @@ def diffeqsolve(
             args,
         )
 
-        if vmap_any(keep_step):
+        if vmap_any(made_step):
             if saveat.t is not None:
                 tinterp = saveat.t[tinterp_index]
                 interp_cond = tinterp < tprev
