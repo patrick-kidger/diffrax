@@ -1,3 +1,4 @@
+import abc
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
@@ -43,7 +44,11 @@ _SolverState = Dict[str, Array]
 
 class RungeKutta(AbstractSolver):
     terms: Tuple[AbstractTerm]
-    tableau: ButcherTableau
+
+    @property
+    @abc.abstractmethod
+    def tableau(self) -> ButcherTableau:
+        pass
 
     @property
     def order(self):

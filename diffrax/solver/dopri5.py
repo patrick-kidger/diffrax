@@ -46,13 +46,16 @@ class _Dopri5Interpolation(FourthOrderPolynomialInterpolation):
     )
 
 
+class Dopri5(RungeKutta):
+    tableau = _dopri5_tableau
+    interpolation_cls = _Dopri5Interpolation
+
+
 def dopri5(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
 ):
-    return RungeKutta(
+    return Dopri5(
         terms=(ODETerm(vector_field=vector_field),),
-        tableau=_dopri5_tableau,
-        interpolation_cls=_Dopri5Interpolation,
-        **kwargs,
+        **kwargs
     )

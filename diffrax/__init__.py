@@ -15,16 +15,22 @@ from .saveat import SaveAt
 from .solution import Solution
 from .solver import (
     AbstractSolver,
+    Bosh3,
     bosh3,
     ButcherTableau,
+    Dopri5,
     dopri5,
+    Dopri8,
     dopri8,
     Euler,
     euler,
     euler_maruyama,
+    Fehlberg2,
     fehlberg2,
+    Heun,
     heun,
     RungeKutta,
+    Tsit5,
     tsit5,
 )
 from .step_size_controller import (

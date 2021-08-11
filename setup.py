@@ -44,11 +44,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
-python_requires = "~=3.9"
+python_requires = "~=3.8"
 
 install_requires = [
     "jax>=0.2.18",
-    "equinox @ git+https://github.com/patrick-kidger/equinox.git",
+    "equinox @ https://github.com/patrick-kidger/equinox.git",
 ]
 
 setuptools.setup(

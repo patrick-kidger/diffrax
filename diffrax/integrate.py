@@ -105,7 +105,13 @@ def _step(
     )
 
 
-_jit_step = eqx.jitf(_step, filter_fn=eqx.is_array_like)
+# By default we exclude bools from being JIT'd,as they can be used to indicate
+# flags for special behaviour.
+def _filter_fn(elem):
+    return eqx.is_array_like(elem) and not isinstance(elem, bool)
+
+
+_jit_step = eqx.jitf(_step, filter_fn=_filter_fn)
 # TODO: understand warnings being throw about donated argnums not being used.
 #  eqx.jitf(_step, donate_argnums=(0, 1, 2, 3, 4), filter_fn=eqx.is_array_like)
 

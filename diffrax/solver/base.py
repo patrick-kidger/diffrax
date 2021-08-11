@@ -11,12 +11,17 @@ _SolverState = TypeVar("_SolverState", bound=Optional[PyTree])
 
 
 class AbstractSolver(eqx.Module):
-    interpolation_cls: Type[AbstractLocalInterpolation]
+    @property
+    @abc.abstractmethod
+    def interpolation_cls(self) -> Type[AbstractLocalInterpolation]:
+        pass
 
     @property
     @abc.abstractmethod
     def order(self) -> int:
         pass
+
+    change_stepsize_every = 1
 
     def init(
         self,

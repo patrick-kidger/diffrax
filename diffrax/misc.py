@@ -1,5 +1,5 @@
 import math
-from typing import Tuple
+from typing import List, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -12,11 +12,11 @@ def _stack_pytrees(*arrays):
     return jnp.stack(arrays)
 
 
-def stack_pytrees(pytrees: list[PyTree]) -> PyTree:
+def stack_pytrees(pytrees: List[PyTree]) -> PyTree:
     return jax.tree_map(_stack_pytrees, *pytrees)
 
 
-def safe_concatenate(arrays: list[Array]) -> Array:
+def safe_concatenate(arrays: List[Array]) -> Array:
     if len(arrays) == 0:
         return jnp.array([])
     return jnp.concatenate(arrays)

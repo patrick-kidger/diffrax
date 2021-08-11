@@ -22,13 +22,16 @@ class _Fehlberg2Interpolation(FourthOrderPolynomialInterpolation):
     c_mid = frozenarray([0, 0.5, 0])
 
 
+class Fehlberg2(RungeKutta):
+    tableau = _fehlberg2_tableau
+    interpolation_cls = _Fehlberg2Interpolation
+
+
 def fehlberg2(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
 ):
-    return RungeKutta(
+    return Fehlberg2(
         terms=(ODETerm(vector_field=vector_field),),
-        tableau=_fehlberg2_tableau,
-        interpolation_cls=_Fehlberg2Interpolation,
-        **kwargs,
+        **kwargs
     )

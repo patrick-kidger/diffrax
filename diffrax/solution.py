@@ -1,5 +1,5 @@
 from dataclasses import field
-from typing import Optional
+from typing import List, Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
@@ -20,8 +20,8 @@ class Solution(AbstractPath):
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     ts: Optional[Array]
     ys: Optional[PyTree]
-    controller_states: Optional[list[PyTree]]
-    solver_states: Optional[list[PyTree]]
+    controller_states: Optional[List[PyTree]]
+    solver_states: Optional[List[PyTree]]
     interpolation: Optional[DenseInterpolation]
     result: int  # from RESULTS
 

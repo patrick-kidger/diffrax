@@ -23,6 +23,11 @@ class _HeunInterpolation(FourthOrderPolynomialInterpolation):
     c_mid = frozenarray([0, 0.5])
 
 
+class Heun(RungeKutta):
+    tableau = _heun_tableau
+    interpolation_cls = _HeunInterpolation
+
+
 def heun(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,
@@ -30,21 +35,19 @@ def heun(
     **kwargs,
 ):
     if diffusion is None:
-        assert bm is None
-        return RungeKutta(
+        if bm is not None:
+            raise ValueError
+        return Heun(
             terms=(ODETerm(vector_field=vector_field),),
-            tableau=_heun_tableau,
-            interpolation_cls=_HeunInterpolation,
-            **kwargs,
+            **kwargs
         )
     else:
-        assert bm is not None
-        return RungeKutta(
+        if bm is None:
+            raise ValueError
+        return heun(
             terms=(
                 ODETerm(vector_field=vector_field),
                 ControlTerm(vector_field=diffusion, control=bm),
             ),
-            tableau=_heun_tableau,
-            interpolation_cls=_HeunInterpolation,
-            **kwargs,
+            **kwargs
         )

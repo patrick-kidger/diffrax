@@ -26,13 +26,13 @@ class _Bosh3Interpolation(FourthOrderPolynomialInterpolation):
     c_mid = frozenarray([0, 0.5, 0, 0])
 
 
+class Bosh3(RungeKutta):
+    tableau = _bosh3_tableau
+    interpolation_cls = _Bosh3Interpolation
+
+
 def bosh3(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
 ):
-    return RungeKutta(
-        terms=(ODETerm(vector_field=vector_field),),
-        tableau=_bosh3_tableau,
-        interpolation_cls=_Bosh3Interpolation,
-        **kwargs,
-    )
+    return Bosh3(terms=(ODETerm(vector_field=vector_field),), **kwargs)

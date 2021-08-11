@@ -13,6 +13,7 @@ _SolverState = None
 class Euler(AbstractSolver):
     terms: Tuple[AbstractTerm]
 
+    interpolation_cls = LocalLinearInterpolation
     order = 1
 
     def step(
@@ -47,7 +48,6 @@ class Euler(AbstractSolver):
 def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
     return Euler(
         terms=(ODETerm(vector_field=vector_field),),
-        interpolation_cls=LocalLinearInterpolation,
         **kwargs
     )
 
@@ -63,6 +63,5 @@ def euler_maruyama(
             ODETerm(vector_field=drift),
             ControlTerm(vector_field=diffusion, control=bm),
         ),
-        interpolation_cls=LocalLinearInterpolation,
         **kwargs
     )

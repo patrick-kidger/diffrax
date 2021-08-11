@@ -138,13 +138,16 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
     # TODO: implement derivative
 
 
+class Tsit5(RungeKutta):
+    tableau = _tsit5_tableau
+    interpolation_cls = _Tsit5Interpolation
+
+
 def tsit5(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
 ):
-    return RungeKutta(
+    return Tsit5(
         terms=(ODETerm(vector_field=vector_field),),
-        tableau=_tsit5_tableau,
-        interpolation_cls=_Tsit5Interpolation,
-        **kwargs,
+        **kwargs
     )

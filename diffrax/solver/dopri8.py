@@ -303,13 +303,16 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
         return coeffs @ (self.k * _rt)
 
 
+class Dopri8(RungeKutta):
+    tableau = _dopri8_tableau
+    interpolation_cls = _Dopri8Interpolation
+
+
 def dopri8(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
 ):
-    return RungeKutta(
+    return Dopri8(
         terms=(ODETerm(vector_field=vector_field),),
-        tableau=_dopri8_tableau,
-        interpolation_cls=_Dopri8Interpolation,
-        **kwargs,
+        **kwargs
     )
