@@ -3,7 +3,7 @@ from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
 
-from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
+from ..custom_types import Array, PyTree, Scalar
 
 
 _ControllerState = TypeVar("_ControllerState", bound=PyTree)
@@ -11,16 +11,19 @@ _ControllerState = TypeVar("_ControllerState", bound=PyTree)
 
 class AbstractStepSizeController(eqx.Module):
     @abc.abstractmethod
+    def wrap(self, unravel_y: callable) -> "AbstractStepSizeController":
+        pass
+
+    @abc.abstractmethod
     def init(
         self,
         t0: Scalar,
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,
-        y_treedef: SquashTreeDef,
         solver_order: int,
         func: Callable[
-            [SquashTreeDef, Scalar, Array["state"], PyTree],  # noqa: F821
+            [Scalar, Array["state"], PyTree],  # noqa: F821
             Array["state"],  # noqa: F821
         ],
     ) -> Tuple[Scalar, _ControllerState]:
@@ -35,7 +38,6 @@ class AbstractStepSizeController(eqx.Module):
         y1_candidate: Array["state":...],  # noqa: F821
         args: PyTree,
         y_error: Array["state"],  # noqa: F821
-        y_treedef: SquashTreeDef,
         solver_order: int,
         controller_state: _ControllerState,
     ) -> Tuple[bool, Scalar, Scalar, _ControllerState, int]:

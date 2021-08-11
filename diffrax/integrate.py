@@ -3,10 +3,11 @@ from typing import Optional
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.flatten_util import ravel_pytree
 
-from .custom_types import Array, PyTree, Scalar, SquashTreeDef
+from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import stack_pytrees, tree_squash, tree_unsquash, vmap_all, vmap_any
+from .misc import stack_pytrees, vmap_all, vmap_any
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
@@ -21,13 +22,12 @@ def _step(
     controller_state: PyTree,
     solver: AbstractSolver,
     stepsize_controller: AbstractStepSizeController,
-    y_treedef: SquashTreeDef,
     t1: Scalar,
     args: PyTree,
 ):
 
     (y_candidate, y_error, dense_info, solver_state_candidate) = solver.step(
-        tprev, tnext, y, args, y_treedef, solver_state
+        tprev, tnext, y, args, solver_state
     )
 
     (
@@ -43,7 +43,6 @@ def _step(
         y_candidate,
         args,
         y_error,
-        y_treedef,
         solver.order,
         controller_state,
     )
@@ -143,12 +142,14 @@ def diffeqsolve(
             raise ValueError("saveat.t must lie strictly between t0 and t1.")
         tinterp_index = 0
 
-    y, y_treedef = tree_squash(y0)
+    solver = solver.wrap(t0, y0, args)
+    y, unravel_y = ravel_pytree(y0)
+    stepsize_controller = stepsize_controller.wrap(unravel_y)
 
     tprev = t0
     if controller_state is None:
         (tnext, controller_state) = stepsize_controller.init(
-            t0, y, dt0, args, y_treedef, solver.order, solver.func_for_init
+            t0, y, dt0, args, solver.order, solver.func_for_init
         )
     else:
         assert dt0 is not None
@@ -156,7 +157,7 @@ def diffeqsolve(
     tnext = jnp.minimum(tnext, t1)
 
     if solver_state is None:
-        solver_state = solver.init(t0, tnext, y, args, y_treedef)
+        solver_state = solver.init(t0, tnext, y, args)
 
     ts = []
     ys = []
@@ -216,7 +217,6 @@ def diffeqsolve(
             controller_state,
             solver,
             stepsize_controller,
-            y_treedef,
             t1,
             args,
         )
@@ -246,7 +246,7 @@ def diffeqsolve(
                     interp_cond = tinterp < tprev
             if saveat.steps:
                 ts.append(tnext_before)
-                ys.append(tree_unsquash(y_treedef, y))
+                ys.append(unravel_y(y))
                 if saveat.controller_state:
                     controller_states.append(controller_state)
                 if saveat.solver_state:
@@ -266,7 +266,7 @@ def diffeqsolve(
 
     if saveat.t1:
         ts.append(tprev)
-        ys.append(tree_unsquash(y_treedef, y))
+        ys.append(unravel_y(y))
         if saveat.controller_state:
             controller_states.append(controller_state)
         if saveat.solver_state:
@@ -296,7 +296,7 @@ def diffeqsolve(
             ts=dense_ts,
             interpolation_cls=solver.interpolation_cls,
             infos=dense_infos,
-            y_treedef=y_treedef,
+            unravel_y=unravel_y,
         )
     else:
         interpolation = None

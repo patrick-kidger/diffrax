@@ -29,6 +29,8 @@ from .solver import (
     fehlberg2,
     Heun,
     heun,
+    reversible_heun,
+    ReversibleHeun,
     RungeKutta,
     Tsit5,
     tsit5,

@@ -2,24 +2,36 @@ import operator
 
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
-from helpers import random_pytree, treedefs
 import pytest
+from helpers import random_pytree, treedefs
 
 import diffrax
 
 
-@pytest.mark.parametrize("solver_ctr", (diffrax.bosh3, diffrax.dopri5, diffrax.dopri8, diffrax.euler, diffrax.fehlberg2, diffrax.heun, diffrax.tsit5))
+@pytest.mark.parametrize(
+    "solver_ctr",
+    (
+        diffrax.bosh3,
+        diffrax.dopri5,
+        diffrax.dopri8,
+        diffrax.euler,
+        diffrax.fehlberg2,
+        diffrax.heun,
+        diffrax.reversible_heun,
+        diffrax.tsit5,
+    ),
+)
 @pytest.mark.parametrize("t_dtype", (int, float, jnp.int32, jnp.float32))
 @pytest.mark.parametrize("treedef", treedefs)
-@pytest.mark.parametrize("stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController()))
+@pytest.mark.parametrize(
+    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
+)
 @pytest.mark.parametrize("jit", (False, True))
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
     if solver_ctr is diffrax.euler and isinstance(
         stepsize_controller, diffrax.IController
     ):
         return
-
 
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)

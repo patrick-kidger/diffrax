@@ -3,9 +3,8 @@ from typing import Optional, Tuple, Type
 import jax
 import jax.numpy as jnp
 
-from .custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
+from .custom_types import Array, DenseInfo, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
-from .misc import tree_unsquash
 from .path import AbstractPath
 
 
@@ -62,7 +61,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 class DenseInterpolation(AbstractGlobalInterpolation):
     interpolation_cls: Type[AbstractLocalInterpolation]
     infos: DenseInfo
-    y_treedef: SquashTreeDef
+    unravel_y: callable
 
     def _get_local_interpolation(self, t: Scalar, left: bool):
         index, _ = self._interpret_t(t, left)
@@ -74,9 +73,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
-        return tree_unsquash(
-            self.y_treedef, self._get_local_interpolation(t, left).derivative(t)
-        )
+        return self.unravel_y(self._get_local_interpolation(t, left).derivative(t))
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -85,6 +82,4 @@ class DenseInterpolation(AbstractGlobalInterpolation):
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
-        return tree_unsquash(
-            self.y_treedef, self._get_local_interpolation(t0, left).evaluate(t0)
-        )
+        return self.unravel_y(self._get_local_interpolation(t0, left).evaluate(t0))

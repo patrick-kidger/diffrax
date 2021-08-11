@@ -27,11 +27,5 @@ class Fehlberg2(RungeKutta):
     interpolation_cls = _Fehlberg2Interpolation
 
 
-def fehlberg2(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
-    **kwargs,
-):
-    return Fehlberg2(
-        terms=(ODETerm(vector_field=vector_field),),
-        **kwargs
-    )
+def fehlberg2(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+    return Fehlberg2(term=ODETerm(vector_field=vector_field), **kwargs)

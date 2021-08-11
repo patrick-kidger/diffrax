@@ -147,7 +147,4 @@ def tsit5(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
 ):
-    return Tsit5(
-        terms=(ODETerm(vector_field=vector_field),),
-        **kwargs
-    )
+    return Tsit5(term=ODETerm(vector_field=vector_field), **kwargs)

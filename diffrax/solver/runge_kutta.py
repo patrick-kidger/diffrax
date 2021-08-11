@@ -5,9 +5,9 @@ from typing import Dict, Tuple
 import jax.numpy as jnp
 import numpy as np
 
-from ..custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
+from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..misc import frozenndarray
-from ..term import AbstractTerm
+from ..term import AbstractTerm, WrapTerm
 from .base import AbstractSolver
 
 
@@ -43,7 +43,7 @@ _SolverState = Dict[str, Array]
 
 
 class RungeKutta(AbstractSolver):
-    terms: Tuple[AbstractTerm]
+    term: AbstractTerm
 
     @property
     @abc.abstractmethod
@@ -54,18 +54,18 @@ class RungeKutta(AbstractSolver):
     def order(self):
         return self.tableau.order
 
+    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree):
+        return type(self)(term=WrapTerm(term=self.term, t=t0, y=y0, args=args))
+
     def init(
         self,
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
     ) -> _SolverState:  # noqa: F821
-        f0 = 0
-        for term in self.terms:
-            control_, control_treedef = term.contr_(t0, t1)
-            f0 = f0 + term.vf_prod_(t0, y0, args, control_, y_treedef, control_treedef)
+        control = self.term.contr(t0, t1)
+        f0 = self.term.vf_prod(t0, y0, args, control)
         dt = t1 - t0
         return dict(f0=f0, dt=dt)
 
@@ -75,7 +75,6 @@ class RungeKutta(AbstractSolver):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
         solver_state: _SolverState,
     ) -> Tuple[Array["state"], Array["state"], DenseInfo, _SolverState]:  # noqa: F821
         # Convert from frozenarray to array
@@ -85,12 +84,7 @@ class RungeKutta(AbstractSolver):
         c_sol = np.asarray(self.tableau.c_sol)
         c_error = np.asarray(self.tableau.c_error)
 
-        controls_ = []
-        control_treedefs = []
-        for term in self.terms:
-            control_, control_treedef = term.contr_(t0, t1)
-            controls_.append(control_)
-            control_treedefs.append(control_treedef)
+        control = self.term.contr(t0, t1)
         f0 = solver_state["f0"]
         prev_dt = solver_state["dt"]
         dt = t1 - t0
@@ -98,9 +92,9 @@ class RungeKutta(AbstractSolver):
         # Note that our `k` is (for an ODE) `dt` times smaller than the usual
         # implementation (e.g. what you see in torchdiffeq or in the reference texts).
         # This is because of our vector-field-control approach.
-        k = jnp.zeros(
+        k = jnp.empty(
             (self.tableau.order,) + y0.shape
-        )  # y0.shape is single-dimensional
+        )  # y0.shape is actually single-dimensional
         k = k.at[0].set(f0 * (dt / prev_dt))
 
         # lax.fori_loop is not reverse differentiable
@@ -112,11 +106,8 @@ class RungeKutta(AbstractSolver):
             else:
                 ti = t0 + alpha_i * dt
             yi = y0 + beta_i @ k[: i + 1]
-            for term, control_, control_treedef in zip(
-                self.terms, controls_, control_treedefs
-            ):
-                fi = term.vf_prod_(ti, yi, args, control_, y_treedef, control_treedef)
-                k = k.at[i + 1].add(fi)
+            fi = self.term.vf_prod(ti, yi, args, control)
+            k = k.at[i + 1].set(fi)
 
         if not (c_sol[-1] == 0 and (c_sol[:-1] == beta[-1]).all()):
             yi = y0 + c_sol @ k
@@ -129,12 +120,8 @@ class RungeKutta(AbstractSolver):
 
     def func_for_init(
         self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
+        t0: Scalar,
+        y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
     ) -> Array["state"]:  # noqa: F821
-        vf = 0
-        for term in self.terms:
-            vf = vf + term.func_for_init(t, y_, args, y_treedef)
-        return vf
+        return self.term.func_for_init(t0, y0, args)

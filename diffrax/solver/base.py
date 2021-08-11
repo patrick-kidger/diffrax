@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Type, TypeVar
 
 import equinox as eqx
 
-from ..custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
+from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
 
 
@@ -27,7 +27,6 @@ class AbstractSolver(eqx.Module):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
     ) -> _SolverState:
         return None
 
@@ -38,7 +37,6 @@ class AbstractSolver(eqx.Module):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
         solver_state: _SolverState,
     ) -> Tuple[
         Array["state"], Optional[Array["state"]], DenseInfo, _SolverState  # noqa: F821
@@ -47,9 +45,12 @@ class AbstractSolver(eqx.Module):
 
     def func_for_init(
         self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
+        t0: Scalar,
+        y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
     ) -> Array["state"]:  # noqa: F821
-        raise ValueError("func_for_init does not exist.")
+        raise ValueError(
+            "An initial step size cannot be selected automatically. The most common "
+            "scenario for this error to occur is when trying to use adaptive step "
+            "size solvers with SDEs. Please specify an initial `dt0` instead."
+        )

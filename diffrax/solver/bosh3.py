@@ -31,8 +31,5 @@ class Bosh3(RungeKutta):
     interpolation_cls = _Bosh3Interpolation
 
 
-def bosh3(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
-    **kwargs,
-):
-    return Bosh3(terms=(ODETerm(vector_field=vector_field),), **kwargs)
+def bosh3(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+    return Bosh3(term=ODETerm(vector_field=vector_field), **kwargs)

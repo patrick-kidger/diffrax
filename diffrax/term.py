@@ -4,16 +4,10 @@ from typing import Callable, Tuple
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.flatten_util import ravel_pytree
 
-from .custom_types import Array, PyTree, Scalar, SquashTreeDef
-from .misc import tree_squash, tree_unsquash
+from .custom_types import Array, PyTree, Scalar
 from .path import AbstractPath
-
-
-def _prod(
-    vf: Array["state":..., "control":...], control: Array["control":...]  # noqa: F821
-) -> Array["state":...]:  # noqa: F821
-    return jnp.tensordot(vf, control, axes=control.ndim)
 
 
 class AbstractTerm(eqx.Module):
@@ -32,63 +26,12 @@ class AbstractTerm(eqx.Module):
     def vf_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
         return self.prod(self.vector_field(t, y, args), control)
 
-    def vf_(
-        self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
-        args: PyTree,
-        y_treedef: SquashTreeDef,
-    ) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
-        y = tree_unsquash(y_treedef, y_)
-        vf = self.vector_field(t, y, args)
-        return tree_squash(vf)
-
-    def contr_(
-        self, t0: Scalar, t1: Scalar
-    ) -> Tuple[Array["control"], SquashTreeDef]:  # noqa: F821
-        return tree_squash(self.contr(t0, t1))
-
-    def prod_(
-        self,
-        vf_: Array["state*control"],  # noqa: F821
-        control_: Array["control"],  # noqa: F821
-        vf_treedef: SquashTreeDef,
-        control_treedef: SquashTreeDef,
-    ) -> Array["state"]:  # noqa: F821
-        vf = tree_unsquash(vf_treedef, vf_)
-        control = tree_unsquash(control_treedef, control_)
-        prod = self.prod(vf, control)
-        prod_, _ = tree_squash(prod)
-        return prod_
-
-    def vf_prod_(
-        self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
-        args: PyTree,
-        control_: Array["control"],  # noqa: F821
-        y_treedef: SquashTreeDef,
-        control_treedef: SquashTreeDef,
-    ) -> Array["state"]:  # noqa: F821
-        y = tree_unsquash(y_treedef, y_)
-        vf = self.vector_field(t, y, args)
-        control = tree_unsquash(control_treedef, control_)
-        prod = self.prod(vf, control)
-        prod_, _ = tree_squash(prod)
-        return prod_
-
     # This is a pinhole break in our vector-field/control abstraction.
     # Everywhere else we get to evaluate over some interval, which allows us to
     # evaluate our control over that interval. However to select the initial point in
     # an adapative step size scheme, the standard heuristic is to start by making
     # evaluations at just the initial point -- no intervals involved.
-    def func_for_init(
-        self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
-        args: PyTree,
-        y_treedef: SquashTreeDef,
-    ) -> Array["state"]:  # noqa: F821
+    def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         raise ValueError(
             "An initial step size cannot be selected automatically. The most common "
             "scenario for this error to occur is when trying to use adaptive step "
@@ -110,17 +53,13 @@ class ODETerm(AbstractTerm):
     def prod(vf: PyTree, control: Scalar) -> PyTree:
         return jax.tree_map(lambda v: control * v, vf)
 
-    def func_for_init(
-        self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
-        args: PyTree,
-        y_treedef: SquashTreeDef,
-    ) -> Array["state"]:  # noqa: F821
-        y = tree_unsquash(y_treedef, y_)
-        vf = self.vf(t, y, args)
-        vf, _ = tree_squash(vf)
-        return vf
+    func_for_init = vf
+
+
+def _prod(
+    vf: Array["state":..., "control":...], control: Array["control":...]  # noqa: F821
+) -> Array["state":...]:  # noqa: F821
+    return jnp.tensordot(vf, control, axes=control.ndim)
 
 
 class ControlTerm(AbstractTerm):
@@ -148,3 +87,88 @@ class _ControlToODE(eqx.Module):
     def __call__(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         control = self.control_term.control.derivative(t)
         return self.control_term.vf_prod(t, y, args, control)
+
+
+class MultiTerm(AbstractTerm):
+    terms: Tuple[AbstractTerm, ...]
+
+    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> Tuple[PyTree, ...]:
+        return tuple(term.vf(t, y, args) for term in self.terms)
+
+    def contr(self, t0: Scalar, t1: Scalar) -> Tuple[PyTree, ...]:
+        return tuple(term.contr(t0, t1) for term in self.terms)
+
+    def prod(self, vf: Tuple[PyTree, ...], control: Tuple[PyTree, ...]) -> PyTree:
+        return sum(
+            term.prod(vf_, control_)
+            for term, vf_, control_ in zip(self.terms, vf, control)
+        )
+
+    func_for_init = vf
+
+
+class WrapTerm(AbstractTerm):
+    term: AbstractTerm
+    unravel_y: callable
+    unravel_control: callable
+    unravel_vf: callable
+
+    def __init__(
+        self, *, term: AbstractTerm, t: Scalar, y: PyTree, args: PyTree, **kwargs
+    ):
+        super().__init__(**kwargs)
+
+        control = term.contr(t, t + 1e-6)
+        vf = term.vf(t, y, args)
+
+        _, unravel_y = ravel_pytree(y)
+        _, unravel_control = ravel_pytree(control)
+        _, unravel_vf = ravel_pytree(vf)
+
+        self.term = term
+        self.unravel_y = unravel_y
+        self.unravel_control = unravel_control
+        self.unravel_vf = unravel_vf
+
+    def vf(
+        self,
+        t: Scalar,
+        y: Array["state"],  # noqa: F821
+        args: PyTree,
+    ) -> Array["state*control"]:  # noqa: F821
+        y = self.unravel_y(y)
+        vf = self.term.vf(t, y, args)
+        vf, _ = ravel_pytree(vf)
+        return vf
+
+    def contr(self, t0: Scalar, t1: Scalar) -> Array["control"]:  # noqa: F821
+        control, _ = ravel_pytree(self.term.contr(t0, t1))
+        return control
+
+    def prod(
+        self,
+        vf: Array["state*control"],  # noqa: F821
+        control: Array["control"],  # noqa: F821
+    ) -> Array["state"]:  # noqa: F821
+        vf = self.unravel_vf(vf)
+        control = self.unravel_control(control)
+        prod = self.term.prod(vf, control)
+        prod, _ = ravel_pytree(prod)
+        return prod
+
+    # Define this to skip the extra ravel/unravelling that prod(vf(...), ...) does
+    def vf_prod(
+        self,
+        t: Scalar,
+        y: Array["state"],  # noqa: F821
+        args: PyTree,
+        control: Array["control"],  # noqa: F821
+    ) -> Array["state"]:  # noqa: F821
+        y = self.unravel_y(y)
+        control = self.unravel_control(control)
+        vf = self.term.vf(t, y, args)
+        prod = self.term.prod(vf, control)
+        prod, _ = ravel_pytree(prod)
+        return prod
+
+    func_for_init = vf

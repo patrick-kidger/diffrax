@@ -1,11 +1,10 @@
-import math
-from typing import List, Tuple
+from typing import List
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .custom_types import Array, PyTree, SquashTreeDef
+from .custom_types import Array, PyTree
 
 
 def _stack_pytrees(*arrays):
@@ -20,23 +19,6 @@ def safe_concatenate(arrays: List[Array]) -> Array:
     if len(arrays) == 0:
         return jnp.array([])
     return jnp.concatenate(arrays)
-
-
-def tree_squash(tree: PyTree) -> Tuple[Array, SquashTreeDef]:
-    flat, treedef = jax.tree_flatten(tree)
-    shapes = tuple(flat_i.shape for flat_i in flat)
-    splits = tuple(np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum())
-    flat = [flat_i.flatten() for flat_i in flat]
-    flat = safe_concatenate(flat)
-    treedef = SquashTreeDef(treedef, shapes, splits)
-    return flat, treedef
-
-
-def tree_unsquash(treedef: SquashTreeDef, flat: Array) -> PyTree:
-    treedef, shapes, splits = treedef
-    flat = jnp.split(flat, splits)
-    flat = [flat_i.reshape(shape) for flat_i, shape in zip(flat, shapes)]
-    return jax.tree_unflatten(treedef, flat)
 
 
 class frozenndarray:

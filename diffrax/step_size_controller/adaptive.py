@@ -2,15 +2,17 @@ from typing import Callable, Optional, Tuple
 
 import jax.lax as lax
 import jax.numpy as jnp
+from jax.flatten_util import ravel_pytree
 
-from ..custom_types import Array, PyTree, Scalar, SquashTreeDef
-from ..misc import tree_squash, tree_unsquash
+from ..custom_types import Array, PyTree, Scalar
 from ..solution import RESULTS
 from .base import AbstractStepSizeController
 
 
 def _rms_norm(x: PyTree) -> Scalar:
-    x, _ = tree_squash(x)
+    x, _ = ravel_pytree(x)
+    if x.size == 0:
+        return 0
     return jnp.sqrt(jnp.mean(x ** 2))
 
 
@@ -21,19 +23,19 @@ def _select_initial_step(
     t0: Scalar,
     y0: Array["state"],  # noqa: F821
     args: PyTree,
-    y_treedef: SquashTreeDef,
     solver_order: int,
     func_for_init: Callable[
-        [SquashTreeDef, Scalar, Array["state"], PyTree], Array["state"]  # noqa: F821
+        [Scalar, Array["state"], PyTree], Array["state"]  # noqa: F821
     ],
+    unravel_y: callable,
     rtol: Scalar,
     atol: Scalar,
     norm: Callable[[Array], Scalar],
 ):
-    f0 = func_for_init(t0, y0, args, y_treedef)
+    f0 = func_for_init(t0, y0, args)
     scale = atol + jnp.abs(y0) * rtol
-    d0 = norm(tree_unsquash(y_treedef, y0 / scale))
-    d1 = norm(tree_unsquash(y_treedef, f0 / scale))
+    d0 = norm(unravel_y(y0 / scale))
+    d1 = norm(unravel_y(f0 / scale))
 
     if d0 < 1e-5 or d1 < 1e-5:
         h0 = 1e-6
@@ -42,8 +44,8 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
-    f1 = func_for_init(t1, y1, args, y_treedef)
-    d2 = norm(tree_unsquash(y_treedef, (f1 - f0) / scale)) / h0
+    f1 = func_for_init(t1, y1, args)
+    d2 = norm(unravel_y((f1 - f0) / scale)) / h0
 
     if d1 <= 1e-15 and d2 <= 1e-15:
         h1 = jnp.maximum(1e-6, h0 * 1e-3)
@@ -57,13 +59,13 @@ def _scale_error_estimate(
     y_error: Array["state"],  # noqa: F821
     y0: Array["state"],  # noqa: F821
     y1_candidate: Array["state"],  # noqa: F821
-    y_treedef: SquashTreeDef,
+    unravel_y: callable,
     rtol: Scalar,
     atol: Scalar,
     norm: Callable[[Array], Scalar],
 ) -> Scalar:
     scale = y_error / (atol + jnp.maximum(y0, y1_candidate) * rtol)
-    scale = tree_unsquash(y_treedef, scale)
+    scale = unravel_y(scale)
     return norm(scale)
 
 
@@ -79,7 +81,22 @@ class IController(AbstractStepSizeController):
     norm: Callable = _rms_norm
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
-    force_dtimin: bool = True
+    force_dtmin: bool = True
+    unravel_y: callable = lambda x: x
+
+    def wrap(self, unravel_y: callable):
+        return type(self)(
+            rtol=self.rtol,
+            atol=self.atol,
+            safety=self.safety,
+            ifactor=self.ifactor,
+            dfactor=self.dfactor,
+            norm=self.norm,
+            dtmin=self.dtmin,
+            dtmax=self.dtmax,
+            force_dtmin=self.force_dtmin,
+            unravel_y=unravel_y,
+        )
 
     def init(
         self,
@@ -87,10 +104,9 @@ class IController(AbstractStepSizeController):
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,
-        y_treedef: SquashTreeDef,
         solver_order: int,
         func_for_init: Callable[
-            [SquashTreeDef, Scalar, Array["state"], PyTree],  # noqa: F821
+            [Scalar, Array["state"], PyTree],  # noqa: F821
             Array["state"],  # noqa: F821
         ],
     ) -> Tuple[Scalar, None]:
@@ -99,9 +115,9 @@ class IController(AbstractStepSizeController):
                 t0,
                 y0,
                 args,
-                y_treedef,
                 solver_order,
                 func_for_init,
+                self.unravel_y,
                 self.rtol,
                 self.atol,
                 self.norm,
@@ -116,7 +132,6 @@ class IController(AbstractStepSizeController):
         y1_candidate: Array["state"],  # noqa: F821
         args: PyTree,
         y_error: Optional[Array["state"]],  # noqa: F821
-        y_treedef: SquashTreeDef,
         solver_order: int,
         controller_state: None,
     ) -> Tuple[bool, Scalar, Scalar, None, int]:
@@ -129,7 +144,7 @@ class IController(AbstractStepSizeController):
         prev_dt = t1 - t0
 
         scaled_error = _scale_error_estimate(
-            y_error, y0, y1_candidate, y_treedef, self.rtol, self.atol, self.norm
+            y_error, y0, y1_candidate, self.unravel_y, self.rtol, self.atol, self.norm
         )
         keep_step = scaled_error < 1
         factor = lax.cond(

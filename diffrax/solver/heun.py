@@ -4,7 +4,7 @@ from ..brownian import AbstractBrownianPath
 from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
 from ..misc import frozenarray
-from ..term import ControlTerm, ODETerm
+from ..term import ControlTerm, MultiTerm, ODETerm
 from .runge_kutta import ButcherTableau, RungeKutta
 
 
@@ -37,17 +37,14 @@ def heun(
     if diffusion is None:
         if bm is not None:
             raise ValueError
-        return Heun(
-            terms=(ODETerm(vector_field=vector_field),),
-            **kwargs
-        )
+        return Heun(term=ODETerm(vector_field=vector_field), **kwargs)
     else:
         if bm is None:
             raise ValueError
-        return Heun(
+        term = MultiTerm(
             terms=(
                 ODETerm(vector_field=vector_field),
                 ControlTerm(vector_field=diffusion, control=bm),
-            ),
-            **kwargs
+            )
         )
+        return Heun(term=term, **kwargs)

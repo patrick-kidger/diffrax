@@ -1,9 +1,9 @@
 from typing import Callable, Tuple
 
 from ..brownian import AbstractBrownianPath
-from ..custom_types import Array, DenseInfo, PyTree, Scalar, SquashTreeDef
+from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
-from ..term import AbstractTerm, ControlTerm, ODETerm
+from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
 
@@ -11,10 +11,13 @@ _SolverState = None
 
 
 class Euler(AbstractSolver):
-    terms: Tuple[AbstractTerm]
+    term: AbstractTerm
 
     interpolation_cls = LocalLinearInterpolation
     order = 1
+
+    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree):
+        return type(self)(term=WrapTerm(term=self.term, t=t0, y=y0, args=args))
 
     def step(
         self,
@@ -22,34 +25,24 @@ class Euler(AbstractSolver):
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
         solver_state: _SolverState,
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState]:  # noqa: F821
-        y1 = y0
-        for term in self.terms:
-            control_, control_treedef = term.contr_(t0, t1)
-            y1 = y1 + term.vf_prod_(t0, y0, args, control_, y_treedef, control_treedef)
+        control = self.term.contr(t0, t1)
+        y1 = y0 + self.term.vf_prod(t0, y0, args, control)
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None
 
     def func_for_init(
         self,
-        t: Scalar,
-        y_: Array["state"],  # noqa: F821
+        t0: Scalar,
+        y0: Array["state"],  # noqa: F821
         args: PyTree,
-        y_treedef: SquashTreeDef,
     ) -> Array["state"]:  # noqa: F821
-        vf = 0
-        for term in self.terms:
-            vf = vf + term.func_for_init(t, y_, args, y_treedef)
-        return vf
+        return self.term.func_for_init(t0, y0, args)
 
 
 def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
-    return Euler(
-        terms=(ODETerm(vector_field=vector_field),),
-        **kwargs
-    )
+    return Euler(term=ODETerm(vector_field=vector_field), **kwargs)
 
 
 def euler_maruyama(
@@ -58,10 +51,10 @@ def euler_maruyama(
     bm: AbstractBrownianPath,
     **kwargs
 ):
-    return Euler(
+    term = MultiTerm(
         terms=(
             ODETerm(vector_field=drift),
             ControlTerm(vector_field=diffusion, control=bm),
-        ),
-        **kwargs
+        )
     )
+    return Euler(term=term, **kwargs)

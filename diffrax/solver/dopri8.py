@@ -308,11 +308,5 @@ class Dopri8(RungeKutta):
     interpolation_cls = _Dopri8Interpolation
 
 
-def dopri8(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
-    **kwargs,
-):
-    return Dopri8(
-        terms=(ODETerm(vector_field=vector_field),),
-        **kwargs
-    )
+def dopri8(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+    return Dopri8(term=ODETerm(vector_field=vector_field), **kwargs)
