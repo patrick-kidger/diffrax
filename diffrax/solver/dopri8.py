@@ -306,6 +306,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
 class Dopri8(RungeKutta):
     tableau = _dopri8_tableau
     interpolation_cls = _Dopri8Interpolation
+    order = 8
 
 
 def dopri8(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):

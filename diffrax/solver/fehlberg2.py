@@ -25,6 +25,7 @@ class _Fehlberg2Interpolation(FourthOrderPolynomialInterpolation):
 class Fehlberg2(RungeKutta):
     tableau = _fehlberg2_tableau
     interpolation_cls = _Fehlberg2Interpolation
+    order = 2
 
 
 def fehlberg2(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):

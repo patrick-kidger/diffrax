@@ -1,6 +1,20 @@
 import jax
 import jax.random as jrandom
 
+import diffrax
+
+
+all_ode_solvers = (
+    diffrax.bosh3,
+    diffrax.dopri5,
+    diffrax.dopri8,
+    diffrax.euler,
+    diffrax.fehlberg2,
+    diffrax.heun,
+    diffrax.reversible_heun,
+    diffrax.tsit5,
+)
+
 
 def random_pytree(key, treedef):
     keys = jrandom.split(key, treedef.num_leaves)

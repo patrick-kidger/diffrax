@@ -26,6 +26,7 @@ class _HeunInterpolation(FourthOrderPolynomialInterpolation):
 class Heun(RungeKutta):
     tableau = _heun_tableau
     interpolation_cls = _HeunInterpolation
+    order = 2
 
 
 def heun(

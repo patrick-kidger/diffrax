@@ -141,6 +141,7 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
 class Tsit5(RungeKutta):
     tableau = _tsit5_tableau
     interpolation_cls = _Tsit5Interpolation
+    order = 5
 
 
 def tsit5(

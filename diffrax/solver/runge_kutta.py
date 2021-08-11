@@ -1,5 +1,5 @@
 import abc
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Tuple
 
 import jax.numpy as jnp
@@ -20,7 +20,6 @@ class ButcherTableau:
     beta: Tuple[frozenndarray]
     c_sol: frozenndarray
     c_error: frozenndarray
-    order: int = field(init=False)
 
     def __post_init__(self):
         alpha = np.asarray(self.alpha)
@@ -36,7 +35,6 @@ class ButcherTableau:
         assert all(i + 1 == beta_i.shape[0] for i, beta_i in enumerate(beta))
         assert alpha.shape[0] + 1 == c_sol.shape[0]
         assert alpha.shape[0] + 1 == c_error.shape[0]
-        object.__setattr__(self, "order", len(alpha) + 1)
 
 
 _SolverState = Dict[str, Array]
@@ -49,10 +47,6 @@ class RungeKutta(AbstractSolver):
     @abc.abstractmethod
     def tableau(self) -> ButcherTableau:
         pass
-
-    @property
-    def order(self):
-        return self.tableau.order
 
     def wrap(self, t0: Scalar, y0: PyTree, args: PyTree):
         return type(self)(term=WrapTerm(term=self.term, t=t0, y=y0, args=args))
@@ -93,7 +87,7 @@ class RungeKutta(AbstractSolver):
         # implementation (e.g. what you see in torchdiffeq or in the reference texts).
         # This is because of our vector-field-control approach.
         k = jnp.empty(
-            (self.tableau.order,) + y0.shape
+            (len(alpha) + 1,) + y0.shape
         )  # y0.shape is actually single-dimensional
         k = k.at[0].set(f0 * (dt / prev_dt))
 

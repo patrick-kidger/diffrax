@@ -29,6 +29,7 @@ class _Bosh3Interpolation(FourthOrderPolynomialInterpolation):
 class Bosh3(RungeKutta):
     tableau = _bosh3_tableau
     interpolation_cls = _Bosh3Interpolation
+    order = 3
 
 
 def bosh3(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):

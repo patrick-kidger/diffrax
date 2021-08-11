@@ -13,8 +13,8 @@ _SolverState = Tuple[Array["state"], Array["state*control"]]  # noqa: F821
 class ReversibleHeun(AbstractSolver):
     term: AbstractTerm
 
-    order = 2
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
+    order = 2
 
     def wrap(self, t0: Scalar, y0: PyTree, args: PyTree):
         return type(self)(term=WrapTerm(term=self.term, t=t0, y=y0, args=args))
