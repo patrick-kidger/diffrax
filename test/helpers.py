@@ -11,6 +11,7 @@ all_ode_solvers = (
     diffrax.euler,
     diffrax.fehlberg2,
     diffrax.heun,
+    diffrax.leapfrog_midpoint,
     diffrax.reversible_heun,
     diffrax.tsit5,
 )

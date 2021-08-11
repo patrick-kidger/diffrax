@@ -29,6 +29,8 @@ from .solver import (
     fehlberg2,
     Heun,
     heun,
+    leapfrog_midpoint,
+    LeapfrogMidpoint,
     reversible_heun,
     ReversibleHeun,
     RungeKutta,

@@ -21,6 +21,10 @@ class AbstractSolver(eqx.Module):
     def order(self) -> int:
         pass
 
+    @abc.abstractmethod
+    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree):
+        pass
+
     def init(
         self,
         t0: Scalar,
