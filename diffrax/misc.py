@@ -24,28 +24,18 @@ def safe_concatenate(arrays: List[Array]) -> Array:
 
 def tree_squash(tree: PyTree) -> Tuple[Array, SquashTreeDef]:
     flat, treedef = jax.tree_flatten(tree)
-    if len(flat) == 1:
-        # Optimised no-copying case
-        shapes = None
-        splits = None
-        treedef = (treedef, shapes, splits)
-        flat = jnp.asarray(flat[0])
-    else:
-        shapes = tuple(flat_i.shape for flat_i in flat)
-        splits = tuple(np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum())
-        flat = [flat_i.flatten() for flat_i in flat]
-        flat = safe_concatenate(flat)
-        treedef = SquashTreeDef(treedef, shapes, splits)
+    shapes = tuple(flat_i.shape for flat_i in flat)
+    splits = tuple(np.array([math.prod(shape) for shape in shapes[:-1]]).cumsum())
+    flat = [flat_i.flatten() for flat_i in flat]
+    flat = safe_concatenate(flat)
+    treedef = SquashTreeDef(treedef, shapes, splits)
     return flat, treedef
 
 
 def tree_unsquash(treedef: SquashTreeDef, flat: Array) -> PyTree:
     treedef, shapes, splits = treedef
-    if shapes is None:
-        flat = [flat]
-    else:
-        flat = jnp.split(flat, splits)
-        flat = [flat_i.reshape(shape) for flat_i, shape in zip(flat, shapes)]
+    flat = jnp.split(flat, splits)
+    flat = [flat_i.reshape(shape) for flat_i, shape in zip(flat, shapes)]
     return jax.tree_unflatten(treedef, flat)
 
 
