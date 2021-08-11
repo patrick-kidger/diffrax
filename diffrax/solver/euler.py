@@ -28,7 +28,7 @@ class Euler(AbstractSolver):
         y1 = y0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
-            y1 = y1 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
+            y1 = y1 + term.vf_prod_(t0, y0, args, control_, y_treedef, control_treedef)
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None
 

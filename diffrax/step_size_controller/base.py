@@ -10,8 +10,6 @@ _ControllerState = TypeVar("_ControllerState", bound=PyTree)
 
 
 class AbstractStepSizeController(eqx.Module):
-    requested_state = frozenset()
-
     @abc.abstractmethod
     def init(
         self,

@@ -81,8 +81,6 @@ class IController(AbstractStepSizeController):
     dtmax: Optional[Scalar] = None
     force_dtimin: bool = True
 
-    requested_state = frozenset({"y_error"})
-
     def init(
         self,
         t0: Scalar,

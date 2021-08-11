@@ -65,7 +65,7 @@ class RungeKutta(AbstractSolver):
         f0 = 0
         for term in self.terms:
             control_, control_treedef = term.contr_(t0, t1)
-            f0 = f0 + term.vf_prod_(y_treedef, control_treedef, t0, y0, args, control_)
+            f0 = f0 + term.vf_prod_(t0, y0, args, control_, y_treedef, control_treedef)
         dt = t1 - t0
         return dict(f0=f0, dt=dt)
 
@@ -115,7 +115,7 @@ class RungeKutta(AbstractSolver):
             for term, control_, control_treedef in zip(
                 self.terms, controls_, control_treedefs
             ):
-                fi = term.vf_prod_(y_treedef, control_treedef, ti, yi, args, control_)
+                fi = term.vf_prod_(ti, yi, args, control_, y_treedef, control_treedef)
                 k = k.at[i + 1].add(fi)
 
         if not (c_sol[-1] == 0 and (c_sol[:-1] == beta[-1]).all()):

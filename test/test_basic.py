@@ -4,40 +4,23 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 from helpers import random_pytree, treedefs
+import pytest
 
 import diffrax
 
 
-key = jrandom.PRNGKey(56789)
-
-
-def test_basic():
-    for solver_ctr in (
-        diffrax.bosh3,
-        diffrax.dopri5,
-        diffrax.dopri8,
-        diffrax.euler,
-        diffrax.fehlberg2,
-        diffrax.heun,
-        diffrax.tsit5,
+@pytest.mark.parametrize("solver_ctr", (diffrax.bosh3, diffrax.dopri5, diffrax.dopri8, diffrax.euler, diffrax.fehlberg2, diffrax.heun, diffrax.tsit5))
+@pytest.mark.parametrize("t_dtype", (int, float, jnp.int32, jnp.float32))
+@pytest.mark.parametrize("treedef", treedefs)
+@pytest.mark.parametrize("stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController()))
+@pytest.mark.parametrize("jit", (False, True))
+def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
+    if solver_ctr is diffrax.euler and isinstance(
+        stepsize_controller, diffrax.IController
     ):
-        for t_dtype in (int, float, jnp.int32, jnp.float32):
-            for treedef in treedefs:
-                for stepsize_controller in (
-                    diffrax.ConstantStepSize(),
-                    diffrax.IController(),
-                ):
-                    if solver_ctr is diffrax.euler and isinstance(
-                        stepsize_controller, diffrax.IController
-                    ):
-                        continue
-                    for jit in (False, True):
-                        _test_basic(
-                            solver_ctr, t_dtype, treedef, stepsize_controller, jit
-                        )
+        return
 
 
-def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit):
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)
 
@@ -60,7 +43,7 @@ def _test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit):
         dt0 = jnp.array(1.0)
     else:
         raise ValueError
-    y0 = random_pytree(key, treedef)
+    y0 = random_pytree(getkey(), treedef)
     diffrax.diffeqsolve(
         solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=jit
     )

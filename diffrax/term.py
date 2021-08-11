@@ -34,10 +34,10 @@ class AbstractTerm(eqx.Module):
 
     def vf_(
         self,
-        y_treedef: SquashTreeDef,
         t: Scalar,
         y_: Array["state"],  # noqa: F821
         args: PyTree,
+        y_treedef: SquashTreeDef,
     ) -> Tuple[Array["state*control"], SquashTreeDef]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vector_field(t, y, args)
@@ -50,10 +50,10 @@ class AbstractTerm(eqx.Module):
 
     def prod_(
         self,
-        vf_treedef: SquashTreeDef,
-        control_treedef: SquashTreeDef,
         vf_: Array["state*control"],  # noqa: F821
         control_: Array["control"],  # noqa: F821
+        vf_treedef: SquashTreeDef,
+        control_treedef: SquashTreeDef,
     ) -> Array["state"]:  # noqa: F821
         vf = tree_unsquash(vf_treedef, vf_)
         control = tree_unsquash(control_treedef, control_)
@@ -63,12 +63,12 @@ class AbstractTerm(eqx.Module):
 
     def vf_prod_(
         self,
-        y_treedef: SquashTreeDef,
-        control_treedef: SquashTreeDef,
         t: Scalar,
         y_: Array["state"],  # noqa: F821
         args: PyTree,
         control_: Array["control"],  # noqa: F821
+        y_treedef: SquashTreeDef,
+        control_treedef: SquashTreeDef,
     ) -> Array["state"]:  # noqa: F821
         y = tree_unsquash(y_treedef, y_)
         vf = self.vector_field(t, y, args)

@@ -44,7 +44,7 @@ def heun(
     else:
         if bm is None:
             raise ValueError
-        return heun(
+        return Heun(
             terms=(
                 ODETerm(vector_field=vector_field),
                 ControlTerm(vector_field=diffusion, control=bm),

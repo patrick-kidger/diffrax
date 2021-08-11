@@ -21,8 +21,6 @@ class AbstractSolver(eqx.Module):
     def order(self) -> int:
         pass
 
-    change_stepsize_every = 1
-
     def init(
         self,
         t0: Scalar,
