@@ -35,7 +35,6 @@ import jax.experimental.stax as stax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
-
 from diffrax import diffeqsolve, euler
 
 

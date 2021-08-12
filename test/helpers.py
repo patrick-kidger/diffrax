@@ -1,7 +1,6 @@
+import diffrax
 import jax
 import jax.random as jrandom
-
-import diffrax
 
 
 all_ode_solvers = (

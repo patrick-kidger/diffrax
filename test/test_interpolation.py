@@ -1,8 +1,7 @@
+import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
-
-import diffrax
 
 
 def _test_path_derivative(path, name):

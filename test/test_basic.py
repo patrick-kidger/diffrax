@@ -1,13 +1,13 @@
 import operator
 
+import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import pytest
 import scipy.stats
-from helpers import all_ode_solvers, random_pytree, treedefs
 
-import diffrax
+from helpers import all_ode_solvers, random_pytree, treedefs
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
