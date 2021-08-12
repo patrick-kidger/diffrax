@@ -55,8 +55,8 @@ def get_data(key, dataset_size):
 @dataclass(frozen=True)
 class dataloader:
     arrays: tuple[Any]
-    key: Any
     batch_size: int
+    key: Any
 
     def __post_init__(self):
         dataset_size = self.arrays[0].shape[0]
@@ -91,7 +91,7 @@ def main(
     data_key, loader_key, init_key = jrandom.split(jrandom.PRNGKey(seed), 3)
 
     data = get_data(data_key, dataset_size)
-    data = dataloader(arrays=data, key=loader_key, batch_size=batch_size)
+    data = dataloader(data, batch_size, key=loader_key)
 
     init_model, apply_model = stax.serial(
         stax.Dense(width_size), stax.elementwise(jnn.relu), stax.Dense(1)

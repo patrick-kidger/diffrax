@@ -12,7 +12,7 @@ _ControllerState = TypeVar("_ControllerState", bound=PyTree)
 class AbstractStepSizeController(eqx.Module):
     @abc.abstractmethod
     def wrap(
-        self, unravel_y: callable, direction: bool
+        self, unravel_y: callable, direction: Scalar
     ) -> "AbstractStepSizeController":
         pass
 

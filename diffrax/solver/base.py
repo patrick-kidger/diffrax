@@ -22,7 +22,7 @@ class AbstractSolver(eqx.Module):
         pass
 
     @abc.abstractmethod
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: bool):
+    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
         pass
 
     def init(

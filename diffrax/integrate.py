@@ -137,23 +137,22 @@ def diffeqsolve(
 
     # Normalise state: ravel PyTree state down to just a flat Array.
     # Normalise time: if t0 > t1 then flip things around.
-    direction = t0 > t1
+    direction = jnp.where(t0 < t1, 1, -1)
     y, unravel_y = ravel_pytree(y0)
     solver = solver.wrap(t0, y0, args, direction)
     stepsize_controller = stepsize_controller.wrap(unravel_y, direction)
-    if direction:
-        t0 = -t0
-        t1 = -t1
-        if dt0 is not None:
-            dt0 = -dt0
-        if saveat.t is not None:
-            saveat = eqx.tree_at(lambda s: s.t, saveat, -saveat.t)
+    t0 = t0 * direction
+    t1 = t1 * direction
+    if dt0 is not None:
+        dt0 = dt0 * direction
+    if saveat.t is not None:
+        saveat = eqx.tree_at(lambda s: s.t, saveat, saveat.t * direction)
 
     if saveat.t is not None:
         if vmap_any(saveat.t[1:] < saveat.t[:-1]):
             raise ValueError("saveat.t must be strictly increasing or decreasing.")
-        if vmap_any((saveat.t >= t1) | (saveat.t <= t0)):
-            raise ValueError("saveat.t must lie strictly between t0 and t1.")
+        if vmap_any((saveat.t > t1) | (saveat.t < t0)):
+            raise ValueError("saveat.t must lie between t0 and t1.")
         tinterp_index = 0
 
     tprev = t0
@@ -302,14 +301,11 @@ def diffeqsolve(
     else:
         interpolation = None
 
-    if direction:
-        t0 = -t0
-        t1 = -t1
-        ts = [-ti for ti in reversed(ts)]
-        controller_states = controller_states[::-1]
-        solver_states = solver_states[::-1]
+    t0 = t0 * direction
+    t1 = t1 * direction
     if len(ts):
         ts = jnp.stack(ts)
+        ts = jnp.where(direction == 1, ts, -ts[::-1])
     else:
         ts = None
     if len(ys):

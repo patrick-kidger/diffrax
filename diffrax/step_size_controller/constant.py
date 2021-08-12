@@ -6,7 +6,7 @@ from .base import AbstractStepSizeController
 
 
 class ConstantStepSize(AbstractStepSizeController):
-    def wrap(self, unravel_y: callable, direction: bool):
+    def wrap(self, unravel_y: callable, direction: Scalar):
         return self
 
     def init(

@@ -109,7 +109,7 @@ class MultiTerm(AbstractTerm):
 
 class WrapTerm(AbstractTerm):
     term: AbstractTerm
-    direction: bool
+    direction: Scalar
     unravel_y: callable
     unravel_control: callable
     unravel_vf: callable
@@ -145,19 +145,17 @@ class WrapTerm(AbstractTerm):
         y: Array["state"],  # noqa: F821
         args: PyTree,
     ) -> Array["state*control"]:  # noqa: F821
-        if self.direction:
-            t = -t
+        t = t * self.direction
         y = self.unravel_y(y)
         vf = self.term.vf(t, y, args)
         vf, _ = ravel_pytree(vf)
         return vf
 
     def contr(self, t0: Scalar, t1: Scalar) -> Array["control"]:  # noqa: F821
-        if self.direction:
-            t0, t1 = -t1, -t0
+        t0 = jnp.where(self.direction == 1, t0, -t1)
+        t1 = jnp.where(self.direction == 1, t1, -t0)
         control, _ = ravel_pytree(self.term.contr(t0, t1))
-        if self.direction:
-            control = -control
+        control = control * self.direction
         return control
 
     def prod(
@@ -179,8 +177,7 @@ class WrapTerm(AbstractTerm):
         args: PyTree,
         control: Array["control"],  # noqa: F821
     ) -> Array["state"]:  # noqa: F821
-        if self.direction:
-            t = -t
+        t = t * self.direction
         y = self.unravel_y(y)
         control = self.unravel_control(control)
         vf = self.term.vf(t, y, args)

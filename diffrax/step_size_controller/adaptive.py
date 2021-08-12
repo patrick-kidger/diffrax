@@ -38,20 +38,18 @@ def _select_initial_step(
     d0 = norm(unravel_y(y0 / scale))
     d1 = norm(unravel_y(f0 / scale))
 
-    if d0 < 1e-5 or d1 < 1e-5:
-        h0 = 1e-6
-    else:
-        h0 = 0.01 * (d0 / d1)
+    h0 = jnp.where((d0 < 1e-5) | (d1 < 1e-5), 1e-6, 0.01 * (d0 / d1))
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
     f1 = func_for_init(t1, y1, args)
     d2 = norm(unravel_y((f1 - f0) / scale)) / h0
 
-    if d1 <= 1e-15 and d2 <= 1e-15:
-        h1 = jnp.maximum(1e-6, h0 * 1e-3)
-    else:
-        h1 = (0.01 * jnp.maximum(d1, d2)) ** (1 / solver_order)
+    h1 = jnp.where(
+        (d1 <= 1e-15) | (d2 <= 1e-15),
+        jnp.maximum(1e-6, h0 * 1e-3),
+        (0.01 * jnp.maximum(d1, d2)) ** (1 / solver_order),
+    )
 
     return jnp.minimum(100 * h0, h1)
 
@@ -87,9 +85,9 @@ class IController(AbstractStepSizeController):
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
     unravel_y: callable = field(repr=False, default=DO_NOT_SET)
-    direction: bool = field(repr=False, default=DO_NOT_SET)
+    direction: Scalar = field(repr=False, default=DO_NOT_SET)
 
-    def wrap(self, unravel_y: callable, direction: bool):
+    def wrap(self, unravel_y: callable, direction: Scalar):
         return type(self)(
             rtol=self.rtol,
             atol=self.atol,
