@@ -62,6 +62,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     interpolation_cls: Type[AbstractLocalInterpolation]
     infos: DenseInfo
     unravel_y: callable
+    direction: bool
 
     def _get_local_interpolation(self, t: Scalar, left: bool):
         index, _ = self._interpret_t(t, left)
@@ -73,13 +74,32 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
-        return self.unravel_y(self._get_local_interpolation(t, left).derivative(t))
+        if self.direction:
+            t = -t
+        out = self._get_local_interpolation(t, left).derivative(t)
+        if self.direction:
+            out = -out
+        return self.unravel_y(out)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
     ) -> PyTree:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
+        if self.direction:
+            t0 = -t0
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
         return self.unravel_y(self._get_local_interpolation(t0, left).evaluate(t0))
+
+    @property
+    def t0(self):
+        if self.direction:
+            return -self.ts[0]
+        return self.ts[0]
+
+    @property
+    def t1(self):
+        if self.direction:
+            return -self.ts[-1]
+        return self.ts[-1]

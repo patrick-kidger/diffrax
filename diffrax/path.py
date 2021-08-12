@@ -13,7 +13,7 @@ class AbstractPath(eqx.Module):
 
     def derivative(self, t: Scalar) -> PyTree:
         raise NotImplementedError(
-            "Derivative does not exist for path of type {type(self)}."
+            f"Derivative does not exist for path of type {type(self)}."
         )
 
     @abc.abstractmethod

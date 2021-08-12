@@ -1,3 +1,4 @@
+from dataclasses import field
 from typing import Callable, Optional, Tuple
 
 import jax.lax as lax
@@ -69,6 +70,9 @@ def _scale_error_estimate(
     return norm(scale)
 
 
+DO_NOT_SET = object()  # Is set during wrap instead
+
+
 # https://diffeq.sciml.ai/stable/extras/timestepping/
 # are good notes on different step size control algorithms.
 class IController(AbstractStepSizeController):
@@ -82,9 +86,10 @@ class IController(AbstractStepSizeController):
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
-    unravel_y: callable = lambda x: x
+    unravel_y: callable = field(repr=False, default=DO_NOT_SET)
+    direction: bool = field(repr=False, default=DO_NOT_SET)
 
-    def wrap(self, unravel_y: callable):
+    def wrap(self, unravel_y: callable, direction: bool):
         return type(self)(
             rtol=self.rtol,
             atol=self.atol,
@@ -96,6 +101,7 @@ class IController(AbstractStepSizeController):
             dtmax=self.dtmax,
             force_dtmin=self.force_dtmin,
             unravel_y=unravel_y,
+            direction=direction,
         )
 
     def init(

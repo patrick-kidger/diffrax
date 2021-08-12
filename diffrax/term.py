@@ -109,12 +109,20 @@ class MultiTerm(AbstractTerm):
 
 class WrapTerm(AbstractTerm):
     term: AbstractTerm
+    direction: bool
     unravel_y: callable
     unravel_control: callable
     unravel_vf: callable
 
     def __init__(
-        self, *, term: AbstractTerm, t: Scalar, y: PyTree, args: PyTree, **kwargs
+        self,
+        *,
+        term: AbstractTerm,
+        t: Scalar,
+        y: PyTree,
+        args: PyTree,
+        direction,
+        **kwargs
     ):
         super().__init__(**kwargs)
 
@@ -126,6 +134,7 @@ class WrapTerm(AbstractTerm):
         _, unravel_vf = ravel_pytree(vf)
 
         self.term = term
+        self.direction = direction
         self.unravel_y = unravel_y
         self.unravel_control = unravel_control
         self.unravel_vf = unravel_vf
@@ -136,13 +145,19 @@ class WrapTerm(AbstractTerm):
         y: Array["state"],  # noqa: F821
         args: PyTree,
     ) -> Array["state*control"]:  # noqa: F821
+        if self.direction:
+            t = -t
         y = self.unravel_y(y)
         vf = self.term.vf(t, y, args)
         vf, _ = ravel_pytree(vf)
         return vf
 
     def contr(self, t0: Scalar, t1: Scalar) -> Array["control"]:  # noqa: F821
+        if self.direction:
+            t0, t1 = -t1, -t0
         control, _ = ravel_pytree(self.term.contr(t0, t1))
+        if self.direction:
+            control = -control
         return control
 
     def prod(
@@ -164,6 +179,8 @@ class WrapTerm(AbstractTerm):
         args: PyTree,
         control: Array["control"],  # noqa: F821
     ) -> Array["state"]:  # noqa: F821
+        if self.direction:
+            t = -t
         y = self.unravel_y(y)
         control = self.unravel_control(control)
         vf = self.term.vf(t, y, args)

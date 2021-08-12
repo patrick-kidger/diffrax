@@ -16,8 +16,10 @@ class ReversibleHeun(AbstractSolver):
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
     order = 2
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree):
-        return type(self)(term=WrapTerm(term=self.term, t=t0, y=y0, args=args))
+    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: bool):
+        return type(self)(
+            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+        )
 
     def init(
         self,

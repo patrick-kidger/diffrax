@@ -81,3 +81,66 @@ def test_order(solver_ctr):
 
     order = scipy.stats.linregress(exponents, errors).slope
     assert solver.order - 0.8 < order < solver.order + 0.8
+
+
+# Step size deliberately chosen not to divide the time interval
+@pytest.mark.parametrize(
+    "solver_ctr,dt0",
+    ((diffrax.euler, -0.3), (diffrax.tsit5, -0.3), (diffrax.tsit5, None)),
+)
+@pytest.mark.parametrize(
+    "saveat",
+    (
+        diffrax.SaveAt(t0=True),
+        diffrax.SaveAt(t1=True),
+        diffrax.SaveAt(t=[3.5, 0.7]),
+        diffrax.SaveAt(steps=True),
+        diffrax.SaveAt(dense=True),
+    ),
+)
+def test_reverse_time(solver_ctr, dt0, saveat, getkey):
+    key = getkey()
+    y0 = jrandom.normal(key, (2, 2))
+    stepsize_controller = (
+        diffrax.IController() if dt0 is None else diffrax.ConstantStepSize()
+    )
+
+    def f(t, y, args):
+        return -y
+
+    solver = solver_ctr(f)
+    t0 = 4
+    t1 = 0.3
+    sol1 = diffrax.diffeqsolve(
+        solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, saveat=saveat
+    )
+
+    def f(t, y, args):
+        return y
+
+    solver = solver_ctr(f)
+    t0 = -4
+    t1 = -0.3
+    negdt0 = None if dt0 is None else -dt0
+    if saveat.t is not None:
+        saveat = diffrax.SaveAt(t=[-ti for ti in saveat.t])
+    sol2 = diffrax.diffeqsolve(
+        solver,
+        t0,
+        t1,
+        y0,
+        negdt0,
+        stepsize_controller=stepsize_controller,
+        saveat=saveat,
+    )
+
+    if saveat.t0 or saveat.t1 or saveat.t is not None or saveat.steps:
+        assert jnp.allclose(sol1.ts, -sol2.ts[::-1])
+        assert jnp.allclose(sol1.ys, sol2.ys)
+    if saveat.dense:
+        t = jnp.linspace(4, 0.3, 20)
+        for ti in t:
+            assert jnp.allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
+            if solver_ctr is not diffrax.tsit5:
+                # derivative not implemented for Tsit5
+                assert jnp.allclose(sol1.derivative(ti), -sol2.derivative(-ti))

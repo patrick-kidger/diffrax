@@ -132,19 +132,29 @@ def diffeqsolve(
     throw: bool = True,
 ) -> Solution:
 
-    # TODO: support reverse integration
-    if vmap_any(t0 > t1):
-        raise ValueError("Must have t0 <= t1")
-    if dt0 is not None and dt0 <= 0:
-        raise ValueError("Must have dt0 > 0")
-    if saveat.t:
+    if dt0 is not None and (t1 - t0) * dt0 <= 0:
+        raise ValueError("Must have (t1 - t0) * dt0 > 0")
+
+    # Normalise state: ravel PyTree state down to just a flat Array.
+    # Normalise time: if t0 > t1 then flip things around.
+    direction = t0 > t1
+    y, unravel_y = ravel_pytree(y0)
+    solver = solver.wrap(t0, y0, args, direction)
+    stepsize_controller = stepsize_controller.wrap(unravel_y, direction)
+    if direction:
+        t0 = -t0
+        t1 = -t1
+        if dt0 is not None:
+            dt0 = -dt0
+        if saveat.t is not None:
+            saveat = eqx.tree_at(lambda s: s.t, saveat, -saveat.t)
+
+    if saveat.t is not None:
+        if vmap_any(saveat.t[1:] < saveat.t[:-1]):
+            raise ValueError("saveat.t must be strictly increasing or decreasing.")
         if vmap_any((saveat.t >= t1) | (saveat.t <= t0)):
             raise ValueError("saveat.t must lie strictly between t0 and t1.")
         tinterp_index = 0
-
-    solver = solver.wrap(t0, y0, args)
-    y, unravel_y = ravel_pytree(y0)
-    stepsize_controller = stepsize_controller.wrap(unravel_y)
 
     tprev = t0
     if controller_state is None:
@@ -172,8 +182,7 @@ def diffeqsolve(
             controller_states.append(controller_state)
         if saveat.solver_state:
             solver_states.append(solver_state)
-    else:
-        del y0, dt0
+    del y0, dt0
 
     if jit:
         step_maybe_jit = _jit_step
@@ -223,8 +232,10 @@ def diffeqsolve(
 
         if vmap_any(made_step):
             if saveat.t is not None:
-                tinterp = saveat.t[tinterp_index]
-                interp_cond = tinterp < tprev
+                tinterp = saveat.t[jnp.minimum(tinterp_index, len(saveat.t) - 1)]
+                interp_cond = (tinterp <= tnext_before) & (
+                    tinterp_index < len(saveat.t)
+                )
                 while vmap_any(interp_cond):
                     interpolator = solver.interpolation_cls(
                         t0=tprev_before, t1=tnext_before, **dense_info
@@ -242,8 +253,10 @@ def diffeqsolve(
                     if saveat.solver_state:
                         solver_states.append(None)
                     tinterp_index = tinterp_index + jnp.where(interp_cond, 1, 0)
-                    tinterp = saveat.t[tinterp_index]
-                    interp_cond = tinterp < tprev
+                    tinterp = saveat.t[jnp.minimum(tinterp_index, len(saveat.t) - 1)]
+                    interp_cond = (tinterp <= tnext_before) & (
+                        tinterp_index < len(saveat.t)
+                    )
             if saveat.steps:
                 ts.append(tnext_before)
                 ys.append(unravel_y(y))
@@ -272,6 +285,29 @@ def diffeqsolve(
         if saveat.solver_state:
             solver_states.append(solver_state)
 
+    if saveat.dense:
+        dense_ts.append(t1)
+        dense_ts = jnp.stack(dense_ts)
+        if not len(dense_infos):
+            assert vmap_all(t0 == t1)
+            raise ValueError("Cannot save dense output when t0 == t1")
+        dense_infos = stack_pytrees(dense_infos)
+        interpolation = DenseInterpolation(
+            ts=dense_ts,
+            interpolation_cls=solver.interpolation_cls,
+            infos=dense_infos,
+            unravel_y=unravel_y,
+            direction=direction,
+        )
+    else:
+        interpolation = None
+
+    if direction:
+        t0 = -t0
+        t1 = -t1
+        ts = [-ti for ti in reversed(ts)]
+        controller_states = controller_states[::-1]
+        solver_states = solver_states[::-1]
     if len(ts):
         ts = jnp.stack(ts)
     else:
@@ -285,21 +321,6 @@ def diffeqsolve(
     if not len(solver_states):
         solver_states = None
 
-    if saveat.dense:
-        dense_ts.append(t1)
-        dense_ts = jnp.stack(dense_ts)
-        if not len(dense_infos):
-            assert vmap_all(t0 == t1)
-            raise ValueError("Cannot save dense output when t0 == t1")
-        dense_infos = stack_pytrees(dense_infos)
-        interpolation = DenseInterpolation(
-            ts=dense_ts,
-            interpolation_cls=solver.interpolation_cls,
-            infos=dense_infos,
-            unravel_y=unravel_y,
-        )
-    else:
-        interpolation = None
     return Solution(
         t0=t0,
         t1=t1,
