@@ -32,26 +32,24 @@ class Func(eqx.Module):
 class NeuralODE(eqx.Module):
     solver: diffrax.AbstractSolver
     stepsize_controller: diffrax.AbstractStepSizeController
-    saveat: diffrax.SaveAt
 
-    def __init__(self, in_size, out_size, width_size, depth, t, *, key, **kwargs):
+    def __init__(self, in_size, out_size, width_size, depth, *, key, **kwargs):
         super().__init__(**kwargs)
         fkey, ykey = jrandom.split(key, 2)
         self.solver = diffrax.tsit5(
             Func(in_size, out_size, width_size, depth, key=fkey)
         )
-        self.stepsize_controller = diffrax.IController()
-        self.saveat = diffrax.SaveAt(t=t)
+        self.stepsize_controller = diffrax.ConstantStepSize()
 
-    def __call__(self, y0):
+    def __call__(self, y0, t):
         sol = diffrax.diffeqsolve(
             self.solver,
-            t0=self.saveat.t[0],
-            t1=self.saveat.t[-1],
+            t0=t[0],
+            t1=t[-1],
             y0=y0,
-            dt0=None,
+            dt0=t[1] - t[0],
             stepsize_controller=self.stepsize_controller,
-            saveat=self.saveat,
+            saveat=diffrax.SaveAt(t=t),
         )
         return sol.ys
 
@@ -60,7 +58,7 @@ def get_data(key, dataset_size):
     theta = jrandom.uniform(key, (dataset_size,), minval=0, maxval=2 * math.pi)
     y0 = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
     t = jnp.linspace(0, 25, 100)
-    matrix = jnp.array([[-0.3, 2], [2, -0.3]])
+    matrix = jnp.array([[-0.3, 2], [-2, -0.3]])
     y = jax.vmap(
         lambda y0i: jax.vmap(lambda ti: jsp.linalg.expm(ti * matrix) @ y0i)(t)
     )(y0)
@@ -99,11 +97,11 @@ def main(
     t, y = get_data(dkey, dataset_size)
     in_size = out_size = y.shape[-1]
 
-    model = NeuralODE(in_size, out_size, width_size, depth, t, key=mkey)
+    model = NeuralODE(in_size, out_size, width_size, depth, key=mkey)
 
     @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
-    def loss(model, y):
-        y_pred = jax.vmap(model)(y[0])
+    def loss(model, y, t):
+        y_pred = jax.vmap(model, in_axes=(0, None))(y[:, 0], t)
         return jnp.mean((y - y_pred) ** 2)
 
     optim = optax.adam(learning_rate)
@@ -111,7 +109,7 @@ def main(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
     for step, (y,) in zip(range(steps), dataloader((y,), batch_size, key=lkey)):
-        value, grads = loss(model, y)
+        value, grads = loss(model, y, t)
         updates, opt_state = optim.update(grads, opt_state)
         model = eqx.apply_updates(model, updates)
         print(step, value)
