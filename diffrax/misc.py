@@ -1,4 +1,4 @@
-from typing import List
+from typing import Generic, List, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -71,3 +71,24 @@ def vmap_any(x):
     ):
         x = x.val
     return jnp.any(x)
+
+
+# This works around JAX bug #7603. Any non-JAX type we want as an output should be
+# wrapped in a RefHolder to ensure that it can be vmap'd.
+_T = TypeVar("_T")
+
+
+class RefHolder(Generic[_T]):
+    def __init__(self, value: _T):
+        self.value = value
+
+
+def _refholder_flatten(self):
+    return (), self.value
+
+
+def _refholder_unflatten(value, _):
+    return RefHolder(value)
+
+
+jax.tree_util.register_pytree_node(RefHolder, _refholder_flatten, _refholder_unflatten)

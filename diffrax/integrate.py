@@ -1,3 +1,4 @@
+import functools as ft
 from typing import Optional
 
 import equinox as eqx
@@ -106,13 +107,35 @@ def _step(
 
 # By default we exclude bools from being JIT'd,as they can be used to indicate
 # flags for special behaviour.
+def _is_bool(elem):
+    try:
+        elem = jnp.asarray(elem)
+    except Exception:
+        return False
+    else:
+        return jnp.issubdtype(elem.dtype, jnp.bool_)
+
+
 def _filter_fn(elem):
-    return eqx.is_array_like(elem) and not isinstance(elem, bool)
+    return eqx.is_array_like(elem) and not _is_bool(elem)
 
 
+# TODO: support custom filter functions?
+# TODO: support donate_argnums if on the GPU.
 _jit_step = eqx.jitf(_step, filter_fn=_filter_fn)
-# TODO: understand warnings being throw about donated argnums not being used.
-#  eqx.jitf(_step, donate_argnums=(0, 1, 2, 3, 4), filter_fn=eqx.is_array_like)
+
+
+@ft.partial(jax.jit, static_argnums=(4, 5))
+def _compress_output(ts, ys, out_indices, direction, out_len, unravel_y):
+    out_indices = jnp.stack(out_indices)
+    out_indices = jnp.unique(out_indices, size=out_len)
+    ts = jnp.stack(ts)
+    ts = ts[out_indices]
+    ts = jnp.where(direction == 1, ts, -ts[::-1])
+    ys = jnp.stack(ys)
+    ys = ys[out_indices]
+    ys = jax.vmap(unravel_y)(ys)
+    return ts, ys
 
 
 def diffeqsolve(
@@ -168,19 +191,15 @@ def diffeqsolve(
     if solver_state is None:
         solver_state = solver.init(t0, tnext, y, args)
 
+    out_indices = []
     ts = []
     ys = []
-    controller_states = []
-    solver_states = []
     dense_ts = []
     dense_infos = []
     if saveat.t0:
+        out_indices.append(0)
         ts.append(t0)
         ys.append(y0)
-        if saveat.controller_state:
-            controller_states.append(controller_state)
-        if saveat.solver_state:
-            solver_states.append(solver_state)
     del y0, dt0
 
     if jit:
@@ -200,8 +219,8 @@ def diffeqsolve(
         # previous iteration. t1 is the terminal time.
         #
         # Note that t_after != tprev in general. If we have discontinuities in the
-        # vector field then it may be the case that tprev = nextafter(t_after). (They
-        # should never differ by more than this though.)
+        # vector field then it may be the case that tprev = nextafter(tnext_before).
+        # (They should never differ by more than this though.)
         #
         # In particular this means that y technically corresponds to the value of the
         # solution at tnext_before.
@@ -239,30 +258,19 @@ def diffeqsolve(
                     interpolator = solver.interpolation_cls(
                         t0=tprev_before, t1=tnext_before, **dense_info
                     )
-                    # Note that interp_cond will only be True if we've made a step in
-                    # that batch element. If the step is rejected then tprev == tprev
-                    # before, and tinterp >= tprev_before, due to the previous
-                    # iteration through this loop on the previous step.
-                    tinterp = jnp.where(interp_cond, tinterp, tnext_before)
-                    yinterp = jnp.where(interp_cond, interpolator.evaluate(tinterp), y)
+                    yinterp = interpolator.evaluate(tinterp)
+                    out_indices.append(jnp.where(interp_cond, len(ys), 0))
                     ts.append(tinterp)
                     ys.append(yinterp)
-                    if saveat.controller_state:
-                        controller_states.append(None)
-                    if saveat.solver_state:
-                        solver_states.append(None)
                     tinterp_index = tinterp_index + jnp.where(interp_cond, 1, 0)
                     tinterp = saveat.t[jnp.minimum(tinterp_index, len(saveat.t) - 1)]
                     interp_cond = (tinterp <= tnext_before) & (
                         tinterp_index < len(saveat.t)
                     )
             if saveat.steps:
+                out_indices.append(len(ys))
                 ts.append(tnext_before)
-                ys.append(unravel_y(y))
-                if saveat.controller_state:
-                    controller_states.append(controller_state)
-                if saveat.solver_state:
-                    solver_states.append(solver_state)
+                ys.append(y)
             if saveat.dense:
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
@@ -276,13 +284,11 @@ def diffeqsolve(
     if throw and vmap_any(result != RESULTS.successful):
         raise RuntimeError(f"diffeqsolve did not succeed. Error: {RESULTS[result]}")
 
-    if saveat.t1:
+    # saveat.steps will include the final timepoint anyway
+    if saveat.t1 and not saveat.steps:
+        out_indices.append(len(ys))
         ts.append(tprev)
-        ys.append(unravel_y(y))
-        if saveat.controller_state:
-            controller_states.append(controller_state)
-        if saveat.solver_state:
-            solver_states.append(solver_state)
+        ys.append(y)
 
     if saveat.dense:
         dense_ts.append(t1)
@@ -304,26 +310,33 @@ def diffeqsolve(
     t0 = t0 * direction
     t1 = t1 * direction
     if len(ts):
-        ts = jnp.stack(ts)
-        ts = jnp.where(direction == 1, ts, -ts[::-1])
+        assert len(ys)
+        out_len = 0
+        if saveat.t0:
+            out_len = out_len + 1
+        if saveat.t is not None:
+            out_len = out_len + len(saveat.t)
+        if saveat.t1 and not saveat.steps:
+            out_len = out_len + 1
+        if saveat.steps:
+            out_len = out_len + num_steps
+        ts, ys = _compress_output(ts, ys, out_indices, direction, out_len, unravel_y)
     else:
+        assert not len(ys)
         ts = None
-    if len(ys):
-        ys = stack_pytrees(ys)
-    else:
         ys = None
-    if not len(controller_states):
-        controller_states = None
-    if not len(solver_states):
-        solver_states = None
+    if not saveat.controller_state:
+        controller_state = None
+    if not saveat.solver_state:
+        solver_state = None
 
     return Solution(
         t0=t0,
         t1=t1,
         ts=ts,
         ys=ys,
-        controller_states=controller_states,
-        solver_states=solver_states,
+        controller_state=controller_state,
+        solver_state=solver_state,
         interpolation=interpolation,
         result=result,
     )

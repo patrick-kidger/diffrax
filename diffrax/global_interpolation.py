@@ -5,6 +5,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, DenseInfo, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
+from .misc import RefHolder
 from .path import AbstractPath
 
 
@@ -58,10 +59,8 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         )
 
 
-class DenseInterpolation(AbstractGlobalInterpolation):
-    interpolation_cls: Type[AbstractLocalInterpolation]
+class _DenseInterpolation(AbstractGlobalInterpolation):
     infos: DenseInfo
-    unravel_y: callable
     direction: Scalar
 
     def _get_local_interpolation(self, t: Scalar, left: bool):
@@ -69,7 +68,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
         infos = jax.tree_map(lambda _d: _d[index], self.infos)
-        return self.interpolation_cls(t0=prev_t, t1=next_t, **infos)
+        return self.interpolation_cls.value(t0=prev_t, t1=next_t, **infos)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         # Passing `left` doesn't matter on a local interpolation, which is globally
@@ -77,7 +76,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         t = t * self.direction
         out = self._get_local_interpolation(t, left).derivative(t)
         out = out * self.direction
-        return self.unravel_y(out)
+        return self.unravel_y.value(out)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -87,7 +86,9 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         t0 = t0 * self.direction
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
-        return self.unravel_y(self._get_local_interpolation(t0, left).evaluate(t0))
+        return self.unravel_y.value(
+            self._get_local_interpolation(t0, left).evaluate(t0)
+        )
 
     @property
     def t0(self):
@@ -96,3 +97,13 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     @property
     def t1(self):
         return self.ts[-1] * self.direction
+
+
+class DenseInterpolation(_DenseInterpolation):
+    interpolation_cls: RefHolder[Type[AbstractLocalInterpolation]]
+    unravel_y: RefHolder[callable]
+
+    def __init__(self, *, interpolation_cls, unravel_y, **kwargs):
+        super().__init__(**kwargs)
+        self.interpolation_cls = RefHolder(interpolation_cls)
+        self.unravel_y = RefHolder(unravel_y)
