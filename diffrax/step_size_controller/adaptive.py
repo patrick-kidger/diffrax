@@ -3,9 +3,9 @@ from typing import Callable, Optional, Tuple
 
 import jax.lax as lax
 import jax.numpy as jnp
-from jax.flatten_util import ravel_pytree
 
 from ..custom_types import Array, PyTree, Scalar
+from ..misc import ravel_pytree
 from ..solution import RESULTS
 from .base import AbstractStepSizeController
 

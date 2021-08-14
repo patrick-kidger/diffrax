@@ -4,9 +4,9 @@ from typing import Callable, Tuple
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax.flatten_util import ravel_pytree
 
 from .custom_types import Array, PyTree, Scalar
+from .misc import ravel_pytree
 from .path import AbstractPath
 
 

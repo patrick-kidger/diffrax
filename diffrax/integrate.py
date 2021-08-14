@@ -4,11 +4,10 @@ from typing import Optional
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax.flatten_util import ravel_pytree
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import stack_pytrees, vmap_all, vmap_any
+from .misc import ravel_pytree, stack_pytrees, vmap_all, vmap_any
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
@@ -105,27 +104,48 @@ def _step(
     )
 
 
-# By default we exclude bools from being JIT'd,as they can be used to indicate
-# flags for special behaviour.
-def _is_bool(elem):
-    try:
-        elem = jnp.asarray(elem)
-    except Exception:
-        return False
-    else:
-        return jnp.issubdtype(elem.dtype, jnp.bool_)
-
-
-def _filter_fn(elem):
-    return eqx.is_array_like(elem) and not _is_bool(elem)
-
-
 # TODO: support custom filter functions?
 # TODO: support donate_argnums if on the GPU.
-_jit_step = eqx.jitf(_step, filter_fn=_filter_fn)
+_jit_step = eqx.jitf(_step, filter_fn=eqx.is_nonboolean_array_like)
 
 
-@ft.partial(jax.jit, static_argnums=(4, 5))
+@jax.jit
+def _lt(a, b):
+    return a < b
+
+
+@jax.jit
+def _neq(a, b):
+    return a != b
+
+
+@jax.jit
+def _pre_save_interp(tnext_before, tinterp_index, saveat_t):
+    tinterp = saveat_t[jnp.minimum(tinterp_index, len(saveat_t) - 1)]
+    interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_t))
+    return tinterp, interp_cond
+
+
+@ft.partial(jax.jit, static_argnums=0)
+def _save_interp(
+    interpolation_cls,
+    tprev_before,
+    tnext_before,
+    dense_info,
+    tinterp,
+    tinterp_index,
+    saveat_t,
+    interp_cond,
+):
+    interpolator = interpolation_cls(t0=tprev_before, t1=tnext_before, **dense_info)
+    yinterp = interpolator.evaluate(tinterp)
+    tinterp_index = tinterp_index + jnp.where(interp_cond, 1, 0)
+    tinterp = saveat_t[jnp.minimum(tinterp_index, len(saveat_t) - 1)]
+    interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_t))
+    return tinterp, yinterp, interp_cond, tinterp_index
+
+
+@ft.partial(eqx.jitf, static_argnums=4, filter_fn=eqx.is_nonboolean_array_like)
 def _compress_output(ts, ys, out_indices, direction, out_len, unravel_y):
     out_indices = jnp.stack(out_indices)
     out_indices = jnp.unique(out_indices, size=out_len)
@@ -210,7 +230,7 @@ def diffeqsolve(
     num_steps = 0
     result = jnp.full_like(t1, RESULTS.successful)
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while vmap_any(tprev < t1) and num_steps < max_steps:
+    while vmap_any(_lt(tprev, t1)) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -250,23 +270,23 @@ def diffeqsolve(
 
         if vmap_any(made_step):
             if saveat.t is not None:
-                tinterp = saveat.t[jnp.minimum(tinterp_index, len(saveat.t) - 1)]
-                interp_cond = (tinterp <= tnext_before) & (
-                    tinterp_index < len(saveat.t)
+                tinterp, interp_cond = _pre_save_interp(
+                    tnext_before, tinterp_index, saveat.t
                 )
                 while vmap_any(interp_cond):
-                    interpolator = solver.interpolation_cls(
-                        t0=tprev_before, t1=tnext_before, **dense_info
-                    )
-                    yinterp = interpolator.evaluate(tinterp)
-                    out_indices.append(jnp.where(interp_cond, len(ys), 0))
                     ts.append(tinterp)
-                    ys.append(yinterp)
-                    tinterp_index = tinterp_index + jnp.where(interp_cond, 1, 0)
-                    tinterp = saveat.t[jnp.minimum(tinterp_index, len(saveat.t) - 1)]
-                    interp_cond = (tinterp <= tnext_before) & (
-                        tinterp_index < len(saveat.t)
+                    tinterp, yinterp, interp_cond, tinterp_index = _save_interp(
+                        solver.interpolation_cls,
+                        tprev_before,
+                        tnext_before,
+                        dense_info,
+                        tinterp,
+                        tinterp_index,
+                        saveat.t,
+                        interp_cond,
                     )
+                    out_indices.append(jnp.where(interp_cond, len(ys), 0))
+                    ys.append(yinterp)
             if saveat.steps:
                 out_indices.append(len(ys))
                 ts.append(tnext_before)
@@ -274,14 +294,14 @@ def diffeqsolve(
             if saveat.dense:
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
-        if vmap_any(stepsize_controller_result != RESULTS.successful):
+        if vmap_any(_neq(stepsize_controller_result, RESULTS.successful)):
             result = jnp.maximum(result, stepsize_controller_result)
             break
 
     if num_steps >= max_steps:
-        result = jnp.where(tnext < t1, RESULTS.max_steps_reached, result)
+        result = jnp.where(_lt(tnext, t1), RESULTS.max_steps_reached, result)
 
-    if throw and vmap_any(result != RESULTS.successful):
+    if throw and vmap_any(_neq(result, RESULTS.successful)):
         raise RuntimeError(f"diffeqsolve did not succeed. Error: {RESULTS[result]}")
 
     # saveat.steps will include the final timepoint anyway
@@ -330,6 +350,8 @@ def diffeqsolve(
     if not saveat.solver_state:
         solver_state = None
 
+    stats = {"num_steps": num_steps}
+
     return Solution(
         t0=t0,
         t1=t1,
@@ -338,5 +360,6 @@ def diffeqsolve(
         controller_state=controller_state,
         solver_state=solver_state,
         interpolation=interpolation,
+        stats=stats,
         result=result,
     )

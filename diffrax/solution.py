@@ -1,5 +1,5 @@
 from dataclasses import field
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
@@ -23,6 +23,7 @@ class Solution(AbstractPath):
     controller_state: Optional[PyTree]
     solver_state: Optional[PyTree]
     interpolation: Optional[DenseInterpolation]
+    stats: Dict[str, Any]
     result: int  # from RESULTS
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
