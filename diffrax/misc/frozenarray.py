@@ -18,6 +18,14 @@ class frozenndarray:
     def __hash__(self):
         return self._hash
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, frozenndarray)
+            and (self._array.shape == other._array.shape)
+            and (self._array.dtype == other._array.dtype)
+            and (self._array == other._array).all()
+        )
+
 
 def frozenarray(*args, **kwargs):
     return frozenndarray(array=np.array(*args, **kwargs))

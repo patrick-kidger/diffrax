@@ -18,10 +18,10 @@ from helpers import all_ode_solvers, random_pytree, treedefs
 )
 @pytest.mark.parametrize("jit", (False, True))
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
-    if solver_ctr is diffrax.euler and isinstance(
+    if solver_ctr in (diffrax.euler, diffrax.leapfrog_midpoint) and isinstance(
         stepsize_controller, diffrax.IController
     ):
-        return
+        return  # These solvers don't supply error estimates, so they're not adaptive.
 
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)

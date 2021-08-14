@@ -152,8 +152,9 @@ class WrapTerm(AbstractTerm):
         return vf
 
     def contr(self, t0: Scalar, t1: Scalar) -> Array["control"]:  # noqa: F821
-        t0 = jnp.where(self.direction == 1, t0, -t1)
-        t1 = jnp.where(self.direction == 1, t1, -t0)
+        t0, t1 = jnp.where(self.direction == 1, t0, -t1), jnp.where(
+            self.direction == 1, t1, -t0
+        )
         control, _ = ravel_pytree(self.term.contr(t0, t1))
         control = control * self.direction
         return control

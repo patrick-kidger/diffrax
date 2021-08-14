@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from ..custom_types import Array, PyTree
+from .frozenarray import frozenarray, frozenndarray
 from .refholder import RefHolder
 
 
@@ -16,12 +17,13 @@ def _empty_unravel_list(_):
 
 def _unravel_list(
     arr: Array["flat"],  # noqa: F821
-    indices: RefHolder[np.ndarray],
+    indices: RefHolder[frozenndarray],
     shapes: RefHolder[List[Tuple[int, ...]]],
-    from_dtypes: List[jnp.dtype],
+    from_dtypes: RefHolder[List[jnp.dtype]],
 ) -> List[Array]:
-    indices = indices.value
+    indices = np.asarray(indices.value)
     shapes = shapes.value
+    from_dtypes = from_dtypes.value
     chunks = jnp.split(arr, indices[:-1])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # ignore complex-to-real cast warning
@@ -36,20 +38,21 @@ def _ravel_list(leaves: List[Array]) -> Tuple[Array["flat"], callable]:  # noqa:
         return jnp.array([], jnp.float32), _empty_unravel_list
     from_dtypes = [jnp.result_type(leaf) for leaf in leaves]
     to_dtype = jnp.result_type(*from_dtypes)
-    sizes = [x.size for x in leaves]
-    shapes = RefHolder([x.shape for x in leaves])
-    indices = RefHolder(np.cumsum(sizes))
-    ravel = lambda e: jnp.ravel(lax.convert_element_type(e, to_dtype))
-    raveled = jnp.concatenate([ravel(e) for e in leaves])
+    sizes = [jnp.size(leaf) for leaf in leaves]
+    ravel = lambda leaf: jnp.ravel(lax.convert_element_type(leaf, to_dtype))
+    raveled = jnp.concatenate([ravel(leaf) for leaf in leaves])
+    indices = RefHolder(frozenarray(np.cumsum(sizes)))
+    shapes = RefHolder([jnp.shape(leaf) for leaf in leaves])
+    from_dtypes = RefHolder(from_dtypes)
     return raveled, jax.tree_util.Partial(
         _unravel_list, indices=indices, shapes=shapes, from_dtypes=from_dtypes
     )
 
 
 def _unravel_pytree(
-    flat: Array["flat"], treedef, unravel_list: callable  # noqa: F821
+    flat: Array["flat"], treedef: RefHolder, unravel_list: callable  # noqa: F821
 ) -> PyTree:
-    return jax.tree_unflatten(treedef, unravel_list(flat))
+    return jax.tree_unflatten(treedef.value, unravel_list(flat))
 
 
 def ravel_pytree(pytree: PyTree) -> Tuple[Array["flat"], callable]:  # noqa: F821
@@ -60,6 +63,7 @@ def ravel_pytree(pytree: PyTree) -> Tuple[Array["flat"], callable]:  # noqa: F82
 
     leaves, treedef = jax.tree_flatten(pytree)
     flat, unravel_list = _ravel_list(leaves)
+    treedef = RefHolder(treedef)
     return flat, jax.tree_util.Partial(
         _unravel_pytree, treedef=treedef, unravel_list=unravel_list
     )

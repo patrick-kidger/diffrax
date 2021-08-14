@@ -62,6 +62,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 class _DenseInterpolation(AbstractGlobalInterpolation):
     infos: DenseInfo
     direction: Scalar
+    unravel_y: callable
 
     def _get_local_interpolation(self, t: Scalar, left: bool):
         index, _ = self._interpret_t(t, left)
@@ -76,7 +77,7 @@ class _DenseInterpolation(AbstractGlobalInterpolation):
         t = t * self.direction
         out = self._get_local_interpolation(t, left).derivative(t)
         out = out * self.direction
-        return self.unravel_y.value(out)
+        return self.unravel_y(out)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -86,9 +87,7 @@ class _DenseInterpolation(AbstractGlobalInterpolation):
         t0 = t0 * self.direction
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
-        return self.unravel_y.value(
-            self._get_local_interpolation(t0, left).evaluate(t0)
-        )
+        return self.unravel_y(self._get_local_interpolation(t0, left).evaluate(t0))
 
     @property
     def t0(self):
@@ -101,9 +100,7 @@ class _DenseInterpolation(AbstractGlobalInterpolation):
 
 class DenseInterpolation(_DenseInterpolation):
     interpolation_cls: RefHolder[Type[AbstractLocalInterpolation]]
-    unravel_y: RefHolder[callable]
 
-    def __init__(self, *, interpolation_cls, unravel_y, **kwargs):
+    def __init__(self, *, interpolation_cls, **kwargs):
         super().__init__(**kwargs)
         self.interpolation_cls = RefHolder(interpolation_cls)
-        self.unravel_y = RefHolder(unravel_y)

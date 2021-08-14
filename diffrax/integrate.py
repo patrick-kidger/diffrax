@@ -106,7 +106,7 @@ def _step(
 
 # TODO: support custom filter functions?
 # TODO: support donate_argnums if on the GPU.
-_jit_step = eqx.jitf(_step, filter_fn=eqx.is_nonboolean_array_like)
+_jit_step = eqx.jitf(_step, filter_fn=eqx.is_array_like)
 
 
 @jax.jit
@@ -145,7 +145,7 @@ def _save_interp(
     return tinterp, yinterp, interp_cond, tinterp_index
 
 
-@ft.partial(eqx.jitf, static_argnums=4, filter_fn=eqx.is_nonboolean_array_like)
+@ft.partial(eqx.jitf, static_argnums=4, filter_fn=eqx.is_array_like)
 def _compress_output(ts, ys, out_indices, direction, out_len, unravel_y):
     out_indices = jnp.stack(out_indices)
     out_indices = jnp.unique(out_indices, size=out_len)
@@ -275,6 +275,7 @@ def diffeqsolve(
                 )
                 while vmap_any(interp_cond):
                     ts.append(tinterp)
+                    out_indices.append(jnp.where(interp_cond, len(ys), 0))
                     tinterp, yinterp, interp_cond, tinterp_index = _save_interp(
                         solver.interpolation_cls,
                         tprev_before,
@@ -285,7 +286,6 @@ def diffeqsolve(
                         saveat.t,
                         interp_cond,
                     )
-                    out_indices.append(jnp.where(interp_cond, len(ys), 0))
                     ys.append(yinterp)
             if saveat.steps:
                 out_indices.append(len(ys))
@@ -330,7 +330,7 @@ def diffeqsolve(
     t0 = t0 * direction
     t1 = t1 * direction
     if len(ts):
-        assert len(ys)
+        assert len(ys) == len(ts)
         out_len = 0
         if saveat.t0:
             out_len = out_len + 1
@@ -340,6 +340,19 @@ def diffeqsolve(
             out_len = out_len + 1
         if saveat.steps:
             out_len = out_len + num_steps
+        # We pad ts, ys, out_indices out to a multiple of pad_to.
+        # This means that when using adaptive solvers, we'll only re-JIT
+        # _compress_output if the number of steps rounds to a different
+        # multiple of pad_to.
+        # TODO: elide this entirely for constant step size solvers.
+        pad_to = 10
+        rem = len(ts) % pad_to
+        if rem != 0:
+            padding = pad_to - rem
+            ts.extend([t0 for _ in range(padding)])
+            _y = ys[0]
+            ys.extend([_y for _ in range(padding)])
+            out_indices.extend([0 for _ in range(padding)])
         ts, ys = _compress_output(ts, ys, out_indices, direction, out_len, unravel_y)
     else:
         assert not len(ys)
