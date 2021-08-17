@@ -33,9 +33,11 @@ def _unravel_list(
         ]
 
 
-def _ravel_list(leaves: List[Array]) -> Tuple[Array["flat"], callable]:  # noqa: F821
+def _ravel_list(
+    leaves: List[Array],
+) -> Tuple[Array["flat"], jax.tree_util.Partial]:  # noqa: F821
     if not leaves:
-        return jnp.array([], jnp.float32), _empty_unravel_list
+        return jnp.array([]), jax.tree_util.Partial(_empty_unravel_list)
     from_dtypes = [jnp.result_type(leaf) for leaf in leaves]
     to_dtype = jnp.result_type(*from_dtypes)
     sizes = [jnp.size(leaf) for leaf in leaves]

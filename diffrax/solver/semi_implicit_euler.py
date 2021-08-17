@@ -48,7 +48,10 @@ class SemiImplicitEuler(AbstractSolver):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         solver_state: _SolverState,
+        made_jump: Array[(), bool],
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState]:  # noqa: F821
+        del made_jump
+
         control1 = self.term1.contr(t0, t1)
         control2 = self.term2.contr(t0, t1)
 

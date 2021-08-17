@@ -1,5 +1,7 @@
 from typing import Callable, Optional, Tuple
 
+import jax.lax as lax
+
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -38,8 +40,15 @@ class ReversibleHeun(AbstractSolver):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         solver_state: _SolverState,
+        made_jump: Array[(), bool],
     ) -> Tuple[Array["state"], Array["state"], DenseInfo, _SolverState]:  # noqa: F821
+
         yhat0, vf0 = solver_state
+
+        vf0 = lax.cond(
+            made_jump, lambda _: self.term.vf(t0, y0, args), lambda _: vf0, None
+        )
+
         control = self.term.contr(t0, t1)
         yhat1 = 2 * y0 - yhat0 + self.term.prod(vf0, control)
         vf1 = self.term.vf(t1, yhat1, args)

@@ -39,6 +39,13 @@ class ConstantStepSize(AbstractStepSizeController):
         y_error: Array["state"],  # noqa: F821
         solver_order: int,
         controller_state: Scalar,
-    ) -> Tuple[bool, Scalar, Scalar, Scalar, int]:
+    ) -> Tuple[bool, Scalar, Scalar, bool, Scalar, int]:
         del t0, y0, args, y_error, solver_order
-        return True, t1, t1 + controller_state, controller_state, RESULTS.successful
+        return (
+            True,
+            t1,
+            t1 + controller_state,
+            False,
+            controller_state,
+            RESULTS.successful,
+        )

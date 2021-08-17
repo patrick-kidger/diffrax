@@ -20,6 +20,7 @@ def _step(
     y: Array["state"],  # noqa: F821
     solver_state: PyTree,
     controller_state: PyTree,
+    made_jump: Array[(), bool],
     solver: AbstractSolver,
     stepsize_controller: AbstractStepSizeController,
     t1: Scalar,
@@ -27,13 +28,14 @@ def _step(
 ):
 
     (y_candidate, y_error, dense_info, solver_state_candidate) = solver.step(
-        tprev, tnext, y, args, solver_state
+        tprev, tnext, y, args, solver_state, made_jump
     )
 
     (
         keep_step,
         tprev_candidate,
         tnext_candidate,
+        made_jump_candidate,
         controller_state_candidate,
         stepsize_controller_result,
     ) = stepsize_controller.adapt_step_size(
@@ -48,9 +50,9 @@ def _step(
     )
 
     # We have different update rules for
-    # - the solution y and the controller state
+    # - the solution y, controller state etc.
     # - time
-    # The solution and controller state only update if we keep the step.
+    # The solution and controller state etc. only update if we keep the step.
     # However the time step updates unconditionally. (tprev should probably remain the
     # the same, but tnext will be over a small step if the step is rejected)
     # This means we let stepsize_controller handle the updates to tprev and tnext,
@@ -63,6 +65,7 @@ def _step(
     tprev_candidate = jnp.minimum(tprev_candidate, t1)
     keep = lambda a, b: jnp.where(keep_step, a, b)
     y_candidate = keep(y_candidate, y)
+    made_jump_candidate = keep(made_jump_candidate, made_jump)
     solver_state_candidate = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state_candidate = jax.tree_map(
         keep, controller_state_candidate, controller_state
@@ -80,6 +83,7 @@ def _step(
     tprev = keep(tprev_candidate, tprev)
     tnext = keep(tnext_candidate, tnext)
     y = keep(y_candidate, y)
+    made_jump = keep(made_jump_candidate, made_jump)
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
     stepsize_controller_result = keep(stepsize_controller_result, RESULTS.successful)
@@ -105,6 +109,7 @@ def _step(
         solver_state,
         controller_state,
         made_step,
+        made_jump,
         dense_info,
         stepsize_controller_result,
     )
@@ -245,6 +250,8 @@ def diffeqsolve(
         ys.append(y0)
     del y0, dt0
 
+    made_jump = jnp.full_like(t0, fill_value=False, dtype=bool)
+
     if jit:
         step_maybe_jit = _jit_step
     else:
@@ -262,7 +269,8 @@ def diffeqsolve(
         # previous iteration. t1 is the terminal time.
         #
         # Note that t_after != tprev in general. If we have discontinuities in the
-        # vector field then it may be the case that tprev = nextafter(tnext_before).
+        # vector field then it may be the case that
+        # tprev = nextafter(nextafter(tnext_before)).
         # (They should never differ by more than this though.)
         #
         # In particular this means that y technically corresponds to the value of the
@@ -277,6 +285,7 @@ def diffeqsolve(
             solver_state,
             controller_state,
             made_step,
+            made_jump,
             dense_info,
             stepsize_controller_result,
         ) = step_maybe_jit(
@@ -285,6 +294,7 @@ def diffeqsolve(
             y,
             solver_state,
             controller_state,
+            made_jump,
             solver,
             stepsize_controller,
             t1,

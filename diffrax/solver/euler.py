@@ -28,7 +28,9 @@ class Euler(AbstractSolver):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         solver_state: _SolverState,
+        made_jump: Array[(), bool],
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState]:  # noqa: F821
+        del made_jump
         control = self.term.contr(t0, t1)
         y1 = y0 + self.term.vf_prod(t0, y0, args, control)
         dense_info = dict(y0=y0, y1=y1)

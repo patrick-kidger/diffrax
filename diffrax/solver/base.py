@@ -42,6 +42,7 @@ class AbstractSolver(eqx.Module):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         solver_state: _SolverState,
+        made_jump: Array[(), bool],
     ) -> Tuple[
         Array["state"], Optional[Array["state"]], DenseInfo, _SolverState  # noqa: F821
     ]:

@@ -5,7 +5,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import ravel_pytree, unvmap
+from ..misc import nextafter, nextbefore, ravel_pytree, unvmap
 from ..solution import RESULTS
 from .base import AbstractStepSizeController
 
@@ -76,6 +76,9 @@ def _scale_error_estimate(
 _do_not_set_at_init = object()  # Is set during wrap instead
 
 
+_ControllerState = Array[(), bool]
+
+
 # https://diffeq.sciml.ai/stable/extras/timestepping/
 # are good notes on different step size control algorithms.
 class IController(AbstractStepSizeController):
@@ -90,8 +93,18 @@ class IController(AbstractStepSizeController):
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
     unvmap_dt: bool = False
+    step_ts: Optional[Array["steps"]] = None  # noqa: F821
+    jump_ts: Optional[Array["steps"]] = None  # noqa: F821
     unravel_y: callable = field(repr=False, default=_do_not_set_at_init)
     direction: Scalar = field(repr=False, default=_do_not_set_at_init)
+
+    def __post_init__(self):
+        if self.jump_ts is not None and not jnp.issubdtype(
+            self.jump_ts.dtype, jnp.inexact
+        ):
+            raise ValueError(
+                f"jump_ts must be floating point, not {self.jump_ts.dtype}"
+            )
 
     def wrap(self, unravel_y: callable, direction: Scalar):
         return type(self)(
@@ -105,6 +118,8 @@ class IController(AbstractStepSizeController):
             dtmax=self.dtmax,
             force_dtmin=self.force_dtmin,
             unvmap_dt=self.unvmap_dt,
+            step_ts=self.step_ts,
+            jump_ts=self.jump_ts,
             unravel_y=unravel_y,
             direction=direction,
         )
@@ -120,7 +135,7 @@ class IController(AbstractStepSizeController):
             [Scalar, Array["state"], PyTree],  # noqa: F821
             Array["state"],  # noqa: F821
         ],
-    ) -> Tuple[Scalar, None]:
+    ) -> Tuple[Scalar, _ControllerState]:
         if dt0 is None:
             dt0 = _select_initial_step(
                 t0,
@@ -133,7 +148,11 @@ class IController(AbstractStepSizeController):
                 self.atol,
                 self.norm,
             )
-        return t0 + dt0, None
+
+        t1 = self._clip_step_ts(t0, t0 + dt0)
+        t1, jump_next_step = self._clip_jump_ts(t0, t1)
+
+        return t1, jump_next_step
 
     def adapt_step_size(
         self,
@@ -144,9 +163,9 @@ class IController(AbstractStepSizeController):
         args: PyTree,
         y_error: Optional[Array["state"]],  # noqa: F821
         solver_order: int,
-        controller_state: None,
-    ) -> Tuple[bool, Scalar, Scalar, None, int]:
-        del args, controller_state
+        controller_state: _ControllerState,
+    ) -> Tuple[Array[(), bool], Scalar, Scalar, Array[(), bool], _ControllerState, int]:
+        del args
         if y_error is None:
             raise ValueError(
                 "Cannot use adaptive step sizes with a solver that does not provide "
@@ -186,9 +205,20 @@ class IController(AbstractStepSizeController):
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
 
-        next_t0 = jnp.where(keep_step, t1, t0)
+        made_jump = controller_state
 
-        return keep_step, next_t0, next_t0 + dt, None, result
+        if jnp.issubdtype(t1.dtype, jnp.inexact):
+            _t1 = jnp.where(made_jump, nextafter(t1), t1)
+        else:
+            _t1 = t1
+        next_t0 = jnp.where(keep_step, _t1, t0)
+
+        next_t1 = self._clip_step_ts(next_t0, next_t0 + dt)
+        next_t1, jump_next_step = self._clip_jump_ts(next_t0, next_t1)
+
+        controller_state = jump_next_step
+
+        return keep_step, next_t0, next_t1, made_jump, controller_state, result
 
     def _scale_factor(self, operand):
         order, keep_step, scaled_error = operand
@@ -197,3 +227,41 @@ class IController(AbstractStepSizeController):
         return jnp.clip(
             self.safety / scaled_error ** exponent, a_min=dfactor, a_max=self.ifactor
         )
+
+    def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
+        if self.step_ts is None:
+            return t1
+        # TODO: it should be possible to switch this O(nlogn) for just O(n) by keeping
+        # track of where we were last, and using that as a hint for the next search.
+        t0_index = jnp.searchsorted(self.step_ts, t0)
+        t1_index = jnp.searchsorted(self.step_ts, t1)
+        # This minimum may or may not actually be necessary. The left branch is taken
+        # iff t0_index < t1_index <= len(self.step_ts), so all valid t0_index s must
+        # already satisfy the minimum.
+        # However, that branch is actually executed unconditionally and then where'd,
+        # so we clamp it just to be sure we're not hitting undefined behaviour.
+        t1 = jnp.where(
+            t0_index < t1_index,
+            self.step_ts[jnp.minimum(t0_index, len(self.step_ts) - 1)],
+            t1,
+        )
+        return t1
+
+    def _clip_jump_ts(self, t0: Scalar, t1: Scalar) -> Tuple[Scalar, bool]:
+        if self.jump_ts is None:
+            return t1, jnp.full_like(t1, fill_value=False, dtype=bool)
+        if not jnp.issubdtype(t1.dtype, jnp.inexact):
+            raise ValueError(
+                "t0, t1, dt0 must be floating point when specifying jump_t. Got "
+                f"{t1.dtype}."
+            )
+        t0_index = jnp.searchsorted(self.step_ts, t0)
+        t1_index = jnp.searchsorted(self.step_ts, t1)
+        cond = t0_index < t1_index
+        t1 = jnp.where(
+            cond,
+            nextbefore(self.jump_ts[jnp.minimum(t0_index, len(self.step_ts) - 1)]),
+            t1,
+        )
+        jump_next_step = jnp.where(cond, True, False)
+        return t1, jump_next_step

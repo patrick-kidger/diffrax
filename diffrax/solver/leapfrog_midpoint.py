@@ -40,7 +40,9 @@ class LeapfrogMidpoint(AbstractSolver):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         solver_state: _SolverState,
+        made_jump: Array[(), bool],
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState]:  # noqa: F821
+        del made_jump
         tm1, ym1, firststep = solver_state
         y1 = lax.cond(
             firststep, self._firststep, self._laterstep, (tm1, t0, t1, ym1, y0, args)

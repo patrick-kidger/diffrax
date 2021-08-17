@@ -1,7 +1,8 @@
 import abc
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Tuple
 
+import jax.lax as lax
 import jax.numpy as jnp
 import numpy as np
 
@@ -37,7 +38,7 @@ class ButcherTableau:
         assert alpha.shape[0] + 1 == c_error.shape[0]
 
 
-_SolverState = Dict[str, Array]
+_SolverState = Tuple[Array["state"], Scalar]  # noqa: F821
 
 
 class RungeKutta(AbstractSolver):
@@ -63,7 +64,7 @@ class RungeKutta(AbstractSolver):
         control = self.term.contr(t0, t1)
         f0 = self.term.vf_prod(t0, y0, args, control)
         dt = t1 - t0
-        return dict(f0=f0, dt=dt)
+        return (f0, dt)
 
     def step(
         self,
@@ -72,6 +73,7 @@ class RungeKutta(AbstractSolver):
         y0: Array["state"],  # noqa: F821
         args: PyTree,
         solver_state: _SolverState,
+        made_jump: Array[(), bool],
     ) -> Tuple[Array["state"], Array["state"], DenseInfo, _SolverState]:  # noqa: F821
         # Convert from frozenarray to array
         # Operations (+,*,@ etc.) aren't defined for frozenarray
@@ -81,9 +83,14 @@ class RungeKutta(AbstractSolver):
         c_error = np.asarray(self.tableau.c_error)
 
         control = self.term.contr(t0, t1)
-        f0 = solver_state["f0"]
-        prev_dt = solver_state["dt"]
         dt = t1 - t0
+        f0, prev_dt = solver_state
+        f0 = lax.cond(
+            made_jump,
+            lambda _: self.term.vf_prod(t0, y0, args, control),
+            lambda _: f0 * (dt.astype(f0.dtype) / prev_dt),
+            None,
+        )
 
         # Note that our `k` is (for an ODE) `dt` times smaller than the usual
         # implementation (e.g. what you see in torchdiffeq or in the reference texts).
@@ -91,7 +98,7 @@ class RungeKutta(AbstractSolver):
         k = jnp.empty(
             (len(alpha) + 1,) + y0.shape
         )  # y0.shape is actually single-dimensional
-        k = k.at[0].set(f0 * (dt / prev_dt))
+        k = k.at[0].set(f0)
 
         # lax.fori_loop is not reverse differentiable
         # Since we're JITing I'm not sure it'd necessarily be faster anyway.
@@ -112,7 +119,7 @@ class RungeKutta(AbstractSolver):
         f1 = k[-1]
         y_error = c_error @ k
         dense_info = {"y0": y0, "y1": y1, "k": k}
-        return y1, y_error, dense_info, dict(f0=f1, dt=dt)
+        return y1, y_error, dense_info, (f1, dt)
 
     def func_for_init(
         self,

@@ -29,6 +29,7 @@ class AbstractStepSizeController(eqx.Module):
             Array["state"],  # noqa: F821
         ],
     ) -> Tuple[Scalar, _ControllerState]:
+        # returns initial t1, initial controller state
         pass
 
     @abc.abstractmethod
@@ -42,5 +43,12 @@ class AbstractStepSizeController(eqx.Module):
         y_error: Array["state"],  # noqa: F821
         solver_order: int,
         controller_state: _ControllerState,
-    ) -> Tuple[bool, Scalar, Scalar, _ControllerState, int]:
+    ) -> Tuple[Array[(), bool], Scalar, Scalar, Array[(), bool], _ControllerState, int]:
+        # returns:
+        # - Whether the step was accepted/rejected
+        # - next t0
+        # - next t1
+        # - Whether a jump has just been made (i.e. FSAL is invalidated)
+        # - Any controller state
+        # - A result potentially indicating a failure condition
         pass

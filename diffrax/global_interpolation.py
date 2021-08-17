@@ -14,10 +14,11 @@ from .path import AbstractPath
 class AbstractGlobalInterpolation(AbstractPath):
     ts: Array["times"]  # noqa: F821
 
-    def __post_init__(self):
-        assert self.ts.ndim == 1
-
     def _interpret_t(self, t: Scalar, left: bool) -> Tuple[Scalar, Scalar]:
+        # Has to happen at call time (not init time) as some JAX transformations wil
+        # replace `ts` with arbitrary Python objects, or (as a vmap output) arrays of
+        # different shapes.
+        assert self.ts.ndim == 1
         maxlen = self.ts.shape[0] - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
         index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
@@ -37,18 +38,14 @@ class AbstractGlobalInterpolation(AbstractPath):
 class LinearInterpolation(AbstractGlobalInterpolation):
     ys: PyTree["times", ...]  # noqa: F821
 
-    def __post_init__(self):
-        super().__post_init__()
-        for yi in jax.tree_leaves(self.ys):
-            assert self.ts.shape[0] == yi.shape[0]
-
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         index, _ = self._interpret_t(t, left)
-        return jax.tree_map(
-            lambda _ys: (_ys[index + 1] - _ys[index])
-            / (self.ts[index + 1] - self.ts[index]),
-            self.ys,
-        )
+
+        def _index(_ys):
+            assert _ys.shape[0] == self.ts.shape[0]
+            return (_ys[index + 1] - _ys[index]) / (self.ts[index + 1] - self.ts[index])
+
+        return jax.tree_map(_index, self.ys)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -56,17 +53,21 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         index, fractional_part = self._interpret_t(t0, left)
-        prev_ys = jax.tree_map(lambda _ys: _ys[index], self.ys)
+
+        def _index(_ys):
+            assert _ys.shape[0] == self.ts.shape[0]
+            return _ys[index]
+
+        prev_ys = jax.tree_map(_index, self.ys)
         next_ys = jax.tree_map(lambda _ys: _ys[index + 1], self.ys)
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
         diff_t = next_t - prev_t
-        return jax.tree_map(
-            lambda _prev_ys, _next_ys: _prev_ys
-            + fractional_part * (_next_ys - _prev_ys) / diff_t,
-            prev_ys,
-            next_ys,
-        )
+
+        def _combine(_prev_ys, _next_ys):
+            return _prev_ys + (_next_ys - _prev_ys) * (fractional_part / diff_t)
+
+        return jax.tree_map(_combine, prev_ys, next_ys)
 
 
 class CubicInterpolation(AbstractGlobalInterpolation):
@@ -78,19 +79,16 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         PyTree["times - 1", ...],  # noqa: F821
     ]
 
-    def __post_init__(self):
-        super().__post_init__()
-        assert len(self.coeffs) == 4
-        for coeff in self.coeffs:
-            for yi in jax.tree_leaves(coeff):
-                assert self.ts.shape[0] == yi.shape[0] + 1
-
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         index, f = self._interpret_t(t, left)
-        return jax.tree_map(
-            lambda d, c, b, _: b[index] + f * (2 * c[index] + 3 * f * d[index]),
-            *self.coeffs,
-        )
+
+        def _index(d, c, b, _):
+            assert d.shape[0] + 1 == self.ts.shape[0]
+            assert c.shape[0] + 1 == self.ts.shape[0]
+            assert b.shape[0] + 1 == self.ts.shape[0]
+            return b[index] + 2 * f * c[index] + 3 * f * d[index]
+
+        return jax.tree_map(_index, *self.coeffs)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -98,11 +96,15 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         index, f = self._interpret_t(t0, left)
-        return jax.tree_map(
-            lambda d, c, b, a: a[index]
-            + f * (b[index] + f * (c[index] + f * d[index])),
-            *self.coeffs,
-        )
+
+        def _index(d, c, b, a):
+            assert d.shape[0] + 1 == self.ts.shape[0]
+            assert c.shape[0] + 1 == self.ts.shape[0]
+            assert b.shape[0] + 1 == self.ts.shape[0]
+            assert a.shape[0] + 1 == self.ts.shape[0]
+            return a[index] + f * (b[index] + f * (c[index] + f * d[index]))
+
+        return jax.tree_map(_index, *self.coeffs)
 
 
 class _DenseInterpolation(AbstractGlobalInterpolation):
@@ -114,7 +116,12 @@ class _DenseInterpolation(AbstractGlobalInterpolation):
         index, _ = self._interpret_t(t, left)
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
-        infos = jax.tree_map(lambda _d: _d[index], self.infos)
+
+        def _index(_d):
+            assert _d.shape[0] + 1 == self.ts.shape[0]
+            return _d[index]
+
+        infos = jax.tree_map(_index, self.infos)
         return self.interpolation_cls.value(t0=prev_t, t1=next_t, **infos)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
