@@ -136,11 +136,6 @@ def _jit_any(x):
 
 
 @jax.jit
-def _jit_all(x):
-    return jnp.all(x)
-
-
-@jax.jit
 def _pre_save_interp(tnext_before, tinterp_index, saveat_t):
     tinterp = saveat_t[jnp.minimum(tinterp_index, len(saveat_t) - 1)]
     interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_t))
@@ -259,6 +254,7 @@ def diffeqsolve(
 
     num_steps = 0
     result = jnp.full_like(t1, RESULTS.successful)
+    save_intermediate = (saveat.t is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while _jit_any(unvmap(_lt(tprev, t1))) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
@@ -301,7 +297,8 @@ def diffeqsolve(
             args,
         )
 
-        if _jit_any(unvmap(made_step)):
+        # save_intermediate=False offers a fast path that avoids JAX operations
+        if save_intermediate and _jit_any(unvmap(made_step)):
             if saveat.t is not None:
                 tinterp, interp_cond = _pre_save_interp(
                     tnext_before, tinterp_index, saveat.t
@@ -358,7 +355,7 @@ def diffeqsolve(
         dense_ts.append(t1)
         dense_ts = jnp.stack(dense_ts)
         if not len(dense_infos):
-            assert _jit_all(unvmap(t0 == t1))
+            assert jnp.all(unvmap(t0 == t1))
             raise ValueError("Cannot save dense output when t0 == t1")
         dense_infos = stack_pytrees(dense_infos)
         interpolation = DenseInterpolation(
