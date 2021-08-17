@@ -8,4 +8,5 @@ from .heun import Heun, heun
 from .leapfrog_midpoint import leapfrog_midpoint, LeapfrogMidpoint
 from .reversible_heun import reversible_heun, ReversibleHeun
 from .runge_kutta import ButcherTableau, RungeKutta
+from .semi_implicit_euler import semi_implicit_euler, SemiImplicitEuler
 from .tsit5 import Tsit5, tsit5

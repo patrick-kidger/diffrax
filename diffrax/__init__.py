@@ -37,6 +37,8 @@ from .solver import (
     reversible_heun,
     ReversibleHeun,
     RungeKutta,
+    semi_implict_euler,
+    SemiImplicitEuler,
     Tsit5,
     tsit5,
 )

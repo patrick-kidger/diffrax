@@ -49,13 +49,19 @@ def _ravel_list(leaves: List[Array]) -> Tuple[Array["flat"], callable]:  # noqa:
     )
 
 
+@jax.jit
 def _unravel_pytree(
-    flat: Array["flat"], treedef: RefHolder, unravel_list: callable  # noqa: F821
+    flat: Array["flat"],  # noqa: F821
+    treedef: RefHolder,
+    unravel_list: jax.tree_util.Partial,
 ) -> PyTree:
     return jax.tree_unflatten(treedef.value, unravel_list(flat))
 
 
-def ravel_pytree(pytree: PyTree) -> Tuple[Array["flat"], callable]:  # noqa: F821
+@jax.jit
+def ravel_pytree(
+    pytree: PyTree,
+) -> Tuple[Array["flat"], jax.tree_util.Partial]:  # noqa: F821
     """Like jax.flatten_util.ravel_pytree, but doesn't create a new unravel function
     each time. This means the unravel function can be passed to JIT-compiled functions
     without triggering recompilation, if pytree has the same structure.
