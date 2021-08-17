@@ -7,12 +7,11 @@ from .misc import ContainerMeta
 from .path import AbstractPath
 
 
-# We use magic numbers, rather than informative strings, as these can be vmap'd etc.
-# through JAX. Same reason we don't use enum.Enum here.
 class RESULTS(metaclass=ContainerMeta):
-    successful = 0
-    max_steps_reached = 1
-    dt_min_reached = 2
+    successful = ""
+    max_steps_reached = "The maximum number of solver steps was reached."
+    dt_min_reached = "The minimum step size was reached."
+    nan_time = "NaN time encountered during timestepping."
 
 
 class Solution(AbstractPath):

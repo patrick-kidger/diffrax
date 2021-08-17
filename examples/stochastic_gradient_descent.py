@@ -1,4 +1,5 @@
 ###########
+#
 # Training a small neural network by SGD, using diffrax.
 #
 # Stochastic gradient descent is just the Euler approximation to gradient flow.
@@ -25,14 +26,12 @@
 #
 ###########
 
+import functools as ft
 import time
-from dataclasses import dataclass
-from typing import Any
+from typing import Tuple
 
-import fire
+import equinox as eqx
 import jax
-import jax.experimental.stax as stax
-import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
 from diffrax import diffeqsolve, euler
@@ -50,14 +49,13 @@ def get_data(key, dataset_size):
 # - Produces a pseudorandom batch of data every time it is called. (In this case random
 #   sampling with replacement. A more sophisticated implementatation could follow normal
 #   iteration-over-dataset behaviour.)
-# - Has __hash__ and __eq__ set so that the JIT is happy to use this as a static_argnum.
 ###########
-@dataclass(frozen=True)
-class dataloader:
-    arrays: tuple[Any]
+class DataLoader(eqx.Module):
+    arrays: Tuple[jnp.ndarray]
     batch_size: int
-    key: Any
+    key: jrandom.PRNGKey
 
+    # Equinox Modules are Python dataclasses, which allow for a __post_init__.
     def __post_init__(self):
         dataset_size = self.arrays[0].shape[0]
         assert all(array.shape[0] == dataset_size for array in self.arrays)
@@ -69,12 +67,6 @@ class dataloader:
             key, (self.batch_size,), minval=0, maxval=dataset_size
         )
         return tuple(array[batch_indices] for array in self.arrays)
-
-    def __hash__(self):
-        return 0
-
-    def __eq__(self, other):
-        return self is other
 
 
 def main(
@@ -88,48 +80,62 @@ def main(
     printout=True,
 ):
     start = time.time()
-    data_key, loader_key, init_key = jrandom.split(jrandom.PRNGKey(seed), 3)
+    data_key, model_key, loader_key = jrandom.split(jrandom.PRNGKey(seed), 3)
 
     data = get_data(data_key, dataset_size)
-    data = dataloader(data, batch_size, key=loader_key)
+    dataloader = DataLoader(data, batch_size, key=loader_key)
 
-    init_model, apply_model = stax.serial(
-        stax.Dense(width_size), stax.elementwise(jnn.relu), stax.Dense(1)
+    ###########
+    # Equinox models are PyTrees of both JAX arrays and arbitrary Python objects. (e.g.
+    # activation functions.)
+    # Diffrax's diffeqsolve only works on PyTrees of JAX arrays, so we need to split up
+    # these two pieces.
+    ###########
+    model = eqx.nn.MLP(
+        in_size=1, out_size=1, width_size=width_size, depth=1, key=model_key
     )
-    _, params = init_model(init_key, (1,))
-    vmap_apply_model = jax.vmap(apply_model, in_axes=(None, 0))
+    params, nondifferentiable, which, treedef = eqx.split(
+        model, filter_fn=eqx.is_inexact_array
+    )
 
-    @jax.jit
-    @jax.value_and_grad
+    ###########
+    # Define the vector field as the gradient of a loss function.
+    ###########
+    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
     def loss(params, x, y):
-        pred_y = vmap_apply_model(params, x)
+        model = eqx.merge(params, nondifferentiable, which, treedef)
+        pred_y = jax.vmap(model)(x)
         return jnp.mean((y - pred_y) ** 2)
 
-    def vector_field(step, params, data):
-        x, y = data(step)
+    def vector_field(step, params, _):
+        x, y = dataloader(step)
         value, grad = loss(params, x, y)
         if printout:
             print(step, value)
         return jax.tree_map(lambda g: -learning_rate * g, grad)
 
     ###########
-    # Note that we can safely jit because vector_field has only benign side-effects
-    # (the print statement). This will mean that we don't get to see the print
-    # statements as training progresses, however.
-    #
-    # Try running this with jit=True/False. You should probably see a ~2x speedup
+    # Try running this with jit=True/False. You should probably see a ~2-3x speedup
     # using JIT.
+    #
+    # Note that we can safely JIT because vector_field has only benign side-effects,
+    # namely the print statement. (Doing so will mean that we don't get to see the
+    # print statements as training progresses, however.)
+    #
+    # In particular this uses the fact that the dataloader is functionally pure, and
+    # doesn't maintain any internal state.
     ###########
     solution = diffeqsolve(
-        euler(vector_field), t0=0, t1=steps, y0=params, dt0=1, args=data, jit=jit
+        euler(vector_field), t0=0, t1=steps, y0=params, dt0=1, jit=jit
     )
 
     params = jax.tree_map(lambda x: x[0], solution.ys)
-    value, _ = loss(params, *data(0))
+    value, _ = loss(params, *dataloader(0))
     end = time.time()
     print(f"Final loss: {value}")
     print(f"Training completed in {end - start} seconds")
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    main()

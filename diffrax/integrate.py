@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import ravel_pytree, stack_pytrees, vmap_all, vmap_any
+from .misc import ravel_pytree, stack_pytrees, unvmap
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
@@ -46,6 +46,7 @@ def _step(
         solver.order,
         controller_state,
     )
+
     # We have different update rules for
     # - the solution y and the controller state
     # - time
@@ -55,6 +56,9 @@ def _step(
     # This means we let stepsize_controller handle the updates to tprev and tnext,
     # and then handle the rest of it here.
 
+    # The 1e-6 tolerance means that we don't end up with too-small intervals for dense
+    # output, which then gives numerically unstable answers due to floating point
+    # errors.
     tnext_candidate = jnp.where(tnext_candidate > t1 - 1e-6, t1, tnext_candidate)
     tprev_candidate = jnp.minimum(tprev_candidate, t1)
     keep = lambda a, b: jnp.where(keep_step, a, b)
@@ -69,6 +73,8 @@ def _step(
     # just have the "done" batch elements just stay constant (in every respect: time,
     # solution, controller state etc.) whilst we wait.
 
+    # TODO: is this necessary? If we're making zero-length steps then we're not going
+    # anywhere.
     not_done = tprev < t1
     keep = lambda a, b: jnp.where(not_done, a, b)
     tprev = keep(tprev_candidate, tprev)
@@ -106,7 +112,7 @@ def _step(
 
 # TODO: support custom filter functions?
 # TODO: support donate_argnums if on the GPU.
-_jit_step = eqx.jitf(_step, filter_fn=eqx.is_array_like)
+_jit_step = eqx.jitf(_step, filter_fn=eqx.is_array)
 
 
 @jax.jit
@@ -117,6 +123,16 @@ def _lt(a, b):
 @jax.jit
 def _neq(a, b):
     return a != b
+
+
+@jax.jit
+def _jit_any(x):
+    return jnp.any(x)
+
+
+@jax.jit
+def _jit_all(x):
+    return jnp.all(x)
 
 
 @jax.jit
@@ -145,17 +161,24 @@ def _save_interp(
     return tinterp, yinterp, interp_cond, tinterp_index
 
 
-@ft.partial(eqx.jitf, static_argnums=4, filter_fn=eqx.is_array_like)
-def _compress_output(ts, ys, out_indices, direction, out_len, unravel_y):
+@ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+def _compress_output_constant(ts, ys, direction, unravel_y):
+    ts = jnp.stack(ts)
+    ts = jnp.where(direction == 1, ts, -ts[::-1])
+    ys = jnp.stack(ys)
+    ys = jax.vmap(unravel_y)(ys)
+    return ts, ys
+
+
+@ft.partial(eqx.jitf, static_argnums=3, filter_fn=eqx.is_array)
+def _compress_output_adaptive(ts, ys, out_indices, out_len, direction, unravel_y):
     out_indices = jnp.stack(out_indices)
     out_indices = jnp.unique(out_indices, size=out_len)
     ts = jnp.stack(ts)
-    ts = ts[out_indices]
     ts = jnp.where(direction == 1, ts, -ts[::-1])
     ys = jnp.stack(ys)
-    ys = ys[out_indices]
     ys = jax.vmap(unravel_y)(ys)
-    return ts, ys
+    return ts, ys, out_indices
 
 
 def diffeqsolve(
@@ -192,9 +215,9 @@ def diffeqsolve(
         saveat = eqx.tree_at(lambda s: s.t, saveat, saveat.t * direction)
 
     if saveat.t is not None:
-        if vmap_any(saveat.t[1:] < saveat.t[:-1]):
+        if _jit_any(unvmap(saveat.t[1:] < saveat.t[:-1])):
             raise ValueError("saveat.t must be strictly increasing or decreasing.")
-        if vmap_any((saveat.t > t1) | (saveat.t < t0)):
+        if _jit_any(unvmap((saveat.t > t1) | (saveat.t < t0))):
             raise ValueError("saveat.t must lie between t0 and t1.")
         tinterp_index = 0
 
@@ -230,7 +253,7 @@ def diffeqsolve(
     num_steps = 0
     result = jnp.full_like(t1, RESULTS.successful)
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while vmap_any(_lt(tprev, t1)) and num_steps < max_steps:
+    while _jit_any(unvmap(_lt(tprev, t1))) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -268,12 +291,12 @@ def diffeqsolve(
             args,
         )
 
-        if vmap_any(made_step):
+        if _jit_any(unvmap(made_step)):
             if saveat.t is not None:
                 tinterp, interp_cond = _pre_save_interp(
                     tnext_before, tinterp_index, saveat.t
                 )
-                while vmap_any(interp_cond):
+                while _jit_any(unvmap(interp_cond)):
                     ts.append(tinterp)
                     out_indices.append(jnp.where(interp_cond, len(ys), 0))
                     tinterp, yinterp, interp_cond, tinterp_index = _save_interp(
@@ -294,15 +317,26 @@ def diffeqsolve(
             if saveat.dense:
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
-        if vmap_any(_neq(stepsize_controller_result, RESULTS.successful)):
-            result = jnp.maximum(result, stepsize_controller_result)
+
+        _nan_tnext = jnp.isnan(tnext)
+        if _jit_any(unvmap(_nan_tnext)):
+            result = jnp.where(_nan_tnext, RESULTS.nan_time, result)
             break
 
-    if num_steps >= max_steps:
-        result = jnp.where(_lt(tnext, t1), RESULTS.max_steps_reached, result)
+        if num_steps >= max_steps:
+            result = jnp.where(_lt(tprev, t1), RESULTS.max_steps_reached, result)
+            break
 
-    if throw and vmap_any(_neq(result, RESULTS.successful)):
-        raise RuntimeError(f"diffeqsolve did not succeed. Error: {RESULTS[result]}")
+        _controller_unsuccessful = _neq(stepsize_controller_result, RESULTS.successful)
+        if _jit_any(unvmap(_controller_unsuccessful)):
+            result = jnp.where(
+                _controller_unsuccessful, stepsize_controller_result, result
+            )
+            break
+
+    if throw and _jit_any(unvmap(_neq(result, RESULTS.successful))):
+        error = RESULTS[jnp.max(unvmap(result)).item()]
+        raise RuntimeError(error)
 
     # saveat.steps will include the final timepoint anyway
     if saveat.t1 and not saveat.steps:
@@ -314,7 +348,7 @@ def diffeqsolve(
         dense_ts.append(t1)
         dense_ts = jnp.stack(dense_ts)
         if not len(dense_infos):
-            assert vmap_all(t0 == t1)
+            assert _jit_all(unvmap(t0 == t1))
             raise ValueError("Cannot save dense output when t0 == t1")
         dense_infos = stack_pytrees(dense_infos)
         interpolation = DenseInterpolation(
@@ -327,10 +361,13 @@ def diffeqsolve(
     else:
         interpolation = None
 
+    stats = {"num_steps": num_steps, "num_observations": len(ts)}
+
     t0 = t0 * direction
     t1 = t1 * direction
     if len(ts):
         assert len(ys) == len(ts)
+        assert len(out_indices) == len(ts)
         out_len = 0
         if saveat.t0:
             out_len = out_len + 1
@@ -340,30 +377,51 @@ def diffeqsolve(
             out_len = out_len + 1
         if saveat.steps:
             out_len = out_len + num_steps
-        # We pad ts, ys, out_indices out to a multiple of pad_to.
-        # This means that when using adaptive solvers, we'll only re-JIT
-        # _compress_output if the number of steps rounds to a different
-        # multiple of pad_to.
-        # TODO: elide this entirely for constant step size solvers.
-        pad_to = 10
-        rem = len(ts) % pad_to
-        if rem != 0:
-            padding = pad_to - rem
-            ts.extend([t0 for _ in range(padding)])
-            _y = ys[0]
-            ys.extend([_y for _ in range(padding)])
-            out_indices.extend([0 for _ in range(padding)])
-        ts, ys = _compress_output(ts, ys, out_indices, direction, out_len, unravel_y)
+
+        if len(ts) == out_len:
+            # Fast path for constant step size controllers. (And lucky adaptive ones.)
+            ts, ys = _compress_output_constant(ts, ys, direction, unravel_y)
+        else:
+            # We pad ts, ys, out_indices out to a multiple of pad_to.
+            # This means that when using adaptive controllers, we'll only re-JIT
+            # _compress_output_adaptive if the number of steps rounds to a different
+            # multiple of pad_to.
+            # Note the use of _t=ts[-1], _y=ys[-1], _i=out_indices[-1], and not any
+            # other dummy placeholder. These will have the correct Tracers wrapping
+            # them.
+            if len(ts) < 11:
+                pad_to = 10
+            else:
+                pad_to = 20
+            rem = len(ts) % pad_to
+            if rem != 0:
+                padding = pad_to - rem
+                _t = ts[-1]
+                _y = ys[-1]
+                _i = out_indices[-1]
+                ts.extend([_t for _ in range(padding)])
+                ys.extend([_y for _ in range(padding)])
+                out_indices.extend([_i for _ in range(padding)])
+            ts, ys, out_indices = _compress_output_adaptive(
+                ts, ys, out_indices, out_len, direction, unravel_y
+            )
+            # These should _not_ be folded into the above _compress_output_adaptive
+            # function. Jitting these lines together with the above results in very
+            # long compile times (e.g. 70 seconds instead of 20 seconds) for
+            # backpropagating through diffeqsolve.
+            #
+            # I have no idea why.
+            ts = ts[out_indices]
+            ys = ys[out_indices]
     else:
         assert not len(ys)
+        assert not len(out_indices)
         ts = None
         ys = None
     if not saveat.controller_state:
         controller_state = None
     if not saveat.solver_state:
         solver_state = None
-
-    stats = {"num_steps": num_steps}
 
     return Solution(
         t0=t0,

@@ -5,7 +5,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import ravel_pytree
+from ..misc import ravel_pytree, unvmap
 from ..solution import RESULTS
 from .base import AbstractStepSizeController
 
@@ -14,7 +14,12 @@ def _rms_norm(x: PyTree) -> Scalar:
     x, _ = ravel_pytree(x)
     if x.size == 0:
         return 0
-    return jnp.sqrt(jnp.mean(x ** 2))
+    sqnorm = jnp.mean(x ** 2)
+    cond = sqnorm == 0
+    # Double-where trick to avoid NaN gradients.
+    # See JAX issues #5039 and #1052.
+    _sqnorm = jnp.where(cond, 1.0, sqnorm)
+    return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
 
 
 # Empirical initial step selection algorithm from:
@@ -68,7 +73,7 @@ def _scale_error_estimate(
     return norm(scale)
 
 
-DO_NOT_SET = object()  # Is set during wrap instead
+_do_not_set_at_init = object()  # Is set during wrap instead
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
@@ -84,8 +89,9 @@ class IController(AbstractStepSizeController):
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
-    unravel_y: callable = field(repr=False, default=DO_NOT_SET)
-    direction: Scalar = field(repr=False, default=DO_NOT_SET)
+    unvmap_dt: bool = False
+    unravel_y: callable = field(repr=False, default=_do_not_set_at_init)
+    direction: Scalar = field(repr=False, default=_do_not_set_at_init)
 
     def wrap(self, unravel_y: callable, direction: Scalar):
         return type(self)(
@@ -98,6 +104,7 @@ class IController(AbstractStepSizeController):
             dtmin=self.dtmin,
             dtmax=self.dtmax,
             force_dtmin=self.force_dtmin,
+            unvmap_dt=self.unvmap_dt,
             unravel_y=unravel_y,
             direction=direction,
         )
@@ -151,17 +158,29 @@ class IController(AbstractStepSizeController):
             y_error, y0, y1_candidate, self.unravel_y, self.rtol, self.atol, self.norm
         )
         keep_step = scaled_error < 1
+        if self.dtmin is not None:
+            keep_step = keep_step | (prev_dt == self.dtmin)
+        if self.unvmap_dt:
+            keep_step = jnp.all(unvmap(keep_step))
+
+        # Double-where trick to avoid NaN gradients.
+        # See JAX issues #5039 and #1052.
+        cond = scaled_error == 0
+        _scaled_error = jnp.where(cond, 1.0, scaled_error)
         factor = lax.cond(
-            scaled_error == 0,
+            cond,
             lambda _: self.ifactor,
             self._scale_factor,
-            (solver_order, keep_step, scaled_error),
+            (solver_order, keep_step, _scaled_error),
         )
+        if self.unvmap_dt:
+            factor = jnp.min(unvmap(factor))
+
         dt = prev_dt * factor
         result = jnp.full_like(t0, RESULTS.successful)
         if self.dtmin is not None:
             if not self.force_dtmin:
-                result = result.at[dt < self.dtmin].set(RESULTS.dt_min_reached)
+                result = jnp.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
             dt = jnp.maximum(dt, self.dtmin)
 
         if self.dtmax is not None:

@@ -17,12 +17,18 @@ def stack_pytrees(pytrees: List[PyTree]) -> PyTree:
 class ContainerMeta(type):
     def __new__(cls, name, bases, dict):
         assert "_reverse_lookup" not in dict
-        dict["_reverse_lookup"] = {value: key for key, value in dict.items()}
-        # Check that all values are unique
-        assert (
-            len(dict) == len(dict["_reverse_lookup"]) + 1
-        )  # +1 for dict['_reverse_lookup'] itself.
-        return super().__new__(cls, name, bases, dict)
+        _dict = {}
+        _reverse_lookup = {}
+        i = 0
+        for key, value in dict.items():
+            if key.startswith("__") and key.endswith("__"):
+                _dict[key] = value
+            else:
+                _dict[key] = i
+                _reverse_lookup[i] = value
+                i += 1
+        _dict["_reverse_lookup"] = _reverse_lookup
+        return super().__new__(cls, name, bases, _dict)
 
     def __getitem__(cls, item):
         return cls._reverse_lookup[item]
