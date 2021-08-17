@@ -1,7 +1,9 @@
-from .brownian import AbstractBrownianPath, BrownianInterval
 from .global_interpolation import (
     AbstractGlobalInterpolation,
+    CubicInterpolation,
     DenseInterpolation,
+    hermite_cubic_with_backward_differences_coefficients,
+    linear_interpolation,
     LinearInterpolation,
 )
 from .integrate import diffeqsolve
@@ -10,6 +12,7 @@ from .local_interpolation import (
     FourthOrderPolynomialInterpolation,
     LocalLinearInterpolation,
 )
+from .misc import fill_forward
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
@@ -42,7 +45,7 @@ from .step_size_controller import (
     ConstantStepSize,
     IController,
 )
-from .term import AbstractTerm, ControlTerm, ODETerm
+from .term import AbstractTerm, ControlTerm, MultiTerm, ODETerm
 
 
 __version__ = "0.0.1"

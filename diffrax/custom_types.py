@@ -6,7 +6,10 @@ class Array:
         return Any
 
 
-PyTree = Any
+class PyTree:
+    def __class_getitem__(cls, item):
+        return Any
+
 
 DenseInfo = Dict[str, PyTree]
 

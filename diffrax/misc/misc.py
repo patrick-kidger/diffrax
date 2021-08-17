@@ -1,9 +1,10 @@
-from typing import List
+from typing import List, Tuple
 
 import jax
+import jax.lax as lax
 import jax.numpy as jnp
 
-from ..custom_types import PyTree
+from ..custom_types import Array, PyTree
 
 
 def _stack_pytrees(*arrays):
@@ -32,3 +33,18 @@ class ContainerMeta(type):
 
     def __getitem__(cls, item):
         return cls._reverse_lookup[item]
+
+
+def _fill_forward(
+    last_observed_yi: Array["channels"], yi: Array["channels"]  # noqa: F821
+) -> Tuple[Array["channels"], Array["channels"]]:  # noqa: F821
+    yi = jnp.where(jnp.isnan(yi), last_observed_yi, yi)
+    return yi, yi
+
+
+@jax.jit
+def fill_forward(
+    ys: Array["times", "channels"]  # noqa: F821
+) -> Array["times, channels"]:  # noqa: F821
+    _, ys = lax.scan(_fill_forward, ys[0], ys)
+    return ys
