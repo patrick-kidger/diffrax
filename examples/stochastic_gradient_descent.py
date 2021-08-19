@@ -31,6 +31,7 @@ import time
 from typing import Tuple
 
 import equinox as eqx
+import fire
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
@@ -138,4 +139,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(main)

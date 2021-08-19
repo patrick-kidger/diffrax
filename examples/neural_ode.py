@@ -10,6 +10,7 @@ import time
 
 import diffrax
 import equinox as eqx
+import fire
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -154,4 +155,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(main)

@@ -1,3 +1,4 @@
+from . import utils
 from .global_interpolation import (
     AbstractGlobalInterpolation,
     CubicInterpolation,
@@ -12,7 +13,6 @@ from .local_interpolation import (
     FourthOrderPolynomialInterpolation,
     LocalLinearInterpolation,
 )
-from .misc import fill_forward
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
