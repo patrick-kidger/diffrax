@@ -153,9 +153,9 @@ def get_data(path):
     dataset = dataset[cond]
     weights = weights[cond]
     mean = jnp.mean(dataset, axis=0)
-    std = jnp.std(dataset, axis=0)
-    dataset = (dataset - mean) / (std + 1e-6)
-    return dataset, weights, mean, std, (0, 0, width, height)
+    std = jnp.std(dataset, axis=0) + 1e-6
+    dataset = (dataset - mean) / std
+    return dataset, weights, mean, std, width, height
 
 
 def dataloader(arrays, batch_size, *, key):
@@ -175,11 +175,11 @@ def dataloader(arrays, batch_size, *, key):
 
 
 def main(
-    data_path=here / "cnf_in.png",
+    in_path=here / "cnf_in.png",
     out_path=here / "cnf_out.png",
     batch_size=None,
     optim_name="sgd",
-    learning_rate=1e-3,
+    lr=1e-3,
     steps=3000,
     lookahead=False,
     exact_logp=True,
@@ -192,7 +192,7 @@ def main(
     key = jrandom.PRNGKey(seed)
     model_key, loader_key, train_key, sample_key = jrandom.split(key, 4)
 
-    dataset, weights, mean, std, (xmin, ymin, xmax, ymax) = get_data(data_path)
+    dataset, weights, mean, std, width, height = get_data(in_path)
     dataset_size, data_size = dataset.shape
 
     if batch_size is None:
@@ -213,14 +213,16 @@ def main(
 
     @jax.value_and_grad
     def loss(params, data, weight, key):
+        noise_key, train_key = jax.vmap(jrandom.split, out_axes=1)(key)
+        data = data + jrandom.normal(noise_key[0], data.shape) * 0.5 / std
+        model = eqx.merge(params, static, which, treedef)
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.18
-        model = eqx.merge(params, static, which, treedef)
-        log_likelihood = jax.vmap(model.train, axis_name="")(data, key=key)
+        log_likelihood = jax.vmap(model.train, axis_name="")(data, key=train_key)
         kl_divergence = jnp.mean(weight * (jnp.log(weight) - log_likelihood))
         return kl_divergence
 
-    optim = getattr(optax, optim_name)(learning_rate)
+    optim = getattr(optax, optim_name)(lr)
     if lookahead:
         optim = optax.lookahead(optim, sync_period=5, slow_step_size=0.1)
         params = optax.LookaheadParams.init_synced(params)
@@ -254,12 +256,12 @@ def main(
     num_samples = 20 * dataset_size
     sample_key = jrandom.split(sample_key, num_samples)
     samples = jax.vmap(best_model.sample)(key=sample_key)
-    samples = samples * (1e-6 + std) + mean
+    samples = samples * std + mean
     x = samples[:, 0]
     y = samples[:, 1]
     plt.scatter(x, y)
-    plt.xlim(xmin - 1, xmax + 1)
-    plt.ylim(ymin - 1, ymax + 1)
+    plt.xlim(-1, width + 1)
+    plt.ylim(-1, height + 1)
     plt.savefig(out_path)
 
 
