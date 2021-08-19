@@ -1,7 +1,7 @@
-import functools as ft
+import math
 import pathlib
 import time
-from typing import Any, List
+from typing import List
 
 import diffrax
 import equinox as eqx
@@ -19,7 +19,7 @@ here = pathlib.Path(__file__).resolve().parent
 
 def normal_log_likelihood(y):
     # Omits the constant factor
-    return -0.5 * jnp.sum(y ** 2)
+    return -0.5 * (math.log(2 * math.pi) + jnp.sum(y ** 2))
 
 
 def approx_logp_wrapper(t, y, args):
@@ -45,22 +45,16 @@ def exact_logp_wrapper(t, y, args):
 
 
 class Func(eqx.Module):
-    mlp: eqx.Module
-    meta: bool
     autonomous: bool
-    unravel: Any
-    static: Any
-    which: Any
-    treedef: Any
+    mlp: eqx.Module
 
     def __init__(
-        self, *, data_size, width_size, depth, meta, autonomous, key, **kwargs
+        self, *, data_size, width_size, depth, autonomous, key, **kwargs
     ):
         super().__init__(**kwargs)
-        self.meta = meta
-        self.autonomous = autonomous
         in_size = data_size if autonomous else data_size + 1
-        mlp = eqx.nn.MLP(
+        self.autonomous = autonomous
+        self.mlp = eqx.nn.MLP(
             in_size=in_size,
             out_size=data_size,
             width_size=width_size,
@@ -68,47 +62,13 @@ class Func(eqx.Module):
             key=key,
         )
 
-        if meta:
-            params, static, which, treedef = eqx.split(
-                mlp, filter_fn=eqx.is_inexact_array
-            )
-            num_params = sum(param.size for param in params)
-
-            # Reusing the same key because we're about to discard params.
-            self.mlp = eqx.nn.MLP(
-                in_size=1,
-                out_size=num_params,
-                width_size=width_size,
-                depth=depth,
-                key=key,
-            )
-            _, self.unravel = diffrax.utils.ravel_pytree(params)
-            self.static = static
-            self.which = which
-            self.treedef = treedef
-        else:
-            self.mlp = mlp
-            self.unravel = None
-            self.static = None
-            self.which = None
-            self.treedef = None
-
     def __call__(self, t, y, args):
-        t = jnp.asarray(t)[None]
-
-        if self.meta:
-            params = self.mlp(t)
-            params = self.unravel(params)
-            forward = eqx.merge(params, self.static, self.which, self.treedef)
-        else:
-            forward = self.mlp
-
         if self.autonomous:
             inp = y
         else:
+            t = jnp.asarray(t)[None]
             inp = jnp.concatenate([t, y])
-
-        return forward(inp)
+        return self.mlp(inp)
 
 
 class CNF(eqx.Module):
@@ -127,7 +87,6 @@ class CNF(eqx.Module):
         num_blocks,
         width_size,
         depth,
-        meta,
         autonomous,
         key,
         **kwargs,
@@ -142,7 +101,6 @@ class CNF(eqx.Module):
                 data_size=data_size,
                 width_size=width_size,
                 depth=depth,
-                meta=meta,
                 autonomous=autonomous,
                 key=k,
             )
@@ -157,19 +115,18 @@ class CNF(eqx.Module):
             exact_logp_wrapper if self.exact_logp else approx_logp_wrapper
         )
         eps = jrandom.normal(key, y.shape)
-        delta_logp = 0.0
+        delta_log_likelihood = 0.0
         for func in self.funcs:
-            y = (y, delta_logp)
+            y = (y, delta_log_likelihood)
             sol = diffrax.diffeqsolve(
                 solver, self.t1, self.t0, y, -self.dt0, (eps, func)
             )
-            (y,), (delta_logp,) = sol.ys
-        logp = delta_logp + normal_log_likelihood(y)
-        return -logp
+            (y,), (delta_log_likelihood,) = sol.ys
+        return delta_log_likelihood + normal_log_likelihood(y)
 
     def sample(self, *, key):
         y = jrandom.normal(key, (self.data_size,))
-        for func in self.funcs:
+        for func in reversed(self.funcs):
             solver = diffrax.tsit5(func)
             sol = diffrax.diffeqsolve(solver, self.t0, self.t1, y, self.dt0)
             (y,) = sol.ys
@@ -222,14 +179,14 @@ def main(
     out_path=here / "cnf_out.png",
     batch_size=None,
     optim_name="sgd",
-    learning_rate=1e-2,
+    learning_rate=1e-3,
     steps=3000,
+    lookahead=False,
     exact_logp=True,
-    num_blocks=1,
-    width_size=1024,
+    num_blocks=2,
+    width_size=2048,
     depth=2,
-    meta=False,
-    autonomous=True,
+    autonomous=False,
     seed=5678,
 ):
     key = jrandom.PRNGKey(seed)
@@ -243,44 +200,56 @@ def main(
     else:
         batch_size = min(batch_size, dataset_size)
 
-    best_model = model = CNF(
+    model = CNF(
         data_size=data_size,
         exact_logp=exact_logp,
         num_blocks=num_blocks,
         width_size=width_size,
         depth=depth,
-        meta=meta,
         autonomous=autonomous,
         key=model_key,
     )
+    params, static, which, treedef = eqx.split(model, filter_fn=eqx.is_inexact_array)
 
-    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
-    def loss(model, data, weight, key):
+    @jax.value_and_grad
+    def loss(params, data, weight, key):
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.18
-        negative_log_likelihood = jax.vmap(model.train, axis_name="")(data, key=key)
-        return jnp.mean(weight * negative_log_likelihood)
+        model = eqx.merge(params, static, which, treedef)
+        log_likelihood = jax.vmap(model.train, axis_name="")(data, key=key)
+        kl_divergence = jnp.mean(weight * (jnp.log(weight) - log_likelihood))
+        return kl_divergence
+
+    optim = getattr(optax, optim_name)(learning_rate)
+    if lookahead:
+        optim = optax.lookahead(optim, sync_period=5, slow_step_size=0.1)
+        params = optax.LookaheadParams.init_synced(params)
+        fast = lambda x: x.fast
+        slow = lambda x: x.slow
+    else:
+        fast = lambda x: x
+        slow = lambda x: x
+    opt_state = optim.init(params)
 
     best_value = jnp.inf
-    optim = getattr(optax, optim_name)(learning_rate)
-    opt_state = optim.init(
-        jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
-    )
+    best_params = params
     train_key = jrandom.split(train_key, batch_size)
     for step, (data, weight) in zip(
         range(steps), dataloader((dataset, weights), batch_size, key=loader_key)
     ):
         start = time.time()
-        value, grads = loss(model, data, weight, train_key[: data.shape[0]])
+        value, grads = loss(fast(params), data, weight, train_key[: data.shape[0]])
+        end = time.time()
         if value < best_value:
             best_value = value
-            best_model = model
-        end = time.time()
-        updates, opt_state = optim.update(grads, opt_state, model)
+            best_params = params
+        updates, opt_state = optim.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
         train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0])(train_key)
-        model = eqx.apply_updates(model, updates)
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
+
     print(f"Best value: {best_value}")
+    best_model = eqx.merge(slow(best_params), static, which, treedef)
 
     num_samples = 20 * dataset_size
     sample_key = jrandom.split(sample_key, num_samples)
