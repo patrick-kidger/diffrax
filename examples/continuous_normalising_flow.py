@@ -62,7 +62,7 @@ class ConcatSquash(eqx.Module):
         return self.lin1(y) * jnn.sigmoid(self.lin2(t)) + self.lin3(t)
 
 
-class ConcatSquashMLP(eqx.Module):
+class Func(eqx.Module):
     layers: List[eqx.nn.Linear]
 
     def __init__(self, *, data_size, width_size, depth, key, **kwargs):
@@ -78,59 +78,13 @@ class ConcatSquashMLP(eqx.Module):
             layers.append(ConcatSquash(in_size=width_size, out_size=data_size, key=keys[-1]))
         self.layers = layers
 
-    def __call__(self, t, y):
-        for layer in self.layers[:-1]:
-            y = layer(t, y)
-            y = jnn.softplus(y)
-        y = self.layers[-1](t, y)
-        return y
-
-
-
-class Func(eqx.Module):
-    layer: eqx.Module
-    layer_type: str
-
-    def __init__(
-        self, *, data_size, width_size, depth, layer_type, key, **kwargs
-    ):
-        super().__init__(**kwargs)
-        self.layer_type = layer_type
-        if layer_type == "mlp":
-            self.layer = eqx.nn.MLP(
-                in_size=data_size + 1,
-                out_size=data_size,
-                width_size=width_size,
-                depth=depth,
-                activation=jnn.softplus,
-                key=key,
-            )
-        elif layer_type == "concatsquash":
-            self.layer = ConcatSquashMLP(data_size=data_size, width_size=width_size, depth=depth, key=key)
-        elif layer_type == "stableflow":
-            self.layer = eqx.nn.MLP(
-                in_size=data_size + 1,
-                out_size=1,
-                width_size=width_size,
-                depth=depth,
-                activation=jnn.softplus,
-                key=key,
-            )
-        else:
-            raise ValueError
-
     def __call__(self, t, y, args):
         t = jnp.asarray(t)[None]
-        if self.layer_type == "mlp":
-            inp = jnp.concatenate([t, y])
-            return self.layer(inp)
-        elif self.layer_type == "concatsquash":
-            return self.layer(t, y)
-        elif self.layer_type == "stableflow":
-            fn = lambda y: jnp.sqrt(1 + self.layer(jnp.concatenate([t, y]))[0] ** 2)
-            return jax.grad(fn)(y)
-        else:
-            raise RuntimeError
+        for layer in self.layers[:-1]:
+            y = layer(t, y)
+            y = jnn.tanh(y)
+        y = self.layers[-1](t, y)
+        return y
 
 
 class CNF(eqx.Module):
@@ -149,7 +103,6 @@ class CNF(eqx.Module):
         num_blocks,
         width_size,
         depth,
-        layer_type,
         key,
         **kwargs,
     ):
@@ -160,7 +113,6 @@ class CNF(eqx.Module):
                 data_size=data_size,
                 width_size=width_size,
                 depth=depth,
-                layer_type=layer_type,
                 key=k,
             )
             for k in keys
@@ -168,8 +120,8 @@ class CNF(eqx.Module):
         self.data_size = data_size
         self.exact_logp = exact_logp
         self.t0 = 0.0
-        self.t1 = 1.0
-        self.dt0 = 0.1
+        self.t1 = 0.5
+        self.dt0 = 0.05
 
     def train(self, y, *, key):
         solver = diffrax.tsit5(
@@ -188,7 +140,7 @@ class CNF(eqx.Module):
     def sample(self, *, key):
         y = jrandom.normal(key, (self.data_size,))
         for func in self.funcs:
-            solver = diffrax.tsit5(func)
+            solver = diffrax.dopri5(func)
             sol = diffrax.diffeqsolve(solver, self.t0, self.t1, y, self.dt0)
             (y,) = sol.ys
         return y
@@ -241,15 +193,14 @@ def main(
     out_path=here / "cnf_out.png",
     batch_size=500,
     virtual_batches=2,
-    optim_name="adam",
-    lr=1e-4,
+    lr=1e-3,
+    weight_decay=1e-5,
     steps=10000,
     lookahead=False,
     exact_logp=True,
-    num_blocks=2,
-    width_size=2048,
-    depth=2,
-    layer_type="concatsquash",
+    num_blocks=1,
+    width_size=64,
+    depth=3,
     seed=5678,
 ):
     key = jrandom.PRNGKey(seed)
@@ -265,7 +216,6 @@ def main(
         num_blocks=num_blocks,
         width_size=width_size,
         depth=depth,
-        layer_type=layer_type,
         key=model_key,
     )
     params, static, which, treedef = eqx.split(model, filter_fn=eqx.is_inexact_array)
@@ -280,7 +230,7 @@ def main(
         log_likelihood = jax.vmap(model.train, axis_name="")(data, key=train_key)
         return -jnp.mean(weight * log_likelihood)
 
-    optim = getattr(optax, optim_name)(lr)
+    optim = optax.adamw(lr, weight_decay=weight_decay)
     if lookahead:
         optim = optax.lookahead(optim, sync_period=5, slow_step_size=0.1)
         params = optax.LookaheadParams.init_synced(params)
