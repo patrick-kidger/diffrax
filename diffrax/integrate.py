@@ -171,7 +171,9 @@ def _compress_output_constant(ts, ys, direction, unravel_y):
 
 
 @ft.partial(eqx.jitf, static_argnums=(3, 4), filter_fn=eqx.is_array)
-def _compress_output_adaptive(ts, ys, out_indices, out_len, has_minus_one, direction, unravel_y):
+def _compress_output_adaptive(
+    ts, ys, out_indices, out_len, has_minus_one, direction, unravel_y
+):
     out_indices = jnp.stack(out_indices)
     if has_minus_one:
         out_indices = jnp.unique(out_indices, size=out_len + 1)[1:]
@@ -310,7 +312,9 @@ def diffeqsolve(
                 while _jit_any(unvmap(interp_cond)):
                     ts.append(tinterp)
                     out_indices.append(jnp.where(interp_cond, len(ys), -1))
-                    has_minus_one = has_minus_one or _jit_any(unvmap(~interp_cond)).item()
+                    has_minus_one = (
+                        has_minus_one or _jit_any(unvmap(~interp_cond)).item()
+                    )
                     tinterp, yinterp, interp_cond, tinterp_index = _save_interp(
                         solver.interpolation_cls,
                         tprev_before,

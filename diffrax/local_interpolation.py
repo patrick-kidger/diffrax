@@ -25,9 +25,7 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
         if t1 is None:
             _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
             _coeff = (t0 - self.t0) / _div
-            return self.y0 + _coeff * (
-                self.y1 - self.y0
-            )
+            return self.y0 + _coeff * (self.y1 - self.y0)
         else:
             return ((t1 - t0) / (self.t1 - self.t0)) * (self.y1 - self.y0)
 
