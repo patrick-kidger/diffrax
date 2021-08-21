@@ -50,6 +50,7 @@ def fill_forward(
     return ys
 
 
+@jax.custom_jvp
 def nextafter(x: Array) -> Array:
     y = jnp.nextafter(x, jnp.inf)
     # Flush denormal to normal.
@@ -60,6 +61,13 @@ def nextafter(x: Array) -> Array:
     return jnp.where(x == 0, jnp.finfo(x.dtype).tiny, y)
 
 
+nextafter.defjvps(lambda x_dot, _, __: x_dot)
+
+
+@jax.custom_jvp
 def nextbefore(x: Array) -> Array:
     y = jnp.nextafter(x, jnp.NINF)
     return jnp.where(x == 0, -jnp.finfo(x.dtype).tiny, y)
+
+
+nextbefore.defjvps(lambda x_dot, _, __: x_dot)

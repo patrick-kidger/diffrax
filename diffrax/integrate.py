@@ -170,10 +170,13 @@ def _compress_output_constant(ts, ys, direction, unravel_y):
     return ts, ys
 
 
-@ft.partial(eqx.jitf, static_argnums=3, filter_fn=eqx.is_array)
-def _compress_output_adaptive(ts, ys, out_indices, out_len, direction, unravel_y):
+@ft.partial(eqx.jitf, static_argnums=(3, 4), filter_fn=eqx.is_array)
+def _compress_output_adaptive(ts, ys, out_indices, out_len, has_minus_one, direction, unravel_y):
     out_indices = jnp.stack(out_indices)
-    out_indices = jnp.unique(out_indices, size=out_len)
+    if has_minus_one:
+        out_indices = jnp.unique(out_indices, size=out_len + 1)[1:]
+    else:
+        out_indices = jnp.unique(out_indices, size=out_len)
     ts = jnp.stack(ts)
     ts = jnp.where(direction == 1, ts, -ts[::-1])
     ys = jnp.stack(ys)
@@ -198,7 +201,7 @@ def diffeqsolve(
     throw: bool = True,
 ) -> Solution:
 
-    if dt0 is not None and (t1 - t0) * dt0 <= 0:
+    if dt0 is not None and _jit_any(unvmap((t1 - t0) * dt0 <= 0)):
         raise ValueError("Must have (t1 - t0) * dt0 > 0")
 
     # Normalise state: ravel PyTree state down to just a flat Array.
@@ -253,6 +256,7 @@ def diffeqsolve(
         step_maybe_jit = _step
 
     num_steps = 0
+    has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
     save_intermediate = (saveat.t is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
@@ -305,7 +309,8 @@ def diffeqsolve(
                 )
                 while _jit_any(unvmap(interp_cond)):
                     ts.append(tinterp)
-                    out_indices.append(jnp.where(interp_cond, len(ys), 0))
+                    out_indices.append(jnp.where(interp_cond, len(ys), -1))
+                    has_minus_one = has_minus_one or _jit_any(unvmap(~interp_cond)).item()
                     tinterp, yinterp, interp_cond, tinterp_index = _save_interp(
                         solver.interpolation_cls,
                         tprev_before,
@@ -410,7 +415,7 @@ def diffeqsolve(
                 ys.extend([_y for _ in range(padding)])
                 out_indices.extend([_i for _ in range(padding)])
             ts, ys, out_indices = _compress_output_adaptive(
-                ts, ys, out_indices, out_len, direction, unravel_y
+                ts, ys, out_indices, out_len, has_minus_one, direction, unravel_y
             )
             # These should _not_ be folded into the above _compress_output_adaptive
             # function. Jitting these lines together with the above results in very
