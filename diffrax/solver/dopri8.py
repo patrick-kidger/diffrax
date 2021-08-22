@@ -292,7 +292,8 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
     ) -> Array["state"]:  # noqa: F821
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
-        t = (t0 - self.t0) / (self.t1 - self.t0)
+        _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
+        t = (t0 - self.t0) / _div
         coeffs = _vmap_polyval(np.asarray(self.eval_coeffs), t) * t
         return self.y0 + coeffs @ self.k
 

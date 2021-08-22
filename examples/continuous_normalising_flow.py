@@ -40,7 +40,7 @@ def exact_logp_wrapper(t, y, args):
     f, vjp_fn = jax.vjp(fn, y)
     (size,) = y.shape  # this implementation only works for 1D input
     eye = jnp.eye(size)
-    (dfdy,) = jax.vmap(vjp_fn, axis_name='')(eye)
+    (dfdy,) = jax.vmap(vjp_fn, axis_name="")(eye)
     logp = jnp.trace(dfdy)
     return f, logp
 
@@ -54,9 +54,9 @@ class ConcatSquash(eqx.Module):
     def __init__(self, *, in_size, out_size, key, **kwargs):
         super().__init__(**kwargs)
         key1, key2, key3 = jrandom.split(key, 3)
-        self.lin1 = eqx.nn.Linear(in_size, out_size, key=key)
-        self.lin2 = eqx.nn.Linear(1, out_size, key=key)
-        self.lin3 = eqx.nn.Linear(1, out_size, use_bias=False, key=key)
+        self.lin1 = eqx.nn.Linear(in_size, out_size, key=key1)
+        self.lin2 = eqx.nn.Linear(1, out_size, key=key2)
+        self.lin3 = eqx.nn.Linear(1, out_size, use_bias=False, key=key3)
 
     def __call__(self, t, y):
         return self.lin1(y) * jnn.sigmoid(self.lin2(t)) + self.lin3(t)
@@ -70,12 +70,22 @@ class Func(eqx.Module):
         keys = jrandom.split(key, depth + 1)
         layers = []
         if depth == 0:
-            layers.append(ConcatSquash(in_size=data_size, out_size=data_size, key=keys[0]))
+            layers.append(
+                ConcatSquash(in_size=data_size, out_size=data_size, key=keys[0])
+            )
         else:
-            layers.append(ConcatSquash(in_size=data_size, out_size=width_size, key=keys[0]))
+            layers.append(
+                ConcatSquash(in_size=data_size, out_size=width_size, key=keys[0])
+            )
             for i in range(depth - 1):
-                layers.append(ConcatSquash(in_size=width_size, out_size=width_size, key=keys[i + 1]))
-            layers.append(ConcatSquash(in_size=width_size, out_size=data_size, key=keys[-1]))
+                layers.append(
+                    ConcatSquash(
+                        in_size=width_size, out_size=width_size, key=keys[i + 1]
+                    )
+                )
+            layers.append(
+                ConcatSquash(in_size=width_size, out_size=data_size, key=keys[-1])
+            )
         self.layers = layers
 
     def __call__(self, t, y, args):
@@ -222,7 +232,7 @@ def main(
 
     @jax.value_and_grad
     def loss(params, data, weight, key):
-        noise_key, train_key = jax.vmap(jrandom.split, out_axes=1, axis_name='')(key)
+        noise_key, train_key = jax.vmap(jrandom.split, out_axes=1, axis_name="")(key)
         data = data + jrandom.normal(noise_key[0], data.shape) * 0.5 / std
         model = eqx.merge(params, static, which, treedef)
         # Setting an explicit axis_name works around a JAX bug that triggers
@@ -249,14 +259,20 @@ def main(
         if virtual_batches == 1:
             data, weight = next(data_iter)
             value, grads = loss(fast(params), data, weight, train_key[: data.shape[0]])
-            train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name='')(train_key)
+            train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name="")(
+                train_key
+            )
         else:
             value = 0
             grads = jax.tree_map(lambda _: 0.0, params)
             for _ in range(virtual_batches):
                 data, weight = next(data_iter)
-                value_, grads_ = loss(fast(params), data, weight, train_key[: data.shape[0]])
-                train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name='')(train_key)
+                value_, grads_ = loss(
+                    fast(params), data, weight, train_key[: data.shape[0]]
+                )
+                train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name="")(
+                    train_key
+                )
                 value = value + value_
                 grads = jax.tree_map(lambda a, b: a + b, grads, grads_)
             value = value / virtual_batches
@@ -274,7 +290,7 @@ def main(
 
     num_samples = min(20 * dataset_size, 5000)
     sample_key = jrandom.split(sample_key, num_samples)
-    samples = jax.vmap(best_model.sample, axis_name='')(key=sample_key)
+    samples = jax.vmap(best_model.sample, axis_name="")(key=sample_key)
     samples = samples * std + mean
     x = samples[:, 0]
     y = samples[:, 1]

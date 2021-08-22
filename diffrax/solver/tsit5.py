@@ -1,6 +1,5 @@
 from typing import Callable, Optional
 
-import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
@@ -106,12 +105,8 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
 
-        t = lax.cond(
-            self.t1 == self.t0,
-            lambda _: jnp.zeros_like(t0),
-            lambda _: (t0 - self.t0) / (self.t1 - self.t0),
-            None,
-        )
+        _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
+        t = (t0 - self.t0) / _div
         # TODO: write as a matrix-multiply or vmap'd polyval
         b1 = (
             -1.0530884977290216

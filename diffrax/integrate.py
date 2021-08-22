@@ -221,7 +221,7 @@ def diffeqsolve(
 
     if saveat.t is not None:
         if _jit_any(unvmap(saveat.t[1:] < saveat.t[:-1])):
-            raise ValueError("saveat.t must be strictly increasing or decreasing.")
+            raise ValueError("saveat.t must be increasing or decreasing.")
         if _jit_any(unvmap((saveat.t > t1) | (saveat.t < t0))):
             raise ValueError("saveat.t must lie between t0 and t1.")
         tinterp_index = 0

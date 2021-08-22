@@ -8,15 +8,20 @@ import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
+import matplotlib.pyplot as plt
+import numpy as np
 import optax
 
 
 class Func(eqx.Module):
+    scale: jnp.ndarray
     mlp: eqx.nn.MLP
 
     @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
     def __call__(self, t, y, args):
-        return self.mlp(y)
+        return self.scale * self.mlp(
+            y
+        )  # scalar * tanh(mlp(y))); a good structure for the vector field
 
 
 class LatentODE(eqx.Module):
@@ -33,22 +38,24 @@ class LatentODE(eqx.Module):
     ):
         super().__init__(**kwargs)
 
-        mkey, gkey, lkey = jrandom.split(key, 3)
+        mkey, gkey, lkey1, lkey2, lkey3 = jrandom.split(key, 5)
+        scale = jnp.ones(())
         mlp = eqx.nn.MLP(
             in_size=hidden_size,
             out_size=hidden_size,
             width_size=width_size,
             depth=depth,
             activation=jnn.softplus,
+            final_activation=jnn.tanh,
             key=mkey,
         )
-        self.solver = dfx.dopri5(Func(mlp))
+        self.solver = dfx.dopri5(Func(scale, mlp))
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
-        self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=lkey)
+        self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=lkey1)
         self.latent_to_hidden = eqx.nn.MLP(
-            latent_size, hidden_size, width_size=width_size, depth=depth, key=lkey
+            latent_size, hidden_size, width_size=width_size, depth=depth, key=lkey2
         )
-        self.hidden_to_data = eqx.nn.Linear(hidden_size, data_size, key=lkey)
+        self.hidden_to_data = eqx.nn.Linear(hidden_size, data_size, key=lkey3)
         self.hidden_size = hidden_size
         self.latent_size = latent_size
 
@@ -65,7 +72,6 @@ class LatentODE(eqx.Module):
         return latent, mean, std
 
     def _sample(self, ts, latent):
-        # TODO
         y0 = self.latent_to_hidden(latent)
         sol = dfx.diffeqsolve(
             self.solver, ts[0], ts[-1], y0, dt0=0.375, saveat=dfx.SaveAt(t=ts)
@@ -99,9 +105,9 @@ def get_data(dataset_size, *, key):
     # As a way to demonstrate how diffrax can vmap over times, we'll use irregularly
     # sampled observations here.
     t0 = 0
-    t1 = 2 + jrandom.uniform(tkey1, (dataset_size,), minval=0, maxval=1)
+    t1 = 10 + jrandom.uniform(tkey1, (dataset_size,), minval=0, maxval=3)
     ts = (
-        jrandom.uniform(tkey2, (dataset_size, 20), minval=0, maxval=1)
+        jrandom.uniform(tkey2, (dataset_size, 100), minval=0, maxval=1)
         * (t1[:, None] - t0)
         + t0
     )
@@ -117,6 +123,7 @@ def get_data(dataset_size, *, key):
         return sol.ys
 
     ys = jax.vmap(solve, axis_name="")(ts, y0)
+
     return ts, ys
 
 
@@ -140,10 +147,11 @@ def main(
     dataset_size=10000,
     batch_size=256,
     lr=1e-2,
-    steps=10000,
-    hidden_size=32,
-    latent_size=32,
-    width_size=32,
+    steps=500,
+    save_every=50,
+    hidden_size=16,
+    latent_size=16,
+    width_size=16,
     depth=2,
     seed=5678,
 ):
@@ -151,7 +159,6 @@ def main(
     data_key, model_key, loader_key, train_key = jrandom.split(key, 4)
 
     ts, ys = get_data(dataset_size, key=data_key)
-    batch_size = min(batch_size, dataset_size)
 
     model = LatentODE(
         data_size=ys.shape[-1],
@@ -163,29 +170,49 @@ def main(
     )
 
     @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
-    def loss(model, ts, ys, *, key):
-        loss = jax.vmap(model.train, axis_name="")(ts, ys, key=key)
+    def loss(model, ts_i, ys_i, *, key_i):
+        batch_size, _ = ts_i.shape
+        # Only use the first 20 steps for training.
+        # The model we learn will be sufficiently good that it can still extrapolate!
+        ts_i = ts_i[:, :20]
+        ys_i = ys_i[:, :20]
+        key_i = jrandom.split(key_i, batch_size)
+        loss = jax.vmap(model.train, axis_name="")(ts_i, ys_i, key=key_i)
         return jnp.mean(loss)
 
-    optim = optax.chain(
-        optax.scale_by_adam(), optax.scale(-lr), optax.clip_by_global_norm(0.1)
-    )
+    optim = optax.adam(lr)
     opt_state = optim.init(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
-    train_key = jrandom.split(train_key, batch_size)
-    for step, (ts, ys) in zip(
+
+    for step, (ts_i, ys_i) in zip(
         range(steps), dataloader((ts, ys), batch_size, key=loader_key)
     ):
-        _batch_size = ts.shape[0]
         start = time.time()
-        value, grads = loss(model, ts, ys, key=train_key[:_batch_size])
+        value, grads = loss(model, ts_i, ys_i, key_i=train_key)
         end = time.time()
-        train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name="")(train_key)
+
+        (train_key,) = jrandom.split(train_key, 1)
         updates, opt_state = optim.update(grads, opt_state)
         model = eqx.apply_updates(model, updates)
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
-    breakpoint()
+
+        if (step % save_every) == 0 or step == steps - 1:
+            t = ts[0]
+            y = ys[0]
+            _, latent, _ = model._latent(t, y, key)
+            py = model._sample(t, latent)
+            t = np.asarray(t)
+            y = np.asarray(y)
+            py = np.asarray(py)
+            plt.plot(t, y[:, 0], c="r")
+            plt.plot(t, y[:, 1], c="r")
+            plt.plot(t, py[:, 0], c="b")
+            plt.plot(t, py[:, 1], c="b")
+            plt.tight_layout()
+            plt.savefig("training.png")
+            plt.close()
+            print("made output")
 
 
 if __name__ == "__main__":

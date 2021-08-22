@@ -52,9 +52,10 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
     ):
         super().__init__(**kwargs)
         c_mid = np.asarray(self.c_mid)
-        ymid = c_mid @ k
+        ymid = y0 + c_mid @ k
         f0 = k[0]
-        f1 = k[1]
+        f1 = k[-1]
+        # TODO: rewrite as matrix-vector product?
         a = 2 * (f1 - f0) - 8 * (y1 + y0) + 16 * ymid
         b = 5 * f0 - 3 * f1 + 18 * y0 + 14 * y1 - 32 * ymid
         c = f1 - 4 * f0 - 11 * y0 - 5 * y1 + 16 * ymid
