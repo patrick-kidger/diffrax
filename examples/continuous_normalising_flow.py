@@ -1,3 +1,15 @@
+###########
+#
+# This example is a bit of fun! It constructs a continuous normalising flow (CNF)
+# (https://arxiv.org/abs/1806.07366, https://arxiv.org/abs/1810.01367)
+# to learn a distriution specified by a (greyscale) image. That is, the target
+# distribution is over R^2, and the image specifies the (unnormalised) density at each
+# point.
+#
+# You can specify your own images, and learn your own flows.
+#
+###########
+
 import math
 import pathlib
 import time
@@ -23,6 +35,8 @@ def normal_log_likelihood(y):
     return -0.5 * (y.size * math.log(2 * math.pi) + jnp.sum(y ** 2))
 
 
+# Use Hutchinson's trace estimator to estimate the divergence of the vector field.
+# (As introduced in FFJORD.)
 def approx_logp_wrapper(t, y, args):
     y, _ = y
     *args, eps, func = args
@@ -33,6 +47,7 @@ def approx_logp_wrapper(t, y, args):
     return f, logp
 
 
+# Alternatively, compute the divergence exactly.
 def exact_logp_wrapper(t, y, args):
     y, _ = y
     *args, _, func = args
@@ -45,7 +60,8 @@ def exact_logp_wrapper(t, y, args):
     return f, logp
 
 
-# This layer taken from the FFJORD repo.
+# Credit: this layer, and the default hyperparameters below, are taken from the FFJORD
+# repo.
 class ConcatSquash(eqx.Module):
     lin1: eqx.nn.Linear
     lin2: eqx.nn.Linear
@@ -62,6 +78,8 @@ class ConcatSquash(eqx.Module):
         return self.lin1(y) * jnn.sigmoid(self.lin2(t)) + self.lin3(t)
 
 
+# Basically just an MLP, using tanh as the activation function and ConcatSquash instead
+# of linear layers.
 class Func(eqx.Module):
     layers: List[eqx.nn.Linear]
 
@@ -133,6 +151,7 @@ class CNF(eqx.Module):
         self.t1 = 0.5
         self.dt0 = 0.05
 
+    # Runs backward-in-time to train the CNF.
     def train(self, y, *, key):
         solver = diffrax.tsit5(
             exact_logp_wrapper if self.exact_logp else approx_logp_wrapper
@@ -147,15 +166,17 @@ class CNF(eqx.Module):
             (y,), (delta_log_likelihood,) = sol.ys
         return delta_log_likelihood + normal_log_likelihood(y)
 
+    # Runs forward in time to draw samples from the CNF.
     def sample(self, *, key):
         y = jrandom.normal(key, (self.data_size,))
         for func in self.funcs:
-            solver = diffrax.dopri5(func)
+            solver = diffrax.tsit5(func)
             sol = diffrax.diffeqsolve(solver, self.t0, self.t1, y, self.dt0)
             (y,) = sol.ys
         return y
 
 
+# Converts the input image into data.
 def get_data(path):
     # integer array of shape (height, width, channels) with values in {0, ..., 255}
     img = jnp.asarray(imageio.imread(path))
@@ -206,7 +227,6 @@ def main(
     lr=1e-3,
     weight_decay=1e-5,
     steps=10000,
-    lookahead=False,
     exact_logp=True,
     num_blocks=1,
     width_size=64,
@@ -232,8 +252,10 @@ def main(
 
     @jax.value_and_grad
     def loss(params, data, weight, key):
-        noise_key, train_key = jax.vmap(jrandom.split, out_axes=1, axis_name="")(key)
-        data = data + jrandom.normal(noise_key[0], data.shape) * 0.5 / std
+        batch_size, _ = data.shape
+        noise_key, train_key = jrandom.split(key, 2)
+        train_key = jrandom.split(key, batch_size)
+        data = data + jrandom.normal(noise_key, data.shape) * 0.5 / std
         model = eqx.merge(params, static, which, treedef)
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.18
@@ -241,56 +263,32 @@ def main(
         return -jnp.mean(weight * log_likelihood)
 
     optim = optax.adamw(lr, weight_decay=weight_decay)
-    if lookahead:
-        optim = optax.lookahead(optim, sync_period=5, slow_step_size=0.1)
-        params = optax.LookaheadParams.init_synced(params)
-        fast = lambda x: x.fast
-        slow = lambda x: x.slow
-    else:
-        fast = lambda x: x
-        slow = lambda x: x
     opt_state = optim.init(params)
 
-    best_value = jnp.inf
-    best_params = params
-    train_key = jrandom.split(train_key, batch_size)
     for step in range(steps):
         start = time.time()
-        if virtual_batches == 1:
+        value = 0
+        grads = jax.tree_map(lambda _: 0.0, params)
+        for _ in range(virtual_batches):
             data, weight = next(data_iter)
-            value, grads = loss(fast(params), data, weight, train_key[: data.shape[0]])
-            train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name="")(
-                train_key
-            )
-        else:
-            value = 0
-            grads = jax.tree_map(lambda _: 0.0, params)
-            for _ in range(virtual_batches):
-                data, weight = next(data_iter)
-                value_, grads_ = loss(
-                    fast(params), data, weight, train_key[: data.shape[0]]
-                )
-                train_key = jax.vmap(lambda k: jrandom.split(k, 1)[0], axis_name="")(
-                    train_key
-                )
-                value = value + value_
-                grads = jax.tree_map(lambda a, b: a + b, grads, grads_)
-            value = value / virtual_batches
-            grads = jax.tree_map(lambda a: a / virtual_batches, grads)
+            value_, grads_ = loss(params, data, weight, train_key)
+            (train_key,) = jrandom.split(train_key, 1)
+            value = value + value_
+            grads = jax.tree_map(lambda a, b: a + b, grads, grads_)
+        value = value / virtual_batches
+        grads = jax.tree_map(lambda a: a / virtual_batches, grads)
         end = time.time()
-        if value < best_value:
-            best_value = value
-            best_params = params
-        updates, opt_state = optim.update(grads, opt_state, params)
+
+        updates, opt_state = optim.update(grads_, opt_state, params)
         params = optax.apply_updates(params, updates)
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
 
-    print(f"Best value: {best_value}")
-    best_model = eqx.merge(slow(best_params), static, which, treedef)
+    print(f"Best value: {value}")
+    model = eqx.merge(params, static, which, treedef)
 
-    num_samples = min(20 * dataset_size, 5000)
+    num_samples = 5000
     sample_key = jrandom.split(sample_key, num_samples)
-    samples = jax.vmap(best_model.sample, axis_name="")(key=sample_key)
+    samples = jax.vmap(model.sample, axis_name="")(key=sample_key)
     samples = samples * std + mean
     x = samples[:, 0]
     y = samples[:, 1]

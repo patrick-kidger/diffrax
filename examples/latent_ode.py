@@ -1,9 +1,62 @@
+###########
+#
+# This example trains a Latent ODE (https://arxiv.org/abs/1907.03907).
+# In this case, it's on a simple dataset of decaying harmonic oscillators.
+# That is, 2-dimensional time series that look like:
+#
+#
+#
+# xx    ***
+#     **   *
+#   x*      **
+#   *x
+#     x       *
+#  *           *                  xxxxx
+# *    x        *               xx    xx *******
+#                              x        x       **
+#       x        *            x        * x        *                  xxxxxxxx  ******
+#        x        *          x        *   x        *              xxx       *xx      *
+#                           x        *     xx       **           x        **   xx
+#         x        *       x        *        x        *        xx       **       xx
+#                   *     x        *          x        **     x        *           xxx
+#          x         *            *            x         *  xx       **
+#           x         *  x       *              xx        xx*     ***
+#            x         *x       *                 xxx  xxx   *****
+#             x        x*      *                     xx
+#              x     xx  ******
+#               xxxxx
+#
+#
+#
+# The model is trained to generate samples that look like this.
+#
+###########
+#
+# What's really nice about this example, is that we will make the underlying data be
+# irregularly sampled. We will have different observation times for different batch
+# elements.
+#
+# Most differential equation libraries will struggle with this, as they usually mandate
+# that the differential equation be solved over the same timespan for all batch
+# elements. This can mean complexity like outputting at lots and lots of times (the
+# union of all the observations times in the batch), or mathematical complexities like
+# reparameterising the differentiating equation.
+#
+# However Diffrax is capable of handling this natively! You can `vmap` over different
+# integration times for different batch elements. (In fact, I don't think I know of a
+# single other differential equation library that's capable of doing this.)
+#
+###########
+
 import functools as ft
+import pathlib
+import tempfile
 import time
 
 import diffrax as dfx
 import equinox as eqx
 import fire
+import imageio
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -11,6 +64,9 @@ import jax.random as jrandom
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
+
+
+here = pathlib.Path(__file__).resolve().parent
 
 
 class Func(eqx.Module):
@@ -27,9 +83,11 @@ class Func(eqx.Module):
 class LatentODE(eqx.Module):
     solver: dfx.AbstractSolver
     rnn_cell: eqx.nn.GRUCell
+
     hidden_to_latent: eqx.nn.Linear
     latent_to_hidden: eqx.nn.MLP
     hidden_to_data: eqx.nn.Linear
+
     hidden_size: int
     latent_size: int
 
@@ -38,7 +96,8 @@ class LatentODE(eqx.Module):
     ):
         super().__init__(**kwargs)
 
-        mkey, gkey, lkey1, lkey2, lkey3 = jrandom.split(key, 5)
+        mkey, gkey, hlkey, lhkey, hdkey = jrandom.split(key, 5)
+
         scale = jnp.ones(())
         mlp = eqx.nn.MLP(
             in_size=hidden_size,
@@ -51,14 +110,17 @@ class LatentODE(eqx.Module):
         )
         self.solver = dfx.dopri5(Func(scale, mlp))
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
-        self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=lkey1)
+
+        self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=hlkey)
         self.latent_to_hidden = eqx.nn.MLP(
-            latent_size, hidden_size, width_size=width_size, depth=depth, key=lkey2
+            latent_size, hidden_size, width_size=width_size, depth=depth, key=lhkey
         )
-        self.hidden_to_data = eqx.nn.Linear(hidden_size, data_size, key=lkey3)
+        self.hidden_to_data = eqx.nn.Linear(hidden_size, data_size, key=hdkey)
+
         self.hidden_size = hidden_size
         self.latent_size = latent_size
 
+    # Encoder of the VAE
     @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
     def _latent(self, ts, ys, key):
         data = jnp.concatenate([ts[:, None], ys], axis=1)
@@ -71,6 +133,7 @@ class LatentODE(eqx.Module):
         latent = mean + jrandom.normal(key, (self.latent_size,)) * std
         return latent, mean, std
 
+    # Decoder of the VAE
     def _sample(self, ts, latent):
         y0 = self.latent_to_hidden(latent)
         sol = dfx.diffeqsolve(
@@ -87,23 +150,24 @@ class LatentODE(eqx.Module):
         variational_loss = 0.5 * jnp.sum(mean ** 2 + std ** 2 - 2 * jnp.log(std) - 1)
         return reconstruction_loss + variational_loss
 
+    # Run both encoder and decoder during training.
     def train(self, ts, ys, *, key):
         latent, mean, std = self._latent(ts, ys, key)
         pred_ys = self._sample(ts, latent)
         return self._loss(ys, pred_ys, mean, std)
 
+    # Run just the decoder during inference.
     def sample(self, ts, *, key):
         latent = jrandom.normal(key, (self.latent_size,))
         return self._sample(ts, latent)
 
 
+# Toy dataset of decaying harmonic oscillators.
 def get_data(dataset_size, *, key):
     ykey, tkey1, tkey2 = jrandom.split(key, 3)
 
     y0 = jrandom.normal(ykey, (dataset_size, 2))
 
-    # As a way to demonstrate how diffrax can vmap over times, we'll use irregularly
-    # sampled observations here.
     t0 = 0
     t1 = 10 + jrandom.uniform(tkey1, (dataset_size,), minval=0, maxval=3)
     ts = (
@@ -144,6 +208,7 @@ def dataloader(arrays, batch_size, *, key):
 
 
 def main(
+    out_path=here / "latent_ode.gif",
     dataset_size=10000,
     batch_size=256,
     lr=1e-2,
@@ -156,7 +221,7 @@ def main(
     seed=5678,
 ):
     key = jrandom.PRNGKey(seed)
-    data_key, model_key, loader_key, train_key = jrandom.split(key, 4)
+    data_key, model_key, loader_key, train_key, sample_key = jrandom.split(key, 5)
 
     ts, ys = get_data(dataset_size, key=data_key)
 
@@ -185,6 +250,7 @@ def main(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
 
+    sample_files = []
     for step, (ts_i, ys_i) in zip(
         range(steps), dataloader((ts, ys), batch_size, key=loader_key)
     ):
@@ -198,21 +264,28 @@ def main(
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
 
         if (step % save_every) == 0 or step == steps - 1:
-            t = ts[0]
-            y = ys[0]
-            _, latent, _ = model._latent(t, y, key)
-            py = model._sample(t, latent)
-            t = np.asarray(t)
-            y = np.asarray(y)
-            py = np.asarray(py)
-            plt.plot(t, y[:, 0], c="r")
-            plt.plot(t, y[:, 1], c="r")
-            plt.plot(t, py[:, 0], c="b")
-            plt.plot(t, py[:, 1], c="b")
+            sample_t = jnp.linspace(ts[0, 0], ts[0, -1], 300)
+            sample_y = model.sample(sample_t, key=sample_key)
+            sample_t = np.asarray(sample_t)
+            sample_y = np.asarray(sample_y)
+            plt.plot(sample_t, sample_y[:, 0])
+            plt.plot(sample_t, sample_y[:, 1])
             plt.tight_layout()
-            plt.savefig("training.png")
+
+            sample_file = tempfile.NamedTemporaryFile(suffix=".png")
+            sample_files.append(sample_file)
+            plt.savefig(sample_file.name)
             plt.close()
-            print("made output")
+
+    with imageio.get_writer(out_path, mode="I", duration=0.3) as writer:
+        for sample_file in sample_files:
+            image = imageio.imread(sample_file.name)
+            writer.append_data(image)
+        # Repeat last image
+        for _ in range(3):
+            writer.append_data(image)
+    for sample_file in sample_files:
+        sample_file.close()
 
 
 if __name__ == "__main__":
