@@ -82,6 +82,7 @@ class Func(eqx.Module):
 
 class LatentODE(eqx.Module):
     solver: dfx.AbstractSolver
+    stepsize_controller: dfx.AbstractStepSizeController
     rnn_cell: eqx.nn.GRUCell
 
     hidden_to_latent: eqx.nn.Linear
@@ -109,6 +110,7 @@ class LatentODE(eqx.Module):
             key=mkey,
         )
         self.solver = dfx.dopri5(Func(scale, mlp))
+        self.stepsize_controller = dfx.IController()
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
 
         self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=hlkey)
@@ -137,7 +139,13 @@ class LatentODE(eqx.Module):
     def _sample(self, ts, latent):
         y0 = self.latent_to_hidden(latent)
         sol = dfx.diffeqsolve(
-            self.solver, ts[0], ts[-1], y0, dt0=0.375, saveat=dfx.SaveAt(t=ts)
+            self.solver,
+            ts[0],
+            ts[-1],
+            y0,
+            dt0=None,
+            stepsize_controller=self.stepsize_controller,
+            saveat=dfx.SaveAt(t=ts),
         )
         return jax.vmap(self.hidden_to_data, axis_name="")(sol.ys)
 

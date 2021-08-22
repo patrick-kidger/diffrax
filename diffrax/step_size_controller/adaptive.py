@@ -43,7 +43,9 @@ def _select_initial_step(
     d0 = norm(unravel_y(y0 / scale))
     d1 = norm(unravel_y(f0 / scale))
 
-    h0 = jnp.where((d0 < 1e-5) | (d1 < 1e-5), 1e-6, 0.01 * (d0 / d1))
+    _cond = (d0 < 1e-5) | (d1 < 1e-5)
+    _d1 = jnp.where(_cond, 1, d1)
+    h0 = jnp.where(_cond, 1e-6, 0.01 * (d0 / _d1))
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
@@ -98,14 +100,6 @@ class IController(AbstractStepSizeController):
     unravel_y: callable = field(repr=False, default=_do_not_set_at_init)
     direction: Scalar = field(repr=False, default=_do_not_set_at_init)
 
-    def __post_init__(self):
-        if self.jump_ts is not None and not jnp.issubdtype(
-            self.jump_ts.dtype, jnp.inexact
-        ):
-            raise ValueError(
-                f"jump_ts must be floating point, not {self.jump_ts.dtype}"
-            )
-
     def wrap(self, unravel_y: callable, direction: Scalar):
         return type(self)(
             rtol=self.rtol,
@@ -118,8 +112,8 @@ class IController(AbstractStepSizeController):
             dtmax=self.dtmax,
             force_dtmin=self.force_dtmin,
             unvmap_dt=self.unvmap_dt,
-            step_ts=self.step_ts,
-            jump_ts=self.jump_ts,
+            step_ts=self.step_ts * direction,
+            jump_ts=self.jump_ts * direction,
             unravel_y=unravel_y,
             direction=direction,
         )
@@ -250,6 +244,12 @@ class IController(AbstractStepSizeController):
     def _clip_jump_ts(self, t0: Scalar, t1: Scalar) -> Tuple[Scalar, bool]:
         if self.jump_ts is None:
             return t1, jnp.full_like(t1, fill_value=False, dtype=bool)
+        if self.jump_ts is not None and not jnp.issubdtype(
+            self.jump_ts.dtype, jnp.inexact
+        ):
+            raise ValueError(
+                f"jump_ts must be floating point, not {self.jump_ts.dtype}"
+            )
         if not jnp.issubdtype(t1.dtype, jnp.inexact):
             raise ValueError(
                 "t0, t1, dt0 must be floating point when specifying jump_t. Got "
