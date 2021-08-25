@@ -26,6 +26,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import matplotlib.pyplot as plt
 import optax
+import scipy.stats as stats
 
 
 here = pathlib.Path(__file__).resolve().parent
@@ -192,6 +193,23 @@ class CNF(eqx.Module):
             (y,) = sol.ys
         return y
 
+    ###########
+    # By way of illustration, we have a variant sample method we can query to see the
+    # evolution of the samples during the forward solve.
+    ###########
+    def sample_flow(self, *, key):
+        saveat = diffrax.SaveAt(ts=jnp.linspace(self.t0, self.t1, 6 // len(self.funcs)))
+        y = jrandom.normal(key, (self.data_size,))
+        out = []
+        for func in self.funcs:
+            solver = diffrax.tsit5(func)
+            sol = diffrax.diffeqsolve(
+                solver, self.t0, self.t1, y, self.dt0, saveat=saveat
+            )
+            out.append(sol.ys)
+            y = sol.ys[-1]
+        return jnp.concatenate(out)
+
 
 ###########
 # Converts the input image into data.
@@ -199,6 +217,8 @@ class CNF(eqx.Module):
 def get_data(path):
     # integer array of shape (height, width, channels) with values in {0, ..., 255}
     img = jnp.asarray(imageio.imread(path))
+    if img.shape[-1] == 4:
+        img = img[..., :-1]  # ignore alpha channel
     height, width, channels = img.shape
     assert channels == 3
     # Convert to greyscale for simplicity.
@@ -219,7 +239,7 @@ def get_data(path):
     std = jnp.std(dataset, axis=0) + 1e-6
     dataset = (dataset - mean) / std
 
-    return dataset, weights, mean, std, width, height
+    return dataset, weights, mean, std, img, width, height
 
 
 def dataloader(arrays, batch_size, *, key):
@@ -255,7 +275,7 @@ def main(
     key = jrandom.PRNGKey(seed)
     model_key, loader_key, train_key, sample_key = jrandom.split(key, 4)
 
-    dataset, weights, mean, std, width, height = get_data(in_path)
+    dataset, weights, mean, std, img, width, height = get_data(in_path)
     dataset_size, data_size = dataset.shape
     data_iter = iter(dataloader((dataset, weights), batch_size, key=loader_key))
 
@@ -293,7 +313,9 @@ def main(
             value_, grads_ = loss(model, data, weight, train_key)
             (train_key,) = jrandom.split(train_key, 1)
             value = value + value_
-            grads = jax.tree_map(lambda a, b: a + b, grads, grads_)
+            grads = jax.tree_map(
+                lambda a, b: None if b is None else a + b, grads, grads_
+            )
         value = value / virtual_batches
         grads = jax.tree_map(lambda a: a / virtual_batches, grads)
         end = time.time()
@@ -306,13 +328,47 @@ def main(
     num_samples = 5000
     sample_key = jrandom.split(sample_key, num_samples)
     samples = jax.vmap(model.sample, axis_name="")(key=sample_key)
+    sample_flows = jax.vmap(model.sample_flow, axis_name="", out_axes=-1)(
+        key=sample_key
+    )
+    fig, (*axs, ax, axtrue) = plt.subplots(
+        1,
+        2 + len(sample_flows),
+        figsize=((2 + len(sample_flows)) * 10 * height / width, 10),
+    )
+
     samples = samples * std + mean
     x = samples[:, 0]
     y = samples[:, 1]
-    plt.scatter(x, y)
-    plt.xlim(-1, width + 1)
-    plt.ylim(-1, height + 1)
+    ax.scatter(x, y, c="black", s=2)
+    ax.set_xlim(-0.5, width - 0.5)
+    ax.set_ylim(-0.5, height - 0.5)
+    ax.set_aspect(height / width)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    axtrue.imshow(img, cmap="gray")
+    axtrue.set_aspect(height / width)
+    axtrue.set_xticks([])
+    axtrue.set_yticks([])
+
+    x_resolution = 100
+    y_resolution = int(x_resolution * (height / width))
+    sample_flows = sample_flows * std[:, None] + mean[:, None]
+    x_pos, y_pos = jnp.broadcast_arrays(
+        jnp.linspace(-1, width + 1, x_resolution)[:, None],
+        jnp.linspace(-1, height + 1, y_resolution)[None, :],
+    )
+    positions = jnp.stack([jnp.ravel(x_pos), jnp.ravel(y_pos)])
+    densities = [stats.gaussian_kde(samples)(positions) for samples in sample_flows]
+    for i, (ax, density) in enumerate(zip(axs, densities)):
+        density = jnp.reshape(density, (x_resolution, y_resolution))
+        ax.imshow(density, origin="lower", cmap="plasma")
+        ax.set_aspect(height / width)
+        ax.set_xticks([])
+        ax.set_yticks([])
     plt.savefig(out_path)
+    plt.close()
 
 
 if __name__ == "__main__":

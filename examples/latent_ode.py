@@ -115,8 +115,6 @@ class LatentODE(eqx.Module):
             key=mkey,
         )
         self.solver = diffrax.dopri5(Func(scale, mlp))
-        self.stepsize_controller = diffrax.IController()
-        self.solver = diffrax.dopri5(Func(scale, mlp))
         self.stepsize_controller = diffrax.IController(rtol=1e-4)
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
 
