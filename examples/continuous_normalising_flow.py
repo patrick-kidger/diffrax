@@ -1,8 +1,8 @@
 ###########
 #
 # This example is a bit of fun! It constructs a continuous normalising flow (CNF)
-# (https://arxiv.org/abs/1806.07366, https://arxiv.org/abs/1810.01367)
-# to learn a distriution specified by a (greyscale) image. That is, the target
+# (https://arxiv.org/abs/1810.01367)
+# to learn a distribution specified by a (greyscale) image. That is, the target
 # distribution is over R^2, and the image specifies the (unnormalised) density at each
 # point.
 #
@@ -10,6 +10,7 @@
 #
 ###########
 
+import functools as ft
 import math
 import pathlib
 import time
@@ -31,12 +32,13 @@ here = pathlib.Path(__file__).resolve().parent
 
 
 def normal_log_likelihood(y):
-    # Omits the constant factor
     return -0.5 * (y.size * math.log(2 * math.pi) + jnp.sum(y ** 2))
 
 
+###########
 # Use Hutchinson's trace estimator to estimate the divergence of the vector field.
 # (As introduced in FFJORD.)
+###########
 def approx_logp_wrapper(t, y, args):
     y, _ = y
     *args, eps, func = args
@@ -47,7 +49,9 @@ def approx_logp_wrapper(t, y, args):
     return f, logp
 
 
+###########
 # Alternatively, compute the divergence exactly.
+###########
 def exact_logp_wrapper(t, y, args):
     y, _ = y
     *args, _, func = args
@@ -60,8 +64,10 @@ def exact_logp_wrapper(t, y, args):
     return f, logp
 
 
-# Credit: this layer, and the default hyperparameters below, are taken from the FFJORD
-# repo.
+###########
+# Credit: this layer, and some of the default hyperparameters below, are taken from the
+# FFJORD repo.
+###########
 class ConcatSquash(eqx.Module):
     lin1: eqx.nn.Linear
     lin2: eqx.nn.Linear
@@ -78,8 +84,11 @@ class ConcatSquash(eqx.Module):
         return self.lin1(y) * jnn.sigmoid(self.lin2(t)) + self.lin3(t)
 
 
+###########
 # Basically just an MLP, using tanh as the activation function and ConcatSquash instead
 # of linear layers.
+# This is the vector field on the right hand side of the ODE.
+###########
 class Func(eqx.Module):
     layers: List[eqx.nn.Linear]
 
@@ -106,6 +115,7 @@ class Func(eqx.Module):
             )
         self.layers = layers
 
+    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
     def __call__(self, t, y, args):
         t = jnp.asarray(t)[None]
         for layer in self.layers[:-1]:
@@ -115,6 +125,9 @@ class Func(eqx.Module):
         return y
 
 
+###########
+# Wrap up the differential equation solve into a model.
+###########
 class CNF(eqx.Module):
     funcs: List[Func]
     data_size: int
@@ -151,7 +164,9 @@ class CNF(eqx.Module):
         self.t1 = 0.5
         self.dt0 = 0.05
 
+    ###########
     # Runs backward-in-time to train the CNF.
+    ###########
     def train(self, y, *, key):
         solver = diffrax.tsit5(
             exact_logp_wrapper if self.exact_logp else approx_logp_wrapper
@@ -166,7 +181,9 @@ class CNF(eqx.Module):
             (y,), (delta_log_likelihood,) = sol.ys
         return delta_log_likelihood + normal_log_likelihood(y)
 
-    # Runs forward in time to draw samples from the CNF.
+    ###########
+    # Runs forward-in-time to draw samples from the CNF.
+    ###########
     def sample(self, *, key):
         y = jrandom.normal(key, (self.data_size,))
         for func in self.funcs:
@@ -176,7 +193,9 @@ class CNF(eqx.Module):
         return y
 
 
+###########
 # Converts the input image into data.
+###########
 def get_data(path):
     # integer array of shape (height, width, channels) with values in {0, ..., 255}
     img = jnp.asarray(imageio.imread(path))
@@ -228,7 +247,7 @@ def main(
     weight_decay=1e-5,
     steps=10000,
     exact_logp=True,
-    num_blocks=1,
+    num_blocks=2,
     width_size=64,
     depth=3,
     seed=5678,
@@ -248,30 +267,30 @@ def main(
         depth=depth,
         key=model_key,
     )
-    params, static, which, treedef = eqx.split(model, filter_fn=eqx.is_inexact_array)
 
-    @jax.value_and_grad
-    def loss(params, data, weight, key):
+    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
+    def loss(model, data, weight, key):
         batch_size, _ = data.shape
         noise_key, train_key = jrandom.split(key, 2)
         train_key = jrandom.split(key, batch_size)
         data = data + jrandom.normal(noise_key, data.shape) * 0.5 / std
-        model = eqx.merge(params, static, which, treedef)
         # Setting an explicit axis_name works around a JAX bug that triggers
-        # unnecessary re-JIT-ing in JAX version <= 0.2.18
+        # unnecessary re-JIT-ing in JAX version <= 0.2.19.
         log_likelihood = jax.vmap(model.train, axis_name="")(data, key=train_key)
         return -jnp.mean(weight * log_likelihood)
 
     optim = optax.adamw(lr, weight_decay=weight_decay)
-    opt_state = optim.init(params)
+    opt_state = optim.init(
+        jax.tree_map(lambda x: x if eqx.is_inexact_array(x) else None, model)
+    )
 
     for step in range(steps):
         start = time.time()
         value = 0
-        grads = jax.tree_map(lambda _: 0.0, params)
+        grads = jax.tree_map(lambda _: 0.0, model)
         for _ in range(virtual_batches):
             data, weight = next(data_iter)
-            value_, grads_ = loss(params, data, weight, train_key)
+            value_, grads_ = loss(model, data, weight, train_key)
             (train_key,) = jrandom.split(train_key, 1)
             value = value + value_
             grads = jax.tree_map(lambda a, b: a + b, grads, grads_)
@@ -279,13 +298,11 @@ def main(
         grads = jax.tree_map(lambda a: a / virtual_batches, grads)
         end = time.time()
 
-        updates, opt_state = optim.update(grads_, opt_state, params)
-        params = optax.apply_updates(params, updates)
+        updates, opt_state = optim.update(grads_, opt_state, model)
+        model = eqx.apply_updates(model, updates)
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
 
     print(f"Best value: {value}")
-    model = eqx.merge(params, static, which, treedef)
-
     num_samples = 5000
     sample_key = jrandom.split(sample_key, num_samples)
     samples = jax.vmap(model.sample, axis_name="")(key=sample_key)

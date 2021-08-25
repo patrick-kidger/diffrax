@@ -16,19 +16,19 @@ class _SaveAt(eqx.Module):
 
 
 class SaveAt(_SaveAt):
-    t: Optional[Array["times"]] = None  # noqa: F821
+    ts: Optional[Array["times"]] = None  # noqa: F821
 
-    def __init__(self, t=None, **kwargs):
+    def __init__(self, ts=None, **kwargs):
         super().__init__(**kwargs)
-        if t is not None:
-            t = jnp.asarray(t)
-        self.t = t
+        if ts is not None:
+            ts = jnp.asarray(ts)
+        self.ts = ts
 
     def __post_init__(self):
         if (
             not self.t0
             and not self.t1
-            and self.t is None
+            and self.ts is None
             and not self.steps
             and not self.dense
         ):

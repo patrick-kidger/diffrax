@@ -136,9 +136,9 @@ def _jit_any(x):
 
 
 @jax.jit
-def _pre_save_interp(tnext_before, tinterp_index, saveat_t):
-    tinterp = saveat_t[jnp.minimum(tinterp_index, len(saveat_t) - 1)]
-    interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_t))
+def _pre_save_interp(tnext_before, tinterp_index, saveat_ts):
+    tinterp = saveat_ts[jnp.minimum(tinterp_index, len(saveat_ts) - 1)]
+    interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_ts))
     return tinterp, interp_cond
 
 
@@ -150,14 +150,14 @@ def _save_interp(
     dense_info,
     tinterp,
     tinterp_index,
-    saveat_t,
+    saveat_ts,
     interp_cond,
 ):
     interpolator = interpolation_cls(t0=tprev_before, t1=tnext_before, **dense_info)
     yinterp = interpolator.evaluate(tinterp)
     tinterp_index = tinterp_index + jnp.where(interp_cond, 1, 0)
-    tinterp = saveat_t[jnp.minimum(tinterp_index, len(saveat_t) - 1)]
-    interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_t))
+    tinterp = saveat_ts[jnp.minimum(tinterp_index, len(saveat_ts) - 1)]
+    interp_cond = (tinterp <= tnext_before) & (tinterp_index < len(saveat_ts))
     return tinterp, yinterp, interp_cond, tinterp_index
 
 
@@ -216,14 +216,14 @@ def diffeqsolve(
     t1 = t1 * direction
     if dt0 is not None:
         dt0 = dt0 * direction
-    if saveat.t is not None:
-        saveat = eqx.tree_at(lambda s: s.t, saveat, saveat.t * direction)
+    if saveat.ts is not None:
+        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
 
-    if saveat.t is not None:
-        if _jit_any(unvmap(saveat.t[1:] < saveat.t[:-1])):
-            raise ValueError("saveat.t must be increasing or decreasing.")
-        if _jit_any(unvmap((saveat.t > t1) | (saveat.t < t0))):
-            raise ValueError("saveat.t must lie between t0 and t1.")
+    if saveat.ts is not None:
+        if _jit_any(unvmap(saveat.ts[1:] < saveat.ts[:-1])):
+            raise ValueError("saveat.ts must be increasing or decreasing.")
+        if _jit_any(unvmap((saveat.ts > t1) | (saveat.ts < t0))):
+            raise ValueError("saveat.ts must lie between t0 and t1.")
         tinterp_index = 0
 
     tprev = t0
@@ -260,7 +260,7 @@ def diffeqsolve(
     num_steps = 0
     has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
-    save_intermediate = (saveat.t is not None) or saveat.steps or saveat.dense
+    save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while _jit_any(unvmap(_lt(tprev, t1))) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
@@ -305,9 +305,9 @@ def diffeqsolve(
 
         # save_intermediate=False offers a fast path that avoids JAX operations
         if save_intermediate and _jit_any(unvmap(made_step)):
-            if saveat.t is not None:
+            if saveat.ts is not None:
                 tinterp, interp_cond = _pre_save_interp(
-                    tnext_before, tinterp_index, saveat.t
+                    tnext_before, tinterp_index, saveat.ts
                 )
                 while _jit_any(unvmap(interp_cond)):
                     ts.append(tinterp)
@@ -322,7 +322,7 @@ def diffeqsolve(
                         dense_info,
                         tinterp,
                         tinterp_index,
-                        saveat.t,
+                        saveat.ts,
                         interp_cond,
                     )
                     ys.append(yinterp)
@@ -387,8 +387,8 @@ def diffeqsolve(
         out_len = 0
         if saveat.t0:
             out_len = out_len + 1
-        if saveat.t is not None:
-            out_len = out_len + len(saveat.t)
+        if saveat.ts is not None:
+            out_len = out_len + len(saveat.ts)
         if saveat.t1 and not saveat.steps:
             out_len = out_len + 1
         if saveat.steps:

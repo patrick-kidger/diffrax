@@ -1,7 +1,7 @@
 ###########
 #
 # This example trains a Latent ODE (https://arxiv.org/abs/1907.03907).
-# In this case, it's on a simple dataset of decaying harmonic oscillators.
+# In this case, it's on a simple dataset of decaying oscillators.
 # That is, 2-dimensional time series that look like:
 #
 #
@@ -32,19 +32,18 @@
 #
 ###########
 #
-# What's really nice about this example, is that we will make the underlying data be
+# What's really nice about this example is that we will take the underlying data to be
 # irregularly sampled. We will have different observation times for different batch
 # elements.
 #
 # Most differential equation libraries will struggle with this, as they usually mandate
 # that the differential equation be solved over the same timespan for all batch
-# elements. This can mean complexity like outputting at lots and lots of times (the
-# union of all the observations times in the batch), or mathematical complexities like
-# reparameterising the differentiating equation.
+# elements. Working around this can involve programming complexity like outputting at
+# lots and lots of times (the union of all the observations times in the batch), or
+# mathematical complexities like reparameterising the differentiating equation.
 #
-# However Diffrax is capable of handling this natively! You can `vmap` over different
-# integration times for different batch elements. (In fact, I don't think I know of a
-# single other differential equation library that's capable of doing this.)
+# However Diffrax is capable of handling this without such issues! You can `vmap` over
+# different integration times for different batch elements.
 #
 ###########
 
@@ -53,7 +52,7 @@ import pathlib
 import tempfile
 import time
 
-import diffrax as dfx
+import diffrax
 import equinox as eqx
 import fire
 import imageio
@@ -69,20 +68,27 @@ import optax
 here = pathlib.Path(__file__).resolve().parent
 
 
+###########
+# The vector field.
+# Note its overall structure of
+# scalar * tanh(mlp(y))
+# which is a good structure for Latent ODEs.
+###########
 class Func(eqx.Module):
     scale: jnp.ndarray
     mlp: eqx.nn.MLP
 
     @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
     def __call__(self, t, y, args):
-        return self.scale * self.mlp(
-            y
-        )  # scalar * tanh(mlp(y))); a good structure for the vector field
+        return self.scale * self.mlp(y)
 
 
+###########
+# Wrap up the differential equation solve into a model.
+###########
 class LatentODE(eqx.Module):
-    solver: dfx.AbstractSolver
-    stepsize_controller: dfx.AbstractStepSizeController
+    solver: diffrax.AbstractSolver
+    stepsize_controller: diffrax.AbstractStepSizeController
     rnn_cell: eqx.nn.GRUCell
 
     hidden_to_latent: eqx.nn.Linear
@@ -109,8 +115,8 @@ class LatentODE(eqx.Module):
             final_activation=jnn.tanh,
             key=mkey,
         )
-        self.solver = dfx.dopri5(Func(scale, mlp))
-        self.stepsize_controller = dfx.IController()
+        self.solver = diffrax.dopri5(Func(scale, mlp))
+        self.stepsize_controller = diffrax.IController()
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
 
         self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=hlkey)
@@ -122,7 +128,9 @@ class LatentODE(eqx.Module):
         self.hidden_size = hidden_size
         self.latent_size = latent_size
 
+    ###########
     # Encoder of the VAE
+    ###########
     @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
     def _latent(self, ts, ys, key):
         data = jnp.concatenate([ts[:, None], ys], axis=1)
@@ -135,17 +143,19 @@ class LatentODE(eqx.Module):
         latent = mean + jrandom.normal(key, (self.latent_size,)) * std
         return latent, mean, std
 
+    ###########
     # Decoder of the VAE
+    ###########
     def _sample(self, ts, latent):
         y0 = self.latent_to_hidden(latent)
-        sol = dfx.diffeqsolve(
+        sol = diffrax.diffeqsolve(
             self.solver,
             ts[0],
             ts[-1],
             y0,
             dt0=None,
             stepsize_controller=self.stepsize_controller,
-            saveat=dfx.SaveAt(t=ts),
+            saveat=diffrax.SaveAt(ts=ts),
         )
         return jax.vmap(self.hidden_to_data, axis_name="")(sol.ys)
 
@@ -158,19 +168,29 @@ class LatentODE(eqx.Module):
         variational_loss = 0.5 * jnp.sum(mean ** 2 + std ** 2 - 2 * jnp.log(std) - 1)
         return reconstruction_loss + variational_loss
 
+    ###########
     # Run both encoder and decoder during training.
+    ###########
     def train(self, ts, ys, *, key):
         latent, mean, std = self._latent(ts, ys, key)
         pred_ys = self._sample(ts, latent)
         return self._loss(ys, pred_ys, mean, std)
 
+    ###########
     # Run just the decoder during inference.
+    ###########
     def sample(self, ts, *, key):
         latent = jrandom.normal(key, (self.latent_size,))
         return self._sample(ts, latent)
 
 
-# Toy dataset of decaying harmonic oscillators.
+###########
+# Toy dataset of decaying oscillators.
+#
+# By way of illustration we set this up as a differential equaiton and solve this using
+# Diffrax as well. (Despite this being an autonomous linear ODE, for which a
+# closed-form solution is actually available.)
+###########
 def get_data(dataset_size, *, key):
     ykey, tkey1, tkey2 = jrandom.split(key, 3)
 
@@ -189,8 +209,13 @@ def get_data(dataset_size, *, key):
         return jnp.array([[-0.1, 1.3], [-1, -0.1]]) @ y
 
     def solve(ts, y0):
-        sol = dfx.diffeqsolve(
-            dfx.tsit5(func), ts[0], ts[-1], y0, dt0=0.1, saveat=dfx.SaveAt(t=ts)
+        sol = diffrax.diffeqsolve(
+            diffrax.tsit5(func),
+            ts[0],
+            ts[-1],
+            y0,
+            dt0=0.1,
+            saveat=diffrax.SaveAt(ts=ts),
         )
         return sol.ys
 
@@ -250,6 +275,8 @@ def main(
         ts_i = ts_i[:, :20]
         ys_i = ys_i[:, :20]
         key_i = jrandom.split(key_i, batch_size)
+        # Setting an explicit axis_name works around a JAX bug that triggers
+        # unnecessary re-JIT-ing in JAX version <= 0.2.19
         loss = jax.vmap(model.train, axis_name="")(ts_i, ys_i, key=key_i)
         return jnp.mean(loss)
 
