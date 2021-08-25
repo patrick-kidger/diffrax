@@ -112,8 +112,8 @@ class IController(AbstractStepSizeController):
             dtmax=self.dtmax,
             force_dtmin=self.force_dtmin,
             unvmap_dt=self.unvmap_dt,
-            step_ts=self.step_ts * direction,
-            jump_ts=self.jump_ts * direction,
+            step_ts=None if self.step_ts is None else self.step_ts * direction,
+            jump_ts=None if self.jump_ts is None else self.jump_ts * direction,
             unravel_y=unravel_y,
             direction=direction,
         )

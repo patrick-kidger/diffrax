@@ -49,7 +49,6 @@
 
 import functools as ft
 import pathlib
-import tempfile
 import time
 
 import diffrax
@@ -117,6 +116,8 @@ class LatentODE(eqx.Module):
         )
         self.solver = diffrax.dopri5(Func(scale, mlp))
         self.stepsize_controller = diffrax.IController()
+        self.solver = diffrax.dopri5(Func(scale, mlp))
+        self.stepsize_controller = diffrax.IController(rtol=1e-4)
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
 
         self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=hlkey)
@@ -241,7 +242,7 @@ def dataloader(arrays, batch_size, *, key):
 
 
 def main(
-    out_path=here / "latent_ode.gif",
+    out_path=here / "latent_ode",
     dataset_size=10000,
     batch_size=256,
     lr=1e-2,
@@ -253,6 +254,7 @@ def main(
     depth=2,
     seed=5678,
 ):
+    out_path = str(out_path)
     key = jrandom.PRNGKey(seed)
     data_key, model_key, loader_key, train_key, sample_key = jrandom.split(key, 5)
 
@@ -285,7 +287,7 @@ def main(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
 
-    sample_files = []
+    sample_filenames = []
     for step, (ts_i, ys_i) in zip(
         range(steps), dataloader((ts, ys), batch_size, key=loader_key)
     ):
@@ -307,20 +309,18 @@ def main(
             plt.plot(sample_t, sample_y[:, 1])
             plt.tight_layout()
 
-            sample_file = tempfile.NamedTemporaryFile(suffix=".png")
-            sample_files.append(sample_file)
-            plt.savefig(sample_file.name)
+            sample_filename = out_path + str(step) + ".png"
+            sample_filenames.append(sample_filename)
+            plt.savefig(sample_filename)
             plt.close()
 
-    with imageio.get_writer(out_path, mode="I", duration=0.3) as writer:
-        for sample_file in sample_files:
-            image = imageio.imread(sample_file.name)
+    with imageio.get_writer(out_path + ".gif", mode="I", duration=0.3) as writer:
+        for sample_filename in sample_filenames:
+            image = imageio.imread(sample_filename)
             writer.append_data(image)
         # Repeat last image
         for _ in range(3):
             writer.append_data(image)
-    for sample_file in sample_files:
-        sample_file.close()
 
 
 if __name__ == "__main__":
