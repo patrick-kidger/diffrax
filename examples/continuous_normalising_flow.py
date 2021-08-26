@@ -198,17 +198,33 @@ class CNF(eqx.Module):
     # evolution of the samples during the forward solve.
     ###########
     def sample_flow(self, *, key):
-        saveat = diffrax.SaveAt(ts=jnp.linspace(self.t0, self.t1, 6 // len(self.funcs)))
+        t_so_far = self.t0
+        t_end = self.t0 + (self.t1 - self.t0) * len(self.funcs)
+        save_times = jnp.linspace(self.t0, t_end, 6)
         y = jrandom.normal(key, (self.data_size,))
         out = []
-        for func in self.funcs:
+        for i, func in enumerate(self.funcs):
+            if i == len(self.funcs) - 1:
+                save_ts = save_times[t_so_far <= save_times] - t_so_far
+            else:
+                save_ts = (
+                    save_times[
+                        (t_so_far <= save_times)
+                        & (save_times < t_so_far + self.t1 - self.t0)
+                    ]
+                    - t_so_far
+                )
+                t_so_far = t_so_far + self.t1 - self.t0
+            saveat = diffrax.SaveAt(ts=save_ts)
             solver = diffrax.tsit5(func)
             sol = diffrax.diffeqsolve(
                 solver, self.t0, self.t1, y, self.dt0, saveat=saveat
             )
             out.append(sol.ys)
             y = sol.ys[-1]
-        return jnp.concatenate(out)
+        out = jnp.concatenate(out)
+        assert len(out) == 6  # number of points we saved at
+        return out
 
 
 ###########
@@ -259,8 +275,8 @@ def dataloader(arrays, batch_size, *, key):
 
 
 def main(
-    in_path=here / "cnf_in.png",
-    out_path=here / "cnf_out.png",
+    in_path,
+    out_path=None,
     batch_size=500,
     virtual_batches=2,
     lr=1e-3,
@@ -272,6 +288,11 @@ def main(
     depth=3,
     seed=5678,
 ):
+    if out_path is None:
+        out_path = here / "cnf_results" / pathlib.Path(in_path).name
+    out_path = pathlib.Path(out_path)
+    out_path.resolve().parent.mkdir(parents=True, exist_ok=True)
+
     key = jrandom.PRNGKey(seed)
     model_key, loader_key, train_key, sample_key = jrandom.split(key, 4)
 
@@ -320,7 +341,7 @@ def main(
         grads = jax.tree_map(lambda a: a / virtual_batches, grads)
         end = time.time()
 
-        updates, opt_state = optim.update(grads_, opt_state, model)
+        updates, opt_state = optim.update(grads, opt_state, model)
         model = eqx.apply_updates(model, updates)
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
 
@@ -347,7 +368,7 @@ def main(
     ax.set_xticks([])
     ax.set_yticks([])
 
-    axtrue.imshow(img, cmap="gray")
+    axtrue.imshow(img.T, origin="lower", cmap="gray")
     axtrue.set_aspect(height / width)
     axtrue.set_xticks([])
     axtrue.set_yticks([])
@@ -363,7 +384,7 @@ def main(
     densities = [stats.gaussian_kde(samples)(positions) for samples in sample_flows]
     for i, (ax, density) in enumerate(zip(axs, densities)):
         density = jnp.reshape(density, (x_resolution, y_resolution))
-        ax.imshow(density, origin="lower", cmap="plasma")
+        ax.imshow(density.T, origin="lower", cmap="plasma")
         ax.set_aspect(height / width)
         ax.set_xticks([])
         ax.set_yticks([])
