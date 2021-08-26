@@ -54,14 +54,17 @@ import time
 import diffrax
 import equinox as eqx
 import fire
-import imageio
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
+
+
+matplotlib.rcParams.update({"font.size": 30})
 
 
 here = pathlib.Path(__file__).resolve().parent
@@ -87,7 +90,6 @@ class Func(eqx.Module):
 ###########
 class LatentODE(eqx.Module):
     solver: diffrax.AbstractSolver
-    stepsize_controller: diffrax.AbstractStepSizeController
     rnn_cell: eqx.nn.GRUCell
 
     hidden_to_latent: eqx.nn.Linear
@@ -115,7 +117,6 @@ class LatentODE(eqx.Module):
             key=mkey,
         )
         self.solver = diffrax.dopri5(Func(scale, mlp))
-        self.stepsize_controller = diffrax.IController(rtol=1e-4)
         self.rnn_cell = eqx.nn.GRUCell(data_size + 1, hidden_size, key=gkey)
 
         self.hidden_to_latent = eqx.nn.Linear(hidden_size, 2 * latent_size, key=hlkey)
@@ -152,8 +153,7 @@ class LatentODE(eqx.Module):
             ts[0],
             ts[-1],
             y0,
-            dt0=None,
-            stepsize_controller=self.stepsize_controller,
+            dt0=0.4,  # selected as a reasonable choice for this problem
             saveat=diffrax.SaveAt(ts=ts),
         )
         return jax.vmap(self.hidden_to_data, axis_name="")(sol.ys)
@@ -240,11 +240,11 @@ def dataloader(arrays, batch_size, *, key):
 
 
 def main(
-    out_path=here / "latent_ode",
+    out_path=here / "latent_ode.png",
     dataset_size=10000,
     batch_size=256,
     lr=1e-2,
-    steps=500,
+    steps=250,
     save_every=50,
     hidden_size=16,
     latent_size=16,
@@ -285,7 +285,12 @@ def main(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
 
-    sample_filenames = []
+    num_plots = 1 + (steps - 1) // save_every
+    if ((steps - 1) % save_every) != 0:
+        num_plots += 1
+    fig, axs = plt.subplots(1, num_plots, figsize=(num_plots * 8, 8))
+    axs[0].set_ylabel("x")
+    axs = iter(axs)
     for step, (ts_i, ys_i) in zip(
         range(steps), dataloader((ts, ys), batch_size, key=loader_key)
     ):
@@ -299,26 +304,19 @@ def main(
         print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
 
         if (step % save_every) == 0 or step == steps - 1:
+            ax = next(axs)
             sample_t = jnp.linspace(ts[0, 0], ts[0, -1], 300)
             sample_y = model.sample(sample_t, key=sample_key)
             sample_t = np.asarray(sample_t)
             sample_y = np.asarray(sample_y)
-            plt.plot(sample_t, sample_y[:, 0])
-            plt.plot(sample_t, sample_y[:, 1])
-            plt.tight_layout()
+            ax.plot(sample_t, sample_y[:, 0])
+            ax.plot(sample_t, sample_y[:, 1])
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xlabel("t")
 
-            sample_filename = out_path + str(step) + ".png"
-            sample_filenames.append(sample_filename)
-            plt.savefig(sample_filename)
-            plt.close()
-
-    with imageio.get_writer(out_path + ".gif", mode="I", duration=0.3) as writer:
-        for sample_filename in sample_filenames:
-            image = imageio.imread(sample_filename)
-            writer.append_data(image)
-        # Repeat last image
-        for _ in range(3):
-            writer.append_data(image)
+    plt.savefig(out_path)
+    plt.close()
 
 
 if __name__ == "__main__":
