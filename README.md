@@ -43,7 +43,6 @@ def f(t, y, args):
 
 solver = dopri5(f)
 solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
-y1, = solution.ys
 ```
 
 ## Documentation
