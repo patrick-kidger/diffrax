@@ -5,8 +5,8 @@ Diffrax is a [JAX](https://github.com/google/jax)-based library providing numeri
 
 Features include:
 - ODE/SDE/CDE (ordinary/stochastic/controlled) solvers
+- lots of different solvers (including `tsit5`, `dopri8`, symplectic solvers);
 - vmappable _everything_ (including simultaneous solves over different regions of integration `[t0, t1]`);
-- lots of different solvers (including `tsit5` and `dopri8`, and some symplectic solvers);
 - several modes of backpropagation (including discrete-then-optimise, optimise-then-discretise, and reversible solvers);
 - using a PyTree as the state;
 - dense solutions;
