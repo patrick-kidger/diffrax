@@ -8,6 +8,7 @@
 
 import functools as ft
 import math
+import pathlib
 import time
 
 import diffrax
@@ -18,7 +19,15 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.scipy as jsp
+import matplotlib
+import matplotlib.pyplot as plt
 import optax
+
+
+matplotlib.rcParams.update({"font.size": 30})
+
+
+here = pathlib.Path(__file__).resolve().parent
 
 
 ###########
@@ -80,7 +89,7 @@ class NeuralCDE(eqx.Module):
         self.stepsize_controller = diffrax.IController()
         self.linear = eqx.nn.Linear(hidden_size, 1, key=lkey)
 
-    def __call__(self, ts, coeffs):
+    def __call__(self, ts, coeffs, evolving_out=False):
         ###########
         # Each sample of data consists of some timestamps `ts`, and some `coeffs`
         # parameterising a control path.
@@ -110,6 +119,10 @@ class NeuralCDE(eqx.Module):
         solver = diffrax.Tsit5(term=term)
 
         y0 = self.initial(control.evaluate(ts[0]))
+        if evolving_out:
+            saveat = diffrax.SaveAt(ts=ts)
+        else:
+            saveat = diffrax.SaveAt(t1=True)
         solution = diffrax.diffeqsolve(
             solver,
             t0=ts[0],
@@ -117,8 +130,14 @@ class NeuralCDE(eqx.Module):
             y0=y0,
             dt0=None,
             stepsize_controller=self.stepsize_controller,
+            saveat=saveat,
         )
-        (prediction,) = jnn.sigmoid(self.linear(solution.ys[-1]))
+        if evolving_out:
+            prediction = jax.vmap(
+                lambda y: jnn.sigmoid(self.linear(y))[0], axis_name=""
+            )(solution.ys)
+        else:
+            (prediction,) = jnn.sigmoid(self.linear(solution.ys[-1]))
         return prediction
 
 
@@ -129,19 +148,26 @@ class NeuralCDE(eqx.Module):
 # which were introduced in https://arxiv.org/abs/2106.11028. (And produces better
 # results than the natural cubic splines used in the original neural CDE paper.)
 ###########
-def get_data(dataset_size, *, key):
+def get_data(dataset_size, add_noise, *, key):
+    theta_key, noise_key = jrandom.split(key, 2)
     length = 100
-    theta = jrandom.uniform(key, (dataset_size,), minval=0, maxval=2 * math.pi)
+    theta = jrandom.uniform(theta_key, (dataset_size,), minval=0, maxval=2 * math.pi)
     y0 = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
     ts = jnp.broadcast_to(jnp.linspace(0, 4 * math.pi, length), (dataset_size, length))
     matrix = jnp.array([[-0.3, 2], [-2, -0.3]])
     ys = jax.vmap(
         lambda y0i, ti: jax.vmap(lambda tij: jsp.linalg.expm(tij * matrix) @ y0i)(ti)
     )(y0, ts)
-    ys = ys.at[: dataset_size // 2, :, 0].multiply(-1)
-    coeffs = jax.vmap(diffrax.hermite_cubic_with_backward_differences_coefficients)(
-        ts, ys
-    )
+    ###########
+    # Remember to include time as a channel, as usual for neural CDEs.
+    ###########
+    ys = jnp.concatenate([ts[:, :, None], ys], axis=-1)
+    ys = ys.at[: dataset_size // 2, :, 1].multiply(-1)
+    if add_noise:
+        ys = ys + jrandom.normal(noise_key, ys.shape) * 0.1
+    coeffs = jax.vmap(
+        diffrax.hermite_cubic_with_backward_differences_coefficients, axis_name=""
+    )(ts, ys)
     labels = jnp.zeros((dataset_size,))
     labels = labels.at[: dataset_size // 2].set(1.0)
     _, _, data_size = ys.shape
@@ -165,9 +191,11 @@ def dataloader(arrays, batch_size, *, key):
 
 
 def main(
+    out_path=here / "neural_cde.png",
     dataset_size=256,
+    add_noise=False,
     batch_size=32,
-    learning_rate=1e-3,
+    lr=1e-2,
     steps=20,
     hidden_size=8,
     width_size=128,
@@ -177,7 +205,7 @@ def main(
     key = jrandom.PRNGKey(seed)
     data_key, model_key, loader_key = jrandom.split(key, 3)
 
-    ts, coeffs, labels, data_size = get_data(dataset_size, key=data_key)
+    ts, coeffs, labels, data_size = get_data(dataset_size, add_noise, key=data_key)
 
     model = NeuralCDE(data_size, hidden_size, width_size, depth, key=model_key)
 
@@ -196,7 +224,7 @@ def main(
         acc = jnp.mean((pred > 0.5) == (label_i == 1))
         return bxe, acc
 
-    optim = optax.adam(learning_rate)
+    optim = optax.adam(lr)
     opt_state = optim.init(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
@@ -212,6 +240,33 @@ def main(
             f"Step: {step}, Loss: {bxe}, Accuracy: {acc}, Computation time: "
             f"{end - start}"
         )
+
+    sample_ts = ts[-1]
+    sample_coeffs = tuple(c[-1] for c in coeffs)
+    pred = model(sample_ts, sample_coeffs, evolving_out=True)
+    interp = diffrax.CubicInterpolation(sample_ts, sample_coeffs)
+    values = jax.vmap(interp.evaluate)(sample_ts)
+    fig = plt.figure(figsize=(16, 8))
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
+    ax1.plot(sample_ts, values[:, 1], c="dodgerblue")
+    ax1.plot(sample_ts, values[:, 2], c="dodgerblue", label="Data")
+    ax1.plot(sample_ts, pred, c="crimson", label="Classification")
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+    ax1.set_xlabel("t")
+    ax1.legend()
+    ax2.plot(values[:, 1], values[:, 2], c="dodgerblue", label="Data")
+    ax2.plot(values[:, 1], values[:, 2], pred, c="crimson", label="Classification")
+    ax2.set_xticks([])
+    ax2.set_yticks([])
+    ax2.set_zticks([])
+    ax2.set_xlabel("x")
+    ax2.set_ylabel("y")
+    ax2.set_zlabel("Classification")
+    plt.tight_layout()
+    plt.savefig(out_path)
+
     return bxe, acc  # Final loss and accuracy
 
 
