@@ -196,12 +196,8 @@ def get_data(dataset_size, *, key):
     y0 = jrandom.normal(ykey, (dataset_size, 2))
 
     t0 = 0
-    t1 = 10 + jrandom.uniform(tkey1, (dataset_size,), minval=0, maxval=3)
-    ts = (
-        jrandom.uniform(tkey2, (dataset_size, 100), minval=0, maxval=1)
-        * (t1[:, None] - t0)
-        + t0
-    )
+    t1 = 2 + jrandom.uniform(tkey1, (dataset_size,))
+    ts = jrandom.uniform(tkey2, (dataset_size, 20)) * (t1[:, None] - t0) + t0
     ts = jnp.sort(ts)
 
     def func(t, y, args):
@@ -270,10 +266,6 @@ def main(
     @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
     def loss(model, ts_i, ys_i, *, key_i):
         batch_size, _ = ts_i.shape
-        # Only use the first 20 steps for training.
-        # The model we learn will be sufficiently good that it can still extrapolate!
-        ts_i = ts_i[:, :20]
-        ys_i = ys_i[:, :20]
         key_i = jrandom.split(key_i, batch_size)
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.19
@@ -305,7 +297,9 @@ def main(
 
         if (step % save_every) == 0 or step == steps - 1:
             ax = next(axs)
-            sample_t = jnp.linspace(ts[0, 0], ts[0, -1], 300)
+            # Sample over a longer time interval than we trained on. The model will be
+            # sufficiently good that it will correctly extrapolate!
+            sample_t = jnp.linspace(0, 12, 300)
             sample_y = model.sample(sample_t, key=sample_key)
             sample_t = np.asarray(sample_t)
             sample_y = np.asarray(sample_y)
