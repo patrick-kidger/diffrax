@@ -24,7 +24,6 @@ class SaveAt(_SaveAt):
             ts = jnp.asarray(ts)
         self.ts = ts
 
-    def __post_init__(self):
         if (
             not self.t0
             and not self.t1

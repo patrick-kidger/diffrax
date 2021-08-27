@@ -49,35 +49,26 @@ def _step(
         controller_state,
     )
 
-    # We have different update rules for
-    # - the solution y, controller state etc.
-    # - time
-    # The solution and controller state etc. only update if we keep the step.
-    # However the time step updates unconditionally. (tprev should probably remain the
-    # the same, but tnext will be over a small step if the step is rejected)
-    # This means we let stepsize_controller handle the updates to tprev and tnext,
-    # and then handle the rest of it here.
-
     # The 1e-6 tolerance means that we don't end up with too-small intervals for dense
     # output, which then gives numerically unstable answers due to floating point
     # errors.
     tnext_candidate = jnp.where(tnext_candidate > t1 - 1e-6, t1, tnext_candidate)
     tprev_candidate = jnp.minimum(tprev_candidate, t1)
+
+    # We have different update rules for
+    # - y and solver_state
+    # - tprev, tnext, and controller_state
+    # The solution and solver state only update if we keep the step.
+    # It's up to the stepsize_controller to update tprev, tnext, and controller_state.
     keep = lambda a, b: jnp.where(keep_step, a, b)
     y_candidate = keep(y_candidate, y)
     made_jump_candidate = keep(made_jump_candidate, made_jump)
     solver_state_candidate = jax.tree_map(keep, solver_state_candidate, solver_state)
-    controller_state_candidate = jax.tree_map(
-        keep, controller_state_candidate, controller_state
-    )
 
     # Next: we need to consider the fact that one batch element may have finished
     # integrating even whilst other batch elements are still going. In this case we
     # just have the "done" batch elements just stay constant (in every respect: time,
     # solution, controller state etc.) whilst we wait.
-
-    # TODO: is this necessary? If we're making zero-length steps then we're not going
-    # anywhere.
     not_done = tprev < t1
     keep = lambda a, b: jnp.where(not_done, a, b)
     tprev = keep(tprev_candidate, tprev)
@@ -87,9 +78,11 @@ def _step(
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
     stepsize_controller_result = keep(stepsize_controller_result, RESULTS.successful)
+    # TODO: is this necessary? If we're making zero-length steps then we're not going
+    # anywhere.
 
     # The one exception to the above discussion is dense_info.
-    # This is difficult to apply the same logic to: unlike the others pieces, it isn't
+    # This is difficult to apply the same logic to: unlike the other pieces, it isn't
     # initialised.
     # If we reject the first step, then there's no previous step we can roll back to.
     # (And we still have to store *something* as other batch elements may have been
@@ -101,6 +94,7 @@ def _step(
     # t_{i-1} < t <= t_i or t_{i-1} <= t < t_i (depending on mode). In particular this
     # implies t_{i-1} != t_i, so repeated timestamps are never found. (And the
     # corresponding junk data never used.)
+
     made_step = keep_step & not_done
     return (
         tprev,
@@ -228,9 +222,7 @@ def diffeqsolve(
 
     tprev = t0
     if controller_state is None:
-        (tnext, controller_state) = stepsize_controller.init(
-            t0, y, dt0, args, solver.order, solver.func_for_init
-        )
+        (tnext, controller_state) = stepsize_controller.init(t0, y, dt0, args, solver)
     else:
         assert dt0 is not None
         tnext = t0 + dt0

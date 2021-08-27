@@ -1,7 +1,8 @@
-from typing import Callable, Optional, Tuple
+from typing import Optional, Tuple
 
 from ..custom_types import Array, PyTree, Scalar
 from ..solution import RESULTS
+from ..solver import AbstractSolver
 from .base import AbstractStepSizeController
 
 
@@ -15,13 +16,9 @@ class ConstantStepSize(AbstractStepSizeController):
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,
-        solver_order: int,
-        func: Callable[
-            [Scalar, Array["state"], PyTree],  # noqa: F821
-            Array["state"],  # noqa: F821
-        ],
+        solver: AbstractSolver,
     ) -> Tuple[Scalar, Scalar]:
-        del func, y0, args, solver_order
+        del y0, args, solver
         if dt0 is None:
             raise ValueError(
                 "Constant step size solvers cannot select step size automatically; "

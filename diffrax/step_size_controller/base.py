@@ -1,9 +1,10 @@
 import abc
-from typing import Callable, Optional, Tuple, TypeVar
+from typing import Optional, Tuple, TypeVar
 
 import equinox as eqx
 
 from ..custom_types import Array, PyTree, Scalar
+from ..solver import AbstractSolver
 
 
 _ControllerState = TypeVar("_ControllerState", bound=PyTree)
@@ -23,11 +24,7 @@ class AbstractStepSizeController(eqx.Module):
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,
-        solver_order: int,
-        func: Callable[
-            [Scalar, Array["state"], PyTree],  # noqa: F821
-            Array["state"],  # noqa: F821
-        ],
+        solver: AbstractSolver,
     ) -> Tuple[Scalar, _ControllerState]:
         # returns initial t1, initial controller state
         pass

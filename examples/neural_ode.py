@@ -66,10 +66,17 @@ class NeuralODE(eqx.Module):
         ###########
         # unvmap_dt makes a whole batch use the same timestep sizes.
         # (Rather than per-batch-element adaptive time stepping.)
+        # The step size is the minimum over the whole batch.
         #
-        # This breaks the `vmap` abstraction slightly, but is a bit quicker.
-        # Turn it off at the end of training if you like, but it offers a nice speedup
-        # usually worth using, espcially at the start of training.
+        # - PRO: on some problems (like this one) this simplifies certain internal
+        #   operations, and correspondingly the integration is quicker.
+        # - CON: on some problems (like the neural CDE example) the fact that the step
+        #   sizes are generally smaller (due to min'ing over the batch) can mean the
+        #   integration is slower.
+        # - CON: This breaks the `vmap` abstraction slightly.
+        #
+        # At least on this problem it offers a nice speedup. (In general just try both
+        # with and without it, and see if it helps.)
         ###########
         self.stepsize_controller = diffrax.IController(unvmap_dt=True)
 
@@ -147,7 +154,7 @@ def main(
     def loss(model, yi):
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.19
-        y_pred = jax.vmap(model, in_axes=(0, None), axis_name="")(ts, yi[:, 0])
+        y_pred = jax.vmap(model, in_axes=(None, 0), axis_name="")(ts, yi[:, 0])
         return jnp.mean((yi - y_pred) ** 2)
 
     optim = optax.adam(learning_rate)

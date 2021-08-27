@@ -8,6 +8,12 @@
 #
 # You can specify your own images, and learn your own flows.
 #
+# Some examples which work quite well:
+#
+# python continuous_normalising_flow.py --in_path="../imgs/cat.png"
+# python continuous_normalising_flow.py --in_path="../imgs/butterfly.png" --num_blocks=3
+# python continuous_normalising_flow.py --in_path="../imgs/target.png" --width_size=128
+#
 ###########
 
 import functools as ft
