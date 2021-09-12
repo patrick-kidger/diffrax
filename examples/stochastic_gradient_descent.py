@@ -26,7 +26,6 @@
 #
 ###########
 
-import functools as ft
 import time
 from typing import Tuple
 
@@ -95,17 +94,15 @@ def main(
     model = eqx.nn.MLP(
         in_size=1, out_size=1, width_size=width_size, depth=1, key=model_key
     )
-    params, nondifferentiable, which, treedef = eqx.split(
-        model, filter_fn=eqx.is_inexact_array
-    )
+    params, static = eqx.partition(model, eqx.is_inexact_array)
 
     ###########
     # Define the vector field as the gradient of a loss function.
     ###########
-    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
-    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
+    @jax.jit
+    @jax.value_and_grad
     def loss(params, x, y):
-        model = eqx.merge(params, nondifferentiable, which, treedef)
+        model = eqx.combine(params, static)
         pred_y = jax.vmap(model)(x)
         return jnp.mean((y - pred_y) ** 2)
 

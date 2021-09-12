@@ -6,7 +6,7 @@ import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import frozenarray
+from ..misc import frozenarray, linear_rescale
 from ..term import ODETerm
 from .runge_kutta import ButcherTableau, RungeKutta
 
@@ -292,16 +292,14 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
     ) -> Array["state"]:  # noqa: F821
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
-        _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
-        t = (t0 - self.t0) / _div
+        t = linear_rescale(self.t0, t0, self.t1)
         coeffs = _vmap_polyval(np.asarray(self.eval_coeffs), t) * t
         return self.y0 + coeffs @ self.k
 
     def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
-        _rt = 1 / (self.t1 - self.t0)
-        t = (t - self.t0) * _rt
+        t = linear_rescale(self.t0, t, self.t1)
         coeffs = _vmap_polyval(np.asarray(self.diff_coeffs), t)
-        return coeffs @ (self.k * _rt)
+        return coeffs @ (self.k / (self.t1 - self.t0))
 
 
 class Dopri8(RungeKutta):

@@ -71,3 +71,15 @@ def nextbefore(x: Array) -> Array:
 
 
 nextbefore.defjvps(lambda x_dot, _, __: x_dot)
+
+
+def linear_rescale(t0, t, t1):
+    # Assumes t0 <= t <= t1
+
+    cond = t0 == t1
+    # `where` to avoid NaN gradients
+    div = jnp.where(cond, 1, t1 - t0)
+    out = (t - t0) / div
+    # `where` to get correct gradient if `cond` is True.
+    out = jnp.where(cond, t, out)
+    return out

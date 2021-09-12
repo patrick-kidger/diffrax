@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .custom_types import Array, Scalar
-from .misc import frozenndarray
+from .misc import frozenndarray, linear_rescale
 from .path import AbstractPath
 
 
@@ -23,9 +23,8 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
         self, t0: Scalar, t1: Optional[Scalar] = None
     ) -> Array["state"]:  # noqa: F821
         if t1 is None:
-            _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
-            _coeff = (t0 - self.t0) / _div
-            return self.y0 + _coeff * (self.y1 - self.y0)
+            coeff = linear_rescale(self.t0, t0, self.t1)
+            return self.y0 + coeff * (self.y1 - self.y0)
         else:
             return ((t1 - t0) / (self.t1 - self.t0)) * (self.y1 - self.y0)
 
@@ -71,10 +70,9 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
     ) -> Array["state"]:  # noqa: F821
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
-        _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
-        return jnp.polyval(self.coeffs, (t0 - self.t0) / _div)
+        return jnp.polyval(self.coeffs, linear_rescale(self.t0, t0, self.t1))
 
     def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
         a, b, c, d, _ = self.coeffs
-        _rt = 1 / (self.t1 - self.t0)
-        return jnp.polyval([4 * a, 3 * b, 2 * c, d], (t - self.t0) * _rt) * _rt
+        t = linear_rescale(self.t0, t, self.t1)
+        return jnp.polyval([4 * a, 3 * b, 2 * c, d], t) / (self.t1 - self.t0)

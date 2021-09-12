@@ -80,7 +80,7 @@ class Func(eqx.Module):
     scale: jnp.ndarray
     mlp: eqx.nn.MLP
 
-    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
     def __call__(self, t, y, args):
         return self.scale * self.mlp(y)
 
@@ -131,7 +131,7 @@ class LatentODE(eqx.Module):
     ###########
     # Encoder of the VAE
     ###########
-    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
     def _latent(self, ts, ys, key):
         data = jnp.concatenate([ts[:, None], ys], axis=1)
         hidden = jnp.zeros((self.hidden_size,))

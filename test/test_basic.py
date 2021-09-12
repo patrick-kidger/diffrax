@@ -93,7 +93,7 @@ def test_order(solver_ctr):
     (
         diffrax.SaveAt(t0=True),
         diffrax.SaveAt(t1=True),
-        diffrax.SaveAt(t=[3.5, 0.7]),
+        diffrax.SaveAt(ts=[3.5, 0.7]),
         diffrax.SaveAt(steps=True),
         diffrax.SaveAt(dense=True),
     ),
@@ -122,8 +122,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     t0 = -4
     t1 = -0.3
     negdt0 = None if dt0 is None else -dt0
-    if saveat.t is not None:
-        saveat = diffrax.SaveAt(t=[-ti for ti in saveat.t])
+    if saveat.ts is not None:
+        saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.ts])
     sol2 = diffrax.diffeqsolve(
         solver,
         t0,
@@ -134,7 +134,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         saveat=saveat,
     )
 
-    if saveat.t0 or saveat.t1 or saveat.t is not None or saveat.steps:
+    if saveat.t0 or saveat.t1 or saveat.ts is not None or saveat.steps:
         assert jnp.allclose(sol1.ts, -sol2.ts[::-1])
         assert jnp.allclose(sol1.ys, sol2.ys)
     if saveat.dense:

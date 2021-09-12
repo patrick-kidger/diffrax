@@ -122,7 +122,7 @@ class Func(eqx.Module):
             )
         self.layers = layers
 
-    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+    @jax.jit
     def __call__(self, t, y, args):
         t = jnp.asarray(t)[None]
         for layer in self.layers[:-1]:

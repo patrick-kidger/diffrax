@@ -111,7 +111,7 @@ def _step(
 
 # TODO: support custom filter functions?
 # TODO: support donate_argnums if on the GPU.
-_jit_step = eqx.jitf(_step, filter_fn=eqx.is_array)
+_jit_step = eqx.filter_jit(_step, filter_spec=eqx.is_array)
 
 
 @jax.jit
@@ -155,7 +155,7 @@ def _save_interp(
     return tinterp, yinterp, interp_cond, tinterp_index
 
 
-@ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
 def _compress_output_constant(ts, ys, direction, unravel_y):
     ts = jnp.stack(ts)
     ts = jnp.where(direction == 1, ts, -ts[::-1])
@@ -164,7 +164,7 @@ def _compress_output_constant(ts, ys, direction, unravel_y):
     return ts, ys
 
 
-@ft.partial(eqx.jitf, static_argnums=(3, 4), filter_fn=eqx.is_array)
+@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
 def _compress_output_adaptive(
     ts, ys, out_indices, out_len, has_minus_one, direction, unravel_y
 ):

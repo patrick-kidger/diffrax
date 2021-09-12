@@ -45,7 +45,7 @@ class Func(eqx.Module):
             key=key,
         )
 
-    @ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
     def __call__(self, t, y, args):
         return self.mlp(y)
 

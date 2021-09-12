@@ -29,7 +29,7 @@ def _rms_norm(x: PyTree) -> Scalar:
 # Empirical initial step selection algorithm from:
 # E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential Equations I:
 # Nonstiff Problems", Sec. II.4, 2nd edition.
-@ft.partial(eqx.jitf, filter_fn=eqx.is_array)
+@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
 def _select_initial_step(
     t0: Scalar,
     y0: Array["state"],  # noqa: F821
@@ -228,6 +228,9 @@ class IController(AbstractStepSizeController):
 
         # Double-where trick to avoid NaN gradients.
         # See JAX issues #5039 and #1052.
+        #
+        # (Although we've actually since added a stop_gradient afterwards, this is kept
+        # for completeness, e.g. just in case we ever remove the stop_gradient.)
         cond = scaled_error == 0
         _scaled_error = jnp.where(cond, 1.0, scaled_error)
         factor = lax.cond(

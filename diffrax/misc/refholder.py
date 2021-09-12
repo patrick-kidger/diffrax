@@ -6,7 +6,8 @@ import jax
 # RefHolder can be used for two things.
 #
 # (a) Outputing non-JAX types from a vmap'd operation. See JAX issue #7603.
-# (b) Ensuring that something will be treated as a static argnum when using eqx.jitf.
+# (b) Ensuring that something will be treated as a static argnum when using
+#     eqx.filter_jit.
 
 _T = TypeVar("_T")
 

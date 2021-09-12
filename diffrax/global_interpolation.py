@@ -257,12 +257,12 @@ def _linear_interpolation(
             )
         else:
             raise ValueError("ts and ys must consist of elements of the same length.")
-    ts = jnp.broadcast_to(ts[:, None], ys)
+    ts = jnp.broadcast_to(ts[:, None], ys.shape)
 
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
-        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0])
+        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
     cond = jnp.any(jnp.isnan(ys))
     operand = (y0, ts, ys)
     ys = lax.cond(
@@ -381,7 +381,7 @@ def _hermite_cubic_with_backward_differences(
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
-        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0])
+        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
     _, (_ts, _ys, _derivs) = lax.scan(
         _hermite_cubic_forward, (t0, y0, deriv0), (ts, ys)
     )
