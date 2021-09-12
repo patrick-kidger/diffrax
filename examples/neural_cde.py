@@ -225,9 +225,7 @@ def main(
         return bxe, acc
 
     optim = optax.adam(lr)
-    opt_state = optim.init(
-        jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
-    )
+    opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
     for step, (ti, label_i, *coeff_i) in zip(
         range(steps), dataloader((ts, labels) + coeffs, batch_size, key=loader_key)
     ):
@@ -241,6 +239,7 @@ def main(
             f"{end - start}"
         )
 
+    # Plot results
     sample_ts = ts[-1]
     sample_coeffs = tuple(c[-1] for c in coeffs)
     pred = model(sample_ts, sample_coeffs, evolving_out=True)

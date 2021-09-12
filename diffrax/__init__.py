@@ -1,4 +1,5 @@
 from . import utils
+from .brownian import AbstractBrownianPath, UnsafeBrownianPath
 from .global_interpolation import (
     AbstractGlobalInterpolation,
     CubicInterpolation,

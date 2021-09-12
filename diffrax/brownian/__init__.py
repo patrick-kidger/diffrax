@@ -1,2 +1,2 @@
 from .base import AbstractBrownianPath
-from .interval import BrownianInterval
+from .path import UnsafeBrownianPath
