@@ -177,6 +177,20 @@ class NeuralCDE(eqx.Module):
         saveat = diffrax.SaveAt(t1=True)
         return self.diffeq(ts, init, control, saveat)
 
+    def clip_weights(self):
+        leaves, treedef = jax.tree_flatten(
+            self, is_leaf=lambda x: isinstance(x, eqx.nn.Linear)
+        )
+        new_leaves = []
+        for leaf in leaves:
+            if isinstance(leaf, eqx.nn.Linear):
+                lim = 1 / leaf.out_features
+                leaf = eqx.tree_at(
+                    lambda x: x.weight, leaf, leaf.weight.clip(-lim, lim)
+                )
+            new_leaves.append(leaf)
+        return jax.tree_unflatten(treedef, new_leaves)
+
 
 def get_data(key):
     bm_key, y0_key, drop_key = jrandom.split(key, 3)
@@ -304,6 +318,7 @@ def main(
         d_updates, d_opt_state = d_optim.update(d_grad, d_opt_state)
         generator = eqx.apply_updates(generator, g_updates)
         discriminator = eqx.apply_updates(discriminator, d_updates)
+        discriminator = discriminator.clip_weights()
 
         if (step % steps_per_print) == 0 or step == steps - 1:
             total_score = 0
