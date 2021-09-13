@@ -64,7 +64,7 @@ class Func(eqx.Module):
             key=key,
         )
 
-    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+    @eqx.filter_jit
     def __call__(self, t, y, args):
         return self.mlp(y).reshape(self.hidden_size, self.data_size)
 
@@ -213,7 +213,7 @@ def main(
     # Training loop like normal.
     ###########
 
-    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array, has_aux=True)
+    @ft.partial(eqx.filter_value_and_grad, has_aux=True)
     def loss(model, ti, label_i, coeff_i):
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.19.

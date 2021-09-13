@@ -92,7 +92,7 @@ class IController(AbstractStepSizeController):
     safety: Scalar = 0.9
     ifactor: Scalar = 10.0
     dfactor: Scalar = 0.2
-    norm: Callable = _rms_norm
+    norm: callable = _rms_norm
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True

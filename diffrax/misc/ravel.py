@@ -1,6 +1,7 @@
 import warnings
-from typing import List, Tuple
+from typing import Generic, List, Tuple, TypeVar
 
+import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -8,7 +9,13 @@ import numpy as np
 
 from ..custom_types import Array, PyTree
 from .frozenarray import frozenarray, frozenndarray
-from .refholder import RefHolder
+
+
+_T = TypeVar("_T")
+
+
+class _Static(eqx.Module, Generic[_T]):
+    value: _T = eqx.static_field()
 
 
 def _empty_unravel_list(_):
@@ -17,9 +24,9 @@ def _empty_unravel_list(_):
 
 def _unravel_list(
     arr: Array["flat"],  # noqa: F821
-    indices: RefHolder[frozenndarray],
-    shapes: RefHolder[List[Tuple[int, ...]]],
-    from_dtypes: RefHolder[List[jnp.dtype]],
+    indices: _Static[frozenndarray],
+    shapes: _Static[List[Tuple[int, ...]]],
+    from_dtypes: _Static[List[jnp.dtype]],
 ) -> List[Array]:
     indices = np.asarray(indices.value)
     shapes = shapes.value
@@ -43,9 +50,9 @@ def _ravel_list(
     sizes = [jnp.size(leaf) for leaf in leaves]
     ravel = lambda leaf: jnp.ravel(lax.convert_element_type(leaf, to_dtype))
     raveled = jnp.concatenate([ravel(leaf) for leaf in leaves])
-    indices = RefHolder(frozenarray(np.cumsum(sizes)))
-    shapes = RefHolder([jnp.shape(leaf) for leaf in leaves])
-    from_dtypes = RefHolder(from_dtypes)
+    indices = _Static(frozenarray(np.cumsum(sizes)))
+    shapes = _Static([jnp.shape(leaf) for leaf in leaves])
+    from_dtypes = _Static(from_dtypes)
     return raveled, jax.tree_util.Partial(
         _unravel_list, indices=indices, shapes=shapes, from_dtypes=from_dtypes
     )
@@ -54,7 +61,7 @@ def _ravel_list(
 @jax.jit
 def _unravel_pytree(
     flat: Array["flat"],  # noqa: F821
-    treedef: RefHolder,
+    treedef: _Static,
     unravel_list: jax.tree_util.Partial,
 ) -> PyTree:
     return jax.tree_unflatten(treedef.value, unravel_list(flat))
@@ -71,7 +78,7 @@ def ravel_pytree(
 
     leaves, treedef = jax.tree_flatten(pytree)
     flat, unravel_list = _ravel_list(leaves)
-    treedef = RefHolder(treedef)
+    treedef = _Static(treedef)
     return flat, jax.tree_util.Partial(
         _unravel_pytree, treedef=treedef, unravel_list=unravel_list
     )

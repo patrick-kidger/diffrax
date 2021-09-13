@@ -1,13 +1,14 @@
 import functools as ft
 from typing import Optional, Tuple, Type
 
+import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
 from .custom_types import Array, DenseInfo, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
-from .misc import fill_forward, RefHolder, unvmap
+from .misc import fill_forward, unvmap
 from .path import AbstractPath
 
 
@@ -107,10 +108,11 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         return jax.tree_map(_index, *self.coeffs)
 
 
-class _DenseInterpolation(AbstractGlobalInterpolation):
+class DenseInterpolation(AbstractGlobalInterpolation):
     infos: DenseInfo
     direction: Scalar
     unravel_y: jax.tree_util.Partial
+    interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
 
     def _get_local_interpolation(self, t: Scalar, left: bool):
         index, _ = self._interpret_t(t, left)
@@ -149,14 +151,6 @@ class _DenseInterpolation(AbstractGlobalInterpolation):
     @property
     def t1(self):
         return self.ts[-1] * self.direction
-
-
-class DenseInterpolation(_DenseInterpolation):
-    interpolation_cls: RefHolder[Type[AbstractLocalInterpolation]]
-
-    def __init__(self, *, interpolation_cls, **kwargs):
-        super().__init__(**kwargs)
-        self.interpolation_cls = RefHolder(interpolation_cls)
 
 
 # The following interpolation routines are quite involved, as they are designed to

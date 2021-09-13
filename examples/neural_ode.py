@@ -4,7 +4,6 @@
 #
 ###########
 
-import functools as ft
 import math
 import time
 
@@ -45,7 +44,7 @@ class Func(eqx.Module):
             key=key,
         )
 
-    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+    @eqx.filter_jit
     def __call__(self, t, y, args):
         return self.mlp(y)
 
@@ -150,7 +149,7 @@ def main(
     # Training loop like normal.
     ###########
 
-    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
+    @eqx.filtered_value_and_grad
     def loss(model, yi):
         # Setting an explicit axis_name works around a JAX bug that triggers
         # unnecessary re-JIT-ing in JAX version <= 0.2.19

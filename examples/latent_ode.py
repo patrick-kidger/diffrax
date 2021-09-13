@@ -263,7 +263,7 @@ def main(
         key=model_key,
     )
 
-    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
+    @eqx.filter_value_and_grad
     def loss(model, ts_i, ys_i, *, key_i):
         batch_size, _ = ts_i.shape
         key_i = jrandom.split(key_i, batch_size)

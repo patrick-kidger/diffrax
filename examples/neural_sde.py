@@ -1,5 +1,3 @@
-import functools as ft
-
 import diffrax
 import equinox as eqx
 import fire
@@ -31,7 +29,7 @@ class VectorField(eqx.Module):
             key=key,
         )
 
-    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+    @eqx.filter_jit
     def __call__(self, t, y, args):
         del args
         return self.mlp(jnp.concatenate([t[None], y]))
@@ -56,7 +54,7 @@ class ControlledVectorField(eqx.Module):
             key=key,
         )
 
-    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+    @eqx.filter_jit
     def __call__(self, t, y, args):
         del args
         return self.mlp(jnp.concatenate([t[None], y])).reshape(
@@ -93,7 +91,7 @@ class DifferentialEquation(eqx.Module):
         )
         self.readout = eqx.nn.Linear(hidden_size, readout_size, key=readout_key)
 
-    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+    @eqx.filter_jit
     def _initial(self, ts, init):
         t0 = ts[0]
         t1 = ts[-1]
@@ -101,7 +99,7 @@ class DifferentialEquation(eqx.Module):
         dt0 = 1.0
         return t0, t1, y0, dt0
 
-    @ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+    @eqx.filter_jit
     def _readout(self, ys):
         return jax.vmap(self.readout)(ys)
 
@@ -145,12 +143,16 @@ class NeuralSDE(eqx.Module):
         self.initial_noise_size = initial_noise_size
         self.noise_size = noise_size
 
-    def __call__(self, ts, *, key):
+    @eqx.filter_jit
+    def _setup(self, ts, key):
         init_key, bm_key = jrandom.split(key, 2)
         init = jrandom.normal(init_key, (self.initial_noise_size,))
         control = diffrax.UnsafeBrownianPath(bm_key, (self.noise_size,))
         saveat = diffrax.SaveAt(ts=ts)
-        return self.diffeq(ts, init, control, saveat)
+        return ts, init, control, saveat
+
+    def __call__(self, ts, *, key):
+        return self.diffeq(*self._setup(ts, key))
 
 
 class NeuralCDE(eqx.Module):
@@ -168,15 +170,21 @@ class NeuralCDE(eqx.Module):
             key=key,
         )
 
-    def __call__(self, ts, ys):
+    @staticmethod
+    @eqx.filter_jit
+    def _setup(ts, ys):
         ys = diffrax.linear_interpolation(
             ts, ys, replace_nans_at_start=0.0, fill_forward_nans_at_end=True
         )
         init = jnp.concatenate([ts[0, None], ys[0]])
         control = diffrax.LinearInterpolation(ts, ys)
         saveat = diffrax.SaveAt(t1=True)
-        return self.diffeq(ts, init, control, saveat)
+        return ts, init, control, saveat
 
+    def __call__(self, ts, ys):
+        return self.diffeq(*self._setup(ts, ys))
+
+    @eqx.filter_jit
     def clip_weights(self):
         leaves, treedef = jax.tree_flatten(
             self, is_leaf=lambda x: isinstance(x, eqx.nn.Linear)
@@ -252,10 +260,47 @@ def loss(generator, discriminator, ts_i, ys_i, key, step=0):
     return jnp.mean(real_score - fake_score)
 
 
-@ft.partial(eqx.filter_value_and_grad, filter_spec=eqx.is_inexact_array)
-def loss_and_grads(g_d, ts_i, ys_i, key, step):
+@eqx.filter_grad
+def grad_loss(g_d, ts_i, ys_i, key, step):
     generator, discriminator = g_d  # We differentiate just the first argument
     return loss(generator, discriminator, ts_i, ys_i, key, step)
+
+
+@eqx.filter_jit
+def update(
+    generator, discriminator, g_opt_state, d_opt_state, g_optim, d_optim, g_grad, d_grad
+):
+    g_updates, g_opt_state = g_optim.update(g_grad, g_opt_state)
+    d_updates, d_opt_state = d_optim.update(d_grad, d_opt_state)
+    generator = eqx.apply_updates(generator, g_updates)
+    discriminator = eqx.apply_updates(discriminator, d_updates)
+    discriminator = discriminator.clip_weights()
+    return generator, discriminator, g_opt_state, d_opt_state
+
+
+def make_step(
+    generator,
+    discriminator,
+    g_opt_state,
+    d_opt_state,
+    g_optim,
+    d_optim,
+    ts_i,
+    ys_i,
+    step,
+    key,
+):
+    g_grad, d_grad = grad_loss((generator, discriminator), ts_i, ys_i, key, step)
+    return update(
+        generator,
+        discriminator,
+        g_opt_state,
+        d_opt_state,
+        g_optim,
+        d_optim,
+        g_grad,
+        d_grad,
+    )
 
 
 def main(
@@ -310,15 +355,47 @@ def main(
     infinite_dataloader = make_dataloader(
         (ts, ys), batch_size, loop=True, key=dataloader_key
     )
+
+    # First run
     for step, (ts_i, ys_i) in zip(trange, infinite_dataloader):
-        score, (g_grad, d_grad) = loss_and_grads(
-            (generator, discriminator), ts_i, ys_i, train_key, step
+        generator, discriminator, g_opt_state, d_opt_state = make_step(
+            generator,
+            discriminator,
+            g_opt_state,
+            d_opt_state,
+            g_optim,
+            d_optim,
+            ts_i,
+            ys_i,
+            step,
+            train_key,
         )
-        g_updates, g_opt_state = g_optim.update(g_grad, g_opt_state)
-        d_updates, d_opt_state = d_optim.update(d_grad, d_opt_state)
-        generator = eqx.apply_updates(generator, g_updates)
-        discriminator = eqx.apply_updates(discriminator, d_updates)
-        discriminator = discriminator.clip_weights()
+
+        if (step % steps_per_print) == 0 or step == steps - 1:
+            total_score = 0
+            num_batches = 0
+            for ts_i, ys_i in make_dataloader(
+                (ts, ys), batch_size, loop=False, key=evaluate_key
+            ):
+                score = loss(generator, discriminator, ts_i, ys_i, sample_key)
+                total_score += score.item()
+                num_batches += 1
+            trange.write(f"Step: {step}, Loss: {total_score / num_batches}")
+        break
+
+    for step, (ts_i, ys_i) in zip(trange, infinite_dataloader):
+        generator, discriminator, g_opt_state, d_opt_state = make_step(
+            generator,
+            discriminator,
+            g_opt_state,
+            d_opt_state,
+            g_optim,
+            d_optim,
+            ts_i,
+            ys_i,
+            step,
+            train_key,
+        )
 
         if (step % steps_per_print) == 0 or step == steps - 1:
             total_score = 0

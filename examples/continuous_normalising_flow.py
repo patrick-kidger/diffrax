@@ -16,7 +16,6 @@
 #
 ###########
 
-import functools as ft
 import math
 import pathlib
 import time
@@ -315,7 +314,7 @@ def main(
         key=model_key,
     )
 
-    @ft.partial(eqx.value_and_grad_f, filter_fn=eqx.is_inexact_array)
+    @eqx.filter_value_and_grad
     def loss(model, data, weight, key):
         batch_size, _ = data.shape
         noise_key, train_key = jrandom.split(key, 2)

@@ -8,5 +8,4 @@ from .misc import (
     stack_pytrees,
 )
 from .ravel import ravel_pytree
-from .refholder import RefHolder
 from .unvmap import unvmap
