@@ -346,8 +346,8 @@ def main(
         data_size, hidden_size, width_size, depth, key=discriminator_key
     )
 
-    g_optim = optax.adam(generator_lr, b1=0)
-    d_optim = optax.adam(-discriminator_lr, b1=0)
+    g_optim = optax.rmsprop(generator_lr)
+    d_optim = optax.rmsprop(-discriminator_lr)
     g_opt_state = g_optim.init(eqx.filter(generator, eqx.is_array))
     d_opt_state = d_optim.init(eqx.filter(discriminator, eqx.is_array))
 
@@ -355,33 +355,6 @@ def main(
     infinite_dataloader = make_dataloader(
         (ts, ys), batch_size, loop=True, key=dataloader_key
     )
-
-    # First run
-    for step, (ts_i, ys_i) in zip(trange, infinite_dataloader):
-        generator, discriminator, g_opt_state, d_opt_state = make_step(
-            generator,
-            discriminator,
-            g_opt_state,
-            d_opt_state,
-            g_optim,
-            d_optim,
-            ts_i,
-            ys_i,
-            step,
-            train_key,
-        )
-
-        if (step % steps_per_print) == 0 or step == steps - 1:
-            total_score = 0
-            num_batches = 0
-            for ts_i, ys_i in make_dataloader(
-                (ts, ys), batch_size, loop=False, key=evaluate_key
-            ):
-                score = loss(generator, discriminator, ts_i, ys_i, sample_key)
-                total_score += score.item()
-                num_batches += 1
-            trange.write(f"Step: {step}, Loss: {total_score / num_batches}")
-        break
 
     for step, (ts_i, ys_i) in zip(trange, infinite_dataloader):
         generator, discriminator, g_opt_state, d_opt_state = make_step(

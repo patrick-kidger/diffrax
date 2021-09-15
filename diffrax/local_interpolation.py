@@ -58,7 +58,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         a = 2 * (f1 - f0) - 8 * (y1 + y0) + 16 * ymid
         b = 5 * f0 - 3 * f1 + 18 * y0 + 14 * y1 - 32 * ymid
         c = f1 - 4 * f0 - 11 * y0 - 5 * y1 + 16 * ymid
-        self.coeffs = [a, b, c, f0, y0]
+        self.coeffs = jnp.stack([a, b, c, f0, y0])
 
     @property
     @abc.abstractmethod
