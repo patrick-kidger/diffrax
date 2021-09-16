@@ -62,60 +62,11 @@ class ControlledVectorField(eqx.Module):
         )
 
 
-class DifferentialEquation(eqx.Module):
-    initial: eqx.nn.MLP
-    vf: VectorField  # drift
-    cvf: ControlledVectorField  # diffusion
-    readout: eqx.nn.Linear
-
-    def __init__(
-        self,
-        initial_size,
-        control_size,
-        hidden_size,
-        width_size,
-        depth,
-        readout_size,
-        *,
-        key,
-    ):
-        super().__init__()
-        initial_key, vf_key, cvf_key, readout_key = jrandom.split(key, 4)
-
-        self.initial = eqx.nn.MLP(
-            initial_size, hidden_size, width_size, depth, key=initial_key
-        )
-        self.vf = VectorField(hidden_size, width_size, depth, key=vf_key)
-        self.cvf = ControlledVectorField(
-            control_size, hidden_size, width_size, depth, key=cvf_key
-        )
-        self.readout = eqx.nn.Linear(hidden_size, readout_size, key=readout_key)
-
-    @eqx.filter_jit
-    def _initial(self, ts, init):
-        t0 = ts[0]
-        t1 = ts[-1]
-        y0 = self.initial(init)
-        dt0 = 1.0
-        return t0, t1, y0, dt0
-
-    @eqx.filter_jit
-    def _readout(self, ys):
-        return jax.vmap(self.readout)(ys)
-
-    def __call__(self, ts, init, control, saveat):
-        vf = diffrax.ODETerm(self.vf)
-        cvf = diffrax.ControlTerm(self.cvf, control)
-        term = diffrax.MultiTerm((vf, cvf))
-        solver = diffrax.ReversibleHeun(term)
-
-        t0, t1, y0, dt0 = self._initial(ts, init)
-        sol = diffrax.diffeqsolve(solver, t0, t1, y0, dt0, saveat=saveat)
-        return self._readout(sol.ys)
-
-
 class NeuralSDE(eqx.Module):
-    diffeq: DifferentialEquation
+    initial: eqx.nn.MLP
+    drift: VectorField
+    diffusion: ControlledVectorField
+    readout: eqx.nn.Linear
     initial_noise_size: int
     noise_size: int
 
@@ -131,58 +82,86 @@ class NeuralSDE(eqx.Module):
         key,
     ):
         super().__init__()
-        self.diffeq = DifferentialEquation(
-            initial_size=initial_noise_size,
-            control_size=noise_size,
-            hidden_size=hidden_size,
-            width_size=width_size,
-            depth=depth,
-            readout_size=data_size,
-            key=key,
+        initial_key, drift_key, diffusion_key, readout_key = jrandom.split(key, 4)
+
+        self.initial = eqx.nn.MLP(
+            initial_noise_size, hidden_size, width_size, depth, key=initial_key
         )
+        self.drift = VectorField(hidden_size, width_size, depth, key=drift_key)
+        self.diffusion = ControlledVectorField(
+            noise_size, hidden_size, width_size, depth, key=diffusion_key
+        )
+        self.readout = eqx.nn.Linear(hidden_size, data_size, key=readout_key)
+
         self.initial_noise_size = initial_noise_size
         self.noise_size = noise_size
 
     @eqx.filter_jit
-    def _setup(self, ts, key):
-        init_key, bm_key = jrandom.split(key, 2)
-        init = jrandom.normal(init_key, (self.initial_noise_size,))
+    def _initial(self, ts, key):
+        bm_key, init_key = jrandom.split(key, 2)
         control = diffrax.UnsafeBrownianPath(bm_key, (self.noise_size,))
+        drift = diffrax.ODETerm(self.drift)
+        diffusion = diffrax.ControlTerm(self.diffusion, control)
+        term = diffrax.MultiTerm((drift, diffusion))
+        solver = diffrax.ReversibleHeun(term)
+        t0 = ts[0]
+        t1 = ts[-1]
+        init = jrandom.normal(init_key, (self.initial_noise_size,))
+        y0 = self.initial(init)
+        dt0 = 1.0
         saveat = diffrax.SaveAt(ts=ts)
-        return ts, init, control, saveat
+        return solver, t0, t1, y0, dt0, saveat
+
+    @eqx.filter_jit
+    def _readout(self, ys):
+        return jax.vmap(self.readout)(ys)
 
     def __call__(self, ts, *, key):
-        return self.diffeq(*self._setup(ts, key))
+        solver, t0, t1, y0, dt0, saveat = self._initial(ts, key)
+        sol = diffrax.diffeqsolve(solver, t0, t1, y0, dt0, saveat=saveat)
+        return self._readout(sol.ys)
 
 
 class NeuralCDE(eqx.Module):
-    diffeq: DifferentialEquation
+    initial: eqx.nn.MLP
+    cvf: ControlledVectorField
+    readout: eqx.nn.Linear
 
     def __init__(self, data_size, hidden_size, width_size, depth, *, key):
         super().__init__()
-        self.diffeq = DifferentialEquation(
-            initial_size=data_size + 1,
-            control_size=data_size,
-            hidden_size=hidden_size,
-            width_size=width_size,
-            depth=depth,
-            readout_size=1,
-            key=key,
-        )
+        initial_key, cvf_key, readout_key = jrandom.split(key, 3)
 
-    @staticmethod
+        self.initial = eqx.nn.MLP(
+            data_size + 1, hidden_size, width_size, depth, key=initial_key
+        )
+        self.cvf = ControlledVectorField(
+            data_size + 1, hidden_size, width_size, depth, key=cvf_key
+        )
+        self.readout = eqx.nn.Linear(hidden_size, 1, key=readout_key)
+
     @eqx.filter_jit
-    def _setup(ts, ys):
+    def _initial(self, ts, ys):
+        ys = jnp.concatenate([ts[:, None], ys], axis=1)
         ys = diffrax.linear_interpolation(
             ts, ys, replace_nans_at_start=0.0, fill_forward_nans_at_end=True
         )
-        init = jnp.concatenate([ts[0, None], ys[0]])
         control = diffrax.LinearInterpolation(ts, ys)
-        saveat = diffrax.SaveAt(t1=True)
-        return ts, init, control, saveat
+        term = diffrax.ControlTerm(self.cvf, control)
+        solver = diffrax.ReversibleHeun(term)
+        t0 = ts[0]
+        t1 = ts[-1]
+        y0 = self.initial(ys[0])
+        dt0 = 1.0
+        return solver, t0, t1, y0, dt0
+
+    @eqx.filter_jit
+    def _readout(self, ys):
+        return self.readout(ys[-1])
 
     def __call__(self, ts, ys):
-        return self.diffeq(*self._setup(ts, ys))
+        solver, t0, t1, y0, dt0 = self._initial(ts, ys)
+        sol = diffrax.diffeqsolve(solver, t0, t1, y0, dt0)
+        return self._readout(sol.ys)
 
     @eqx.filter_jit
     def clip_weights(self):
@@ -309,8 +288,8 @@ def main(
     hidden_size=16,
     width_size=16,
     depth=1,
-    generator_lr=2e-4,
-    discriminator_lr=1e-3,
+    generator_lr=2e-5,
+    discriminator_lr=1e-4,
     batch_size=1024,
     steps=10000,
     steps_per_print=10,
