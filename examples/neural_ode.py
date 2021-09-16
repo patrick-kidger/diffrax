@@ -151,9 +151,7 @@ def main(
 
     @eqx.filtered_value_and_grad
     def loss(model, yi):
-        # Setting an explicit axis_name works around a JAX bug that triggers
-        # unnecessary re-JIT-ing in JAX version <= 0.2.19
-        y_pred = jax.vmap(model, in_axes=(None, 0), axis_name="")(ts, yi[:, 0])
+        y_pred = jax.vmap(model, in_axes=(None, 0))(ts, yi[:, 0])
         return jnp.mean((yi - y_pred) ** 2)
 
     optim = optax.adam(learning_rate)

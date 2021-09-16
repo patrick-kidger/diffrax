@@ -89,6 +89,10 @@ class _ControlToODE(eqx.Module):
         return self.control_term.vf_prod(t, y, args, control)
 
 
+def _sum(*x):
+    return sum(x[1:], x[0])
+
+
 class MultiTerm(AbstractTerm):
     terms: Tuple[AbstractTerm, ...]
 
@@ -99,10 +103,11 @@ class MultiTerm(AbstractTerm):
         return tuple(term.contr(t0, t1) for term in self.terms)
 
     def prod(self, vf: Tuple[PyTree, ...], control: Tuple[PyTree, ...]) -> PyTree:
-        return sum(
+        out = [
             term.prod(vf_, control_)
             for term, vf_, control_ in zip(self.terms, vf, control)
-        )
+        ]
+        return jax.tree_map(_sum, *out)
 
     func_for_init = vf
 

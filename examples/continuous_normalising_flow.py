@@ -65,7 +65,7 @@ def exact_logp_wrapper(t, y, args):
     f, vjp_fn = jax.vjp(fn, y)
     (size,) = y.shape  # this implementation only works for 1D input
     eye = jnp.eye(size)
-    (dfdy,) = jax.vmap(vjp_fn, axis_name="")(eye)
+    (dfdy,) = jax.vmap(vjp_fn)(eye)
     logp = jnp.trace(dfdy)
     return f, logp
 
@@ -320,9 +320,7 @@ def main(
         noise_key, train_key = jrandom.split(key, 2)
         train_key = jrandom.split(key, batch_size)
         data = data + jrandom.normal(noise_key, data.shape) * 0.5 / std
-        # Setting an explicit axis_name works around a JAX bug that triggers
-        # unnecessary re-JIT-ing in JAX version <= 0.2.19.
-        log_likelihood = jax.vmap(model.train, axis_name="")(data, key=train_key)
+        log_likelihood = jax.vmap(model.train)(data, key=train_key)
         return -jnp.mean(weight * log_likelihood)
 
     optim = optax.adamw(lr, weight_decay=weight_decay)
@@ -353,10 +351,8 @@ def main(
     print(f"Best value: {value}")
     num_samples = 5000
     sample_key = jrandom.split(sample_key, num_samples)
-    samples = jax.vmap(model.sample, axis_name="")(key=sample_key)
-    sample_flows = jax.vmap(model.sample_flow, axis_name="", out_axes=-1)(
-        key=sample_key
-    )
+    samples = jax.vmap(model.sample)(key=sample_key)
+    sample_flows = jax.vmap(model.sample_flow, out_axes=-1)(key=sample_key)
     fig, (*axs, ax, axtrue) = plt.subplots(
         1,
         2 + len(sample_flows),

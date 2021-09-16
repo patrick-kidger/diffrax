@@ -133,9 +133,7 @@ class NeuralCDE(eqx.Module):
             saveat=saveat,
         )
         if evolving_out:
-            prediction = jax.vmap(
-                lambda y: jnn.sigmoid(self.linear(y))[0], axis_name=""
-            )(solution.ys)
+            prediction = jax.vmap(lambda y: jnn.sigmoid(self.linear(y))[0])(solution.ys)
         else:
             (prediction,) = jnn.sigmoid(self.linear(solution.ys[-1]))
         return prediction
@@ -165,9 +163,9 @@ def get_data(dataset_size, add_noise, *, key):
     ys = ys.at[: dataset_size // 2, :, 1].multiply(-1)
     if add_noise:
         ys = ys + jrandom.normal(noise_key, ys.shape) * 0.1
-    coeffs = jax.vmap(
-        diffrax.hermite_cubic_with_backward_differences_coefficients, axis_name=""
-    )(ts, ys)
+    coeffs = jax.vmap(diffrax.hermite_cubic_with_backward_differences_coefficients)(
+        ts, ys
+    )
     labels = jnp.zeros((dataset_size,))
     labels = labels.at[: dataset_size // 2].set(1.0)
     _, _, data_size = ys.shape
@@ -215,9 +213,7 @@ def main(
 
     @ft.partial(eqx.filter_value_and_grad, has_aux=True)
     def loss(model, ti, label_i, coeff_i):
-        # Setting an explicit axis_name works around a JAX bug that triggers
-        # unnecessary re-JIT-ing in JAX version <= 0.2.19.
-        pred = jax.vmap(model, axis_name="")(ti, coeff_i)
+        pred = jax.vmap(model)(ti, coeff_i)
         # Binary cross-entropy
         bxe = label_i * jnp.log(pred) + (1 - label_i) * jnp.log(1 - pred)
         bxe = -jnp.mean(bxe)

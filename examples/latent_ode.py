@@ -156,7 +156,7 @@ class LatentODE(eqx.Module):
             dt0=0.4,  # selected as a reasonable choice for this problem
             saveat=diffrax.SaveAt(ts=ts),
         )
-        return jax.vmap(self.hidden_to_data, axis_name="")(sol.ys)
+        return jax.vmap(self.hidden_to_data)(sol.ys)
 
     @staticmethod
     @jax.jit
@@ -214,7 +214,7 @@ def get_data(dataset_size, *, key):
         )
         return sol.ys
 
-    ys = jax.vmap(solve, axis_name="")(ts, y0)
+    ys = jax.vmap(solve)(ts, y0)
 
     return ts, ys
 
@@ -267,9 +267,7 @@ def main(
     def loss(model, ts_i, ys_i, *, key_i):
         batch_size, _ = ts_i.shape
         key_i = jrandom.split(key_i, batch_size)
-        # Setting an explicit axis_name works around a JAX bug that triggers
-        # unnecessary re-JIT-ing in JAX version <= 0.2.19
-        loss = jax.vmap(model.train, axis_name="")(ts_i, ys_i, key=key_i)
+        loss = jax.vmap(model.train)(ts_i, ys_i, key=key_i)
         return jnp.mean(loss)
 
     optim = optax.adam(lr)

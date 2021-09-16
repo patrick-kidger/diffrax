@@ -14,6 +14,7 @@ from .local_interpolation import (
     FourthOrderPolynomialInterpolation,
     LocalLinearInterpolation,
 )
+from .misc import sde_kl_divergence
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
