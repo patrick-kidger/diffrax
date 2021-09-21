@@ -1,3 +1,5 @@
+from typing import Union
+
 import diffrax
 import equinox as eqx
 import fire
@@ -15,10 +17,18 @@ def lipswish(x):
 
 
 class VectorField(eqx.Module):
+    scale: Union[int, jnp.ndarray]
     mlp: eqx.nn.MLP
 
-    def __init__(self, hidden_size, width_size, depth, *, key):
+    def __init__(self, hidden_size, width_size, depth, scale, *, key):
         super().__init__()
+        scale_key, mlp_key = jrandom.split(key)
+        if scale:
+            self.scale = jrandom.uniform(
+                scale_key, (hidden_size,), minval=0.9, maxval=1.1
+            )
+        else:
+            self.scale = 1
         self.mlp = eqx.nn.MLP(
             in_size=hidden_size + 1,
             out_size=hidden_size,
@@ -26,24 +36,29 @@ class VectorField(eqx.Module):
             depth=depth,
             activation=lipswish,
             final_activation=jnn.tanh,
-            key=key,
+            key=mlp_key,
         )
 
     @eqx.filter_jit
     def __call__(self, t, y, args):
-        del args
-        return self.mlp(jnp.concatenate([t[None], y]))
+        return self.scale * self.mlp(jnp.concatenate([t[None], y]))
 
 
 class ControlledVectorField(eqx.Module):
+    scale: Union[int, jnp.ndarray]
     mlp: eqx.nn.MLP
     control_size: int
     hidden_size: int
 
-    def __init__(self, control_size, hidden_size, width_size, depth, *, key):
+    def __init__(self, control_size, hidden_size, width_size, depth, scale, *, key):
         super().__init__()
-        self.control_size = control_size
-        self.hidden_size = hidden_size
+        scale_key, mlp_key = jrandom.split(key)
+        if scale:
+            self.scale = jrandom.uniform(
+                scale_key, (hidden_size, control_size), minval=0.9, maxval=1.1
+            )
+        else:
+            self.scale = 1
         self.mlp = eqx.nn.MLP(
             in_size=hidden_size + 1,
             out_size=hidden_size * control_size,
@@ -51,13 +66,14 @@ class ControlledVectorField(eqx.Module):
             depth=depth,
             activation=lipswish,
             final_activation=jnn.tanh,
-            key=key,
+            key=mlp_key,
         )
+        self.control_size = control_size
+        self.hidden_size = hidden_size
 
     @eqx.filter_jit
     def __call__(self, t, y, args):
-        del args
-        return self.mlp(jnp.concatenate([t[None], y])).reshape(
+        return self.scale * self.mlp(jnp.concatenate([t[None], y])).reshape(
             self.hidden_size, self.control_size
         )
 
@@ -76,6 +92,7 @@ class DifferentialEquation(eqx.Module):
         width_size,
         depth,
         readout_size,
+        scale,
         *,
         key,
     ):
@@ -85,9 +102,9 @@ class DifferentialEquation(eqx.Module):
         self.initial = eqx.nn.MLP(
             initial_size, hidden_size, width_size, depth, key=initial_key
         )
-        self.vf = VectorField(hidden_size, width_size, depth, key=vf_key)
+        self.vf = VectorField(hidden_size, width_size, depth, scale, key=vf_key)
         self.cvf = ControlledVectorField(
-            control_size, hidden_size, width_size, depth, key=cvf_key
+            control_size, hidden_size, width_size, depth, scale, key=cvf_key
         )
         self.readout = eqx.nn.Linear(hidden_size, readout_size, key=readout_key)
 
@@ -138,6 +155,7 @@ class NeuralSDE(eqx.Module):
             width_size=width_size,
             depth=depth,
             readout_size=data_size,
+            scale=True,
             key=key,
         )
         self.initial_noise_size = initial_noise_size
@@ -167,6 +185,7 @@ class NeuralCDE(eqx.Module):
             width_size=width_size,
             depth=depth,
             readout_size=1,
+            scale=False,
             key=key,
         )
 
@@ -278,39 +297,14 @@ def update(
     return generator, discriminator, g_opt_state, d_opt_state
 
 
-def make_step(
-    generator,
-    discriminator,
-    g_opt_state,
-    d_opt_state,
-    g_optim,
-    d_optim,
-    ts_i,
-    ys_i,
-    step,
-    key,
-):
-    g_grad, d_grad = grad_loss((generator, discriminator), ts_i, ys_i, key, step)
-    return update(
-        generator,
-        discriminator,
-        g_opt_state,
-        d_opt_state,
-        g_optim,
-        d_optim,
-        g_grad,
-        d_grad,
-    )
-
-
 def main(
     initial_noise_size=5,
     noise_size=3,
     hidden_size=16,
     width_size=16,
     depth=1,
-    generator_lr=2e-4,
-    discriminator_lr=1e-3,
+    generator_lr=2e-5,
+    discriminator_lr=1e-4,
     batch_size=1024,
     steps=10000,
     steps_per_print=10,
@@ -357,17 +351,16 @@ def main(
     )
 
     for step, (ts_i, ys_i) in zip(trange, infinite_dataloader):
-        generator, discriminator, g_opt_state, d_opt_state = make_step(
+        g_grad, d_grad = grad_loss((generator, discriminator), ts_i, ys_i, key, step)
+        generator, discriminator, g_opt_state, d_opt_state = update(
             generator,
             discriminator,
             g_opt_state,
             d_opt_state,
             g_optim,
             d_optim,
-            ts_i,
-            ys_i,
-            step,
-            train_key,
+            g_grad,
+            d_grad,
         )
 
         if (step % steps_per_print) == 0 or step == steps - 1:
