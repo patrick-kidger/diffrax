@@ -275,6 +275,7 @@ def main(
         jax.tree_map(lambda leaf: leaf if eqx.is_inexact_array(leaf) else None, model)
     )
 
+    # Plot results
     num_plots = 1 + (steps - 1) // save_every
     if ((steps - 1) % save_every) != 0:
         num_plots += 1

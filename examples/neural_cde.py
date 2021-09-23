@@ -6,7 +6,6 @@
 #
 ###########
 
-import functools as ft
 import math
 import pathlib
 import time
@@ -201,9 +200,11 @@ def main(
     seed=5678,
 ):
     key = jrandom.PRNGKey(seed)
-    data_key, model_key, loader_key = jrandom.split(key, 3)
+    train_data_key, test_data_key, model_key, loader_key = jrandom.split(key, 4)
 
-    ts, coeffs, labels, data_size = get_data(dataset_size, add_noise, key=data_key)
+    ts, coeffs, labels, data_size = get_data(
+        dataset_size, add_noise, key=train_data_key
+    )
 
     model = NeuralCDE(data_size, hidden_size, width_size, depth, key=model_key)
 
@@ -211,7 +212,6 @@ def main(
     # Training loop like normal.
     ###########
 
-    @ft.partial(eqx.filter_value_and_grad, has_aux=True)
     def loss(model, ti, label_i, coeff_i):
         pred = jax.vmap(model)(ti, coeff_i)
         # Binary cross-entropy
@@ -220,13 +220,15 @@ def main(
         acc = jnp.mean((pred > 0.5) == (label_i == 1))
         return bxe, acc
 
+    grad_loss = eqx.filter_value_and_grad(loss, has_aux=True)
+
     optim = optax.adam(lr)
     opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
     for step, (ti, label_i, *coeff_i) in zip(
         range(steps), dataloader((ts, labels) + coeffs, batch_size, key=loader_key)
     ):
         start = time.time()
-        (bxe, acc), grads = loss(model, ti, label_i, coeff_i)
+        (bxe, acc), grads = grad_loss(model, ti, label_i, coeff_i)
         end = time.time()
         updates, opt_state = optim.update(grads, opt_state)
         model = eqx.apply_updates(model, updates)
@@ -234,6 +236,10 @@ def main(
             f"Step: {step}, Loss: {bxe}, Accuracy: {acc}, Computation time: "
             f"{end - start}"
         )
+
+    ts, coeffs, labels, _ = get_data(dataset_size, add_noise, key=test_data_key)
+    bxe, acc = loss(model, ts, labels, coeffs)
+    print(f"Test loss: {bxe}, Test Accuracy: {acc}")
 
     # Plot results
     sample_ts = ts[-1]
