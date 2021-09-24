@@ -29,11 +29,11 @@ import optax
 # then here we're defining the f_\theta that appears on that right hand side.
 ###########
 class Func(eqx.Module):
-    mlp: eqx.nn.MLP
+    impl: eqx.nn.MLP
 
     def __init__(self, data_size, width_size, depth, *, key, **kwargs):
         super().__init__(**kwargs)
-        self.mlp = eqx.nn.MLP(
+        self.impl = eqx.nn.MLP(
             in_size=data_size,
             out_size=data_size,
             width_size=width_size,
@@ -44,7 +44,7 @@ class Func(eqx.Module):
 
     @eqx.filter_jit
     def __call__(self, t, y, args):
-        return self.mlp(y)
+        return self.impl(y)
 
 
 ###########

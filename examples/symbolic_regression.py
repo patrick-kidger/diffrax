@@ -1,5 +1,23 @@
+###########
+#
+# This example combines neural differential equations with regularised evolution to
+# discover the equations
+#
+# dx        y(t)
+# --(t) = --------
+# dt      1 + y(t)
+#
+# dy       -x(t)
+# --(t) = --------
+# dt      1 + x(t)
+#
+# directly from data.
+#
+###########
+
 import math
 import tempfile
+from typing import List
 
 import equinox as eqx
 import fire
@@ -11,33 +29,34 @@ import pysr
 import sympy
 
 
+def quantise(expr, quantise_to):
+    if isinstance(expr, sympy.Float):
+        return expr.func(round(float(expr) / quantise_to) * quantise_to)
+    elif isinstance(expr, sympy.Symbol):
+        return expr
+    else:
+        return expr.func(*[quantise(arg, quantise_to) for arg in expr.args])
+
+
 class SymbolicFn(eqx.Module):
     fn: callable
     parameters: jnp.ndarray
 
     def __call__(self, x):
-        return self.fn(x, self.parameters)
+        # Dummy batch/unbatching. PySR assumes its JAX'd symbolic functions act on
+        # tensors with a single batch dimension.
+        return jnp.squeeze(self.fn(x[None], self.parameters))
 
 
-def optimise(fn, in_, out, steps, lr):
-    def loss(fn):
-        # No vmap -- PySR creates functions that operate on batches.
-        return jnp.mean((fn(in_) - out) ** 2)
+class Stack(eqx.Module):
+    modules: List[eqx.Module]
 
-    optim = optax.sgd(lr)
-    opt_state = optim.init(eqx.filter(fn, eqx.is_array))
+    def __call__(self, x):
+        return jnp.stack([module(x) for module in self.modules], axis=-1)
 
-    @eqx.filter_jit
-    def step(fn, opt_state):
-        grads = eqx.filter_grad(loss)(fn)
-        updates, opt_state = optim.update(grads, opt_state)
-        fn = eqx.apply_updates(fn, updates)
-        return fn, opt_state
 
-    for _ in range(steps):
-        fn, opt_state = step(fn, opt_state)
-
-    return fn, loss(fn).item()
+def expr_size(expr):
+    return sum(expr_size(v) for v in expr.args) + 1
 
 
 def _replace_parameters(expr, parameters, i_ref):
@@ -57,19 +76,6 @@ def replace_parameters(expr, parameters):
     return _replace_parameters(expr, parameters, i_ref)
 
 
-def quantise(expr, quantise_to):
-    if isinstance(expr, sympy.Float):
-        return expr.func(round(float(expr) / quantise_to) * quantise_to)
-    elif isinstance(expr, sympy.Symbol):
-        return expr
-    else:
-        return expr.func(*[quantise(arg, quantise_to) for arg in expr.args])
-
-
-def expr_size(expr):
-    return sum(expr_size(v) for v in expr.args) + 1
-
-
 def main(
     neural_dataset_size=256,
     neural_batch_size=32,
@@ -83,12 +89,15 @@ def main(
     symbolic_migration_steps=10,
     symbolic_mutation_steps=50,
     symbolic_descent_steps=50,
-    fine_tuning_steps=500,
-    fine_tuning_lr=3e-4,
-    fine_tuning_quantise_to=0.01,
     pareto_coefficient=2,
+    fine_tuning_steps=500,
+    fine_tuning_lr=3e-3,
+    quantise_to=0.01,
     seed=5678,
 ):
+    ###########
+    # First obtain a neural approximation to the dynamics.
+    ###########
     ts, ys, model, _ = neural_ode.main(
         dataset_size=neural_dataset_size,
         batch_size=neural_batch_size,
@@ -100,7 +109,12 @@ def main(
         plot=False,
     )
 
-    vector_field = model.solver.term.vector_field.mlp
+    ###########
+    # Now symbolically regress across the learnt vector field, to obtain a Pareto
+    # frontier of symbolic equations, that trade loss against complexity of the
+    # equation.
+    ###########
+    vector_field = model.solver.term.vector_field.impl
     dataset_size, length_size, data_size = ys.shape
     in_ = ys.reshape(dataset_size * length_size, data_size)[:symbolic_dataset_size]
     out = jax.vmap(vector_field)(in_)
@@ -120,37 +134,81 @@ def main(
             output_jax_format=True,
         )
 
+    ###########
+    # We now select the `best' equation from this frontier.
+    # PySR actually has a built-in way of doing this (`parsimony`) if you want.
+    ###########
     expressions = []
+    symbolic_fns = []
     for pareto_frontier_i, out_i in zip(pareto_frontier, jnp.rollaxis(out, 1)):
-        best_expr = None
+        best_expression = None
+        best_symbolic_fn = None
         best_expr_size = None
         best_expr_value = None
-        for symbolic_fn in pareto_frontier_i.itertuples():
-            expr = symbolic_fn.sympy_format
-            parameters = symbolic_fn.jax_format["parameters"]
-            symbolic_fn = symbolic_fn.jax_format["callable"]
-            symbolic_fn = SymbolicFn(symbolic_fn, parameters)
-            symbolic_fn, loss = optimise(
-                symbolic_fn, in_, out_i, fine_tuning_steps, fine_tuning_lr
+        for expr in pareto_frontier_i.itertuples():
+            symbolic_fn = SymbolicFn(
+                expr.jax_format["callable"], expr.jax_format["parameters"]
             )
-            expr = replace_parameters(expr, symbolic_fn.parameters.tolist())
-            expr = quantise(expr, fine_tuning_quantise_to).simplify()
-            if best_expr is None:
-                best_expr = expr
-                best_expr_size = expr_size(expr)
+            loss = jnp.mean((jax.vmap(symbolic_fn)(in_) - out_i) ** 2)
+            if best_expression is None:
+                best_expression = expr.sympy_format
+                best_symbolic_fn = symbolic_fn
+                best_expr_size = expr_size(expr.sympy_format)
                 best_expr_value = math.log(loss, pareto_coefficient) + best_expr_size
             else:
-                _expr_size = expr_size(expr)
+                _expr_size = expr_size(expr.sympy_format)
                 expr_value = math.log(loss, pareto_coefficient) + _expr_size
                 if expr_value < best_expr_value or (
                     (expr_value == best_expr_value) and (_expr_size < best_expr_size)
                 ):
-                    best_expr = expr
+                    best_expression = expr.sympy_format
+                    best_symbolic_fn = symbolic_fn
                     best_expr_size = _expr_size
                     best_expr_value = expr_value
-        expressions.append(best_expr)
+        expressions.append(best_expression)
+        symbolic_fns.append(best_symbolic_fn)
 
-    print(f"Expressions found: {expressions}")
+    ###########
+    # Now the constants in this expression have been optimised for regressing across
+    # the neural vector field. This was good enough to obtain the symbolic expression,
+    # but won't quite be perfect -- some of the constants will be slightly off.
+    #
+    # To fix this we now plug our symbolic function back into the original (neural)
+    # model and apply gradient descent.
+    ###########
+    symbolic_fn = Stack(symbolic_fns)
+    symbolic_model = eqx.tree_at(
+        lambda m: m.solver.term.vector_field.impl,
+        model,
+        symbolic_fn,
+        replace_subtree=True,
+    )
+
+    @eqx.filter_grad
+    def grad_loss(symbolic_model):
+        vmap_model = jax.vmap(symbolic_model, in_axes=(None, 0))
+        pred_ys = vmap_model(ts, ys[:, 0])
+        return jnp.mean((ys - pred_ys) ** 2)
+
+    optim = optax.adam(fine_tuning_lr)
+    opt_state = optim.init(eqx.filter(symbolic_model, eqx.is_array))
+    for _ in range(fine_tuning_steps):
+        grads = grad_loss(symbolic_model)
+        updates, opt_state = optim.update(grads, opt_state)
+        symbolic_model = eqx.apply_updates(symbolic_model, updates)
+
+    ###########
+    # Finally we round each constant to the nearest multiple of `quantise_to`.
+    ###########
+    trained_expressions = []
+    for module, expression in zip(
+        symbolic_model.solver.term.vector_field.impl.modules, expressions
+    ):
+        expression = replace_parameters(expression, module.parameters.tolist())
+        expression = quantise(expression, quantise_to)
+        trained_expressions.append(expression)
+
+    print(f"Expressions found: {trained_expressions}")
 
 
 if __name__ == "__main__":
