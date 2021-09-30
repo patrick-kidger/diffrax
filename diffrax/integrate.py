@@ -27,9 +27,13 @@ def _step(
     args: PyTree,
 ):
 
-    (y_candidate, y_error, dense_info, solver_state_candidate) = solver.step(
-        tprev, tnext, y, args, solver_state, made_jump
-    )
+    (
+        y_candidate,
+        y_error,
+        dense_info,
+        solver_state_candidate,
+        solver_result,
+    ) = solver.step(tprev, tnext, y, args, solver_state, made_jump)
 
     (
         keep_step,
@@ -77,6 +81,7 @@ def _step(
     made_jump = keep(made_jump_candidate, made_jump)
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
+    solver_result = keep(solver_result, RESULTS.successful)
     stepsize_controller_result = keep(stepsize_controller_result, RESULTS.successful)
     # TODO: is this necessary? If we're making zero-length steps then we're not going
     # anywhere.
@@ -105,6 +110,7 @@ def _step(
         made_step,
         made_jump,
         dense_info,
+        solver_result,
         stepsize_controller_result,
     )
 
@@ -115,12 +121,12 @@ _jit_step = eqx.filter_jit(_step, filter_spec=eqx.is_array)
 
 
 @jax.jit
-def _lt(a, b):
+def _jit_lt(a, b):
     return a < b
 
 
 @jax.jit
-def _neq(a, b):
+def _jit_neq(a, b):
     return a != b
 
 
@@ -254,7 +260,7 @@ def diffeqsolve(
     result = jnp.full_like(t1, RESULTS.successful)
     save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while _jit_any(unvmap(_lt(tprev, t1))) and num_steps < max_steps:
+    while _jit_any(unvmap(_jit_lt(tprev, t1))) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -281,6 +287,7 @@ def diffeqsolve(
             made_step,
             made_jump,
             dense_info,
+            solver_result,
             stepsize_controller_result,
         ) = step_maybe_jit(
             tprev,
@@ -326,23 +333,34 @@ def diffeqsolve(
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
 
+        should_break = False
         _nan_tnext = jnp.isnan(tnext)
         if _jit_any(unvmap(_nan_tnext)):
             result = jnp.where(_nan_tnext, RESULTS.nan_time, result)
-            break
+            should_break = True
 
         if num_steps >= max_steps:
-            result = jnp.where(_lt(tprev, t1), RESULTS.max_steps_reached, result)
-            break
+            result = jnp.where(_jit_lt(tprev, t1), RESULTS.max_steps_reached, result)
+            should_break = True
 
-        _controller_unsuccessful = _neq(stepsize_controller_result, RESULTS.successful)
+        _controller_unsuccessful = _jit_neq(
+            stepsize_controller_result, RESULTS.successful
+        )
         if _jit_any(unvmap(_controller_unsuccessful)):
             result = jnp.where(
                 _controller_unsuccessful, stepsize_controller_result, result
             )
+            should_break = True
+
+        _solver_unsuccessful = _jit_neq(solver_result, RESULTS.successful)
+        if _jit_any(unvmap(_solver_unsuccessful)):
+            result = jnp.where(_solver_unsuccessful, solver_result, result)
+            should_break = True
+
+        if should_break:
             break
 
-    if throw and _jit_any(unvmap(_neq(result, RESULTS.successful))):
+    if throw and _jit_any(unvmap(_jit_neq(result, RESULTS.successful))):
         error = RESULTS[jnp.max(unvmap(result)).item()]
         raise RuntimeError(error)
 

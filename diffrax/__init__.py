@@ -15,6 +15,7 @@ from .local_interpolation import (
     LocalLinearInterpolation,
 )
 from .misc import sde_kl_divergence
+from .nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
@@ -34,6 +35,9 @@ from .solver import (
     fehlberg2,
     Heun,
     heun,
+    implicit_euler,
+    implicit_euler_maruyama,
+    ImplicitEuler,
     leapfrog_midpoint,
     LeapfrogMidpoint,
     reversible_heun,

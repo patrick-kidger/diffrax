@@ -3,7 +3,7 @@ from typing import Callable, Tuple
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
-from ..solution import RESULTS
+from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -11,15 +11,21 @@ from .base import AbstractSolver
 _SolverState = None
 
 
-class Euler(AbstractSolver):
+def _criterion(y1, vf_prod, t0, y0, args, control):
+    return y0 + vf_prod(t0, y1, args, control) - y1
+
+
+class ImplicitEuler(AbstractSolver):
     term: AbstractTerm
+    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
 
     interpolation_cls = LocalLinearInterpolation
     order = 1
 
     def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
         return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction),
+            nonlinear_solver=self.nonlinear_solver,
         )
 
     def step(
@@ -33,9 +39,14 @@ class Euler(AbstractSolver):
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, int]:  # noqa: F821
         del solver_state, made_jump
         control = self.term.contr(t0, t1)
-        y1 = y0 + self.term.vf_prod(t0, y0, args, control)
+        # TODO: make a choice (or make an option) for the predictor: identity or
+        # explicit Euler.
+        y1_pred = y0 + self.term.vf_prod(t0, y0, args, control)
+        y1, result = self.nonlinear_solver(
+            _criterion, y1_pred, (self.term.vf_prod, t0, y0, args, control)
+        )
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, RESULTS.successful
+        return y1, None, dense_info, None, result
 
     def func_for_init(
         self,
@@ -46,11 +57,11 @@ class Euler(AbstractSolver):
         return self.term.func_for_init(t0, y0, args)
 
 
-def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
-    return Euler(term=ODETerm(vector_field=vector_field), **kwargs)
+def implicit_euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+    return ImplicitEuler(term=ODETerm(vector_field=vector_field), **kwargs)
 
 
-def euler_maruyama(
+def implicit_euler_maruyama(
     drift: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Callable[[Scalar, PyTree, PyTree], PyTree],
     bm: AbstractBrownianPath,
@@ -62,4 +73,4 @@ def euler_maruyama(
             ControlTerm(vector_field=diffusion, control=bm),
         )
     )
-    return Euler(term=term, **kwargs)
+    return ImplicitEuler(term=term, **kwargs)

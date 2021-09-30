@@ -5,6 +5,7 @@ import jax.lax as lax
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
+from ..solution import RESULTS
 from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -57,7 +58,7 @@ class ReversibleHeun(AbstractSolver):
 
         dense_info = {"y0": y0, "y1": y1}
         solver_state = (yhat1, vf1)
-        return y1, y1_error, dense_info, solver_state
+        return y1, y1_error, dense_info, solver_state, RESULTS.successful
 
 
 def reversible_heun(

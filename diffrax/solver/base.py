@@ -44,7 +44,11 @@ class AbstractSolver(eqx.Module):
         solver_state: _SolverState,
         made_jump: Array[(), bool],
     ) -> Tuple[
-        Array["state"], Optional[Array["state"]], DenseInfo, _SolverState  # noqa: F821
+        Array["state"],  # noqa: F821
+        Optional[Array["state"]],  # noqa: F821
+        DenseInfo,
+        _SolverState,
+        int,
     ]:
         pass
 

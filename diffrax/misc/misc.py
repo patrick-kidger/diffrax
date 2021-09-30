@@ -4,7 +4,8 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from ..custom_types import Array, PyTree
+from ..custom_types import Array, PyTree, Scalar
+from .ravel import ravel_pytree
 
 
 def _stack_pytrees(*arrays):
@@ -83,3 +84,15 @@ def linear_rescale(t0, t, t1):
     # `where` to get correct gradient if `cond` is True.
     out = jnp.where(cond, t, out)
     return out
+
+
+def rms_norm(x: PyTree) -> Scalar:
+    x, _ = ravel_pytree(x)
+    if x.size == 0:
+        return 0
+    sqnorm = jnp.mean(x ** 2)
+    cond = sqnorm == 0
+    # Double-where trick to avoid NaN gradients.
+    # See JAX issues #5039 and #1052.
+    _sqnorm = jnp.where(cond, 1.0, sqnorm)
+    return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))

@@ -5,6 +5,7 @@ from .misc import (
     linear_rescale,
     nextafter,
     nextbefore,
+    rms_norm,
     stack_pytrees,
 )
 from .ravel import ravel_pytree

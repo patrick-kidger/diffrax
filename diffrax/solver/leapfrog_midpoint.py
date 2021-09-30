@@ -4,6 +4,7 @@ import jax.lax as lax
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
+from ..solution import RESULTS
 from ..term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -49,7 +50,7 @@ class LeapfrogMidpoint(AbstractSolver):
         )
         dense_info = {"y0": y0, "y1": y1}
         solver_state = (t0, y0, False)
-        return y1, None, dense_info, solver_state
+        return y1, None, dense_info, solver_state, RESULTS.successful
 
     def _firststep(self, operand):
         # Euler method on the first step

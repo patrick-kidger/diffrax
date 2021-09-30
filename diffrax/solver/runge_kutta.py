@@ -8,6 +8,7 @@ import numpy as np
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..misc import frozenndarray
+from ..solution import RESULTS
 from ..term import AbstractTerm, WrapTerm
 from .base import AbstractSolver
 
@@ -100,8 +101,6 @@ class RungeKutta(AbstractSolver):
         )  # y0.shape is actually single-dimensional
         k = k.at[0].set(f0)
 
-        # lax.fori_loop is not reverse differentiable
-        # Since we're JITing I'm not sure it'd necessarily be faster anyway.
         for i, (alpha_i, beta_i) in enumerate(zip(alpha, beta)):
             if alpha_i == 1:
                 # No floating point error
@@ -119,7 +118,7 @@ class RungeKutta(AbstractSolver):
         f1 = k[-1]
         y_error = c_error @ k
         dense_info = {"y0": y0, "y1": y1, "k": k}
-        return y1, y_error, dense_info, (f1, dt)
+        return y1, y_error, dense_info, (f1, dt), RESULTS.successful
 
     def func_for_init(
         self,

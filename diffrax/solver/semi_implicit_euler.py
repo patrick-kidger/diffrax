@@ -6,6 +6,7 @@ import jax
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ravel_pytree
+from ..solution import RESULTS
 from ..term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -67,7 +68,7 @@ class SemiImplicitEuler(AbstractSolver):
         y1, _ = ravel_pytree((y0_1, y0_2))
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None
+        return y1, None, dense_info, None, RESULTS.successful
 
     def func_for_init(
         self,

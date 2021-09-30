@@ -8,22 +8,10 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import nextafter, nextbefore, ravel_pytree, unvmap
+from ..misc import nextafter, nextbefore, rms_norm, unvmap
 from ..solution import RESULTS
 from ..solver import AbstractSolver
 from .base import AbstractStepSizeController
-
-
-def _rms_norm(x: PyTree) -> Scalar:
-    x, _ = ravel_pytree(x)
-    if x.size == 0:
-        return 0
-    sqnorm = jnp.mean(x ** 2)
-    cond = sqnorm == 0
-    # Double-where trick to avoid NaN gradients.
-    # See JAX issues #5039 and #1052.
-    _sqnorm = jnp.where(cond, 1.0, sqnorm)
-    return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
 
 
 # Empirical initial step selection algorithm from:
@@ -92,7 +80,7 @@ class IController(AbstractStepSizeController):
     safety: Scalar = 0.9
     ifactor: Scalar = 10.0
     dfactor: Scalar = 0.2
-    norm: callable = _rms_norm
+    norm: callable = rms_norm
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
