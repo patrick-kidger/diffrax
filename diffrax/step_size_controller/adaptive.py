@@ -189,7 +189,7 @@ class IController(AbstractStepSizeController):
     ) -> Tuple[Array[(), bool], Scalar, Scalar, Array[(), bool], _ControllerState, int]:
         del args
         if y_error is None:
-            raise ValueError(
+            raise RuntimeError(
                 "Cannot use adaptive step sizes with a solver that does not provide "
                 "error estimates."
             )

@@ -5,6 +5,7 @@ import jax.lax as lax
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
+from ..misc import copy_docstring_from
 from ..solution import RESULTS
 from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
@@ -14,6 +15,18 @@ _SolverState = Tuple[Array["state"], Array["state*control"]]  # noqa: F821
 
 
 class ReversibleHeun(AbstractSolver):
+    """Reversible Heun method.
+
+    Algebraically reversible 2nd order method. Has an embedded 1st order method.
+
+    @article{kidger2021efficient,
+        author={Kidger, Patrick and Foster, James and Li, Xuechen and Lyons, Terry},
+        title={Efficient and Accurate Gradients for Neural {SDE}s},
+        year={2021},
+        journal={Advances in Neural Information Processing Systems}
+    }
+    """
+
     term: AbstractTerm
 
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
@@ -61,6 +74,7 @@ class ReversibleHeun(AbstractSolver):
         return y1, y1_error, dense_info, solver_state, RESULTS.successful
 
 
+@copy_docstring_from(ReversibleHeun)
 def reversible_heun(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,

@@ -5,6 +5,7 @@ import numpy as np
 from ..brownian import AbstractBrownianPath
 from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
+from ..misc import copy_docstring_from
 from ..term import ControlTerm, MultiTerm, ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
@@ -25,11 +26,23 @@ class _HeunInterpolation(FourthOrderPolynomialInterpolation):
 
 
 class Heun(AbstractERK):
+    """Heun's method.
+
+    Explicit 2nd order Runge--Kutta method. Has an embedded Euler method.
+
+    Also sometimes known as either the "improved Euler method", "modified Euler method"
+    or "explicit trapezoidal rule".
+
+    Should not be confused with Heun's third order method, which is a different (higher
+    order) method occasionally also just referred to as "Heun's method".
+    """
+
     tableau = _heun_tableau
     interpolation_cls = _HeunInterpolation
     order = 2
 
 
+@copy_docstring_from(Heun)
 def heun(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,

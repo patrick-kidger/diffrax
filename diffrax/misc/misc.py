@@ -96,3 +96,11 @@ def rms_norm(x: PyTree) -> Scalar:
     # See JAX issues #5039 and #1052.
     _sqnorm = jnp.where(cond, 1.0, sqnorm)
     return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
+
+
+def copy_docstring_from(source):
+    def _copy_docstring_from(target):
+        target.__doc__ = source.__doc__
+        return target
+
+    return _copy_docstring_from

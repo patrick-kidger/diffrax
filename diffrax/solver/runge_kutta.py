@@ -139,7 +139,7 @@ class AbstractRungeKutta(AbstractSolver):
             f1 = fi
         else:
             y1 = y0 + self.tableau.c_sol @ k
-            f1 = self.term.vf_prod(t1, t1, args, control)
+            f1 = self.term.vf_prod(t1, y1, args, control)
         y_error = jnp.where(
             result == RESULTS.successful, self.tableau.c_error @ k, jnp.inf
         )

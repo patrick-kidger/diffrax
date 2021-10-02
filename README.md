@@ -30,6 +30,7 @@ Requires Python 3.8+ and JAX 0.2.20+
 - [`continuous_normalising_flow.py`](./examples/continuous_normalising_flow.py) trains a [CNF](https://arxiv.org/abs/1810.01367) -- a generative model for e.g. images -- to reproduce whatever input image you give it!
 - [`stochastic_gradient_descent.py`](./examples/stochastic_gradient_descent.py) trains a simple neural network via SGD, using an ODE solver. (SGD is just Euler's method for solving an ODE.)
 - [`symbolic_regression.py`](./examples/symbolic_regression.py) extends the neural ODE example, by additionally performing [regularised evolution](https://arxiv.org/abs/1802.01548) to discover the exact symbolic form of the governing equations. (An improvement on [SINDy](https://www.pnas.org/content/113/15/3932), basically.)
+- [`stiff_ode.py`](./examples/stiff_ode.py) demonstrates the use of implicit solvers to solve a stiff ODE, namely the Robertson problem.
 
 Quick example:
 ```python

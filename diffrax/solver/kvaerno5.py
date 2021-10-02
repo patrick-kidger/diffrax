@@ -4,6 +4,7 @@ import numpy as np
 
 from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
+from ..misc import copy_docstring_from
 from ..term import ODETerm
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
@@ -56,10 +57,28 @@ class _Kvaerno5Interpolation(FourthOrderPolynomialInterpolation):
 
 
 class Kvaerno5(AbstractESDIRK):
+    r"""Kvaerno's 5/4 method.
+
+    A-L stable stiffly accurate 5th order ESDIRK method. Has an embedded 4th order
+    method.
+
+    @article{kvaerno2004singly,
+      title={Singly diagonally implicit Runge--Kutta methods with an explicit first
+             stage},
+      author={Kv{\ae}rn{\o}, Anne},
+      journal={BIT Numerical Mathematics},
+      volume={44},
+      number={3},
+      pages={489--502},
+      year={2004},
+      publisher={Springer}
+    }
+    """
     tableau = _kvaerno5_tableau
     interpolation_cls = _Kvaerno5Interpolation
     order = 5
 
 
+@copy_docstring_from(Kvaerno5)
 def kvaerno5(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
     return Kvaerno5(term=ODETerm(vector_field=vector_field), **kwargs)

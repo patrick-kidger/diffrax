@@ -1,5 +1,8 @@
 from typing import Callable, Tuple
 
+import jax
+import jax.numpy as jnp
+
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -39,11 +42,12 @@ class ImplicitEuler(AbstractSolver):
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, int]:  # noqa: F821
         del solver_state, made_jump
         control = self.term.contr(t0, t1)
+        zero = jax.tree_map(jnp.zeros_like, y0)
         jac = self.nonlinear_solver.jac(
-            _criterion, 0.0, (self.term.vf_prod, t0, y0, args, control)
+            _criterion, zero, (self.term.vf_prod, t0, y0, args, control)
         )
         z1, result = self.nonlinear_solver(
-            _criterion, 0.0, (self.term.vf_prod, t0, y0, args, control), jac
+            _criterion, zero, (self.term.vf_prod, t0, y0, args, control), jac
         )
         y1 = y0 + z1
         dense_info = dict(y0=y0, y1=y1)

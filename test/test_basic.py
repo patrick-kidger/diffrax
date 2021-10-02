@@ -18,10 +18,16 @@ from helpers import all_ode_solvers, random_pytree, treedefs
 )
 @pytest.mark.parametrize("jit", (False, True))
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
-    if solver_ctr in (diffrax.euler, diffrax.leapfrog_midpoint) and isinstance(
-        stepsize_controller, diffrax.IController
+    if (
+        solver_ctr
+        in (
+            diffrax.euler,
+            diffrax.implicit_euler,
+            diffrax.leapfrog_midpoint,
+        )
+        and isinstance(stepsize_controller, diffrax.IController)
     ):
-        return  # These solvers don't supply error estimates, so they're not adaptive.
+        return
 
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)
@@ -46,9 +52,19 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
     else:
         raise ValueError
     y0 = random_pytree(getkey(), treedef)
-    diffrax.diffeqsolve(
-        solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=jit
-    )
+    try:
+        diffrax.diffeqsolve(
+            solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=jit
+        )
+    except RuntimeError as e:
+        if isinstance(stepsize_controller, diffrax.ConstantStepSize) and str(
+            e
+        ).startswith("Implicit"):
+            # Implicit method failed to converge. A very normal thing to have happen;
+            # usually we'd use adaptive timestepping to handle it.
+            pass
+        else:
+            raise
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)

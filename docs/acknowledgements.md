@@ -6,4 +6,6 @@ Diffrax is inspired by previous differential equation libraries written for othe
 - [torchcde](https://github.com/patrick-kidger/torchcde)
 - [DifferentialEquations.jl](https://diffeq.sciml.ai)
 
+Particular credit must go to DifferentialEquations.jl, which was invaluable as a reference implementation.
+
 Thanks to the JAX team for the framework that makes this possible.
