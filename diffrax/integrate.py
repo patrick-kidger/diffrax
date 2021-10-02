@@ -68,6 +68,7 @@ def _step(
     y_candidate = keep(y_candidate, y)
     made_jump_candidate = keep(made_jump_candidate, made_jump)
     solver_state_candidate = jax.tree_map(keep, solver_state_candidate, solver_state)
+    solver_result = keep(solver_result, RESULTS.successful)
 
     # Next: we need to consider the fact that one batch element may have finished
     # integrating even whilst other batch elements are still going. In this case we
@@ -334,27 +335,32 @@ def diffeqsolve(
                 dense_infos.append(dense_info)
 
         should_break = False
-        _nan_tnext = jnp.isnan(tnext)
-        if _jit_any(unvmap(_nan_tnext)):
-            result = jnp.where(_nan_tnext, RESULTS.nan_time, result)
-            should_break = True
-
-        if num_steps >= max_steps:
-            result = jnp.where(_jit_lt(tprev, t1), RESULTS.max_steps_reached, result)
-            should_break = True
 
         _controller_unsuccessful = _jit_neq(
             stepsize_controller_result, RESULTS.successful
         )
         if _jit_any(unvmap(_controller_unsuccessful)):
-            result = jnp.where(
-                _controller_unsuccessful, stepsize_controller_result, result
+            cond = jnp.where(
+                result == RESULTS.successful, _controller_unsuccessful, False
             )
-            should_break = True
+            result = jnp.where(cond, stepsize_controller_result, result)
+            should_break = throw
 
         _solver_unsuccessful = _jit_neq(solver_result, RESULTS.successful)
         if _jit_any(unvmap(_solver_unsuccessful)):
-            result = jnp.where(_solver_unsuccessful, solver_result, result)
+            cond = jnp.where(result == RESULTS.successful, _solver_unsuccessful, False)
+            result = jnp.where(cond, solver_result, result)
+            should_break = throw
+
+        _nan_tnext = jnp.isnan(tnext)
+        if _jit_any(unvmap(_nan_tnext)):
+            cond = jnp.where(result == RESULTS.successful, _nan_tnext, False)
+            result = jnp.where(cond, RESULTS.nan_time, result)
+            should_break = throw
+
+        if num_steps >= max_steps:
+            cond = jnp.where(result == RESULTS.successful, _jit_lt(tprev, t1), False)
+            result = jnp.where(cond, RESULTS.max_steps_reached, result)
             should_break = True
 
         if should_break:

@@ -1,18 +1,19 @@
 from typing import Callable, Optional
 
+import numpy as np
+
 from ..brownian import AbstractBrownianPath
 from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..misc import frozenarray
 from ..term import ControlTerm, MultiTerm, ODETerm
-from .runge_kutta import ButcherTableau, RungeKutta
+from .runge_kutta import AbstractERK, ButcherTableau
 
 
 _heun_tableau = ButcherTableau(
-    alpha=frozenarray([1.0]),
-    beta=(frozenarray([1.0]),),
-    c_sol=frozenarray([0.5, 0.5]),
-    c_error=frozenarray([0.5, -0.5]),
+    alpha=np.array([1.0]),
+    beta=(np.array([1.0]),),
+    c_sol=np.array([0.5, 0.5]),
+    c_error=np.array([0.5, -0.5]),
 )
 
 
@@ -20,10 +21,10 @@ class _HeunInterpolation(FourthOrderPolynomialInterpolation):
     # I don't think this is well-chosen -- I think this is just a simple choice to get
     # an approximation for y at the middle of each step, and that better choices are
     # probably available.
-    c_mid = frozenarray([0, 0.5])
+    c_mid = np.array([0, 0.5])
 
 
-class Heun(RungeKutta):
+class Heun(AbstractERK):
     tableau = _heun_tableau
     interpolation_cls = _HeunInterpolation
     order = 2

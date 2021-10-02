@@ -11,6 +11,8 @@ class PyTree:
         return Any
 
 
+Bool = Union[bool, Array[(), bool]]
+
 DenseInfo = Dict[str, PyTree]
 
 Scalar = Union[int, float, Array[()]]

@@ -1,35 +1,41 @@
 import functools as ft
+from typing import Optional, Tuple, TypeVar
 
 import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.scipy as jsp
 
+from ..custom_types import Bool, PyTree, Scalar
 from ..misc import ravel_pytree, rms_norm
 from ..solution import RESULTS
 from .base import AbstractNonlinearSolver
 
 
-# TODO: factor out parts of this code into the base class as we get more solvers.
+# TODO: factor out parts of this code into the base class if we get more solvers.
 
 
-def _small(diffsize):
+def _small(diffsize: Scalar) -> Bool:
     # TODO: make a more careful choice here -- the existence of this function is
     # pretty ad-hoc.
     resolution = 10 ** (2 - jnp.finfo(diffsize.dtype).precision)
     return diffsize < resolution
 
 
-def _diverged(rate):
+def _diverged(rate: Scalar) -> Bool:
     return ~jnp.isfinite(rate) | (rate > 2)
 
 
-def _converged(factor, tol):
+def _converged(factor: Scalar, tol: Scalar) -> Bool:
     return (factor > 0) & (factor < tol)
 
 
+_LU_Jacobian = TypeVar("_LU_Jacobian")
+
+
 # TODO: different implementations do slightly different things. Not clear which is
-# optimal, so all of the following should be considered up-for-debate.
+# optimal, so both of the following should be considered up-for-debate.
 #
 # (1) The value `scale`.
 #  - SciPy uses a vector-valued `scale` for each element of `x`, computed on the
@@ -44,19 +50,12 @@ def _converged(factor, tol):
 #    divergence (plus an additional criterion comparing against tolerance.)
 #  - OrdinaryDiffEq.jl just checks whether `rate > 2`.
 #  We follow OrdinaryDiffEq.jl's more permissive approach here.
-#
-# (3) The minimum number of loops.
-#  - SciPy uses a minimum of two loops, to be able to check the convergence criterion.
-#  - OrdinaryDiffEq.jl allow just one loop if the first `diffsize < 1e-5`.
-#  The 1e-5 criterion seems a bit suspect if high tolerances are demanded, so we follow
-#  SciPy on this one, but switching to additional use our `_small' criteria for
-#  stopping after a single loop may well be desirable from an efficiency standpoint.
-#
-# (4) Enhancements to the solver.
-#  - There's a lot of ways to do nonlinear solves (w/ line search etc.) They're
-#    probably overkill here (there's a reason no-one else uses them after all) but this
-#    deserves more thought on our part than just "other standard implementations don't
-#    use them"!
+
+# TODO: there's a host of tricks for improving Newton's method, specifically when
+# solving implicit ODEs.
+# - The minimum number of iterations: it's possible to use only a single iteration.
+# - Choice of initial guess.
+# - Transform Jacobians into W, in particular when treating FIRKs.
 class NewtonNonlinearSolver(AbstractNonlinearSolver):
     # Default values taken from SciPy's Radau.
     max_steps: int = 6
@@ -70,15 +69,35 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         if self.max_steps < 2:
             raise ValueError(f"max_steps must be at least 2. Got {self.max_steps}")
 
-    def __call__(self, fn, x, args):
+    def __call__(
+        self, fn: callable, x: PyTree, args: PyTree, jac: Optional[_LU_Jacobian] = None
+    ) -> Tuple[PyTree, RESULTS]:
         # TODO: not sure this will give the desired behaviour if differentiating wrt
-        # integers or complexes.
+        # integers or complexes. Ideally we'd be testing for JVPTracer.
         diff_args, nondiff_args = eqx.partition(args, eqx.is_inexact_array)
-        return _newton_solve(self, fn, x, nondiff_args, diff_args)
+        return _newton_solve(self, fn, x, jac, nondiff_args, diff_args)
+
+    @staticmethod
+    def jac(fn: callable, x: PyTree, args: PyTree) -> _LU_Jacobian:
+        return flat_jac(fn, x, args)
 
 
-@ft.partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3))
-def _newton_solve(self, fn, x, nondiff_args, diff_args):
+# Must match what is done in _newton_solve, below, for use when precomputing Jacobians.
+def flat_jac(fn: callable, x: PyTree, args: PyTree) -> _LU_Jacobian:
+    flat, unflatten = ravel_pytree(x)
+    curried = lambda z: ravel_pytree(fn(unflatten(z), *args))[0]
+    return jsp.linalg.lu_factor(jax.jacfwd(curried)(flat))
+
+
+@ft.partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 4))
+def _newton_solve(
+    self: NewtonNonlinearSolver,
+    fn: callable,
+    x: PyTree,
+    jac: Optional[_LU_Jacobian],
+    nondiff_args: PyTree,
+    diff_args: PyTree,
+) -> Tuple[PyTree, RESULTS]:
     args = eqx.combine(nondiff_args, diff_args)
     scale = self.atol + self.rtol * self.norm(x)
     flat, unflatten = ravel_pytree(x)
@@ -96,9 +115,12 @@ def _newton_solve(self, fn, x, nondiff_args, diff_args):
 
     def body_fn(val):
         flat, step, diffsize, _ = val
-        jac = jax.jacfwd(curried)(flat)
         fx = curried(flat)
-        diff = jnp.linalg.solve(jac, fx)
+        if jac is None:
+            _jac = jax.jacfwd(curried)(flat)
+            diff = jsp.linalg.solve(_jac, fx)
+        else:
+            diff = jsp.linalg.lu_solve(jac, fx)
         flat = flat - diff
         diffsize_prev = diffsize
         diffsize = self.norm(diff / scale)
@@ -131,10 +153,18 @@ def _newton_solve(self, fn, x, nondiff_args, diff_args):
 # TODO: I think the jacfwd and the jvp can probably be combined, as they both
 # basically do the same thing. That might improve efficiency via parallelism.
 @_newton_solve.defjvp
-def _newton_solve_jvp(self, fn, x, nondiff_args, diff_args, tang_diff_args):
+def _newton_solve_jvp(
+    self: NewtonNonlinearSolver,
+    fn: callable,
+    x: PyTree,
+    jac: Optional[_LU_Jacobian],
+    nondiff_args: PyTree,
+    diff_args: PyTree,
+    tang_diff_args: PyTree,
+):
     (diff_args,) = diff_args
     (tang_diff_args,) = tang_diff_args
-    root, result = _newton_solve(self, fn, x, nondiff_args, diff_args)
+    root, result = _newton_solve(self, fn, x, jac, nondiff_args, diff_args)
 
     flat_root, unflatten_root = ravel_pytree(root)
     args = eqx.combine(nondiff_args, diff_args)

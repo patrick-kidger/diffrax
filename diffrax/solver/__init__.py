@@ -6,8 +6,17 @@ from .euler import Euler, euler, euler_maruyama
 from .fehlberg2 import Fehlberg2, fehlberg2
 from .heun import Heun, heun
 from .implicit_euler import implicit_euler, implicit_euler_maruyama, ImplicitEuler
+from .kvaerno3 import Kvaerno3, kvaerno3
+from .kvaerno5 import Kvaerno5, kvaerno5
 from .leapfrog_midpoint import leapfrog_midpoint, LeapfrogMidpoint
 from .reversible_heun import reversible_heun, ReversibleHeun
-from .runge_kutta import ButcherTableau, RungeKutta
+from .runge_kutta import (
+    AbstractDIRK,
+    AbstractERK,
+    AbstractESDIRK,
+    AbstractRungeKutta,
+    AbstractSDIRK,
+    ButcherTableau,
+)
 from .semi_implicit_euler import semi_implicit_euler, SemiImplicitEuler
 from .tsit5 import Tsit5, tsit5

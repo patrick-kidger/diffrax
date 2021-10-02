@@ -11,8 +11,8 @@ from .base import AbstractSolver
 _SolverState = None
 
 
-def _criterion(y1, vf_prod, t0, y0, args, control):
-    return y0 + vf_prod(t0, y1, args, control) - y1
+def _criterion(z1, vf_prod, t0, y0, args, control):
+    return vf_prod(t0, y0 + z1, args, control) - z1
 
 
 class ImplicitEuler(AbstractSolver):
@@ -39,12 +39,13 @@ class ImplicitEuler(AbstractSolver):
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, int]:  # noqa: F821
         del solver_state, made_jump
         control = self.term.contr(t0, t1)
-        # TODO: make a choice (or make an option) for the predictor: identity or
-        # explicit Euler.
-        y1_pred = y0 + self.term.vf_prod(t0, y0, args, control)
-        y1, result = self.nonlinear_solver(
-            _criterion, y1_pred, (self.term.vf_prod, t0, y0, args, control)
+        jac = self.nonlinear_solver.jac(
+            _criterion, 0.0, (self.term.vf_prod, t0, y0, args, control)
         )
+        z1, result = self.nonlinear_solver(
+            _criterion, 0.0, (self.term.vf_prod, t0, y0, args, control), jac
+        )
+        y1 = y0 + z1
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, result
 

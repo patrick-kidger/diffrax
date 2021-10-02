@@ -20,6 +20,11 @@ from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import Solution
 from .solver import (
+    AbstractDIRK,
+    AbstractERK,
+    AbstractESDIRK,
+    AbstractRungeKutta,
+    AbstractSDIRK,
     AbstractSolver,
     Bosh3,
     bosh3,
@@ -38,11 +43,14 @@ from .solver import (
     implicit_euler,
     implicit_euler_maruyama,
     ImplicitEuler,
+    Kvaerno3,
+    kvaerno3,
+    Kvaerno5,
+    kvaerno5,
     leapfrog_midpoint,
     LeapfrogMidpoint,
     reversible_heun,
     ReversibleHeun,
-    RungeKutta,
     semi_implicit_euler,
     SemiImplicitEuler,
     Tsit5,
