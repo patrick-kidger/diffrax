@@ -44,7 +44,9 @@ _kvaerno5_tableau = ButcherTableau(
         np.array([a71, a72, a73, a74, a75, a76]),
     ),
     c_sol=np.array([a71, a72, a73, a74, a75, a76, 0.26]),
-    c_error=np.array([0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0]),
+    c_error=np.array(
+        [a71 - a61, a72 - a62, a73 - a63, a74 - a64, a75 - a65, a76 - 0.26, 0.26]
+    ),
     diagonal=np.array([0, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26]),
 )
 
@@ -61,6 +63,9 @@ class Kvaerno5(AbstractESDIRK):
 
     A-L stable stiffly accurate 5th order ESDIRK method. Has an embedded 4th order
     method.
+
+    When solving an ODE over the interval [t0, t1], note that this method will make
+    some evaluations slightly past t1.
 
     @article{kvaerno2004singly,
       title={Singly diagonally implicit Runge--Kutta methods with an explicit first

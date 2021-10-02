@@ -173,6 +173,13 @@ def _criterion(zi, diagonal, vf_prod, ti, yi_partial, args, control):
 class AbstractDIRK(AbstractRungeKutta):
     nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
 
+    # TODO: DRY
+    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        return type(self)(
+            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction),
+            nonlinear_solver=self.nonlinear_solver,
+        )
+
     def _init_jac(self, i, yi_prev, ti, yi_partial, args, control):
         pass
 

@@ -27,7 +27,7 @@ _kvaerno3_tableau = ButcherTableau(
         np.array([a41, a42, a43]),
     ),
     c_sol=np.array([a41, a42, a43, γ]),
-    c_error=np.array([0.0, 0.0, -1.0, 1.0]),
+    c_error=np.array([a41 - a31, a42 - a32, a43 - γ, γ]),
     diagonal=np.array([0, γ, γ, γ]),
 )
 
