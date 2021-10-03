@@ -124,7 +124,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
             return _d[index]
 
         infos = jax.tree_map(_index, self.infos)
-        return self.interpolation_cls.value(t0=prev_t, t1=next_t, **infos)
+        return self.interpolation_cls(t0=prev_t, t1=next_t, **infos)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         # Passing `left` doesn't matter on a local interpolation, which is globally

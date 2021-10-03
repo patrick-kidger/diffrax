@@ -56,8 +56,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     Also supports the quasi-Newton chord method.
     """
 
-    # Default values taken from SciPy's Radau.
-    max_steps: int = 6
+    max_steps: int = 10
     rtol: float = 1e-3
     atol: float = 1e-6
     kappa: float = 1e-2
