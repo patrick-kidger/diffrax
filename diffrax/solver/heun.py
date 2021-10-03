@@ -5,7 +5,6 @@ import numpy as np
 from ..brownian import AbstractBrownianPath
 from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..misc import copy_docstring_from
 from ..term import ControlTerm, MultiTerm, ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
@@ -42,7 +41,6 @@ class Heun(AbstractERK):
     order = 2
 
 
-@copy_docstring_from(Heun)
 def heun(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,

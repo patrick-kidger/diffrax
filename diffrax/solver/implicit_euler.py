@@ -7,6 +7,7 @@ from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
+from ..solution import RESULTS
 from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -14,22 +15,29 @@ from .base import AbstractSolver
 _SolverState = None
 
 
-def _criterion(z1, vf_prod, t0, y0, args, control):
+def _implicit_relation(z1, vf_prod, t0, y0, args, control):
     return vf_prod(t0, y0 + z1, args, control) - z1
 
 
 class ImplicitEuler(AbstractSolver):
+    r"""Implicit Euler method.
+
+    A-B-L stable 1st order SDIRK method. Does not support adaptive timestepping.
+    """
+
     term: AbstractTerm
     nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
 
     interpolation_cls = LocalLinearInterpolation
     order = 1
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction),
-            nonlinear_solver=self.nonlinear_solver,
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        kwargs = super()._wrap(t0, y0, args, direction)
+        kwargs["term"] = WrapTerm(
+            term=self.term, t=t0, y=y0, args=args, direction=direction
         )
+        kwargs["nonlinear_solver"] = self.nonlinear_solver
+        return kwargs
 
     def step(
         self,
@@ -39,15 +47,15 @@ class ImplicitEuler(AbstractSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: Array[(), bool],
-    ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, int]:  # noqa: F821
+    ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, RESULTS]:  # noqa: F821
         del solver_state, made_jump
         control = self.term.contr(t0, t1)
         zero = jax.tree_map(jnp.zeros_like, y0)
         jac = self.nonlinear_solver.jac(
-            _criterion, zero, (self.term.vf_prod, t0, y0, args, control)
+            _implicit_relation, zero, (self.term.vf_prod, t0, y0, args, control)
         )
         z1, result = self.nonlinear_solver(
-            _criterion, zero, (self.term.vf_prod, t0, y0, args, control), jac
+            _implicit_relation, zero, (self.term.vf_prod, t0, y0, args, control), jac
         )
         y1 = y0 + z1
         dense_info = dict(y0=y0, y1=y1)

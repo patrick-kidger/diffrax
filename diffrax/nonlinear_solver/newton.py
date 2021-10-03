@@ -49,14 +49,18 @@ def _converged(factor: Scalar, tol: Scalar) -> Bool:
 # - The minimum number of iterations: it's possible to use only a single iteration.
 # - Choice of initial guess.
 # - Transform Jacobians into W, in particular when treating FIRKs.
+# - (+The entire space of quasi-Newton methods.)
 class NewtonNonlinearSolver(AbstractNonlinearSolver):
-    """Newton's method for root-finding. (Also known as Newton--Raphson.)"""
+    """Newton's method for root-finding. (Also known as Newton--Raphson.)
+
+    Also supports the quasi-Newton chord method.
+    """
 
     # Default values taken from SciPy's Radau.
     max_steps: int = 6
     rtol: float = 1e-3
     atol: float = 1e-6
-    tol: float = 1e-6
+    kappa: float = 1e-2
     norm: callable = rms_norm
     tolerate_nonconvergence: bool = False
 
@@ -86,7 +90,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             step_okay = step < self.max_steps
             not_small = ~_small(diffsize)
             not_diverged = ~_diverged(rate)
-            not_converged = ~_converged(factor, self.tol)
+            not_converged = ~_converged(factor, self.kappa * scale)
             return step_okay & not_small & not_diverged & not_converged
 
         def body_fn(val):
@@ -115,7 +119,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         else:
             rate = diffsize / diffsize_prev
             factor = diffsize * rate / (1 - rate)
-            converged = _converged(factor, self.tol)
+            converged = _converged(factor, self.kappa * scale)
             diverged = _diverged(rate)
             small = _small(diffsize)
             result = jnp.where(

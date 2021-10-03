@@ -1,7 +1,6 @@
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
     ContainerMeta,
-    copy_docstring_from,
     fill_forward,
     linear_rescale,
     nextafter,

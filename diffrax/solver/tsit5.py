@@ -5,7 +5,6 @@ import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import copy_docstring_from
 from ..term import ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
@@ -162,7 +161,6 @@ class Tsit5(AbstractERK):
     order = 5
 
 
-@copy_docstring_from(Tsit5)
 def tsit5(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,

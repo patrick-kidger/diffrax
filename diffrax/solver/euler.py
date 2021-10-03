@@ -12,15 +12,22 @@ _SolverState = None
 
 
 class Euler(AbstractSolver):
+    """Euler's method.
+
+    Explicit 1st order RK method. Does not support adaptive timestepping.
+    """
+
     term: AbstractTerm
 
     interpolation_cls = LocalLinearInterpolation
     order = 1
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        kwargs = super()._wrap(t0, y0, args, direction)
+        kwargs["term"] = WrapTerm(
+            term=self.term, t=t0, y=y0, args=args, direction=direction
         )
+        return kwargs
 
     def step(
         self,
@@ -30,7 +37,7 @@ class Euler(AbstractSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: Array[(), bool],
-    ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, int]:  # noqa: F821
+    ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, RESULTS]:  # noqa: F821
         del solver_state, made_jump
         control = self.term.contr(t0, t1)
         y1 = y0 + self.term.vf_prod(t0, y0, args, control)

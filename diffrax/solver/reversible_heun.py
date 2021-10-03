@@ -5,7 +5,6 @@ import jax.lax as lax
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
-from ..misc import copy_docstring_from
 from ..solution import RESULTS
 from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
@@ -32,10 +31,12 @@ class ReversibleHeun(AbstractSolver):
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
     order = 2
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        kwargs = super()._wrap(t0, y0, args, direction)
+        kwargs["term"] = WrapTerm(
+            term=self.term, t=t0, y=y0, args=args, direction=direction
         )
+        return kwargs
 
     def init(
         self,
@@ -74,7 +75,6 @@ class ReversibleHeun(AbstractSolver):
         return y1, y1_error, dense_info, solver_state, RESULTS.successful
 
 
-@copy_docstring_from(ReversibleHeun)
 def reversible_heun(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,

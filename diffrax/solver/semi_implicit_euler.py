@@ -27,20 +27,20 @@ class SemiImplicitEuler(AbstractSolver):
     interpolation_cls = LocalLinearInterpolation
     order = 1
 
-    def wrap(
+    def _wrap(
         self, t0: Scalar, y0: Tuple[PyTree, PyTree], args: PyTree, direction: Scalar
     ):
+        kwargs = super()._wrap(t0, y0, args, direction)
         y0_1, y0_2 = y0
         _, unravel_y = ravel_pytree(y0)
-        return type(self)(
-            term1=WrapTerm(
-                term=self.term1, t=t0, y=y0_2, args=args, direction=direction
-            ),
-            term2=WrapTerm(
-                term=self.term2, t=t0, y=y0_1, args=args, direction=direction
-            ),
-            unravel_y=unravel_y,
+        kwargs["term1"] = WrapTerm(
+            term=self.term1, t=t0, y=y0_2, args=args, direction=direction
         )
+        kwargs["term2"] = WrapTerm(
+            term=self.term2, t=t0, y=y0_1, args=args, direction=direction
+        )
+        kwargs["unravel_y"] = unravel_y
+        return kwargs
 
     def step(
         self,

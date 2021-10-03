@@ -4,7 +4,6 @@ import numpy as np
 
 from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..misc import copy_docstring_from
 from ..term import ODETerm
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
@@ -84,6 +83,5 @@ class Kvaerno5(AbstractESDIRK):
     order = 5
 
 
-@copy_docstring_from(Kvaerno5)
 def kvaerno5(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
     return Kvaerno5(term=ODETerm(vector_field=vector_field), **kwargs)

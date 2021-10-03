@@ -19,10 +19,12 @@ class LeapfrogMidpoint(AbstractSolver):
     interpolation_cls = LocalLinearInterpolation
     order = 2
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        kwargs = super()._wrap(t0, y0, args, direction)
+        kwargs["term"] = WrapTerm(
+            term=self.term, t=t0, y=y0, args=args, direction=direction
         )
+        return kwargs
 
     def init(
         self,
