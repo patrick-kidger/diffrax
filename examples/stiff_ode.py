@@ -71,10 +71,10 @@ def main(k1, k2, k3):
 
 if __name__ == "__main__":
     # Do one iteration to JIT compile everything.
-    main(0.04, 0.08, 0.12)
+    main(0.04, 3e7, 1e4)
     # Now time the second iteration.
     start = time.time()
-    sol = main(0.04, 0.08, 0.12)
+    sol = main(0.04, 3e7, 1e4)
     end = time.time()
     print("Results:")
     for ti, yi in zip(sol.ts, sol.ys):

@@ -89,7 +89,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             step_okay = step < self.max_steps
             not_small = ~_small(diffsize)
             not_diverged = ~_diverged(rate)
-            not_converged = ~_converged(factor, self.kappa * scale)
+            not_converged = ~_converged(factor, self.kappa)
             return step_okay & not_small & not_diverged & not_converged
 
         def body_fn(val):
@@ -118,7 +118,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         else:
             rate = diffsize / diffsize_prev
             factor = diffsize * rate / (1 - rate)
-            converged = _converged(factor, self.kappa * scale)
+            converged = _converged(factor, self.kappa)
             diverged = _diverged(rate)
             small = _small(diffsize)
             result = jnp.where(
