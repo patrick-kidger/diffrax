@@ -40,7 +40,7 @@ class Robertson(eqx.Module):
 # stepsize controller.
 #
 # The speed of the solver can be heavily dependent on the parameters used for the
-# nonlinear solver -- have a place with its error tolerances, kappa value, and maximum
+# nonlinear solver -- have a play with its error tolerances, kappa value, and maximum
 # number of steps.
 ###########
 def main(k1, k2, k3):
