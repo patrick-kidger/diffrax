@@ -14,6 +14,11 @@ from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 
 
+@jax.jit
+def _not_done(tprev, t1, result):
+    return (tprev < t1) & (result == RESULTS.successful)
+
+
 def _step(
     tprev: Scalar,
     tnext: Scalar,
@@ -25,6 +30,7 @@ def _step(
     stepsize_controller: AbstractStepSizeController,
     t1: Scalar,
     args: PyTree,
+    result: RESULTS,
 ):
 
     (
@@ -74,7 +80,7 @@ def _step(
     # integrating even whilst other batch elements are still going. In this case we
     # just have the "done" batch elements just stay constant (in every respect: time,
     # solution, controller state etc.) whilst we wait.
-    not_done = tprev < t1
+    not_done = _not_done(tprev, t1, result)
     keep = lambda a, b: jnp.where(not_done, a, b)
     tprev = keep(tprev_candidate, tprev)
     tnext = keep(tnext_candidate, tnext)
@@ -110,6 +116,7 @@ def _step(
         controller_state,
         made_step,
         made_jump,
+        not_done,
         dense_info,
         solver_result,
         stepsize_controller_result,
@@ -118,12 +125,7 @@ def _step(
 
 # TODO: support custom filter functions?
 # TODO: support donate_argnums if on the GPU.
-_jit_step = eqx.filter_jit(_step, filter_spec=eqx.is_array)
-
-
-@jax.jit
-def _jit_lt(a, b):
-    return a < b
+_jit_step = eqx.filter_jit(_step)
 
 
 @jax.jit
@@ -259,9 +261,10 @@ def diffeqsolve(
     num_steps = 0
     has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
+    not_done = _not_done(tprev, t1, result)
     save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while _jit_any(unvmap(_jit_lt(tprev, t1))) and num_steps < max_steps:
+    while _jit_any(unvmap(not_done)) and num_steps < max_steps:
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -287,6 +290,7 @@ def diffeqsolve(
             controller_state,
             made_step,
             made_jump,
+            not_done,
             dense_info,
             solver_result,
             stepsize_controller_result,
@@ -301,6 +305,7 @@ def diffeqsolve(
             stepsize_controller,
             t1,
             args,
+            result,
         )
 
         # save_intermediate=False offers a fast path that avoids JAX operations
@@ -359,8 +364,7 @@ def diffeqsolve(
             should_break = throw
 
         if num_steps >= max_steps:
-            cond = jnp.where(result == RESULTS.successful, _jit_lt(tprev, t1), False)
-            result = jnp.where(cond, RESULTS.max_steps_reached, result)
+            result = jnp.where(not_done, RESULTS.max_steps_reached, result)
             should_break = True
 
         if should_break:

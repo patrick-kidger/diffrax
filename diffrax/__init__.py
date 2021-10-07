@@ -18,7 +18,7 @@ from .misc import sde_kl_divergence
 from .nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from .path import AbstractPath
 from .saveat import SaveAt
-from .solution import Solution
+from .solution import RESULTS, Solution
 from .solver import (
     AbstractDIRK,
     AbstractERK,
