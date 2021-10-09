@@ -259,12 +259,13 @@ def diffeqsolve(
         step_maybe_jit = _step
 
     num_steps = 0
+    raw_num_steps = 0
     has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
     not_done = _not_done(tprev, t1, result)
     save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while _jit_any(unvmap(not_done)) and num_steps < max_steps:
+    while _jit_any(unvmap(not_done)):
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -279,7 +280,8 @@ def diffeqsolve(
         #
         # In particular this means that y technically corresponds to the value of the
         # solution at tnext_before.
-        num_steps = num_steps + 1
+        num_steps = num_steps + not_done
+        raw_num_steps = raw_num_steps + 1
         tprev_before = tprev
         tnext_before = tnext
         (
@@ -363,7 +365,7 @@ def diffeqsolve(
             result = jnp.where(cond, RESULTS.nan_time, result)
             should_break = throw
 
-        if num_steps >= max_steps:
+        if raw_num_steps >= max_steps:
             result = jnp.where(not_done, RESULTS.max_steps_reached, result)
             should_break = True
 
@@ -412,7 +414,7 @@ def diffeqsolve(
         if saveat.t1 and not saveat.steps:
             out_len = out_len + 1
         if saveat.steps:
-            out_len = out_len + num_steps
+            out_len = out_len + raw_num_steps
 
         if len(ts) == out_len:
             # Fast path for constant step size controllers. (And lucky adaptive ones.)
