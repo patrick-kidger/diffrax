@@ -48,6 +48,19 @@ class _Dopri5Interpolation(FourthOrderPolynomialInterpolation):
 
 
 class Dopri5(AbstractERK):
+    r"""Dormand-Prince's 5/4 method.
+
+    5th order Runge--Kutta method. Has an embedded 4th order method.
+
+    @article{dormand1980family,
+        author={Dormand, J. R. and Prince, P. J.},
+        title={A family of embedded {R}unge--{K}utta formulae},
+        journal={J. Comp. Appl. Math},
+        year={1980},
+        volume={6},
+        pages={19--26}
+    }
+    """
     tableau = _dopri5_tableau
     interpolation_cls = _Dopri5Interpolation
     order = 5

@@ -14,6 +14,39 @@
 # directly from data.
 #
 ###########
+#
+# References:
+#
+# This example appears as an example in:
+#
+# @phdthesis{kidger2021on,
+#     title={{O}n {N}eural {D}ifferential {E}quations},
+#     author={Patrick Kidger},
+#     year={2021},
+#     school={University of Oxford},
+# }
+#
+# Whilst drawing heavy inspiration from:
+#
+# @inproceedings{cranmer2020discovering,
+#     title={{D}iscovering {S}ymbolic {M}odels from {D}eep {L}earning with {I}nductive
+#            {B}iases},
+#     author={Cranmer, Miles and Sanchez Gonzalez, Alvaro and Battaglia, Peter and
+#             Xu, Rui and Cranmer, Kyle and Spergel, David and Ho, Shirley},
+#     booktitle={Advances in Neural Information Processing Systems},
+#     publisher={Curran Associates, Inc.},
+#     year={2020},
+# }
+#
+# @software{cranmer2020pysr,
+#     title={PySR: Fast \& Parallelized Symbolic Regression in Python/Julia},
+#     author={Miles Cranmer},
+#     publisher={Zenodo},
+#     url={http://doi.org/10.5281/zenodo.4041459},
+#     year={2020},
+# }
+#
+###########
 
 import math
 import tempfile

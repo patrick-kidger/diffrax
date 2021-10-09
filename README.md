@@ -47,3 +47,16 @@ solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
 ## Documentation
 
 See TODO.
+
+## Citation
+
+If you found this library useful in academic research, please consider citing:
+
+```bibtex
+@phdthesis{kidger2021on,
+    title={{O}n {N}eural {D}ifferential {E}quations},
+    author={Patrick Kidger},
+    year={2021},
+    school={University of Oxford},
+}
+```
