@@ -48,7 +48,7 @@ def main(k1, k2, k3):
     solver = diffrax.kvaerno5(
         robertson,
         nonlinear_solver=diffrax.NewtonNonlinearSolver(
-            rtol=1e-7, atol=1e-8, max_steps=15
+            rtol=1e-7, atol=1e-8, max_steps=10
         ),
     )
     t0 = 0.0

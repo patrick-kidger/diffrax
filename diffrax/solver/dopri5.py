@@ -9,8 +9,7 @@ from .runge_kutta import AbstractERK, ButcherTableau
 
 
 _dopri5_tableau = ButcherTableau(
-    alpha=np.array([1 / 5, 3 / 10, 4 / 5, 8 / 9, 1.0, 1.0]),
-    beta=(
+    a_lower=(
         np.array([1 / 5]),
         np.array([3 / 40, 9 / 40]),
         np.array([44 / 45, -56 / 15, 32 / 9]),
@@ -18,8 +17,8 @@ _dopri5_tableau = ButcherTableau(
         np.array([9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656]),
         np.array([35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84]),
     ),
-    c_sol=np.array([35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0]),
-    c_error=np.array(
+    b_sol=np.array([35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0]),
+    b_error=np.array(
         [
             35 / 384 - 1951 / 21600,
             0,
@@ -30,6 +29,7 @@ _dopri5_tableau = ButcherTableau(
             -1.0 / 60.0,
         ]
     ),
+    c=np.array([1 / 5, 3 / 10, 4 / 5, 8 / 9, 1.0, 1.0]),
 )
 
 

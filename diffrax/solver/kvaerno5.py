@@ -8,7 +8,8 @@ from ..term import ODETerm
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
 
-a21 = 0.26
+γ = 0.26
+a21 = γ
 a31 = 0.13
 a32 = 0.84033320996790809
 a41 = 0.22371961478320505
@@ -30,11 +31,34 @@ a74 = -0.04118626728321046
 a75 = 0.62993304899016403
 a76 = 0.06962479448202728
 
+# Predictors using Hermite polynomials taken from
+# https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/tableaus/sdirk_tableaus.jl#L1444  # noqa: E501
+# https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/perform_step/kencarp_kvaerno_perform_step.jl#L1123  # noqa: E501
+# This is with the exception of α21, which for some reason they ignore (and in doing
+# so treat as 0). These predictors are typically taken to sum to 1, so really
+# there's just a single unique choice α21=1. This corresponds to using the initial
+# start-of-stage f(y0) as the predictor for the second stage.
+α21 = 1.0
+α31 = -1.366025403784441
+α32 = 2.3660254037844357
+α41 = -0.19650552613122207
+α42 = 0.8113579546496623
+α43 = 0.38514757148155954
+α51 = 0.10375304369958693
+α52 = 0.937994698066431
+α53 = -0.04174774176601781
+α61 = -0.17281112873898072
+α62 = 0.6235784481025847
+α63 = 0.5492326806363959
+α71 = a61
+α72 = a62
+α73 = a63
+α74 = a64
+α75 = a65
+α76 = γ
+
 _kvaerno5_tableau = ButcherTableau(
-    alpha=np.array(
-        [0.52, 1.230333209967908, 0.8957659843500759, 0.43639360985864756, 1.0, 1.0]
-    ),
-    beta=(
+    a_lower=(
         np.array([a21]),
         np.array([a31, a32]),
         np.array([a41, a42, a43]),
@@ -42,11 +66,22 @@ _kvaerno5_tableau = ButcherTableau(
         np.array([a61, a62, a63, a64, a65]),
         np.array([a71, a72, a73, a74, a75, a76]),
     ),
-    c_sol=np.array([a71, a72, a73, a74, a75, a76, 0.26]),
-    c_error=np.array(
-        [a71 - a61, a72 - a62, a73 - a63, a74 - a64, a75 - a65, a76 - 0.26, 0.26]
+    a_diagonal=np.array([0, γ, γ, γ, γ, γ, γ]),
+    a_predictor=(
+        np.array([α21]),
+        np.array([α31, α32]),
+        np.array([α41, α42, α43]),
+        np.array([α51, α52, α53, 0]),
+        np.array([α61, α62, α63, 0, 0]),
+        np.array([α71, α72, α73, α74, α75, α76]),
     ),
-    diagonal=np.array([0, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26]),
+    b_sol=np.array([a71, a72, a73, a74, a75, a76, γ]),
+    b_error=np.array(
+        [a71 - a61, a72 - a62, a73 - a63, a74 - a64, a75 - a65, a76 - γ, γ]
+    ),
+    c=np.array(
+        [0.52, 1.230333209967908, 0.8957659843500759, 0.43639360985864756, 1.0, 1.0]
+    ),
 )
 
 

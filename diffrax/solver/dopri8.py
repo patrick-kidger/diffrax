@@ -17,24 +17,7 @@ from .runge_kutta import AbstractERK, ButcherTableau
 # Interpolation scheme is from
 # P. Bogacki and L. Shampine, Interpolating high-order Runge-Kutta formulas (1990)
 _dopri8_tableau = ButcherTableau(
-    alpha=np.array(
-        [
-            1 / 18,
-            1 / 12,
-            1 / 8,
-            5 / 16,
-            3 / 8,
-            59 / 400,
-            93 / 200,
-            5490023248 / 9719169821,
-            13 / 20,
-            1201146811 / 1299019798,
-            1,
-            1,
-            1,
-        ]
-    ),
-    beta=(
+    a_lower=(
         np.array([1 / 18]),
         np.array([1 / 48, 1 / 16]),
         np.array([1 / 32, 0, 3 / 32]),
@@ -149,7 +132,7 @@ _dopri8_tableau = ButcherTableau(
             ]
         ),
     ),
-    c_sol=np.array(
+    b_sol=np.array(
         [
             14005451 / 335480064,
             0,
@@ -167,7 +150,7 @@ _dopri8_tableau = ButcherTableau(
             0,
         ]
     ),
-    c_error=np.array(
+    b_error=np.array(
         [
             14005451 / 335480064 - 13451932 / 455176623,
             0,
@@ -183,6 +166,23 @@ _dopri8_tableau = ButcherTableau(
             -528747749 / 2220607170 - 2 / 45,
             1 / 4,
             0,
+        ]
+    ),
+    c=np.array(
+        [
+            1 / 18,
+            1 / 12,
+            1 / 8,
+            5 / 16,
+            3 / 8,
+            59 / 400,
+            93 / 200,
+            5490023248 / 9719169821,
+            13 / 20,
+            1201146811 / 1299019798,
+            1,
+            1,
+            1,
         ]
     ),
 )

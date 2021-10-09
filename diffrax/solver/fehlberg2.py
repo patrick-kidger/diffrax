@@ -9,10 +9,10 @@ from .runge_kutta import AbstractERK, ButcherTableau
 
 
 _fehlberg2_tableau = ButcherTableau(
-    alpha=np.array([1 / 2, 1.0]),
-    beta=(np.array([1 / 2]), np.array([1 / 256, 255 / 256])),
-    c_sol=np.array([1 / 512, 255 / 256, 1 / 512]),
-    c_error=np.array([-1 / 512, 0, 1 / 512]),
+    a_lower=(np.array([1 / 2]), np.array([1 / 256, 255 / 256])),
+    b_sol=np.array([1 / 512, 255 / 256, 1 / 512]),
+    b_error=np.array([-1 / 512, 0, 1 / 512]),
+    c=np.array([1 / 2, 1.0]),
 )
 
 

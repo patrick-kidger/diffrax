@@ -17,17 +17,28 @@ a32 = (-2 * γ + 1) / (4 * γ)
 a41 = (6 * γ - 1) / (12 * γ)
 a42 = -1 / ((24 * γ - 12) * γ)
 a43 = (-6 * γ ** 2 + 6 * γ - 1) / (6 * γ - 3)
+# Predictors using Hermite polynomials taken (and simplified) from
+# https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/tableaus/sdirk_tableaus.jl#L66  # noqa: E501
+# https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/perform_step/kencarp_kvaerno_perform_step.jl#L44  # noqa: E501
+θ = 1 / (2 * γ)
+α21 = 1.0
+α31 = 1.0 - θ
+α32 = θ
+α41 = a31
+α42 = a32
+α43 = γ
 
 _kvaerno3_tableau = ButcherTableau(
-    alpha=np.array([2 * γ, 1.0, 1.0]),
-    beta=(
+    a_lower=(
         np.array([a21]),
         np.array([a31, a32]),
         np.array([a41, a42, a43]),
     ),
-    c_sol=np.array([a41, a42, a43, γ]),
-    c_error=np.array([a41 - a31, a42 - a32, a43 - γ, γ]),
-    diagonal=np.array([0, γ, γ, γ]),
+    a_predictor=(np.array([α21]), np.array([α31, α32]), np.array([α41, α42, α43])),
+    a_diagonal=np.array([0, γ, γ, γ]),
+    b_sol=np.array([a41, a42, a43, γ]),
+    b_error=np.array([a41 - a31, a42 - a32, a43 - γ, γ]),
+    c=np.array([2 * γ, 1.0, 1.0]),
 )
 
 

@@ -10,10 +10,10 @@ from .runge_kutta import AbstractERK, ButcherTableau
 
 
 _heun_tableau = ButcherTableau(
-    alpha=np.array([1.0]),
-    beta=(np.array([1.0]),),
-    c_sol=np.array([0.5, 0.5]),
-    c_error=np.array([0.5, -0.5]),
+    a_lower=(np.array([1.0]),),
+    b_sol=np.array([0.5, 0.5]),
+    b_error=np.array([0.5, -0.5]),
+    c=np.array([1.0]),
 )
 
 

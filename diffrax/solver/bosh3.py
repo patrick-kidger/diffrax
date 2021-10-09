@@ -9,14 +9,14 @@ from .runge_kutta import AbstractERK, ButcherTableau
 
 
 _bosh3_tableau = ButcherTableau(
-    alpha=np.array([1 / 2, 3 / 4, 1.0]),
-    beta=(
+    a_lower=(
         np.array([1 / 2]),
         np.array([0.0, 3 / 4]),
         np.array([2 / 9, 1 / 3, 4 / 9]),
     ),
-    c_sol=np.array([2 / 9, 1 / 3, 4 / 9, 0.0]),
-    c_error=np.array([2 / 9 - 7 / 24, 1 / 3 - 1 / 4, 4 / 9 - 1 / 3, -1 / 8]),
+    b_sol=np.array([2 / 9, 1 / 3, 4 / 9, 0.0]),
+    b_error=np.array([2 / 9 - 7 / 24, 1 / 3 - 1 / 4, 4 / 9 - 1 / 3, -1 / 8]),
+    c=np.array([1 / 2, 3 / 4, 1.0]),
 )
 
 

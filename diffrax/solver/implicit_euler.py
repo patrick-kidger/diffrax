@@ -1,6 +1,5 @@
 from typing import Callable, Tuple
 
-import jax
 import jax.numpy as jnp
 
 from ..brownian import AbstractBrownianPath
@@ -15,8 +14,8 @@ from .base import AbstractSolver
 _SolverState = None
 
 
-def _implicit_relation(z1, vf_prod, t0, y0, args, control):
-    return vf_prod(t0, y0 + z1, args, control) - z1
+def _implicit_relation(z1, vf_prod, t1, y0, args, control):
+    return vf_prod(t1, y0 + z1, args, control) - z1
 
 
 class ImplicitEuler(AbstractSolver):
@@ -50,12 +49,13 @@ class ImplicitEuler(AbstractSolver):
     ) -> Tuple[Array["state"], None, DenseInfo, _SolverState, RESULTS]:  # noqa: F821
         del solver_state, made_jump
         control = self.term.contr(t0, t1)
-        zero = jax.tree_map(jnp.zeros_like, y0)
+        # TODO: offer explicit Euler as a predictor
+        zero = jnp.zeros_like(y0)
         jac = self.nonlinear_solver.jac(
-            _implicit_relation, zero, (self.term.vf_prod, t0, y0, args, control)
+            _implicit_relation, zero, (self.term.vf_prod, t1, y0, args, control)
         )
         z1, result = self.nonlinear_solver(
-            _implicit_relation, zero, (self.term.vf_prod, t0, y0, args, control), jac
+            _implicit_relation, zero, (self.term.vf_prod, t1, y0, args, control), jac
         )
         y1 = y0 + z1
         dense_info = dict(y0=y0, y1=y1)
