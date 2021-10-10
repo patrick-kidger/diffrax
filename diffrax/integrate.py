@@ -164,7 +164,7 @@ def _save_interp(
     return tinterp, yinterp, interp_cond, tinterp_index
 
 
-@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+@eqx.filter_jit
 def _compress_output_constant(ts, ys, direction, unravel_y):
     ts = jnp.stack(ts)
     ts = jnp.where(direction == 1, ts, -ts[::-1])
@@ -173,7 +173,7 @@ def _compress_output_constant(ts, ys, direction, unravel_y):
     return ts, ys
 
 
-@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
+@eqx.filter_jit
 def _compress_output_adaptive(
     ts, ys, out_indices, out_len, has_minus_one, direction, unravel_y
 ):
@@ -248,7 +248,7 @@ def diffeqsolve(
     if saveat.t0:
         out_indices.append(0)
         ts.append(t0)
-        ys.append(y0)
+        ys.append(y)
     del y0, dt0
 
     made_jump = jnp.full_like(t0, fill_value=False, dtype=bool)
