@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Tuple, TypeVar
+from typing import Any, Optional, Tuple, TypeVar
 
 import equinox as eqx
 import jax
@@ -9,6 +9,15 @@ import jax.scipy as jsp
 from ..custom_types import PyTree
 from ..misc import ravel_pytree
 from ..solution import RESULTS
+
+
+def _is_perturbed(x: Any) -> bool:
+    if isinstance(x, jax.ad.JVPTracer):
+        return True
+    elif isinstance(x, jax.core.Tracer):
+        return any(_is_perturbed(attr) for name, attr in x._contents())
+    else:
+        return False
 
 
 LU_Jacobian = TypeVar("LU_Jacobian")
@@ -64,10 +73,7 @@ class AbstractNonlinearSolver(eqx.Module):
             and `result` is a status code indicating whether the solver managed to
             converge or not.
         """
-        # TODO: not sure this partition will give the desired behaviour if
-        # differentiating wrt integers or complexes. Ideally we'd be testing for
-        # JVPTracer.
-        diff_args, nondiff_args = eqx.partition(args, eqx.is_inexact_array)
+        diff_args, nondiff_args = eqx.partition(args, _is_perturbed)
         return self._solve(self, fn, x, jac, nondiff_args, diff_args)
 
     @staticmethod
