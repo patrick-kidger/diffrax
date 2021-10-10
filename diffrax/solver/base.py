@@ -5,6 +5,7 @@ import equinox as eqx
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
+from ..solution import RESULTS
 
 
 _SolverState = TypeVar("_SolverState", bound=Optional[PyTree])
@@ -21,9 +22,12 @@ class AbstractSolver(eqx.Module):
     def order(self) -> int:
         pass
 
-    @abc.abstractmethod
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        return {}
+
     def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        pass
+        kwargs = self._wrap(t0, y0, args, direction)
+        return type(self)(**kwargs)
 
     def init(
         self,
@@ -44,7 +48,11 @@ class AbstractSolver(eqx.Module):
         solver_state: _SolverState,
         made_jump: Array[(), bool],
     ) -> Tuple[
-        Array["state"], Optional[Array["state"]], DenseInfo, _SolverState  # noqa: F821
+        Array["state"],  # noqa: F821
+        Optional[Array["state"]],  # noqa: F821
+        DenseInfo,
+        _SolverState,
+        RESULTS,
     ]:
         pass
 

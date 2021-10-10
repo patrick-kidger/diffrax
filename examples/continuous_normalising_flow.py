@@ -1,8 +1,7 @@
 ###########
 #
-# This example is a bit of fun! It constructs a continuous normalising flow (CNF)
-# (https://arxiv.org/abs/1810.01367)
-# to learn a distribution specified by a (greyscale) image. That is, the target
+# This example is a bit of fun! It constructs a continuous normalising flow (CNF) to
+# learn a distribution specified by a (greyscale) image. That is, the target
 # distribution is over R^2, and the image specifies the (unnormalised) density at each
 # point.
 #
@@ -13,6 +12,19 @@
 # python continuous_normalising_flow.py --in_path="../imgs/cat.png"
 # python continuous_normalising_flow.py --in_path="../imgs/butterfly.png" --num_blocks=3
 # python continuous_normalising_flow.py --in_path="../imgs/target.png" --width_size=128
+#
+###########
+#
+# Reference:
+#
+# @article{grathwohl2019ffjord,
+#     title={{FFJORD}: {F}ree-form {C}ontinuous {D}ynamics for {S}calable {R}eversible
+#            {G}enerative {M}odels},
+#     author={Grathwohl, Will and Chen, Ricky T. Q. and Bettencourt, Jesse and
+#             Sutskever, Ilya and Duvenaud, David},
+#     journal={International Conference on Learning Representations},
+#     year={2019},
+# }
 #
 ###########
 

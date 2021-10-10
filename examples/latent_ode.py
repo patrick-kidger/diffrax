@@ -46,6 +46,19 @@
 # different integration times for different batch elements.
 #
 ###########
+#
+# Reference:
+#
+# @incollection{rubanova2019latent,
+#     title={{L}atent {O}rdinary {D}ifferential {E}quations for {I}rregularly-{S}ampled
+#            {T}ime {S}eries},
+#     author={Rubanova, Yulia and Chen, Ricky T. Q. and Duvenaud, David K.},
+#     booktitle={Advances in Neural Information Processing Systems},
+#     publisher={Curran Associates, Inc.},
+#     year={2019},
+# }
+#
+###########
 
 import functools as ft
 import pathlib

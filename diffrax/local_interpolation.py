@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .custom_types import Array, Scalar
-from .misc import frozenndarray, linear_rescale
+from .misc import linear_rescale
 from .path import AbstractPath
 
 
@@ -50,8 +50,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         **kwargs
     ):
         super().__init__(**kwargs)
-        c_mid = np.asarray(self.c_mid)
-        ymid = y0 + c_mid @ k
+        ymid = y0 + self.c_mid @ k
         f0 = k[0]
         f1 = k[-1]
         # TODO: rewrite as matrix-vector product?
@@ -62,7 +61,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
 
     @property
     @abc.abstractmethod
-    def c_mid(self) -> frozenndarray:
+    def c_mid(self) -> np.ndarray:
         pass
 
     def evaluate(

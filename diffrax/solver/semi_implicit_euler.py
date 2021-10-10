@@ -6,6 +6,7 @@ import jax
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ravel_pytree
+from ..solution import RESULTS
 from ..term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -26,20 +27,20 @@ class SemiImplicitEuler(AbstractSolver):
     interpolation_cls = LocalLinearInterpolation
     order = 1
 
-    def wrap(
+    def _wrap(
         self, t0: Scalar, y0: Tuple[PyTree, PyTree], args: PyTree, direction: Scalar
     ):
+        kwargs = super()._wrap(t0, y0, args, direction)
         y0_1, y0_2 = y0
         _, unravel_y = ravel_pytree(y0)
-        return type(self)(
-            term1=WrapTerm(
-                term=self.term1, t=t0, y=y0_2, args=args, direction=direction
-            ),
-            term2=WrapTerm(
-                term=self.term2, t=t0, y=y0_1, args=args, direction=direction
-            ),
-            unravel_y=unravel_y,
+        kwargs["term1"] = WrapTerm(
+            term=self.term1, t=t0, y=y0_2, args=args, direction=direction
         )
+        kwargs["term2"] = WrapTerm(
+            term=self.term2, t=t0, y=y0_1, args=args, direction=direction
+        )
+        kwargs["unravel_y"] = unravel_y
+        return kwargs
 
     def step(
         self,
@@ -67,7 +68,7 @@ class SemiImplicitEuler(AbstractSolver):
         y1, _ = ravel_pytree((y0_1, y0_2))
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None
+        return y1, None, dense_info, None, RESULTS.successful
 
     def func_for_init(
         self,

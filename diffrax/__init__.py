@@ -15,10 +15,16 @@ from .local_interpolation import (
     LocalLinearInterpolation,
 )
 from .misc import sde_kl_divergence
+from .nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from .path import AbstractPath
 from .saveat import SaveAt
-from .solution import Solution
+from .solution import RESULTS, Solution
 from .solver import (
+    AbstractDIRK,
+    AbstractERK,
+    AbstractESDIRK,
+    AbstractRungeKutta,
+    AbstractSDIRK,
     AbstractSolver,
     Bosh3,
     bosh3,
@@ -34,11 +40,17 @@ from .solver import (
     fehlberg2,
     Heun,
     heun,
+    implicit_euler,
+    implicit_euler_maruyama,
+    ImplicitEuler,
+    Kvaerno3,
+    kvaerno3,
+    Kvaerno5,
+    kvaerno5,
     leapfrog_midpoint,
     LeapfrogMidpoint,
     reversible_heun,
     ReversibleHeun,
-    RungeKutta,
     semi_implicit_euler,
     SemiImplicitEuler,
     Tsit5,

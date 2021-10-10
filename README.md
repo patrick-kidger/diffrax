@@ -5,8 +5,8 @@ Diffrax is a [JAX](https://github.com/google/jax)-based library providing numeri
 
 Features include:
 - ODE/SDE/CDE (ordinary/stochastic/controlled) solvers;
-- lots of different solvers (including `tsit5`, `dopri8`, symplectic solvers);
-- vmappable _everything_;
+- lots of different solvers (including `tsit5`, `dopri8`, symplectic solvers, implicit solvers);
+- vmappable _everything_ (including the region of integration);
 - using a PyTree as the state;
 - dense solutions;
 - support for neural differential equations.
@@ -30,6 +30,7 @@ Requires Python 3.8+ and JAX 0.2.20+
 - [`continuous_normalising_flow.py`](./examples/continuous_normalising_flow.py) trains a [CNF](https://arxiv.org/abs/1810.01367) -- a generative model for e.g. images -- to reproduce whatever input image you give it!
 - [`stochastic_gradient_descent.py`](./examples/stochastic_gradient_descent.py) trains a simple neural network via SGD, using an ODE solver. (SGD is just Euler's method for solving an ODE.)
 - [`symbolic_regression.py`](./examples/symbolic_regression.py) extends the neural ODE example, by additionally performing [regularised evolution](https://arxiv.org/abs/1802.01548) to discover the exact symbolic form of the governing equations. (An improvement on [SINDy](https://www.pnas.org/content/113/15/3932), basically.)
+- [`stiff_ode.py`](./examples/stiff_ode.py) demonstrates the use of implicit solvers to solve a stiff ODE, namely the Robertson problem.
 
 Quick example:
 ```python
@@ -46,3 +47,16 @@ solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
 ## Documentation
 
 See TODO.
+
+## Citation
+
+If you found this library useful in academic research, please consider citing:
+
+```bibtex
+@phdthesis{kidger2021on,
+    title={{O}n {N}eural {D}ifferential {E}quations},
+    author={Patrick Kidger},
+    year={2021},
+    school={University of Oxford},
+}
+```

@@ -1,41 +1,31 @@
 from typing import Callable, Optional
 
 import jax.numpy as jnp
+import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import frozenarray
 from ..term import ODETerm
-from .runge_kutta import ButcherTableau, RungeKutta
+from .runge_kutta import AbstractERK, ButcherTableau
 
 
 _tsit5_tableau = ButcherTableau(
-    alpha=frozenarray(
-        [
-            161 / 1000,
-            327 / 1000,
-            9 / 10,
-            0.9800255409045096857298102862870245954942137979563024768854764293221195950761080302604,  # noqa: E501
-            1.0,
-            1.0,
-        ]
-    ),
-    beta=(
-        frozenarray([161 / 1000]),
-        frozenarray(
+    a_lower=(
+        np.array([161 / 1000]),
+        np.array(
             [
                 -0.8480655492356988544426874250230774675121177393430391537369234245294192976164141156943e-2,  # noqa: E501
                 0.3354806554923569885444268742502307746751211773934303915373692342452941929761641411569,  # noqa: E501
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 2.897153057105493432130432594192938764924887287701866490314866693455023795137503079289,  # noqa: E501
                 -6.359448489975074843148159912383825625952700647415626703305928850207288721235210244366,  # noqa: E501
                 4.362295432869581411017727318190886861027813359713760212991062156752264926097707165077,  # noqa: E501
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 5.325864828439256604428877920840511317836476253097040101202360397727981648835607691791,  # noqa: E501
                 -11.74888356406282787774717033978577296188744178259862899288666928009020615663593781589,  # noqa: E501
@@ -43,7 +33,7 @@ _tsit5_tableau = ButcherTableau(
                 -0.9249506636175524925650207933207191611349983406029535244034750452930469056411389539635e-1,  # noqa: E501
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 5.861455442946420028659251486982647890394337666164814434818157239052507339770711679748,  # noqa: E501
                 -12.92096931784710929170611868178335939541780751955743459166312250439928519268343184452,  # noqa: E501
@@ -52,7 +42,7 @@ _tsit5_tableau = ButcherTableau(
                 -0.2826905039406838290900305721271224146717633626879770007617876201276764571291579142206e-1,  # noqa: E501
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 0.9646076681806522951816731316512876333711995238157997181903319145764851595234062815396e-1,  # noqa: E501
                 1 / 100,
@@ -63,7 +53,7 @@ _tsit5_tableau = ButcherTableau(
             ]
         ),
     ),
-    c_sol=frozenarray(
+    b_sol=np.array(
         [
             0.9646076681806522951816731316512876333711995238157997181903319145764851595234062815396e-1,  # noqa: E501
             1 / 100,
@@ -74,7 +64,7 @@ _tsit5_tableau = ButcherTableau(
             0.0,
         ]
     ),
-    c_error=frozenarray(
+    b_error=np.array(
         [
             0.9646076681806522951816731316512876333711995238157997181903319145764851595234062815396e-1  # noqa: E501
             - 0.9468075576583945807478876255758922856117527357724631226139574065785592789071067303271e-1,  # noqa: E501
@@ -89,6 +79,16 @@ _tsit5_tableau = ButcherTableau(
             2.324710524099773982415355918398765796109060233222962411944060046314465391054716027841  # noqa: E501
             - 1.866628418170587035753719399566211498666255505244122593996591602841258328965767580089,  # noqa: E501
             -1 / 66,
+        ]
+    ),
+    c=np.array(
+        [
+            161 / 1000,
+            327 / 1000,
+            9 / 10,
+            0.9800255409045096857298102862870245954942137979563024768854764293221195950761080302604,  # noqa: E501
+            1.0,
+            1.0,
         ]
     ),
 )
@@ -139,7 +139,23 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
     # TODO: implement derivative
 
 
-class Tsit5(RungeKutta):
+class Tsit5(AbstractERK):
+    r"""Tsitouras' 5/4 method.
+
+    5th order Runge--Kutta method. Has an embedded 4th order method.
+
+    @article{tsitouras2011runge,
+      title={Runge--Kutta pairs of order 5 (4) satisfying only the first column
+             simplifying assumption},
+      author={Tsitouras, Ch},
+      journal={Computers \& Mathematics with Applications},
+      volume={62},
+      number={2},
+      pages={770--775},
+      year={2011},
+      publisher={Elsevier}
+    }
+    """
     tableau = _tsit5_tableau
     interpolation_cls = _Tsit5Interpolation
     order = 5

@@ -2,7 +2,18 @@
 #
 # This example trains a Neural CDE to distinguish clockwise from counter-clockwise
 # spirals.
-# (https://arxiv.org/abs/2005.08926)
+#
+###########
+#
+# Reference:
+#
+# @incollection{kidger2020neuralcde,
+#     title={Neural Controlled Differential Equations for Irregular Time Series},
+#     author={Kidger, Patrick and Morrill, James and Foster, James and Lyons, Terry},
+#     booktitle={Advances in Neural Information Processing Systems},
+#     publisher={Curran Associates, Inc.},
+#     year={2020},
+# }
 #
 ###########
 

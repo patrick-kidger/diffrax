@@ -4,6 +4,7 @@ import jax.lax as lax
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
+from ..solution import RESULTS
 from ..term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -13,15 +14,36 @@ _SolverState = Tuple[Scalar, Array["state"], bool]  # noqa: F821
 
 # TODO: support arbitrary linear multistep methods
 class LeapfrogMidpoint(AbstractSolver):
+    r"""Leapfrog/midpoint method.
+
+    2nd order method linear multistep method.
+
+    Note that this is referred to as the "leapfrog/midpoint method" as this is the name
+    used by Shampine in the reference below. It should not be confused with any of the
+    many other "leapfrog methods" (there are several), or with the "midpoint method"
+    (which is usually taken to refer to an explicit Runge--Kutta method).
+
+    @article{shampine2009stability,
+        title={Stability of the leapfrog/midpoint method},
+        author={L. F. Shampine},
+        journal={Applied Mathematics and Computation},
+        volume={208},
+        number={1},
+        pages={293-298},
+        year={2009},
+    }
+    """
     term: AbstractTerm
 
     interpolation_cls = LocalLinearInterpolation
     order = 2
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        kwargs = super()._wrap(t0, y0, args, direction)
+        kwargs["term"] = WrapTerm(
+            term=self.term, t=t0, y=y0, args=args, direction=direction
         )
+        return kwargs
 
     def init(
         self,
@@ -49,7 +71,7 @@ class LeapfrogMidpoint(AbstractSolver):
         )
         dense_info = {"y0": y0, "y1": y1}
         solver_state = (t0, y0, False)
-        return y1, None, dense_info, solver_state
+        return y1, None, dense_info, solver_state, RESULTS.successful
 
     def _firststep(self, operand):
         # Euler method on the first step

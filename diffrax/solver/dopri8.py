@@ -6,9 +6,9 @@ import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import frozenarray, linear_rescale
+from ..misc import linear_rescale
 from ..term import ODETerm
-from .runge_kutta import ButcherTableau, RungeKutta
+from .runge_kutta import AbstractERK, ButcherTableau
 
 
 # Alpha/beta/c_sol/c_error coefficients are from
@@ -17,30 +17,13 @@ from .runge_kutta import ButcherTableau, RungeKutta
 # Interpolation scheme is from
 # P. Bogacki and L. Shampine, Interpolating high-order Runge-Kutta formulas (1990)
 _dopri8_tableau = ButcherTableau(
-    alpha=frozenarray(
-        [
-            1 / 18,
-            1 / 12,
-            1 / 8,
-            5 / 16,
-            3 / 8,
-            59 / 400,
-            93 / 200,
-            5490023248 / 9719169821,
-            13 / 20,
-            1201146811 / 1299019798,
-            1,
-            1,
-            1,
-        ]
-    ),
-    beta=(
-        frozenarray([1 / 18]),
-        frozenarray([1 / 48, 1 / 16]),
-        frozenarray([1 / 32, 0, 3 / 32]),
-        frozenarray([5 / 16, 0, -75 / 64, 75 / 64]),
-        frozenarray([3 / 80, 0, 0, 3 / 16, 3 / 20]),
-        frozenarray(
+    a_lower=(
+        np.array([1 / 18]),
+        np.array([1 / 48, 1 / 16]),
+        np.array([1 / 32, 0, 3 / 32]),
+        np.array([5 / 16, 0, -75 / 64, 75 / 64]),
+        np.array([3 / 80, 0, 0, 3 / 16, 3 / 20]),
+        np.array(
             [
                 29443841 / 614563906,
                 0,
@@ -50,7 +33,7 @@ _dopri8_tableau = ButcherTableau(
                 23124283 / 1800000000,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 16016141 / 946692911,
                 0,
@@ -61,7 +44,7 @@ _dopri8_tableau = ButcherTableau(
                 -180193667 / 1043307555,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 39632708 / 573591083,
                 0,
@@ -73,7 +56,7 @@ _dopri8_tableau = ButcherTableau(
                 800635310 / 3783071287,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 246121993 / 1340847787,
                 0,
@@ -86,7 +69,7 @@ _dopri8_tableau = ButcherTableau(
                 123872331 / 1001029789,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 -1028468189 / 846180014,
                 0,
@@ -100,7 +83,7 @@ _dopri8_tableau = ButcherTableau(
                 3065993473 / 597172653,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 185892177 / 718116043,
                 0,
@@ -115,7 +98,7 @@ _dopri8_tableau = ButcherTableau(
                 65686358 / 487910083,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 403863854 / 491063109,
                 0,
@@ -131,7 +114,7 @@ _dopri8_tableau = ButcherTableau(
                 0,
             ]
         ),
-        frozenarray(
+        np.array(
             [
                 14005451 / 335480064,
                 0,
@@ -149,7 +132,7 @@ _dopri8_tableau = ButcherTableau(
             ]
         ),
     ),
-    c_sol=frozenarray(
+    b_sol=np.array(
         [
             14005451 / 335480064,
             0,
@@ -167,7 +150,7 @@ _dopri8_tableau = ButcherTableau(
             0,
         ]
     ),
-    c_error=frozenarray(
+    b_error=np.array(
         [
             14005451 / 335480064 - 13451932 / 455176623,
             0,
@@ -183,6 +166,23 @@ _dopri8_tableau = ButcherTableau(
             -528747749 / 2220607170 - 2 / 45,
             1 / 4,
             0,
+        ]
+    ),
+    c=np.array(
+        [
+            1 / 18,
+            1 / 12,
+            1 / 8,
+            5 / 16,
+            3 / 8,
+            59 / 400,
+            93 / 200,
+            5490023248 / 9719169821,
+            13 / 20,
+            1201146811 / 1299019798,
+            1,
+            1,
+            1,
         ]
     ),
 )
@@ -284,8 +284,8 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
         ]
     )
     diff_coeffs = eval_coeffs * np.array([6, 5, 4, 3, 2, 1])
-    eval_coeffs = frozenarray(eval_coeffs)
-    diff_coeffs = frozenarray(diff_coeffs)
+    eval_coeffs = np.array(eval_coeffs)
+    diff_coeffs = np.array(diff_coeffs)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None
@@ -302,7 +302,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
         return coeffs @ (self.k / (self.t1 - self.t0))
 
 
-class Dopri8(RungeKutta):
+class Dopri8(AbstractERK):
     tableau = _dopri8_tableau
     interpolation_cls = _Dopri8Interpolation
     order = 8

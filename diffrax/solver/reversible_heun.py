@@ -5,6 +5,7 @@ import jax.lax as lax
 from ..brownian import AbstractBrownianPath
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
+from ..solution import RESULTS
 from ..term import AbstractTerm, ControlTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
 
@@ -13,15 +14,29 @@ _SolverState = Tuple[Array["state"], Array["state*control"]]  # noqa: F821
 
 
 class ReversibleHeun(AbstractSolver):
+    """Reversible Heun method.
+
+    Algebraically reversible 2nd order method. Has an embedded 1st order method.
+
+    @article{kidger2021efficient,
+        author={Kidger, Patrick and Foster, James and Li, Xuechen and Lyons, Terry},
+        title={Efficient and Accurate Gradients for Neural {SDE}s},
+        year={2021},
+        journal={Advances in Neural Information Processing Systems}
+    }
+    """
+
     term: AbstractTerm
 
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
     order = 2
 
-    def wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        return type(self)(
-            term=WrapTerm(term=self.term, t=t0, y=y0, args=args, direction=direction)
+    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
+        kwargs = super()._wrap(t0, y0, args, direction)
+        kwargs["term"] = WrapTerm(
+            term=self.term, t=t0, y=y0, args=args, direction=direction
         )
+        return kwargs
 
     def init(
         self,
@@ -57,7 +72,7 @@ class ReversibleHeun(AbstractSolver):
 
         dense_info = {"y0": y0, "y1": y1}
         solver_state = (yhat1, vf1)
-        return y1, y1_error, dense_info, solver_state
+        return y1, y1_error, dense_info, solver_state, RESULTS.successful
 
 
 def reversible_heun(

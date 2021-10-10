@@ -14,6 +14,11 @@ from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 
 
+@jax.jit
+def _not_done(tprev, t1, result):
+    return (tprev < t1) & (result == RESULTS.successful)
+
+
 def _step(
     tprev: Scalar,
     tnext: Scalar,
@@ -25,11 +30,16 @@ def _step(
     stepsize_controller: AbstractStepSizeController,
     t1: Scalar,
     args: PyTree,
+    result: RESULTS,
 ):
 
-    (y_candidate, y_error, dense_info, solver_state_candidate) = solver.step(
-        tprev, tnext, y, args, solver_state, made_jump
-    )
+    (
+        y_candidate,
+        y_error,
+        dense_info,
+        solver_state_candidate,
+        solver_result,
+    ) = solver.step(tprev, tnext, y, args, solver_state, made_jump)
 
     (
         keep_step,
@@ -64,12 +74,13 @@ def _step(
     y_candidate = keep(y_candidate, y)
     made_jump_candidate = keep(made_jump_candidate, made_jump)
     solver_state_candidate = jax.tree_map(keep, solver_state_candidate, solver_state)
+    solver_result = keep(solver_result, RESULTS.successful)
 
     # Next: we need to consider the fact that one batch element may have finished
     # integrating even whilst other batch elements are still going. In this case we
     # just have the "done" batch elements just stay constant (in every respect: time,
     # solution, controller state etc.) whilst we wait.
-    not_done = tprev < t1
+    not_done = _not_done(tprev, t1, result)
     keep = lambda a, b: jnp.where(not_done, a, b)
     tprev = keep(tprev_candidate, tprev)
     tnext = keep(tnext_candidate, tnext)
@@ -77,6 +88,7 @@ def _step(
     made_jump = keep(made_jump_candidate, made_jump)
     solver_state = jax.tree_map(keep, solver_state_candidate, solver_state)
     controller_state = jax.tree_map(keep, controller_state_candidate, controller_state)
+    solver_result = keep(solver_result, RESULTS.successful)
     stepsize_controller_result = keep(stepsize_controller_result, RESULTS.successful)
     # TODO: is this necessary? If we're making zero-length steps then we're not going
     # anywhere.
@@ -104,23 +116,20 @@ def _step(
         controller_state,
         made_step,
         made_jump,
+        not_done,
         dense_info,
+        solver_result,
         stepsize_controller_result,
     )
 
 
 # TODO: support custom filter functions?
 # TODO: support donate_argnums if on the GPU.
-_jit_step = eqx.filter_jit(_step, filter_spec=eqx.is_array)
+_jit_step = eqx.filter_jit(_step)
 
 
 @jax.jit
-def _lt(a, b):
-    return a < b
-
-
-@jax.jit
-def _neq(a, b):
+def _jit_neq(a, b):
     return a != b
 
 
@@ -250,11 +259,13 @@ def diffeqsolve(
         step_maybe_jit = _step
 
     num_steps = 0
+    raw_num_steps = 0
     has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
+    not_done = _not_done(tprev, t1, result)
     save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while _jit_any(unvmap(_lt(tprev, t1))) and num_steps < max_steps:
+    while _jit_any(unvmap(not_done)):
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -269,7 +280,8 @@ def diffeqsolve(
         #
         # In particular this means that y technically corresponds to the value of the
         # solution at tnext_before.
-        num_steps = num_steps + 1
+        num_steps = num_steps + not_done
+        raw_num_steps = raw_num_steps + 1
         tprev_before = tprev
         tnext_before = tnext
         (
@@ -280,7 +292,9 @@ def diffeqsolve(
             controller_state,
             made_step,
             made_jump,
+            not_done,
             dense_info,
+            solver_result,
             stepsize_controller_result,
         ) = step_maybe_jit(
             tprev,
@@ -293,6 +307,7 @@ def diffeqsolve(
             stepsize_controller,
             t1,
             args,
+            result,
         )
 
         # save_intermediate=False offers a fast path that avoids JAX operations
@@ -326,23 +341,38 @@ def diffeqsolve(
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
 
+        should_break = False
+
+        _controller_unsuccessful = _jit_neq(
+            stepsize_controller_result, RESULTS.successful
+        )
+        if _jit_any(unvmap(_controller_unsuccessful)):
+            cond = jnp.where(
+                result == RESULTS.successful, _controller_unsuccessful, False
+            )
+            result = jnp.where(cond, stepsize_controller_result, result)
+            should_break = throw
+
+        _solver_unsuccessful = _jit_neq(solver_result, RESULTS.successful)
+        if _jit_any(unvmap(_solver_unsuccessful)):
+            cond = jnp.where(result == RESULTS.successful, _solver_unsuccessful, False)
+            result = jnp.where(cond, solver_result, result)
+            should_break = throw
+
         _nan_tnext = jnp.isnan(tnext)
         if _jit_any(unvmap(_nan_tnext)):
-            result = jnp.where(_nan_tnext, RESULTS.nan_time, result)
+            cond = jnp.where(result == RESULTS.successful, _nan_tnext, False)
+            result = jnp.where(cond, RESULTS.nan_time, result)
+            should_break = throw
+
+        if raw_num_steps >= max_steps:
+            result = jnp.where(not_done, RESULTS.max_steps_reached, result)
+            should_break = True
+
+        if should_break:
             break
 
-        if num_steps >= max_steps:
-            result = jnp.where(_lt(tprev, t1), RESULTS.max_steps_reached, result)
-            break
-
-        _controller_unsuccessful = _neq(stepsize_controller_result, RESULTS.successful)
-        if _jit_any(unvmap(_controller_unsuccessful)):
-            result = jnp.where(
-                _controller_unsuccessful, stepsize_controller_result, result
-            )
-            break
-
-    if throw and _jit_any(unvmap(_neq(result, RESULTS.successful))):
+    if throw and _jit_any(unvmap(_jit_neq(result, RESULTS.successful))):
         error = RESULTS[jnp.max(unvmap(result)).item()]
         raise RuntimeError(error)
 
@@ -384,7 +414,7 @@ def diffeqsolve(
         if saveat.t1 and not saveat.steps:
             out_len = out_len + 1
         if saveat.steps:
-            out_len = out_len + num_steps
+            out_len = out_len + raw_num_steps
 
         if len(ts) == out_len:
             # Fast path for constant step size controllers. (And lucky adaptive ones.)
