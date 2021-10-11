@@ -21,6 +21,7 @@ class AbstractStepSizeController(eqx.Module):
     def init(
         self,
         t0: Scalar,
+        t1: Scalar,
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,

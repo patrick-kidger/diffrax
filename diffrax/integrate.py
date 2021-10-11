@@ -231,7 +231,9 @@ def diffeqsolve(
 
     tprev = t0
     if controller_state is None:
-        (tnext, controller_state) = stepsize_controller.init(t0, y, dt0, args, solver)
+        (tnext, controller_state) = stepsize_controller.init(
+            t0, t1, y, dt0, args, solver
+        )
     else:
         assert dt0 is not None
         tnext = t0 + dt0

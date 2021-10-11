@@ -111,11 +111,13 @@ class IController(AbstractStepSizeController):
     def init(
         self,
         t0: Scalar,
+        t1: Scalar,
         y0: Array["state"],  # noqa: F821
         dt0: Optional[Scalar],
         args: PyTree,
         solver: AbstractSolver,
     ) -> Tuple[Scalar, _ControllerState]:
+        del t1
         if dt0 is None:
             dt0 = _select_initial_step(
                 t0,

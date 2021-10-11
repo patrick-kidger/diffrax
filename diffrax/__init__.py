@@ -60,6 +60,7 @@ from .step_size_controller import (
     AbstractStepSizeController,
     ConstantStepSize,
     IController,
+    StepToLocation,
 )
 from .term import AbstractTerm, ControlTerm, MultiTerm, ODETerm
 
