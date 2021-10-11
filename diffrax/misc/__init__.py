@@ -1,3 +1,4 @@
+from .cond import cond
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
     ContainerMeta,
@@ -11,3 +12,4 @@ from .misc import (
 from .ravel import ravel_pytree
 from .sde_kl_divergence import sde_kl_divergence
 from .unvmap import unvmap
+from .while_loop import while_loop
