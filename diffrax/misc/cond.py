@@ -12,15 +12,15 @@ def cond(pred, true_fun, false_fun, operand):
     (over the batch) and if the whole batch is true/false, only one branch is executed.
     """
 
-    # Note that the two extra lax.conds introduced here are genuine conditional
-    # computation: their predicates are always scalars, even under vmap.
-
     unvmap_pred = unvmap(pred)
 
-    def _cond(op):
-        return lax.cond(cond, true_fun, false_fun, operand)
+    if unvmap_pred.ndim == 0:
+        # Fast path
+        return lax.cond(pred, true_fun, false_fun, operand)
+    else:
 
-    def __cond(op):
-        return lax.cond(jnp.all(~unvmap_pred), false_fun, _cond, operand)
+        def _cond(op):
+            return lax.cond(pred, true_fun, false_fun, operand)
 
-    return lax.cond(jnp.all(unvmap_pred), true_fun, __cond, operand)
+        index = jnp.all(unvmap_pred).astype(int) + jnp.any(unvmap_pred)
+        return lax.switch(index, [false_fun, _cond, true_fun], operand)

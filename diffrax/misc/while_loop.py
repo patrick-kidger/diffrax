@@ -1,4 +1,4 @@
-import functools as ft
+import jax.lax as lax
 
 from .cond import cond
 
@@ -20,13 +20,24 @@ def while_loop(cond_fun, body_fun, init_val, max_steps):
         raise ValueError("max_steps must be an integer")
     if max_steps < 0:
         raise ValueError("max_steps must be a positive integer")
-    elif max_steps == 0:
+    if max_steps == 0 or (max_steps & (max_steps - 1) != 0):
+        raise ValueError("max_steps must be a power of two")  # TODO; relax this
+    return _while_loop(cond_fun, body_fun, init_val, max_steps)
+
+
+def _while_loop(cond_fun, body_fun, init_val, max_steps):
+    if max_steps == 0:
         return init_val
     elif max_steps == 1:
         return cond(cond_fun(init_val), body_fun, _identity, init_val)
     else:
-        left_steps = max_steps // 2
-        right_steps = max_steps - left_steps
-        val = while_loop(cond_fun, body_fun, init_val, left_steps)
-        _while_loop = ft.partial(while_loop, cond_fun, body_fun, max_steps=right_steps)
-        return cond(cond_fun(val), _while_loop, _identity, val)
+        half_steps = max_steps // 2
+
+        def _while(val):
+            return _while_loop(cond_fun, body_fun, val, half_steps)
+
+        def _scan_fn(val, _):
+            pred = cond_fun(val)
+            return cond(pred, _while, _identity, val), None
+
+        return lax.scan(_scan_fn, init_val, xs=None, length=2)[0]
