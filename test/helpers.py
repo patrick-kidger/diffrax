@@ -15,6 +15,7 @@ all_ode_solvers = (
     diffrax.tsit5,
     diffrax.implicit_euler,
     diffrax.kvaerno3,
+    diffrax.kvaerno4,
     diffrax.kvaerno5,
 )
 

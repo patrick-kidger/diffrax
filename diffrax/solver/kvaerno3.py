@@ -17,9 +17,7 @@ a32 = (-2 * γ + 1) / (4 * γ)
 a41 = (6 * γ - 1) / (12 * γ)
 a42 = -1 / ((24 * γ - 12) * γ)
 a43 = (-6 * γ ** 2 + 6 * γ - 1) / (6 * γ - 3)
-# Predictors using Hermite polynomials taken (and simplified) from
-# https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/tableaus/sdirk_tableaus.jl#L66  # noqa: E501
-# https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/perform_step/kencarp_kvaerno_perform_step.jl#L44  # noqa: E501
+# See /devdocs/predictor_dirk.md
 θ = 1 / (2 * γ)
 α21 = 1.0
 α31 = 1.0 - θ
@@ -53,7 +51,7 @@ class Kvaerno3(AbstractESDIRK):
     r"""Kvaerno's 3/2 method.
 
     A-L stable stiffly accurate 3rd order ESDIRK method. Has an embedded 2nd order
-    method.
+    method. Uses 4 stages.
 
     @article{kvaerno2004singly,
       title={Singly diagonally implicit Runge--Kutta methods with an explicit first
