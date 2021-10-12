@@ -84,9 +84,14 @@ _SolverState = Tuple[Optional[Array["state"]], Scalar]  # noqa: F821
 
 # TODO: examine termination criterion for Newton iteration
 # TODO: consider dividing by diagonal and control
+# TODO: replace ki with ki=(zi + predictor), where this relation defines some zi, and
+#       iterate to find zi, using zi=0 as the predictor. This should give better
+#       numerical behaviour since the iteration is close to 0. (Although we have
+#       multiplied by the increment of the control, i.e. dt, which is small...)
 def _implicit_relation(ki, diagonal, vf_prod, ti, yi_partial, args, control):
     # c.f:
     # https://github.com/SciML/DiffEqDevMaterials/blob/master/newton/output/main.pdf
+    # (Bearing in mind that our ki is dt times smaller than theirs.)
     return vf_prod(ti, yi_partial + diagonal * ki, args, control) - ki
 
 
