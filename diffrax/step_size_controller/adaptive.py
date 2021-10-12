@@ -8,7 +8,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import nextafter, nextbefore, rms_norm, unvmap
+from ..misc import nextafter, nextbefore, rms_norm
 from ..solution import RESULTS
 from ..solver import AbstractSolver
 from .base import AbstractStepSizeController
@@ -84,7 +84,6 @@ class IController(AbstractStepSizeController):
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
-    unvmap_dt: bool = False
     step_ts: Optional[Array["steps"]] = None  # noqa: F821
     jump_ts: Optional[Array["steps"]] = None  # noqa: F821
     unravel_y: callable = field(repr=False, default=_do_not_set_at_init)
@@ -101,7 +100,6 @@ class IController(AbstractStepSizeController):
             dtmin=self.dtmin,
             dtmax=self.dtmax,
             force_dtmin=self.force_dtmin,
-            unvmap_dt=self.unvmap_dt,
             step_ts=None if self.step_ts is None else self.step_ts * direction,
             jump_ts=None if self.jump_ts is None else self.jump_ts * direction,
             unravel_y=unravel_y,
@@ -163,8 +161,6 @@ class IController(AbstractStepSizeController):
             #
             # I would welcome your thoughts, dear reader, if you have any insight!
             dt0 = lax.stop_gradient(dt0)
-        if self.unvmap_dt:
-            dt0 = jnp.min(unvmap(dt0))
         if self.dtmax is not None:
             dt0 = jnp.minimum(dt0, self.dtmax)
         if self.dtmin is None:
@@ -209,8 +205,6 @@ class IController(AbstractStepSizeController):
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin
-        if self.unvmap_dt:
-            keep_step = jnp.all(unvmap(keep_step))
 
         #
         # Adjust next step size
@@ -230,8 +224,6 @@ class IController(AbstractStepSizeController):
             (solver_order, keep_step, _scaled_error),
         )
         factor = lax.stop_gradient(factor)  # See note in init above.
-        if self.unvmap_dt:
-            factor = jnp.min(unvmap(factor))
         dt = prev_dt * factor
 
         #
@@ -275,17 +267,6 @@ class IController(AbstractStepSizeController):
     def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
         if self.step_ts is None:
             return t1
-        if self.unvmap_dt:
-            # Need to think about how to implement this correctly.
-            #
-            # If t is batched, and has the same time at different batch elements,
-            # then we should get the same number (at floating point precision) in all
-            # batch elements. I think this precludes most arithmetic operations for
-            # accomplishing this.
-            raise NotImplementedError(
-                "The interaction between step_ts and unvmap_dt has not been "
-                "implemented. Set unvmap_dt=False instead."
-            )
 
         # TODO: it should be possible to switch this O(nlogn) for just O(n) by keeping
         # track of where we were last, and using that as a hint for the next search.
@@ -306,11 +287,6 @@ class IController(AbstractStepSizeController):
     def _clip_jump_ts(self, t0: Scalar, t1: Scalar) -> Tuple[Scalar, Array[(), bool]]:
         if self.jump_ts is None:
             return t1, jnp.full_like(t1, fill_value=False, dtype=bool)
-        if self.unvmap_dt:
-            raise NotImplementedError(
-                "The interaction between jump_ts and unvmap_dt has not been "
-                "implemented. Set unvmap_dt=False instead."
-            )
         if self.jump_ts is not None and not jnp.issubdtype(
             self.jump_ts.dtype, jnp.inexact
         ):

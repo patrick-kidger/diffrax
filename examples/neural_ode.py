@@ -57,22 +57,7 @@ class NeuralODE(eqx.Module):
     def __init__(self, data_size, width_size, depth, *, key, **kwargs):
         super().__init__(**kwargs)
         self.solver = diffrax.tsit5(Func(data_size, width_size, depth, key=key))
-        ###########
-        # unvmap_dt makes a whole batch use the same timestep sizes.
-        # (Rather than per-batch-element adaptive time stepping.)
-        # The step size is the minimum over the whole batch.
-        #
-        # - PRO: on some problems (like this one) this simplifies certain internal
-        #   operations, and correspondingly the integration is quicker.
-        # - CON: on some problems (like the neural CDE example) the fact that the step
-        #   sizes are generally smaller (due to min'ing over the batch) can mean the
-        #   integration is slower.
-        # - CON: This breaks the `vmap` abstraction slightly.
-        #
-        # At least on this problem it offers a nice speedup. (In general just try both
-        # with and without it, and see if it helps.)
-        ###########
-        self.stepsize_controller = diffrax.IController(unvmap_dt=True)
+        self.stepsize_controller = diffrax.IController()
 
     def __call__(self, ts, y0):
         solution = diffrax.diffeqsolve(
