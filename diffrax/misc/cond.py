@@ -40,7 +40,8 @@ def cond(pred, true_fun, false_fun, operand):
 
     true_vals = lax.cond(_unvmap_any, true_fun, lambda _: true_dummy, operand)
     false_vals = lax.cond(_unvmap_all, lambda _: false_dummy, false_fun, operand)
-    keep = lambda a, b: jnp.where(pred, a, b)
+    # TODO: this `select` won't play well with the compiler and in-place updates
+    keep = lambda a, b: lax.select(pred, a, b)
     return jax.tree_map(keep, true_vals, false_vals)
 
 
@@ -60,8 +61,6 @@ def maybe(pred, fun, operand):
     _unvmap_any = unvmap_any(pred)
 
     def _fun(_):
-        out = fun(operand)
-        keep = lambda a, b: lax.select(pred, a, b)
-        return jax.tree_map(keep, out, operand)
+        return lax.cond(pred, fun, lambda x: x, operand)
 
     return lax.cond(_unvmap_any, _fun, lambda _: operand, None)
