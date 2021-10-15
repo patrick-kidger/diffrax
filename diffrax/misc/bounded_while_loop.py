@@ -1,53 +1,7 @@
+import jax
 import jax.lax as lax
 
 from .unvmap import unvmap_any
-
-
-def _identity(x):
-    return x
-
-
-def _maybe(pred, fun, operand):
-    """Possibly executes an automorphic function.
-
-    Morally speaking, this is a `lax.cond` with its falsey branch taken to be the
-    identity. This version has several optimisations to work around limtiations of
-    `vmap` and in-place updates, though, so as to get more efficient behaviour.
-
-    Arguments:
-        pred: boolean array.
-        fun: Function with type signature `a -> a`..
-        operand: PyTree with structure `a`.
-
-    Warning:
-        If `fun` makes any in-place updates to its argument then this will not be
-        picked up on when running the CPU. (See JAX issue #8192, which affects
-        `lax.cond` as well.)
-
-    Return value:
-        As `lax.cond(pred, fun, lambda x: x, operand)`.
-
-    Unlike the above simple implementation, then in addition if every batch element of
-    `pred` is `False` then `fun` will not be executed at all. This makes it more
-    efficient when `jax.vmap`-ing. (Which normally executes both branches
-    unconditionally when vmap'ing.)
-    """
-
-    unvmap_pred = unvmap_any(pred)
-
-    def _call(x):
-        return lax.cond(pred, fun, _identity, x)
-
-    return lax.cond(unvmap_pred, _call, _identity, operand)
-
-
-def _fun(cond_fun, body_fun):
-    def __fun(data):
-        pred, val = data
-        new_val = body_fun(val)
-        return cond_fun(new_val), new_val
-
-    return __fun
 
 
 def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
@@ -58,36 +12,77 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
     """
 
     if max_steps is None:
-        return lax.while_loop(cond_fun, body_fun, init_val)
+
+        def _make_update(_index, _val, _new_val):
+            if _index is None:
+                return _new_val
+            else:
+                if isinstance(_index, Index):
+                    _index = _index.value
+                return _val.at[_index].set(_new_val)
+
+        def _body_fun(_val):
+            _new_val, _index = body_fun(_val)
+            return jax.tree_map(
+                _make_update, _index, _val, _new_val, is_leaf=lambda x: x is None
+            )
+
+        return lax.while_loop(cond_fun, _body_fun, init_val)
+
     if not isinstance(max_steps, int) or max_steps < 0:
         raise ValueError("max_steps must be a non-negative integer")
     if max_steps == 0:
         return init_val
-    if max_steps == 1:
-        return _maybe(cond_fun(init_val), body_fun, init_val)
     if max_steps & (max_steps - 1) != 0:
         raise ValueError("max_steps must be a power of two")
 
-    fun = _fun(cond_fun, body_fun)
     init_data = (cond_fun(init_val), init_val)
-    _, init_val = _while_loop(fun, init_data, max_steps)
-    return init_val
+    _, val = _while_loop(cond_fun, body_fun, init_data, max_steps)
+    return val
 
 
-def _while_loop(fun, data, max_steps):
-    assert max_steps > 1
+class Index:
+    def __init__(self, value):
+        self.value = value
 
-    half_steps = max_steps // 2
 
-    if half_steps == 1:
-        _call = fun
+def _identity(x):
+    return x
+
+
+def _maybe(pred, fun, operand):
+    def _make_update(_index, _operand, _new_operand):
+        if _index is None:
+            _keep = lambda a, b: lax.select(pred, a, b)
+            return jax.tree_map(_keep, _new_operand, _operand)
+        else:
+            if isinstance(_index, Index):
+                _index = _index.value
+            _new_operand = lax.select(pred, _new_operand, _operand[_index])
+            return _operand.at[_index].set(_new_operand)
+
+    def _call(_operand):
+        _new_operand, _index = fun(_operand)
+        return jax.tree_map(
+            _make_update, _index, _operand, _new_operand, is_leaf=lambda x: x is None
+        )
+
+    return _call(operand)
+
+
+def _while_loop(cond_fun, body_fun, data, max_steps):
+    if max_steps == 1:
+        pred, val = data
+        new_val = _maybe(pred, body_fun, val)
+        return cond_fun(new_val), new_val
     else:
 
         def _call(_data):
-            return _while_loop(fun, _data, half_steps)
+            return _while_loop(cond_fun, body_fun, _data, max_steps // 2)
 
-    def _scan_fn(_data, _):
-        _pred, _ = _data
-        return _maybe(_pred, _call, _data), None
+        def _scan_fn(_data, _):
+            _pred, _ = _data
+            _unvmap_pred = unvmap_any(_pred)
+            return lax.cond(_unvmap_pred, _call, _identity, _data), None
 
-    return lax.scan(_scan_fn, data, xs=None, length=2)[0]
+        return lax.scan(_scan_fn, data, xs=None, length=2)[0]

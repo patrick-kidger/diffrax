@@ -1,4 +1,4 @@
-from .bounded_while_loop import bounded_while_loop
+from .bounded_while_loop import bounded_while_loop, Index
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
     ContainerMeta,
