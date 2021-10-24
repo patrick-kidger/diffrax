@@ -96,6 +96,11 @@ def _while_loop(cond_fun, body_fun, data, max_steps):
                 _keep = lambda a, b: lax.select(pred, a, b)
                 return jax.tree_map(_keep, _new_val, _val)
             else:
+                # This is the reason for the in-place update being returned from
+                # body_fun, rather than happening within it. We need to `lax.select`
+                # the update-to-make, not the updated buffer. (The latter results in
+                # XLA:CPU failing to determine that the buffer can be updated in-place;
+                # instead it makes a copy. c.f. JAX issue #8192.)
                 if isinstance(_index, Index):
                     _index = _index.value
                 _new_val = lax.select(pred, _new_val, _val[_index])
