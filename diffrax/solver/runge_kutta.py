@@ -152,7 +152,7 @@ class AbstractRungeKutta(AbstractSolver):
             k0 = lax.cond(
                 made_jump,
                 lambda _: self.term.vf_prod(t0, y0, args, control),
-                lambda _: k0 * (dt.astype(k0.dtype) / prev_dt),
+                lambda _: k0 * (dt / prev_dt),
                 None,
             )
             result = RESULTS.successful

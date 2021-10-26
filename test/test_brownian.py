@@ -18,7 +18,7 @@ _vals = {
 
 def test_unsafe_brownian_shape(getkey):
     for shape in ((0,), (1, 0), (2,), (3, 4), (1, 2, 3, 4)):
-        path = diffrax.UnsafeBrownianPath(getkey(), shape)
+        path = diffrax.UnsafeBrownianPath(shape, getkey())
         assert path.t0 is None
         assert path.t1 is None
         for _t0 in _vals.values():

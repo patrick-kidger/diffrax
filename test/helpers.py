@@ -9,6 +9,9 @@ import jax.numpy as jnp
 import jax.random as jrandom
 
 
+# TODO: test semi_implicit_euler
+
+
 all_ode_solvers = (
     diffrax.bosh3,
     diffrax.dopri5,
@@ -16,13 +19,22 @@ all_ode_solvers = (
     diffrax.euler,
     diffrax.fehlberg2,
     diffrax.heun,
-    diffrax.leapfrog_midpoint,
-    diffrax.reversible_heun,
+    # TODO: reinstate
+    #    diffrax.leapfrog_midpoint,
+    #    diffrax.reversible_heun,
     diffrax.tsit5,
     diffrax.implicit_euler,
     diffrax.kvaerno3,
     diffrax.kvaerno4,
     diffrax.kvaerno5,
+)
+
+
+# TODO: encode this into the types somehow, whether via inheritance, traits, ...
+fixed_ode_solvers = (
+    diffrax.euler,
+    diffrax.leapfrog_midpoint,
+    diffrax.implicit_euler,
 )
 
 
@@ -54,7 +66,7 @@ treedefs = [
 def tree_allclose(x, y, **kwargs):
     same_structure = jax.tree_structure(x) == jax.tree_structure(y)
     allclose = ft.partial(jnp.allclose, **kwargs)
-    return same_structure and jax.tree_reduce(
+    return same_structure and jax.tree_util.tree_reduce(
         operator.and_, jax.tree_map(allclose, x, y)
     )
 

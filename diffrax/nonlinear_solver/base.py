@@ -71,6 +71,9 @@ class AbstractNonlinearSolver(eqx.Module):
     def jac(fn: callable, x: PyTree, args: PyTree) -> LU_Jacobian:
         flat, unflatten = ravel_pytree(x)
         curried = lambda z: ravel_pytree(fn(unflatten(z), *args))[0]
+        if not jnp.issubdtype(flat, jnp.inexact):
+            # Handle integer arguments
+            flat = flat.astype(jnp.float32)
         return jsp.linalg.lu_factor(jax.jacfwd(curried)(flat))
 
 
