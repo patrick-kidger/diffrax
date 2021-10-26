@@ -7,6 +7,7 @@ from .fehlberg2 import Fehlberg2, fehlberg2
 from .heun import Heun, heun
 from .implicit_euler import implicit_euler, implicit_euler_maruyama, ImplicitEuler
 from .kvaerno3 import Kvaerno3, kvaerno3
+from .kvaerno4 import Kvaerno4, kvaerno4
 from .kvaerno5 import Kvaerno5, kvaerno5
 from .leapfrog_midpoint import leapfrog_midpoint, LeapfrogMidpoint
 from .reversible_heun import reversible_heun, ReversibleHeun

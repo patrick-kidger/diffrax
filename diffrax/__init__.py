@@ -45,6 +45,8 @@ from .solver import (
     ImplicitEuler,
     Kvaerno3,
     kvaerno3,
+    Kvaerno4,
+    kvaerno4,
     Kvaerno5,
     kvaerno5,
     leapfrog_midpoint,

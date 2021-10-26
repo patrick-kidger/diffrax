@@ -31,13 +31,12 @@ a74 = -0.04118626728321046
 a75 = 0.62993304899016403
 a76 = 0.06962479448202728
 
-# Predictors using Hermite polynomials taken from
+# Predictors taken from
 # https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/tableaus/sdirk_tableaus.jl#L1444  # noqa: E501
 # https://github.com/SciML/OrdinaryDiffEq.jl/blob/54fb35870fa402fc95d665cd5f9502e2759ea436/src/perform_step/kencarp_kvaerno_perform_step.jl#L1123  # noqa: E501
-# This is with the exception of α21, which for some reason they ignore (and in doing
-# so treat as 0). These predictors are typically taken to sum to 1, so really
-# there's just a single unique choice α21=1. This corresponds to using the initial
-# start-of-stage f(y0) as the predictor for the second stage.
+# This is with the exception of α21, which is mistakenly set to zero.
+#
+# See also /devdocs/predictor_dirk.md
 α21 = 1.0
 α31 = -1.366025403784441
 α32 = 2.3660254037844357
@@ -96,7 +95,7 @@ class Kvaerno5(AbstractESDIRK):
     r"""Kvaerno's 5/4 method.
 
     A-L stable stiffly accurate 5th order ESDIRK method. Has an embedded 4th order
-    method.
+    method. Uses 7 stages.
 
     When solving an ODE over the interval [t0, t1], note that this method will make
     some evaluations slightly past t1.
