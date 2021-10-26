@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import jax
 import jax.lax as lax
@@ -14,6 +14,20 @@ def _stack_pytrees(*arrays):
 
 def stack_pytrees(pytrees: List[PyTree]) -> PyTree:
     return jax.tree_map(_stack_pytrees, *pytrees)
+
+
+def is_perturbed(x: Any) -> bool:
+    if isinstance(x, jax.ad.JVPTracer):
+        return True
+    elif isinstance(x, jax.core.Tracer):
+        return any(is_perturbed(attr) for name, attr in x._contents())
+    else:
+        return False
+
+
+def check_no_derivative(x: Array, name: str) -> None:
+    if is_perturbed(x):
+        raise ValueError(f"Cannot differentiate {name}.")
 
 
 class ContainerMeta(type):
@@ -34,6 +48,9 @@ class ContainerMeta(type):
 
     def __getitem__(cls, item):
         return cls._reverse_lookup[item]
+
+    def __len__(cls):
+        return len(cls._reverse_lookup)
 
 
 def _fill_forward(
@@ -75,15 +92,17 @@ nextbefore.defjvps(lambda x_dot, _, __: x_dot)
 
 
 def linear_rescale(t0, t, t1):
-    # Assumes t0 <= t <= t1
+    """Calculates (t - t0) / (t1 - t0), assuming t0 <= t <= t1.
+
+    Specially handles the edge case t0 == t1:
+        - zero is returned;
+        - gradients through all three arguments are zero.
+    """
 
     cond = t0 == t1
-    # `where` to avoid NaN gradients
-    div = jnp.where(cond, 1, t1 - t0)
-    out = (t - t0) / div
-    # `where` to get correct gradient if `cond` is True.
-    out = jnp.where(cond, t, out)
-    return out
+    numerator = jnp.where(cond, 0, t - t0)
+    denominator = jnp.where(cond, 1, t1 - t0)
+    return numerator / denominator
 
 
 def rms_norm(x: PyTree) -> Scalar:

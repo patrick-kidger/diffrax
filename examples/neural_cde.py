@@ -173,9 +173,7 @@ def get_data(dataset_size, add_noise, *, key):
     ys = ys.at[: dataset_size // 2, :, 1].multiply(-1)
     if add_noise:
         ys = ys + jrandom.normal(noise_key, ys.shape) * 0.1
-    coeffs = jax.vmap(diffrax.hermite_cubic_with_backward_differences_coefficients)(
-        ts, ys
-    )
+    coeffs = jax.vmap(diffrax.backward_hermite_coefficients)(ts, ys)
     labels = jnp.zeros((dataset_size,))
     labels = labels.at[: dataset_size // 2].set(1.0)
     _, _, data_size = ys.shape

@@ -44,3 +44,7 @@ class Solution(AbstractPath):
                 "Dense solution has not been saved; pass saveat.dense=True."
             )
         return self.interpolation.evaluate(t0, t1, left)
+
+    @property
+    def message(self):
+        return RESULTS[self.result]

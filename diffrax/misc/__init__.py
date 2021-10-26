@@ -1,7 +1,9 @@
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
+    check_no_derivative,
     ContainerMeta,
     fill_forward,
+    is_perturbed,
     linear_rescale,
     nextafter,
     nextbefore,

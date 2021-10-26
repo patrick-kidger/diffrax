@@ -1,5 +1,11 @@
+import functools as ft
+import gc
+import operator
+import time
+
 import diffrax
 import jax
+import jax.numpy as jnp
 import jax.random as jrandom
 
 
@@ -43,3 +49,30 @@ treedefs = [
         {"a": [0, 0], "b": 0},
     )
 ]
+
+
+def tree_allclose(x, y, **kwargs):
+    same_structure = jax.tree_structure(x) == jax.tree_structure(y)
+    allclose = ft.partial(jnp.allclose, **kwargs)
+    return same_structure and jax.tree_reduce(
+        operator.and_, jax.tree_map(allclose, x, y)
+    )
+
+
+def time_fn(fn, repeat=1):
+    fn()  # Compile
+    if gc_enabled := gc.isenabled():
+        gc.collect()
+    gc.disable()
+    try:
+        times = []
+        for _ in range(repeat):
+            start = time.perf_counter_ns()
+            fn()
+            end = time.perf_counter_ns()
+            times.append(end - start)
+        return min(times)
+    finally:
+        if gc_enabled:
+            gc.enable()
+            gc.collect()

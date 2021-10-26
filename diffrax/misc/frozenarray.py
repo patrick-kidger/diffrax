@@ -28,4 +28,4 @@ class frozenndarray:
 
 
 def frozenarray(*args, **kwargs):
-    return frozenndarray(array=np.array(*args, **kwargs))
+    return frozenndarray(array=np.asarray(*args, **kwargs))

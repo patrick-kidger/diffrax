@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Optional, Tuple, TypeVar
+from typing import Optional, Tuple, TypeVar
 
 import equinox as eqx
 import jax
@@ -7,17 +7,8 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import PyTree
-from ..misc import ravel_pytree
+from ..misc import is_perturbed, ravel_pytree
 from ..solution import RESULTS
-
-
-def _is_perturbed(x: Any) -> bool:
-    if isinstance(x, jax.ad.JVPTracer):
-        return True
-    elif isinstance(x, jax.core.Tracer):
-        return any(_is_perturbed(attr) for name, attr in x._contents())
-    else:
-        return False
 
 
 LU_Jacobian = TypeVar("LU_Jacobian")
@@ -73,7 +64,7 @@ class AbstractNonlinearSolver(eqx.Module):
             and `result` is a status code indicating whether the solver managed to
             converge or not.
         """
-        diff_args, nondiff_args = eqx.partition(args, _is_perturbed)
+        diff_args, nondiff_args = eqx.partition(args, is_perturbed)
         return self._solve(self, fn, x, jac, nondiff_args, diff_args)
 
     @staticmethod

@@ -284,7 +284,7 @@ def linear_interpolation(
         return jax.tree_map(fn, ys, replace_nans_at_start)
 
 
-def _hermite_cubic_forward(
+def _hermite_forward(
     carry: Tuple[Scalar, Array["channels"], Array["channels"]],  # noqa: F821
     value: Tuple[Scalar, Array["channels"]],  # noqa: F821
 ) -> Tuple[
@@ -343,7 +343,7 @@ def _hermite_cond(prev_ti, prev_yi, prev_deriv_i, ti, yi, deriv_i, next_ti, next
 
 
 @ft.partial(jax.jit, static_argnums=0)
-def _hermite_cubic_with_backward_differences(
+def _backward_hermite_coefficients(
     fill_forward_nans_at_end: bool,
     ts: Array["times"],  # noqa: F821
     ys: Array["times", "channels"],  # noqa: F821
@@ -376,9 +376,7 @@ def _hermite_cubic_with_backward_differences(
         y0 = ys[0]
     else:
         y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
-    _, (_ts, _ys, _derivs) = lax.scan(
-        _hermite_cubic_forward, (t0, y0, deriv0), (ts, ys)
-    )
+    _, (_ts, _ys, _derivs) = lax.scan(_hermite_forward, (t0, y0, deriv0), (ts, ys))
 
     prev_ts = _ts[:-1]
     prev_ys = _ys[:-1]
@@ -394,7 +392,7 @@ def _hermite_cubic_with_backward_differences(
     return ds, cs, bs, as_
 
 
-def hermite_cubic_with_backward_differences_coefficients(
+def backward_hermite_coefficients(
     ts: Array["times"],  # noqa: F821
     ys: PyTree,
     *,
@@ -403,9 +401,7 @@ def hermite_cubic_with_backward_differences_coefficients(
     replace_nans_at_start: Optional[PyTree] = None,
 ) -> Tuple[PyTree, PyTree, PyTree, PyTree]:
     _check_ts(ts)
-    fn = ft.partial(
-        _hermite_cubic_with_backward_differences, fill_forward_nans_at_end, ts
-    )
+    fn = ft.partial(_backward_hermite_coefficients, fill_forward_nans_at_end, ts)
     if deriv0 is None:
         if replace_nans_at_start is None:
             coeffs = jax.tree_map(fn, ys)

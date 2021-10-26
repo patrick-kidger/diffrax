@@ -1,3 +1,4 @@
+import math
 import operator
 
 import diffrax
@@ -7,7 +8,7 @@ import jax.random as jrandom
 import pytest
 import scipy.stats
 
-from helpers import all_ode_solvers, random_pytree, treedefs
+from helpers import all_ode_solvers, random_pytree, tree_allclose, treedefs
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -16,7 +17,6 @@ from helpers import all_ode_solvers, random_pytree, treedefs
 @pytest.mark.parametrize(
     "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
 )
-@pytest.mark.parametrize("jit", (False, True))
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
     if (
         solver_ctr
@@ -54,7 +54,7 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
     y0 = random_pytree(getkey(), treedef)
     try:
         diffrax.diffeqsolve(
-            solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, jit=jit
+            solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller
         )
     except RuntimeError as e:
         if isinstance(stepsize_controller, diffrax.ConstantStepSize) and str(
@@ -160,3 +160,25 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
             if solver_ctr is not diffrax.tsit5:
                 # derivative not implemented for Tsit5
                 assert jnp.allclose(sol1.derivative(ti), -sol2.derivative(-ti))
+
+
+@pytest.mark.parametrize(
+    "solver_ctr,dt0",
+    (
+        (diffrax.euler, -0.3),
+        (diffrax.tsit5, -0.3),
+        (diffrax.tsit5, None),
+        (diffrax.kvaerno3, None),
+    ),
+)
+@pytest.mark.parametrize("treedef", treedefs)
+def test_pytree_state(solver_ctr, dt0, treedef, getkey):
+    solver = solver_ctr(lambda t, y, args: -y)
+    y0 = random_pytree(getkey(), treedef)
+    stepsize_controller = diffrax.IController(rtol=1e-8, atol=1e-8)
+    sol = diffrax.diffeqsolve(
+        solver, t0=0, t1=1, y0=y0, dt0=dt0, stepsize_controller=stepsize_controller
+    )
+    y1 = sol.ys
+    true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
+    assert tree_allclose(y1, true_y1)
