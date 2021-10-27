@@ -80,7 +80,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         flat, unflatten = ravel_pytree(x)
         if flat.size == 0:
             return x, RESULTS.successful
-        curried = lambda z: ravel_pytree(fn(unflatten(z), *args))[0]
+        curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
 
         def cond_fn(val):
             _, step, diffsize, diffsize_prev = val

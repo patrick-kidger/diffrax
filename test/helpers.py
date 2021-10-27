@@ -67,7 +67,7 @@ def tree_allclose(x, y, **kwargs):
     same_structure = jax.tree_structure(x) == jax.tree_structure(y)
     allclose = ft.partial(jnp.allclose, **kwargs)
     return same_structure and jax.tree_util.tree_reduce(
-        operator.and_, jax.tree_map(allclose, x, y)
+        operator.and_, jax.tree_map(allclose, x, y), True
     )
 
 

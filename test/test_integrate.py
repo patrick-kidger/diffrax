@@ -17,7 +17,7 @@ from helpers import all_ode_solvers, random_pytree, tree_allclose, treedefs
 @pytest.mark.parametrize(
     "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
 )
-def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, jit, getkey):
+def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     if (
         solver_ctr
         in (
@@ -165,15 +165,15 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
 @pytest.mark.parametrize(
     "solver_ctr,dt0",
     (
-        (diffrax.euler, -0.3),
-        (diffrax.tsit5, -0.3),
+        (diffrax.euler, 0.3),
+        (diffrax.tsit5, 0.3),
         (diffrax.tsit5, None),
         (diffrax.kvaerno3, None),
     ),
 )
 @pytest.mark.parametrize("treedef", treedefs)
 def test_pytree_state(solver_ctr, dt0, treedef, getkey):
-    solver = solver_ctr(lambda t, y, args: -y)
+    solver = solver_ctr(lambda t, y, args: jax.tree_map(operator.neg, y))
     y0 = random_pytree(getkey(), treedef)
     stepsize_controller = diffrax.IController(rtol=1e-8, atol=1e-8)
     sol = diffrax.diffeqsolve(

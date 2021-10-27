@@ -41,7 +41,7 @@ class AbstractNonlinearSolver(eqx.Module):
     def __call__(
         self, fn: callable, x: PyTree, args: PyTree, jac: Optional[LU_Jacobian] = None
     ) -> Tuple[PyTree, RESULTS]:
-        """Find `z` such that `fn(z, *args) = 0`.
+        """Find `z` such that `fn(z, args) = 0`.
 
         Arguments:
             fn (callable): The function to find the root of.
@@ -60,7 +60,7 @@ class AbstractNonlinearSolver(eqx.Module):
         anyway.)
 
         Returns:
-            A 2-tuple `(z, result)`, where `z` (hopefully) solves `fn(z, *args) = 0`,
+            A 2-tuple `(z, result)`, where `z` (hopefully) solves `fn(z, args) = 0`,
             and `result` is a status code indicating whether the solver managed to
             converge or not.
         """
@@ -70,7 +70,7 @@ class AbstractNonlinearSolver(eqx.Module):
     @staticmethod
     def jac(fn: callable, x: PyTree, args: PyTree) -> LU_Jacobian:
         flat, unflatten = ravel_pytree(x)
-        curried = lambda z: ravel_pytree(fn(unflatten(z), *args))[0]
+        curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
         if not jnp.issubdtype(flat, jnp.inexact):
             # Handle integer arguments
             flat = flat.astype(jnp.float32)
@@ -115,7 +115,7 @@ def _root_solve_jvp(
 
     def _for_jac(_root):
         _root = unflatten_root(_root)
-        _out = fn(_root, *args)
+        _out = fn(_root, args)
         _out, _ = ravel_pytree(_out)
         return _out
 
@@ -127,7 +127,7 @@ def _root_solve_jvp(
     def _for_jvp(_diff_args):
         _diff_args = unflatten_diff_args(_diff_args)
         _args = eqx.combine(nondiff_args, _diff_args)
-        _out = fn(root, *_args)
+        _out = fn(root, _args)
         _out, _ = ravel_pytree(_out)
         return _out
 

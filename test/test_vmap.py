@@ -88,8 +88,9 @@ def test_vmap_y0(stepsize_controller):
         )
     )(y0)
     num_steps = sol.stats["num_steps"]
-    # not the same number of steps for every batch element
-    assert len(set(num_steps)) > 1
+    if not isinstance(stepsize_controller, diffrax.ConstantStepSize):
+        # not the same number of steps for every batch element
+        assert len(set(num_steps)) > 1
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
     assert sol.ts.shape == (10, max(num_steps))

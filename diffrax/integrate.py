@@ -248,7 +248,7 @@ def diffeqsolve(
     if saveat.t0:
         out_indices.append(0)
         ts.append(t0)
-        ys.append(y0)
+        ys.append(y)
     del y0, dt0
 
     made_jump = jnp.full_like(t0, fill_value=False, dtype=bool)

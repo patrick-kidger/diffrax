@@ -356,9 +356,14 @@ def _backward_hermite_coefficients(
     Array["channels"],  # noqa: F821
 ]:  # noqa: F821
     if ts.ndim != 1:
-        raise ValueError(f"ts should have 1 dimension, got {ts.ndim}.")
+        raise ValueError(f"`ts` should have 1 dimension, got {ts.ndim}.")
     if ys.ndim != 2:
-        raise ValueError(f"ys should have 2 dimensions, got {ys.ndim}.")
+        raise ValueError(f"`ys` should have 2 dimensions, got {ys.ndim}.")
+    if deriv0 is not None and deriv0.shape != (ys.shape[1],):
+        raise ValueError(
+            "deriv0 should either be `None` or should have the same "
+            "number of channels as `ys`."
+        )
     ts = jnp.broadcast_to(ts[:, None], ys.shape)
 
     _, (next_ts, next_ys) = lax.scan(

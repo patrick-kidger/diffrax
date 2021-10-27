@@ -19,7 +19,7 @@ def test_local_linear_interpolation():
             true = y0 + (y1 - y0) * (t0_ - t0) / (t1 - t0)
             assert jnp.allclose(pred, true)
 
-            _, pred = jax.jvp(interp.evaluate, (t0_), (jnp.ones_like(t0_),))
+            _, pred = jax.jvp(interp.evaluate, (t0_,), (jnp.ones_like(t0_),))
             true = (y1 - y0) / (t1 - t0)
             assert jnp.allclose(pred, true)
 
@@ -31,10 +31,7 @@ def test_local_linear_interpolation():
             _, pred = jax.jvp(
                 interp.evaluate, (t0_, t1_), (jnp.ones_like(t0_), jnp.ones_like(t1_))
             )
-            _true = (y1 - y0) / (t1 - t0)
-            true = (-_true, _true)
-            assert jnp.allclose(pred[0], true[0])
-            assert jnp.allclose(pred[1], true[1])
+            assert jnp.allclose(pred, 0)
 
             # evaluate over zero-length interval. Note t1=t0.
             interp = diffrax.local_interpolation.LocalLinearInterpolation(

@@ -1,3 +1,5 @@
+import operator
+
 import diffrax
 import jax
 import jax.numpy as jnp
@@ -5,6 +7,11 @@ import jax.random as jrandom
 import pytest
 
 from helpers import all_ode_solvers, tree_allclose
+
+
+# TODO:
+# - Decide how to handle weakly increasing times in interpolation routines
+# - Fix hermite interpolation
 
 
 @pytest.mark.parametrize("mode", ["linear", "cubic"])
@@ -42,13 +49,13 @@ def test_interpolation_coeffs(mode, getkey):
     interp_ys = _interp(tree=False, replace_nans_at_start=5.5)
     true_ys = ys.at[0].set(5.5).at[9].set(jnp.nan)[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = _interp(tree=True, replace_nans_at_start=5.5)
+    (interp_ys,) = _interp(tree=True, replace_nans_at_start=(5.5,))
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
 
 def test_cubic_interpolation_no_deriv0():
     ts = jnp.array([-0.5, 0, 1.0])
-    ys = jnp.array([0.1, 0.5, -0.2])
+    ys = jnp.array([[0.1], [0.5], [-0.2]])
     coeffs = diffrax.backward_hermite_coefficients(ts, ys)
     interp = diffrax.CubicInterpolation(ts, coeffs)
 
@@ -57,7 +64,7 @@ def test_cubic_interpolation_no_deriv0():
     points = jnp.linspace(-0.5, 0, 10)
 
     interp_ys = jax.vmap(interp.evaluate)(points)
-    true_ys = 0.1 + 0.4 * jnp.linspace(0, 1, 10)
+    true_ys = 0.1 + 0.4 * jnp.linspace(0, 1, 10)[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
@@ -69,18 +76,22 @@ def test_cubic_interpolation_no_deriv0():
     points = jnp.linspace(0, 1.0, 10)
 
     interp_ys = jax.vmap(interp.evaluate)(points)
-    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(points)
+    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(
+        points
+    )[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
-    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)
+    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)[
+        :, None
+    ]
     assert jnp.allclose(derivs, true_derivs)
 
 
 def test_cubic_interpolation_deriv0():
     ts = jnp.array([-0.5, 0, 1.0])
-    ys = jnp.array([0.1, 0.5, -0.2])
-    coeffs = diffrax.backward_hermite_coefficients(ts, ys, deriv0=0.4)
+    ys = jnp.array([[0.1], [0.5], [-0.2]])
+    coeffs = diffrax.backward_hermite_coefficients(ts, ys, deriv0=jnp.array([0.4]))
     interp = diffrax.CubicInterpolation(ts, coeffs)
 
     # First piece is cubic
@@ -90,13 +101,13 @@ def test_cubic_interpolation_deriv0():
     interp_ys = jax.vmap(interp.evaluate)(points)
     true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([-1.6, -0.8, 0.8, 0.5]), p))(
         points
-    )
+    )[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
     true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([-4.8, -1.6, 0.8]), p))(
         points
-    )
+    )[:, None]
     assert jnp.allclose(derivs, true_derivs)
 
     # Second piece is cubic
@@ -104,11 +115,15 @@ def test_cubic_interpolation_deriv0():
     points = jnp.linspace(0, 1.0, 10)
 
     interp_ys = jax.vmap(interp.evaluate)(points)
-    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(points)
+    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(
+        points
+    )[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
-    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)
+    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)[
+        :, None
+    ]
     assert jnp.allclose(derivs, true_derivs)
 
 
@@ -140,8 +155,10 @@ def test_interpolation_classes(mode, getkey):
             assert jnp.array_equal(interp.t1, ts[-1])
             true_ys = []
             prev_ti = None
-            prev_yi = ys[-1]
-            for ti, yi in zip(ts, ys):
+            prev_yi = None
+            for i, ti in enumerate(ts):
+                yi = jax.tree_map(operator.itemgetter(i), ys)
+
                 # It's important any time ti == prev_ti that the associated yi is
                 # treated as "junk data" and ignored.
                 if ti == prev_ti:
@@ -155,9 +172,11 @@ def test_interpolation_classes(mode, getkey):
             assert tree_allclose(pred_ys, true_ys)
 
             if mode == "linear":
-                for t0, t1, y0, y1 in zip(ts[:-1], ts[1:], ys[:-1], ys[1:]):
+                for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
                     if t0 == t1:
                         continue
+                    y0 = jax.tree_map(operator.itemgetter(i), ys)
+                    y1 = jax.tree_map(operator.itemgetter(i + 1), ys)
                     points = jnp.linspace(t0, t1, 10)
                     firstval = interp.evaluate(t0, left=False)
                     vals = jax.vmap(interp.evaluate)(points[1:])
@@ -181,17 +200,21 @@ def test_interpolation_classes(mode, getkey):
                     jax.tree_map(_test, firstderiv, derivs, y0, y1)
 
 
+# TODO: test around vmap -- that it should handle repeated times correctly.
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_dense_interpolation(solver_ctr, getkey):
     y0 = jrandom.uniform(getkey(), (), minval=0.4, maxval=2)
     solver = solver_ctr(lambda t, y, args: -y)
     sol = diffrax.diffeqsolve(
-        solver, t0=0, t1=1, y0=y0, dt0=0.01, saveat=diffrax.SaveAt(dense=True)
+        solver, t0=0, t1=1, y0=y0, dt0=0.0001, saveat=diffrax.SaveAt(dense=True)
     )
     points = jnp.linspace(0, 1, 1000)  # finer resolution than the step size
     vals = jax.vmap(sol.evaluate)(points)
-    derivs = jax.vmap(sol.derivative)(points)
-    true_vals = jnp.exp(points) * y0
-    true_derivs = -true_vals
-    assert jnp.allclose(vals, true_vals)
-    assert jnp.allclose(derivs, true_derivs)
+    true_vals = jnp.exp(-points) * y0
+    assert jnp.allclose(vals, true_vals, atol=1e-3)
+
+    # Tsit5 derivative is not yet implemented.
+    if solver_ctr is not diffrax.tsit5:
+        derivs = jax.vmap(sol.derivative)(points)
+        true_derivs = -true_vals
+        assert jnp.allclose(derivs, true_derivs, atol=1e-3)
