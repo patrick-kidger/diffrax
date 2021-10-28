@@ -93,10 +93,10 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         jax.tree_map(_assert, *self.coeffs)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        index, f = self._interpret_t(t, left)
+        index, frac = self._interpret_t(t, left)
 
         def _index(d, c, b, _):
-            return b[index] + 2 * f * c[index] + 3 * f * d[index]
+            return b[index] + frac * (2 * c[index] + frac * 3 * d[index])
 
         return jax.tree_map(_index, *self.coeffs)
 
@@ -105,10 +105,10 @@ class CubicInterpolation(AbstractGlobalInterpolation):
     ) -> PyTree:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
-        index, f = self._interpret_t(t0, left)
+        index, frac = self._interpret_t(t0, left)
 
         def _index(d, c, b, a):
-            return a[index] + f * (b[index] + f * (c[index] + f * d[index]))
+            return a[index] + frac * (b[index] + frac * (c[index] + frac * d[index]))
 
         return jax.tree_map(_index, *self.coeffs)
 
@@ -243,15 +243,13 @@ def _linear_interpolation(
     ys: Array["times", "channels"],  # noqa: F821
     replace_nans_at_start: Optional[Array["channels"]] = None,  # noqa: F821
 ) -> Array["times", "channels"]:  # noqa: F821
-    if ts.ndim != 1:
-        raise ValueError(f"ts should have 1 dimension, got {ts.ndim}.")
     if ys.ndim != 2:
         raise ValueError(f"ys should have 2 dimensions, got {ys.ndim}.")
 
     if rectilinear is not None:
         ys = fill_forward(ys)
         ys = jnp.repeat(ys, 2)
-        ys = ys.at[:-1, rectilinear].set(ys.at[1:], rectilinear)
+        ys = ys.at[:-1, rectilinear].set(ys.at[1:, rectilinear])
         ys = ys[:-1]
 
     # Do the check ourselves prior to broadcasting, for an informative error message.
@@ -297,7 +295,7 @@ def linear_interpolation(
 
 
 def _hermite_forward(
-    carry: Tuple[Scalar, Array["channels"], Array["channels"]],  # noqa: F821
+    carry: Tuple[Array["channels"], Array["channels"], Array["channels"]],  # noqa: F821
     value: Tuple[Scalar, Array["channels"]],  # noqa: F821
 ) -> Tuple[
     Tuple[Array["channels"], Array["channels"], Array["channels"]],  # noqa: F821
@@ -332,8 +330,7 @@ def _hermite_coeffs(t0, y0, deriv0, t1, y1):
     return d, c, b, a
 
 
-def _hermite_nan(operand):
-    prev_ti, prev_yi, prev_deriv_i, ti, _, _, next_ti, next_yi = operand
+def _hermite_impl(prev_ti, prev_yi, prev_deriv_i, ti, next_ti, next_yi):
     d, c, b, a = _hermite_coeffs(prev_ti, prev_yi, prev_deriv_i, next_ti, next_yi)
     ts = jnp.stack([prev_ti, next_ti])
     interpolation = CubicInterpolation(
@@ -342,16 +339,6 @@ def _hermite_nan(operand):
     interp_yi = interpolation.evaluate(ti)
     interp_deriv_i = interpolation.derivative(ti)
     return _hermite_coeffs(ti, interp_yi, interp_deriv_i, next_ti, next_yi)
-
-
-def _hermite_no_nan(operand):
-    _, _, _, ti, yi, deriv_i, next_ti, next_yi = operand
-    return _hermite_coeffs(ti, yi, deriv_i, next_ti, next_yi)
-
-
-def _hermite_cond(prev_ti, prev_yi, prev_deriv_i, ti, yi, deriv_i, next_ti, next_yi):
-    operand = (prev_ti, prev_yi, prev_deriv_i, ti, yi, deriv_i, next_ti, next_yi)
-    return lax.cond(jnp.isnan(yi), _hermite_nan, _hermite_no_nan, operand)
 
 
 @ft.partial(jax.jit, static_argnums=0)
@@ -367,8 +354,6 @@ def _backward_hermite_coefficients(
     Array["channels"],  # noqa: F821
     Array["channels"],  # noqa: F821
 ]:  # noqa: F821
-    if ts.ndim != 1:
-        raise ValueError(f"`ts` should have 1 dimension, got {ts.ndim}.")
     if ys.ndim != 2:
         raise ValueError(f"`ys` should have 2 dimensions, got {ys.ndim}.")
     if deriv0 is not None and deriv0.shape != (ys.shape[1],):
@@ -388,22 +373,20 @@ def _backward_hermite_coefficients(
     if deriv0 is None:
         deriv0 = (next_ys[0] - ys[0]) / (next_ts[0] - ts[0])
 
+    # t0 is of shape ("channels",), despite being timelike.
     t0 = jnp.full_like(ys[0], fill_value=jnp.nan)
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
         y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
-    _, (_ts, _ys, _derivs) = lax.scan(_hermite_forward, (t0, y0, deriv0), (ts, ys))
-
-    prev_ts = _ts[:-1]
-    prev_ys = _ys[:-1]
-    prev_derivs = _derivs[:-1]
     ts = ts[:-1]
     ys = ys[:-1]
-    derivs = _derivs[1:]
+    _, (prev_ts, prev_ys, prev_derivs) = lax.scan(
+        _hermite_forward, (t0, y0, deriv0), (ts, ys)
+    )
 
-    ds, cs, bs, as_ = jax.vmap(jax.vmap(_hermite_cond))(
-        prev_ts, prev_ys, prev_derivs, ts, ys, derivs, next_ts, next_ys
+    ds, cs, bs, as_ = jax.vmap(jax.vmap(_hermite_impl))(
+        prev_ts, prev_ys, prev_derivs, ts, next_ts, next_ys
     )
 
     return ds, cs, bs, as_

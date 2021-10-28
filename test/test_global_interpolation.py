@@ -11,7 +11,6 @@ from helpers import all_ode_solvers, tree_allclose
 
 # TODO:
 # - Decide how to handle weakly increasing times in interpolation routines
-# - Fix hermite interpolation
 
 
 @pytest.mark.parametrize("mode", ["linear", "cubic"])
@@ -121,7 +120,7 @@ def test_cubic_interpolation_deriv0():
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
-    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)[
+    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)[
         :, None
     ]
     assert jnp.allclose(derivs, true_derivs)
