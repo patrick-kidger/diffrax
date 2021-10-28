@@ -15,11 +15,10 @@ from .path import AbstractPath
 class AbstractGlobalInterpolation(AbstractPath):
     ts: Array["times"]  # noqa: F821
 
-    def _interpret_t(self, t: Scalar, left: bool) -> Tuple[Scalar, Scalar]:
-        # Has to happen at call time (not init time) as some JAX transformations wil
-        # replace `ts` with arbitrary Python objects, or (as a vmap output) arrays of
-        # different shapes.
+    def __post_init__(self):
         assert self.ts.ndim == 1
+
+    def _interpret_t(self, t: Scalar, left: bool) -> Tuple[Scalar, Scalar]:
         maxlen = self.ts.shape[0] - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
         index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
@@ -39,11 +38,16 @@ class AbstractGlobalInterpolation(AbstractPath):
 class LinearInterpolation(AbstractGlobalInterpolation):
     ys: PyTree["times", ...]  # noqa: F821
 
+    def __post_init__(self):
+        def _assert(_ys):
+            assert _ys.shape[0] == self.ts.shape[0]
+
+        jax.tree_map(_assert, self.ys)
+
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         index, _ = self._interpret_t(t, left)
 
         def _index(_ys):
-            assert _ys.shape[0] == self.ts.shape[0]
             return (_ys[index + 1] - _ys[index]) / (self.ts[index + 1] - self.ts[index])
 
         return jax.tree_map(_index, self.ys)
@@ -56,7 +60,6 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         index, fractional_part = self._interpret_t(t0, left)
 
         def _index(_ys):
-            assert _ys.shape[0] == self.ts.shape[0]
             return _ys[index]
 
         prev_ys = jax.tree_map(_index, self.ys)
@@ -80,13 +83,19 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         PyTree["times - 1", ...],  # noqa: F821
     ]
 
+    def __post_init__(self):
+        def _assert(d, c, b, a):
+            assert d.shape[0] + 1 == self.ts.shape[0]
+            assert c.shape[0] + 1 == self.ts.shape[0]
+            assert b.shape[0] + 1 == self.ts.shape[0]
+            assert a.shape[0] + 1 == self.ts.shape[0]
+
+        jax.tree_map(_assert, *self.coeffs)
+
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         index, f = self._interpret_t(t, left)
 
         def _index(d, c, b, _):
-            assert d.shape[0] + 1 == self.ts.shape[0]
-            assert c.shape[0] + 1 == self.ts.shape[0]
-            assert b.shape[0] + 1 == self.ts.shape[0]
             return b[index] + 2 * f * c[index] + 3 * f * d[index]
 
         return jax.tree_map(_index, *self.coeffs)
@@ -99,10 +108,6 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         index, f = self._interpret_t(t0, left)
 
         def _index(d, c, b, a):
-            assert d.shape[0] + 1 == self.ts.shape[0]
-            assert c.shape[0] + 1 == self.ts.shape[0]
-            assert b.shape[0] + 1 == self.ts.shape[0]
-            assert a.shape[0] + 1 == self.ts.shape[0]
             return a[index] + f * (b[index] + f * (c[index] + f * d[index]))
 
         return jax.tree_map(_index, *self.coeffs)
@@ -114,13 +119,18 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     unravel_y: jax.tree_util.Partial
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
 
+    def __post_init__(self):
+        def _assert(_d):
+            assert _d.shape[0] + 1 == self.ts.shape[0]
+
+        jax.tree_map(_assert, self.infos)
+
     def _get_local_interpolation(self, t: Scalar, left: bool):
         index, _ = self._interpret_t(t, left)
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
 
         def _index(_d):
-            assert _d.shape[0] + 1 == self.ts.shape[0]
             return _d[index]
 
         infos = jax.tree_map(_index, self.infos)
@@ -153,8 +163,10 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         return self.ts[-1] * self.direction
 
 
+#
 # The following interpolation routines are quite involved, as they are designed to
 # handle NaNs (representing missing data), by interpolating over them.
+#
 
 
 def _check_ts(ts: Array["times"]) -> None:  # noqa: F821
