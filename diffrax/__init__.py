@@ -7,6 +7,7 @@ from .global_interpolation import (
     DenseInterpolation,
     linear_interpolation,
     LinearInterpolation,
+    rectilinear_interpolation,
 )
 from .integrate import diffeqsolve
 from .local_interpolation import (

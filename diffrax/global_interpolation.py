@@ -237,7 +237,6 @@ def _linear_interpolation_impl(fill_forward_nans_at_end):
 
 @ft.partial(jax.jit, static_argnums=(0, 1))
 def _linear_interpolation(
-    rectilinear: Optional[int],
     fill_forward_nans_at_end: bool,
     ts: Array["times"],  # noqa: F821
     ys: Array["times", "channels"],  # noqa: F821
@@ -246,21 +245,6 @@ def _linear_interpolation(
     if ys.ndim != 2:
         raise ValueError(f"ys should have 2 dimensions, got {ys.ndim}.")
 
-    if rectilinear is not None:
-        ys = fill_forward(ys)
-        ys = jnp.repeat(ys, 2)
-        ys = ys.at[:-1, rectilinear].set(ys.at[1:, rectilinear])
-        ys = ys[:-1]
-
-    # Do the check ourselves prior to broadcasting, for an informative error message.
-    if ts.shape[0] != ys.shape[0]:
-        if rectilinear is None:
-            raise ValueError(
-                "Must have 2 * ts.shape[0] = ys.shape[0] + 1 when using rectilinear "
-                "interpolation."
-            )
-        else:
-            raise ValueError("ts and ys must consist of elements of the same length.")
     ts = jnp.broadcast_to(ts[:, None], ys.shape)
 
     if replace_nans_at_start is None:
@@ -282,16 +266,41 @@ def linear_interpolation(
     ts: Array["times"],  # noqa: F821
     ys: PyTree,
     *,
-    rectilinear: Optional[int] = None,
     fill_forward_nans_at_end: bool = False,
     replace_nans_at_start: Optional[PyTree] = None,
 ) -> PyTree:
     _check_ts(ts)
-    fn = ft.partial(_linear_interpolation, rectilinear, fill_forward_nans_at_end, ts)
+    fn = ft.partial(_linear_interpolation, fill_forward_nans_at_end, ts)
     if replace_nans_at_start is None:
         return jax.tree_map(fn, ys)
     else:
         return jax.tree_map(fn, ys, replace_nans_at_start)
+
+
+@jax.jit
+def _rectilinear_interpolation(
+    ts: Array["times"],  # noqa: F821
+    replace_nans_at_start: Optional[Array["channels"]],  # noqa: F821
+    ys: Array["times", "channels"],  # noqa: F821
+) -> Array["times", "channels"]:  # noqa: F821
+    ts = ts.repeat(ts, 2)[1:]
+    ys = fill_forward(ys, replace_nans_at_start)
+    ys = jnp.repeat(ys, 2)[:-1]
+    return jnp.concatenate([ts[:, None], ys], axis=1)
+
+
+def rectilinear_interpolation(
+    ts: Array["times"],  # noqa: F821
+    ys: PyTree,
+    replace_nans_at_start: Optional[PyTree] = None,
+) -> PyTree:
+    _check_ts(ts)
+    if replace_nans_at_start is None:
+        fn = ft.partial(_rectilinear_interpolation, ts, None)
+        return jax.tree_map(fn, ys)
+    else:
+        fn = ft.partial(_rectilinear_interpolation, ts)
+        return jax.tree_map(fn, replace_nans_at_start, ys)
 
 
 def _hermite_forward(

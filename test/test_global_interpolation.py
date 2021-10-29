@@ -14,7 +14,7 @@ from helpers import all_ode_solvers, tree_allclose
 
 
 @pytest.mark.parametrize("mode", ["linear", "cubic"])
-def test_interpolation_coeffs(mode, getkey):
+def test_interpolation_coeffs(mode):
     # Data is linear so both linear and cubic interpolation should produce the same
     # results where there is missing data.
     ts = ys = jnp.linspace(0.0, 9.0, 10)
@@ -49,6 +49,77 @@ def test_interpolation_coeffs(mode, getkey):
     true_ys = ys.at[0].set(5.5).at[9].set(jnp.nan)[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
     (interp_ys,) = _interp(tree=True, replace_nans_at_start=(5.5,))
+    assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
+
+
+def test_rectilinear_interpolation_coeffs():
+    ts = jnp.linspace(0.0, 9.0, 10)
+    ys = jnp.array(
+        [jnp.nan, 0.2, 0.1, jnp.nan, jnp.nan, 0.5, jnp.nan, 0.8, 0.1, jnp.nan]
+    )[:, None]
+
+    interp_ys = diffrax.rectilinear_interpolation(ts, ys)
+    true_ys = jnp.array(
+        [
+            [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9],
+            [
+                jnp.nan,
+                jnp.nan,
+                0.2,
+                0.2,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.8,
+                0.8,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+            ],
+        ]
+    )
+    assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
+    (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
+    assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
+
+    interp_ys = diffrax.rectilinear_interpolation(ts, ys, replace_nans_at_start=5.5)
+    true_ys = jnp.array(
+        [
+            [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9],
+            [
+                5.5,
+                5.5,
+                0.2,
+                0.2,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.8,
+                0.8,
+                0.1,
+                0.1,
+                0.1,
+                0.1,
+            ],
+        ]
+    )
+    assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
+    (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
 

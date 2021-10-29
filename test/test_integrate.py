@@ -96,7 +96,8 @@ def test_order(solver_ctr):
         errors.append(jnp.log2(error))
 
     order = scipy.stats.linregress(exponents, errors).slope
-    assert solver.order - 0.8 < order < solver.order + 0.8
+    # We accept quite a wide range. Improving this test would be nice.
+    assert -0.9 < order - solver.order < 0.9
 
 
 # Step size deliberately chosen not to divide the time interval

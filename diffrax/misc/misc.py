@@ -80,9 +80,14 @@ def _fill_forward(
 
 @jax.jit
 def fill_forward(
-    ys: Array["times", "channels"]  # noqa: F821
+    ys: Array["times", "channels"],  # noqa: F821
+    replace_nans_at_start: Optional[Array["channels"]] = None,  # noqa: F821
 ) -> Array["times, channels"]:  # noqa: F821
-    _, ys = lax.scan(_fill_forward, ys[0], ys)
+    if replace_nans_at_start is None:
+        y0 = ys[0]
+    else:
+        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
+    _, ys = lax.scan(_fill_forward, y0, ys)
     return ys
 
 
