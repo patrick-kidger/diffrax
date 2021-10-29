@@ -1,3 +1,4 @@
+import functools as ft
 import operator
 
 import diffrax
@@ -13,7 +14,7 @@ from helpers import all_ode_solvers, tree_allclose
 # - Decide how to handle weakly increasing times in interpolation routines
 
 
-@pytest.mark.parametrize("mode", ["linear", "cubic"])
+@pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])
 def test_interpolation_coeffs(mode):
     # Data is linear so both linear and cubic interpolation should produce the same
     # results where there is missing data.
@@ -21,34 +22,60 @@ def test_interpolation_coeffs(mode):
     nan_ys = ys.at[jnp.array([0, 3, 4, 6, 9])].set(jnp.nan)
     nan_ys = nan_ys[:, None]
 
-    def _interp(tree, **kwargs):
-        if tree:
-            to_interp = (nan_ys,)
+    def _interp(tree, duplicate, **kwargs):
+        if duplicate:
+            to_interp = jnp.repeat(nan_ys, 2, axis=-1)
         else:
             to_interp = nan_ys
+        if tree:
+            to_interp = (to_interp,)
         if mode == "linear":
             return diffrax.linear_interpolation(ts, to_interp, **kwargs)
+
+        if mode == "linear2":
+            coeffs = diffrax.linear_interpolation(ts, to_interp, **kwargs)
+            interp = diffrax.LinearInterpolation(ts, coeffs)
         elif mode == "cubic":
             coeffs = diffrax.backward_hermite_coefficients(ts, to_interp, **kwargs)
             interp = diffrax.CubicInterpolation(ts, coeffs)
-            return jax.vmap(interp.evaluate)(ts)
+        else:
+            raise ValueError
 
-    interp_ys = _interp(tree=False)
+        left = jax.vmap(interp.evaluate)(ts)
+        right = jax.vmap(ft.partial(interp.evaluate, left=False))(ts)
+
+        def _merge(lef, rig):
+            # Must be identical where neither of them are nan
+            isnan = jnp.isnan(lef) | jnp.isnan(rig)
+            _lef = jnp.where(isnan, 0, lef)
+            _rig = jnp.where(isnan, 0, rig)
+            assert jnp.array_equal(_lef, _rig)
+            return jnp.where(jnp.isnan(rig), lef, rig)
+
+        return jax.tree_map(_merge, left, right)
+
+    interp_ys = _interp(tree=False, duplicate=False)
     true_ys = ys.at[jnp.array([0, 9])].set(jnp.nan)[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = _interp(tree=True)
+    interp_ys = _interp(tree=False, duplicate=True)
+    assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
+    (interp_ys,) = _interp(tree=True, duplicate=False)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
-    interp_ys = _interp(tree=False, fill_forward_nans_at_end=True)
+    interp_ys = _interp(tree=False, duplicate=False, fill_forward_nans_at_end=True)
     true_ys = ys.at[0].set(jnp.nan).at[9].set(8.0)[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = _interp(tree=True, fill_forward_nans_at_end=True)
+    interp_ys = _interp(tree=False, duplicate=True, fill_forward_nans_at_end=True)
+    assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
+    (interp_ys,) = _interp(tree=True, duplicate=False, fill_forward_nans_at_end=True)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
-    interp_ys = _interp(tree=False, replace_nans_at_start=5.5)
+    interp_ys = _interp(tree=False, duplicate=False, replace_nans_at_start=5.5)
     true_ys = ys.at[0].set(5.5).at[9].set(jnp.nan)[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = _interp(tree=True, replace_nans_at_start=(5.5,))
+    interp_ys = _interp(tree=False, duplicate=True, replace_nans_at_start=5.5)
+    assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
+    (interp_ys,) = _interp(tree=True, duplicate=False, replace_nans_at_start=(5.5,))
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
 
@@ -82,10 +109,9 @@ def test_rectilinear_interpolation_coeffs():
                 0.1,
                 0.1,
                 0.1,
-                0.1,
             ],
         ]
-    )
+    ).T
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
     (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
@@ -114,12 +140,13 @@ def test_rectilinear_interpolation_coeffs():
                 0.1,
                 0.1,
                 0.1,
-                0.1,
             ],
         ]
-    )
+    ).T
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
+    (interp_ys,) = diffrax.rectilinear_interpolation(
+        ts, (ys,), replace_nans_at_start=(5.5,)
+    )
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
 

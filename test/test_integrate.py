@@ -164,19 +164,18 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
 
 
 @pytest.mark.parametrize(
-    "solver_ctr,dt0",
+    "solver_ctr,stepsize_controller,dt0",
     (
-        (diffrax.euler, 0.3),
-        (diffrax.tsit5, 0.3),
-        (diffrax.tsit5, None),
-        (diffrax.kvaerno3, None),
+        (diffrax.euler, diffrax.ConstantStepSize(), 0.3),
+        (diffrax.tsit5, diffrax.ConstantStepSize(), 0.3),
+        (diffrax.tsit5, diffrax.IController(rtol=1e-8, atol=1e-8), None),
+        (diffrax.kvaerno3, diffrax.IController(rtol=1e-8, atol=1e-8), None),
     ),
 )
 @pytest.mark.parametrize("treedef", treedefs)
-def test_pytree_state(solver_ctr, dt0, treedef, getkey):
+def test_pytree_state(solver_ctr, stepsize_controller, dt0, treedef, getkey):
     solver = solver_ctr(lambda t, y, args: jax.tree_map(operator.neg, y))
     y0 = random_pytree(getkey(), treedef)
-    stepsize_controller = diffrax.IController(rtol=1e-8, atol=1e-8)
     sol = diffrax.diffeqsolve(
         solver, t0=0, t1=1, y0=y0, dt0=dt0, stepsize_controller=stepsize_controller
     )

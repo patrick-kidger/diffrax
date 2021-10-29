@@ -436,7 +436,7 @@ def _test(solver_ctr, problems, higher):
             rtol = 1e-3
             atol = 1e-3
         else:
-            rtol = 1e-5
-            atol = 1e-5
+            rtol = 3e-5
+            atol = 3e-5
 
         assert tree_allclose(y1, scipy_y1, rtol=rtol, atol=atol)

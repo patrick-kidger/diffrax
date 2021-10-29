@@ -218,24 +218,7 @@ def _linear_interpolation_forward(
     return (carry_ti, carry_yi), y
 
 
-def _linear_interpolation_impl(fill_forward_nans_at_end):
-    def _linear_interpolation_impl_(operand):
-        y0, ts, ys = operand
-
-        _, (next_ts, next_ys) = lax.scan(
-            _interpolation_reverse, (ts[-1], ys[-1]), (ts, ys), reverse=True
-        )
-        if fill_forward_nans_at_end:
-            next_ys = fill_forward(next_ys)
-        _, ys = lax.scan(
-            _linear_interpolation_forward, (ts[0], y0), (ts, ys, next_ts, next_ys)
-        )
-        return ys
-
-    return _linear_interpolation_impl_
-
-
-@ft.partial(jax.jit, static_argnums=(0, 1))
+@ft.partial(jax.jit, static_argnums=0)
 def _linear_interpolation(
     fill_forward_nans_at_end: bool,
     ts: Array["times"],  # noqa: F821
@@ -251,13 +234,14 @@ def _linear_interpolation(
         y0 = ys[0]
     else:
         y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
-    cond = jnp.any(jnp.isnan(ys))
-    operand = (y0, ts, ys)
-    ys = lax.cond(
-        cond,
-        _linear_interpolation_impl(fill_forward_nans_at_end),
-        lambda _: ys,
-        operand,
+
+    _, (next_ts, next_ys) = lax.scan(
+        _interpolation_reverse, (ts[-1], ys[-1]), (ts, ys), reverse=True
+    )
+    if fill_forward_nans_at_end:
+        next_ys = fill_forward(next_ys)
+    _, ys = lax.scan(
+        _linear_interpolation_forward, (ts[0], y0), (ts, ys, next_ts, next_ys)
     )
     return ys
 
@@ -283,9 +267,9 @@ def _rectilinear_interpolation(
     replace_nans_at_start: Optional[Array["channels"]],  # noqa: F821
     ys: Array["times", "channels"],  # noqa: F821
 ) -> Array["times", "channels"]:  # noqa: F821
-    ts = ts.repeat(ts, 2)[1:]
+    ts = jnp.repeat(ts, 2, axis=0)[1:]
     ys = fill_forward(ys, replace_nans_at_start)
-    ys = jnp.repeat(ys, 2)[:-1]
+    ys = jnp.repeat(ys, 2, axis=0)[:-1]
     return jnp.concatenate([ts[:, None], ys], axis=1)
 
 
@@ -312,16 +296,14 @@ def _hermite_forward(
 ]:
 
     prev_ti, prev_yi, prev_deriv_i = carry
-    ti, yi = value
-    deriv_i = (yi - prev_yi) / (ti - prev_ti)
+    ti, yi, next_ti, next_yi = value
+    first_deriv_i = (next_yi - yi) / (next_ti - ti)
+    later_deriv_i = (yi - prev_yi) / (ti - prev_ti)
+    deriv_i = jnp.where(jnp.isnan(prev_yi), first_deriv_i, later_deriv_i)
     cond = jnp.isnan(yi)
-    # deriv_cond is checked separately, as a trick to handle the first iteration: on
-    # that we initialise prev_ti = nan, so that the check here fails and prev_deriv_i
-    # specified is used.
-    deriv_cond = jnp.isnan(deriv_i)
     carry_ti = jnp.where(cond, prev_ti, ti)
     carry_yi = jnp.where(cond, prev_yi, yi)
-    carry_deriv_i = jnp.where(deriv_cond, prev_deriv_i, deriv_i)
+    carry_deriv_i = jnp.where(cond, prev_deriv_i, deriv_i)
 
     return (carry_ti, carry_yi, carry_deriv_i), (carry_ti, carry_yi, carry_deriv_i)
 
@@ -379,20 +361,21 @@ def _backward_hermite_coefficients(
     if fill_forward_nans_at_end:
         next_ys = fill_forward(next_ys)
 
-    if deriv0 is None:
-        deriv0 = (next_ys[0] - ys[0]) / (next_ts[0] - ts[0])
-
-    # t0 is of shape ("channels",), despite being timelike.
-    t0 = jnp.full_like(ys[0], fill_value=jnp.nan)
+    t0 = ts[0]
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
         y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
+    if deriv0 is None:
+        deriv0 = (next_ys[0] - y0) / (next_ts[0] - t0)
     ts = ts[:-1]
     ys = ys[:-1]
     _, (prev_ts, prev_ys, prev_derivs) = lax.scan(
-        _hermite_forward, (t0, y0, deriv0), (ts, ys)
+        _hermite_forward, (t0, y0, deriv0), (ts[1:], ys[1:], next_ts[1:], next_ys[1:])
     )
+    prev_ts = jnp.concatenate([t0[None], prev_ts])
+    prev_ys = jnp.concatenate([y0[None], prev_ys])
+    prev_derivs = jnp.concatenate([deriv0[None], prev_derivs])
 
     ds, cs, bs, as_ = jax.vmap(jax.vmap(_hermite_impl))(
         prev_ts, prev_ys, prev_derivs, ts, next_ts, next_ys
