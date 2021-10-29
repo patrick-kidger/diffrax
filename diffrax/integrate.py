@@ -14,6 +14,98 @@ from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 
 
+#
+# Helpers meant to emulate JAX, until JAX issues #8239, #8193, #8184 are fixed.
+#
+
+
+class _SetAtInplaceArray:
+    def __init__(self, inplacearray, index):
+        self.inplacearray = inplacearray
+        self.index = index
+
+    def set(self, value):
+        return _InplaceArray(
+            None, _existing=self.inplacearray, _index=self.index, _value=value
+        )
+
+
+class _AtInplaceArray:
+    def __init__(self, inplacearray):
+        self.inplacearray = inplacearray
+
+    def __getitem__(self, index):
+        return _SetAtInplaceArray(self.inplacearray, index)
+
+
+class _InplaceArray:
+    def __init__(self, shape, *, _existing=None, _index=None, _value=None):
+        if _existing is None:
+            self.shape = shape
+            self.indices = []
+            self.values = []
+        else:
+            self.shape = _existing.shape
+            self.indices = _existing.indices
+            self.values = _existing.values
+            self.indices.append(_index)
+            self.values.append(_value)
+            _existing.clean = False
+        self.clean = True
+
+    @property
+    def at(self):
+        assert self.clean
+        return _AtInplaceArray(self)
+
+    @staticmethod
+    @ft.partial(jax.jit, static_argnums=0)
+    def _to_jax(shape, indices, values):
+        out = jnp.empty(shape)
+        for i, v in zip(indices, values):
+            out = out.at[i].set(v)
+        return out
+
+    def to_jax(self):
+        assert self.clean
+        if len(self.indices) < 11:
+            pad_to = 10
+        else:
+            pad_to = 20
+        rem = len(self.indices) % pad_to
+        if rem != 0:
+            padding = pad_to - rem
+            last_index = self.indices[-1]
+            last_value = self.values[-1]
+            for _ in range(padding):
+                self.indices.append(last_index)
+                self.values.append(last_value)
+        return self._to_jax(self.shape, self.indices, self.values)
+
+
+def _make_update(i, u, v):
+    return u if i is None else v.at[i].set(u)
+
+
+def _python_bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
+    # Python version of bounded_while_loop (that doens't support Index).
+    val = init_val
+    cond = cond_fun(val)
+    num_steps = 0
+    while _jit_any(unvmap(cond)) and num_steps < max_steps:
+        num_steps += 1
+        update, index = body_fun(val)
+        new_val = jax.tree_map(_make_update, index, update, val)
+        val = jax.tree_map(lambda a, b: jnp.where(cond, a, b), new_val, val)
+        cond = cond_fun(val)
+    return val
+
+
+#
+# ~Helpers
+#
+
+
 @jax.jit
 def _not_done(tprev, t1, result):
     return (tprev < t1) & (result == RESULTS.successful)
