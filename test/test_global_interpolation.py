@@ -10,10 +10,6 @@ import pytest
 from helpers import all_ode_solvers, tree_allclose
 
 
-# TODO:
-# - Decide how to handle weakly increasing times in interpolation routines
-
-
 @pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])
 def test_interpolation_coeffs(mode):
     # Data is linear so both linear and cubic interpolation should produce the same
@@ -230,7 +226,7 @@ def test_interpolation_classes(mode, getkey):
     num_channels = 3
     ts_ = [
         jnp.linspace(0, 10, length),
-        jnp.array([0.0, 2.0, 3.0, 3.1, 4.0, 4.0, 5.0, 5.0]),
+        jnp.array([0.0, 2.0, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1]),
     ]
     _make = lambda: jrandom.normal(getkey(), (length, num_channels))
     ys_ = [
@@ -250,23 +246,8 @@ def test_interpolation_classes(mode, getkey):
 
             assert jnp.array_equal(interp.t0, ts[0])
             assert jnp.array_equal(interp.t1, ts[-1])
-            true_ys = []
-            prev_ti = None
-            prev_yi = None
-            for i, ti in enumerate(ts):
-                yi = jax.tree_map(operator.itemgetter(i), ys)
-
-                # It's important any time ti == prev_ti that the associated yi is
-                # treated as "junk data" and ignored.
-                if ti == prev_ti:
-                    true_ys.append(prev_yi)
-                else:
-                    true_ys.append(yi)
-                prev_ti = ti
-                prev_yi = yi
-            true_ys = diffrax.misc.stack_pytrees(true_ys)
             pred_ys = jax.vmap(interp.evaluate)(ts)
-            assert tree_allclose(pred_ys, true_ys)
+            assert tree_allclose(pred_ys, ys)
 
             if mode == "linear":
                 for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
@@ -297,21 +278,49 @@ def test_interpolation_classes(mode, getkey):
                     jax.tree_map(_test, firstderiv, derivs, y0, y1)
 
 
-# TODO: test around vmap -- that it should handle repeated times correctly.
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_dense_interpolation(solver_ctr, getkey):
+def _test_dense_interpolation(solver_ctr, getkey, t1):
     y0 = jrandom.uniform(getkey(), (), minval=0.4, maxval=2)
     solver = solver_ctr(lambda t, y, args: -y)
     sol = diffrax.diffeqsolve(
-        solver, t0=0, t1=1, y0=y0, dt0=0.0001, saveat=diffrax.SaveAt(dense=True)
+        solver, t0=0, t1=t1, y0=y0, dt0=0.01, saveat=diffrax.SaveAt(dense=True)
     )
-    points = jnp.linspace(0, 1, 1000)  # finer resolution than the step size
+    points = jnp.linspace(0, t1, 1000)  # finer resolution than the step size
     vals = jax.vmap(sol.evaluate)(points)
     true_vals = jnp.exp(-points) * y0
-    assert jnp.allclose(vals, true_vals, atol=1e-3)
 
     # Tsit5 derivative is not yet implemented.
-    if solver_ctr is not diffrax.tsit5:
+    if solver_ctr is diffrax.tsit5:
+        derivs = None
+        true_derivs = None
+    else:
         derivs = jax.vmap(sol.derivative)(points)
         true_derivs = -true_vals
-        assert jnp.allclose(derivs, true_derivs, atol=1e-3)
+
+    # TODO: apply more stringent tolerances where possible.
+    # Need to upgrade away from some of the simplistic interpolation routines used at
+    # the moment though.
+    tol = 1e-1
+    return vals, true_vals, derivs, true_derivs, tol
+
+
+@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
+def test_dense_interpolation(solver_ctr, getkey):
+    vals, true_vals, derivs, true_derivs, tol = _test_dense_interpolation(
+        solver_ctr, getkey, 1
+    )
+    assert jnp.allclose(vals, true_vals, atol=tol, rtol=tol)
+    if derivs is not None:
+        assert jnp.allclose(derivs, true_derivs, atol=tol, rtol=tol)
+
+
+# When vmap'ing then it can happen that some batch elements take more steps to solve
+# than others. This means some padding is used to make things line up; here we test
+# that all of this works as intended.
+@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
+def test_dense_interpolation_vmap(solver_ctr, getkey):
+    _test_dense = ft.partial(_test_dense_interpolation, solver_ctr, getkey)
+    _test_dense_vmap = jax.vmap(_test_dense, out_axes=(0, 0, 0, 0, None))
+    vals, true_vals, derivs, true_derivs, tol = _test_dense_vmap(jnp.array([0.5, 1.0]))
+    assert jnp.allclose(vals, true_vals, atol=tol, rtol=tol)
+    if derivs is not None:
+        assert jnp.allclose(derivs, true_derivs, atol=tol, rtol=tol)

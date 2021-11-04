@@ -166,7 +166,6 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
 @pytest.mark.parametrize(
     "solver_ctr,stepsize_controller,dt0",
     (
-        (diffrax.euler, diffrax.ConstantStepSize(), 0.3),
         (diffrax.tsit5, diffrax.ConstantStepSize(), 0.3),
         (diffrax.tsit5, diffrax.IController(rtol=1e-8, atol=1e-8), None),
         (diffrax.kvaerno3, diffrax.IController(rtol=1e-8, atol=1e-8), None),
