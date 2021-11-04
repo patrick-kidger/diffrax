@@ -5,7 +5,19 @@ theme:
     # - This means the default github-theme CSS isn't loaded.
     # - This means we only load the highlighting for those languages we specify manually.
     highlightjs: false
+
 site_name: Diffrax Documentation
+site_description: The documentation for the Diffrax software library.
+site_author: Patrick Kidger
+
+# These are deliberately not included.
+# The reason is that our examples live outside the `docs` directory (and are accessed
+# via symlink). This mechanism isn't flexible enough to have two different edit_uri's
+# depending on the page.
+#repo_url: https://github.com/patrick-kidger/diffrax
+#repo_name: GitHub
+#edit_uri: blob/master/docs
+
 strict: true  # Don't allow warnings during the build process
 
 extra_javascript: 
@@ -29,18 +41,19 @@ markdown_extensions:
     - pymdownx.superfences
 
 plugins:
+    - search
     - mknotebooks  # Jupyter notebooks
 
 nav:
     - 'index.md'
     - Examples:
-#        - 'examples/neural_ode.ipynb'
-#        - 'examples/neural_cde.ipynb'
-#        - 'examples/latent_ode.ipynb'
-        - 'examples/continuous_normalising_flow.ipynb'
-#        - 'examples/symbolic_regression.ipynb'
-#        - 'examples/stiff_ode.ipynb'
-#        - 'examples/stochastic_gradient_descent.ipynb'
+        - Neural ODE: 'examples/neural_ode.ipynb'
+        - Neural CDE: 'examples/neural_cde.ipynb'
+        - Latent ODE: 'examples/latent_ode.ipynb'
+        - Continuous Normalising Flow: 'examples/continuous_normalising_flow.ipynb'
+        - Symbolic Regression: 'examples/symbolic_regression.ipynb'
+        - Stiff ODE: 'examples/stiff_ode.ipynb'
+        - Stochastic Gradient Descent: 'examples/stochastic_gradient_descent.ipynb'
     - Further Details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'
