@@ -1,0 +1,8 @@
+# Latest version at time of writing
+mkdocs==1.2.3
+pymdown-extensions==9.0
+mknotebooks==0.7.1
+
+# Always use most up-to-date version
+jax[cpu]
+equinox
