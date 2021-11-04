@@ -88,10 +88,11 @@ _SolverState = Tuple[Optional[Array["state"]], Scalar]  # noqa: F821
 #       iterate to find zi, using zi=0 as the predictor. This should give better
 #       numerical behaviour since the iteration is close to 0. (Although we have
 #       multiplied by the increment of the control, i.e. dt, which is small...)
-def _implicit_relation(ki, diagonal, vf_prod, ti, yi_partial, args, control):
+def _implicit_relation(ki, nonlinear_solve_args):
     # c.f:
     # https://github.com/SciML/DiffEqDevMaterials/blob/master/newton/output/main.pdf
     # (Bearing in mind that our ki is dt times smaller than theirs.)
+    diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
     return vf_prod(ti, yi_partial + diagonal * ki, args, control) - ki
 
 
@@ -152,7 +153,7 @@ class AbstractRungeKutta(AbstractSolver):
             k0 = lax.cond(
                 made_jump,
                 lambda _: self.term.vf_prod(t0, y0, args, control),
-                lambda _: k0 * (dt.astype(k0.dtype) / prev_dt),
+                lambda _: k0 * (dt / prev_dt),
                 None,
             )
             result = RESULTS.successful

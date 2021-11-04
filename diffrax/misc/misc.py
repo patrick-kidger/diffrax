@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Any, List, Optional, Tuple
 
 import jax
 import jax.lax as lax
@@ -8,12 +8,44 @@ from ..custom_types import Array, PyTree, Scalar
 from .ravel import ravel_pytree
 
 
+_itemsize_kind_type = {
+    (1, "i"): jnp.int8,
+    (2, "i"): jnp.int16,
+    (4, "i"): jnp.int32,
+    (8, "i"): jnp.int64,
+    (2, "f"): jnp.float16,
+    (4, "f"): jnp.float32,
+    (8, "f"): jnp.float64,
+}
+
+
+def force_bitcast_convert_type(val, new_type):
+    val = jnp.asarray(val)
+    intermediate_type = _itemsize_kind_type[new_type.dtype.itemsize, val.dtype.kind]
+    val = val.astype(intermediate_type)
+    return lax.bitcast_convert_type(val, new_type)
+
+
 def _stack_pytrees(*arrays):
     return jnp.stack(arrays)
 
 
 def stack_pytrees(pytrees: List[PyTree]) -> PyTree:
     return jax.tree_map(_stack_pytrees, *pytrees)
+
+
+def is_perturbed(x: Any) -> bool:
+    if isinstance(x, jax.ad.JVPTracer):
+        return True
+    elif isinstance(x, jax.core.Tracer):
+        return any(is_perturbed(attr) for name, attr in x._contents())
+    else:
+        return False
+
+
+def check_no_derivative(x: Array, name: str) -> None:
+    if is_perturbed(x):
+        raise ValueError(f"Cannot differentiate {name}.")
 
 
 class ContainerMeta(type):
@@ -35,6 +67,9 @@ class ContainerMeta(type):
     def __getitem__(cls, item):
         return cls._reverse_lookup[item]
 
+    def __len__(cls):
+        return len(cls._reverse_lookup)
+
 
 def _fill_forward(
     last_observed_yi: Array["channels"], yi: Array["channels"]  # noqa: F821
@@ -45,9 +80,14 @@ def _fill_forward(
 
 @jax.jit
 def fill_forward(
-    ys: Array["times", "channels"]  # noqa: F821
+    ys: Array["times", "channels"],  # noqa: F821
+    replace_nans_at_start: Optional[Array["channels"]] = None,  # noqa: F821
 ) -> Array["times, channels"]:  # noqa: F821
-    _, ys = lax.scan(_fill_forward, ys[0], ys)
+    if replace_nans_at_start is None:
+        y0 = ys[0]
+    else:
+        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
+    _, ys = lax.scan(_fill_forward, y0, ys)
     return ys
 
 
@@ -75,15 +115,17 @@ nextbefore.defjvps(lambda x_dot, _, __: x_dot)
 
 
 def linear_rescale(t0, t, t1):
-    # Assumes t0 <= t <= t1
+    """Calculates (t - t0) / (t1 - t0), assuming t0 <= t <= t1.
+
+    Specially handles the edge case t0 == t1:
+        - zero is returned;
+        - gradients through all three arguments are zero.
+    """
 
     cond = t0 == t1
-    # `where` to avoid NaN gradients
-    div = jnp.where(cond, 1, t1 - t0)
-    out = (t - t0) / div
-    # `where` to get correct gradient if `cond` is True.
-    out = jnp.where(cond, t, out)
-    return out
+    numerator = jnp.where(cond, 0, t - t0)
+    denominator = jnp.where(cond, 1, t1 - t0)
+    return numerator / denominator
 
 
 def rms_norm(x: PyTree) -> Scalar:

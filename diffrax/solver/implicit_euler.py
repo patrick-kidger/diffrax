@@ -14,7 +14,8 @@ from .base import AbstractSolver
 _SolverState = None
 
 
-def _implicit_relation(z1, vf_prod, t1, y0, args, control):
+def _implicit_relation(z1, nonlinear_solve_args):
+    vf_prod, t1, y0, args, control = nonlinear_solve_args
     return vf_prod(t1, y0 + z1, args, control) - z1
 
 

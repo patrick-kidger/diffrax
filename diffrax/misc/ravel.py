@@ -35,7 +35,9 @@ def _unravel_list(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # ignore complex-to-real cast warning
         return [
-            lax.convert_element_type(chunk.reshape(shape), dtype)
+            lax.convert_element_type(
+                chunk.reshape(shape), jnp.result_type(dtype, arr.dtype)
+            )
             for chunk, shape, dtype in zip(chunks, shapes, from_dtypes)
         ]
 
@@ -74,6 +76,11 @@ def ravel_pytree(
     """Like jax.flatten_util.ravel_pytree, but doesn't create a new unravel function
     each time. This means the unravel function can be passed to JIT-compiled functions
     without triggering recompilation, if pytree has the same structure.
+
+    In addition, unravelling will consider the dtype of the argment to be unravelled.
+    In particular this means that if the object to be raveled consists of all-integers,
+    and the object to unraveled has a floating-point dtype, then it will be unraveled
+    with floating point dtype.
     """
 
     leaves, treedef = jax.tree_flatten(pytree)

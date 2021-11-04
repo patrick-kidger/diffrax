@@ -18,7 +18,7 @@ class _SaveAt(eqx.Module):
 class SaveAt(_SaveAt):
     ts: Optional[Array["times"]] = None  # noqa: F821
 
-    def __init__(self, ts=None, **kwargs):
+    def __init__(self, *, ts=None, **kwargs):
         super().__init__(**kwargs)
         if ts is not None:
             ts = jnp.asarray(ts)

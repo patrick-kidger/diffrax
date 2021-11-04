@@ -165,7 +165,7 @@ class NeuralSDE(eqx.Module):
     def _setup(self, ts, key):
         init_key, bm_key = jrandom.split(key, 2)
         init = jrandom.normal(init_key, (self.initial_noise_size,))
-        control = diffrax.UnsafeBrownianPath(bm_key, (self.noise_size,))
+        control = diffrax.UnsafeBrownianPath(shape=(self.noise_size,), key=bm_key)
         saveat = diffrax.SaveAt(ts=ts)
         return ts, init, control, saveat
 
@@ -236,7 +236,7 @@ def get_data(key):
     def diffusion(t, y, args):
         return 2 * sigma * t / t1
 
-    bm = diffrax.UnsafeBrownianPath(bm_key, ())
+    bm = diffrax.UnsafeBrownianPath(shape=(), key=bm_key)
     solver = diffrax.euler_maruyama(drift, diffusion, bm)
     y0 = jrandom.uniform(y0_key, (1,), minval=-1, maxval=1)
     dt0 = 0.1

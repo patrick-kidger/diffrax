@@ -3,6 +3,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
+import helpers
+
 
 def _test_path_derivative(path, name):
     for percentage in (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0):
@@ -22,8 +24,16 @@ def test_derivative(getkey):
     ys = jrandom.normal(getkey(), (8, 4))
 
     paths = []
+
     # global interpolation
+
     linear_interp = diffrax.LinearInterpolation(ts=ts, ys=ys)
+    paths.append((linear_interp, "linear", ys[0], ys[-1]))
+
+    cubic_coeffs = diffrax.backward_hermite_coefficients(ts, ys)
+    cubic_interp = diffrax.CubicInterpolation(ts=ts, coeffs=cubic_coeffs)
+    paths.append((cubic_interp, "cubic", ys[0], ys[-1]))
+
     y0 = jrandom.normal(getkey(), (3,))
     dense_interp = diffrax.diffeqsolve(
         diffrax.euler(lambda t, y, p: -y),
@@ -34,22 +44,18 @@ def test_derivative(getkey):
         saveat=diffrax.SaveAt(dense=True, t1=True),
     )
     y1 = dense_interp.ys[-1]
-    paths.append((linear_interp, "linear", ys[0], ys[-1]))
     paths.append((dense_interp, "dense", y0, y1))
 
     # local interpolation
+
     local_linear_interp = diffrax.LocalLinearInterpolation(
         t0=ts[0], t1=ts[-1], y0=ys[0], y1=ys[-1]
     )
     paths.append((local_linear_interp, "local linear", ys[0], ys[-1]))
-    for solver in (
-        diffrax.euler,
-        diffrax.heun,
-        diffrax.fehlberg2,
-        diffrax.bosh3,
-        diffrax.dopri5,
-        diffrax.dopri8,
-    ):
+
+    for solver in helpers.all_ode_solvers:
+        if solver is diffrax.tsit5:
+            continue
         y0 = jrandom.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
             solver(lambda t, y, p: -y),
@@ -61,6 +67,8 @@ def test_derivative(getkey):
         )
         y1 = solution.ys[-1]
         paths.append((solution, solver.__name__, y0, y1))
+
+    # actually do tests
 
     for path, name, y0, y1 in paths:
         _test_path_derivative(path, name)

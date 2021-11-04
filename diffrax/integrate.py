@@ -236,6 +236,7 @@ def diffeqsolve(
         assert dt0 is not None
         tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
+    tnext_before = t0
 
     if solver_state is None:
         solver_state = solver.init(t0, tnext, y, args)
@@ -248,7 +249,7 @@ def diffeqsolve(
     if saveat.t0:
         out_indices.append(0)
         ts.append(t0)
-        ys.append(y0)
+        ys.append(y)
     del y0, dt0
 
     made_jump = jnp.full_like(t0, fill_value=False, dtype=bool)
@@ -263,7 +264,7 @@ def diffeqsolve(
     has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
     not_done = _not_done(tprev, t1, result)
-    save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
+    save_intermediate = (saveat.ts is not None) or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while _jit_any(unvmap(not_done)):
         # We have to keep track of several different times -- tprev, tnext,
@@ -282,6 +283,8 @@ def diffeqsolve(
         # solution at tnext_before.
         num_steps = num_steps + not_done
         raw_num_steps = raw_num_steps + 1
+        y_before = y
+        tnext_before_before = tnext_before
         tprev_before = tprev
         tnext_before = tnext
         (
@@ -333,13 +336,13 @@ def diffeqsolve(
                         interp_cond,
                     )
                     ys.append(yinterp)
-            if saveat.steps:
-                out_indices.append(len(ys))
-                ts.append(tnext_before)
-                ys.append(y)
             if saveat.dense:
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
+        if saveat.steps:
+            out_indices.append(len(ys))
+            ts.append(jnp.where(made_step, tnext_before, tnext_before_before))
+            ys.append(jnp.where(made_step, y, y_before))
 
         should_break = False
 
@@ -379,7 +382,7 @@ def diffeqsolve(
     # saveat.steps will include the final timepoint anyway
     if saveat.t1 and not saveat.steps:
         out_indices.append(len(ys))
-        ts.append(tprev)
+        ts.append(tnext_before)
         ys.append(y)
 
     if saveat.dense:

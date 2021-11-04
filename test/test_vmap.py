@@ -87,11 +87,14 @@ def test_vmap_y0(stepsize_controller):
             saveat=saveat,
         )
     )(y0)
-    num_steps = sol.ts.shape[1]
+    num_steps = sol.stats["num_steps"]
+    if not isinstance(stepsize_controller, diffrax.ConstantStepSize):
+        # not the same number of steps for every batch element
+        assert len(set(num_steps)) > 1
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert sol.ts.shape == (10, num_steps)
-    assert sol.ys.shape == (10, num_steps, 2)
+    assert sol.ts.shape == (10, max(num_steps))
+    assert sol.ys.shape == (10, max(num_steps), 2)
 
     saveat = diffrax.SaveAt(dense=True)
     sol = jax.vmap(

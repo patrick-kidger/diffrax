@@ -1,6 +1,6 @@
 import abc
 from dataclasses import field
-from typing import Optional, Tuple
+from typing import Optional
 
 import jax.numpy as jnp
 import numpy as np
@@ -33,13 +33,7 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
 
 
 class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
-    coeffs: Tuple[
-        Array["state"],  # noqa: F821
-        Array["state"],  # noqa: F821
-        Array["state"],  # noqa: F821
-        Array["state"],  # noqa: F821
-        Array["state"],  # noqa: F821
-    ]
+    coeffs: Array[5, "state"]  # noqa: F821
 
     def __init__(
         self,
@@ -72,6 +66,6 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         return jnp.polyval(self.coeffs, linear_rescale(self.t0, t0, self.t1))
 
     def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
-        a, b, c, d, _ = self.coeffs
+        coeffs = jnp.array([[4], [3], [2], [1]]) * self.coeffs[:4]
         t = linear_rescale(self.t0, t, self.t1)
-        return jnp.polyval([4 * a, 3 * b, 2 * c, d], t) / (self.t1 - self.t0)
+        return jnp.polyval(coeffs, t) / (self.t1 - self.t0)
