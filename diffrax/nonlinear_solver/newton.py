@@ -54,6 +54,33 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     """Newton's method for root-finding. (Also known as Newton--Raphson.)
 
     Also supports the quasi-Newton chord method.
+
+    **Arguments:**
+
+    - **max_steps** (`int`): The maximum number of steps allowed. If more than this are
+        required then the iteration fails.
+    - **rtol** (`Scalar`): The relative tolerance for determining convergence.
+    - **atol** (`Scalar`): The absolute tolerance for determining convergence.
+    - **kappa** (`Scalar`): The kappa value for determining convergence.
+    - **norm** (`callable`): A function `PyTree -> Scalar`, which is called to
+        determine the size of the current value. (Used in determining convergence.)
+    - **tolerate_nonconvergence** (`bool`): Whether to return an error code if the
+        iteration fails to convere (or whether to silently pretend it was successful).
+
+    !!! note
+        If using this as part of a implicit ODE solver, then:
+
+        - An adaptive step size controller should be used (e.g. `diffrax.IController`).
+          This will allow smaller steps to be made if the nonlinear solver fails to
+          converge.
+        - As a general rule, the values for `rtol` and `atol` should be set to the same
+          values as used for the adaptive step size controller.
+        - The value for `kappa` should be left alone.
+
+    !!! warning
+        Note that backpropagation through `__call__` may not produce accurate values if
+        `tolerate_nonconvergence=False`, as the backpropagation calculation implicitly
+        assumes that the forward pass converged.
     """
 
     max_steps: int = 10

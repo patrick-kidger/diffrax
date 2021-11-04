@@ -43,32 +43,44 @@ class AbstractNonlinearSolver(eqx.Module):
     ) -> Tuple[PyTree, RESULTS]:
         """Find `z` such that `fn(z, args) = 0`.
 
-        Arguments:
-            fn (callable): The function to find the root of.
-            x (PyTree): An initial guess for the location of the root.
-            args (PyTree): Arbitrary PyTree parameterising `fn`.
-            jac (optional): As returned by self.jac(...). Many root finding algorithms
-                use the Jacobian df/dx as part of their iteration. Often they will
-                recompute a Jacobian at every step (for example this is done in the
-                "standard" Newton solver). In practice computing the Jacobian may be
-                expensive, and it may be enough to use a single value for the Jacobian
-                held constant throughout the iteration. For the former behaviour, do
-                not pass `jac`. To get the latter behaviour, do pass `jac`.
+        **Arguments:**
+
+        - **fn** (`callable`): A function `PyTree -> PyTree` to find the root of.
+            (With input and output PyTrees of the same structure.)
+        - **x** (`PyTree`): An initial guess for the location of the root.
+        - **args** (`PyTree`): Arbitrary PyTree parameterising `fn`.
+        - **jac** (optional): As returned by `self.jac(...)`. Many root finding
+            algorithms use the Jacobian `d(fn)/dx` as part of their iteration. Often
+            they will recompute a Jacobian at every step (for example this is done in
+            the "standard" Newton solver). In practice computing the Jacobian may be
+            expensive, and it may be enough to use a single value for the Jacobian
+            held constant throughout the iteration. (This is a quasi-Newton method
+            known as the chord method.) For the former behaviour, do not pass `jac`.
+            To get the latter behaviour, do pass `jac`.
 
         Gradients will be computed with respect to `args`. (And in particular not with
         respect to either `fn` or `x` -- the latter has zero derivative by definition
         anyway.)
 
-        Returns:
-            A 2-tuple `(z, result)`, where `z` (hopefully) solves `fn(z, args) = 0`,
-            and `result` is a status code indicating whether the solver managed to
-            converge or not.
+        **Returns:**
+
+        A 2-tuple `(z, result)`, where `z` (hopefully) solves `fn(z, args) = 0`,
+        and `result` is a status code indicating whether the solver managed to
+        converge or not.
         """
+
         diff_args, nondiff_args = eqx.partition(args, is_perturbed)
         return self._solve(self, fn, x, jac, nondiff_args, diff_args)
 
     @staticmethod
     def jac(fn: callable, x: PyTree, args: PyTree) -> LU_Jacobian:
+        """Computes the LU decomposition of the Jacobian `d(fn)/dx`.
+
+        **Arguments:**
+
+        - **fn**, **x**, **args**: as `__call__`.
+        """
+
         flat, unflatten = ravel_pytree(x)
         curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
         if not jnp.issubdtype(flat, jnp.inexact):

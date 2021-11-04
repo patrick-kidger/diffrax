@@ -37,8 +37,9 @@ extra_css:
 
 markdown_extensions:
     - pymdownx.arithmatex  # Render LaTeX via MathJax
-    - pymdownx.betterem    # Better parsing of **emphasis**
-    - pymdownx.superfences
+    - pymdownx.superfences  # When rendering notebooks, distinguishes between (BibTex) fences. and code cells.
+    - admonition
+    - mkautodoc
 
 plugins:
     - search
@@ -54,6 +55,10 @@ nav:
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Stochastic Gradient Descent: 'examples/stochastic_gradient_descent.ipynb'
+    - API:
+        - Type terminology: 'api/type_terminology.md'
+        - Brownian controls: 'api/brownian.md'
+        - Nonlinear solvers: 'api/nonlinear_solver.md'
     - Further Details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'

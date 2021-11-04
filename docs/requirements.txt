@@ -1,8 +1,10 @@
-# Latest version at time of writing
-mkdocs==1.2.3
-pymdown-extensions==9.0
-mknotebooks==0.7.1
+# Latest versions at time of writing.
+mkdocs==1.2.3            # Main documentation generator.
+pymdown-extensions==9.0  # Markdown extensions e.g. to handle LaTeX.
+mkautodoc==0.1.0         # Autogenerate documentation from docstrings.
+mknotebooks==0.7.1       # Turn Jupyter Lab Notebooks into webpages.
 
-# Always use most up-to-date version
+# Dependencies of Diffrax itself.
+# Always use most up-to-date versions.
 jax[cpu]
-equinox
+equinox>=0.1.3  # At least this version needed to have class docstrings contain the correct arguments
