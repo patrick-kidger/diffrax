@@ -65,7 +65,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     - **norm** (`callable`): A function `PyTree -> Scalar`, which is called to
         determine the size of the current value. (Used in determining convergence.)
     - **tolerate_nonconvergence** (`bool`): Whether to return an error code if the
-        iteration fails to convere (or whether to silently pretend it was successful).
+        iteration fails to converge (or to silently pretend it was successful).
 
     !!! note
         If using this as part of a implicit ODE solver, then:
@@ -75,7 +75,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
           converge.
         - As a general rule, the values for `rtol` and `atol` should be set to the same
           values as used for the adaptive step size controller.
-        - The value for `kappa` should be left alone.
+        - The value for `kappa` should usually be left alone.
 
     !!! warning
         Note that backpropagation through `__call__` may not produce accurate values if

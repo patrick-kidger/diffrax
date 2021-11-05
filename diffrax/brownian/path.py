@@ -23,7 +23,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     Internally this operates by just sampling a fresh normal random variable over every
     interval, ignoring the correlation between samples exhibited in true Brownian
-    motion. Hence the restrictions are above. (They are when the correlation structure
+    motion. Hence the restrictions above. (They are when the correlation structure
     isn't needed.)
 
     **Arguments:**
@@ -45,7 +45,6 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     def evaluate(self, t0, t1):
         r"""Return a Brownian increment
-
         $w(t_1) - w(t_0) \sim \mathcal{N}(0, t_1 - t_0)$.
 
         **Arguments:**
@@ -55,7 +54,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
         **Returns:**
 
-        A JAX array of shape **shape**.
+        A JAX array of shape `shape`.
         """
         check_no_derivative(t0, "t0")
         check_no_derivative(t1, "t1")

@@ -1,14 +1,4 @@
-.wy-nav-side .wy-side-nav-search {
-    background-color: #FFF;
-}
-
-.wy-nav-side .icon {
-    color: #333;
-}
-
-.wy-nav-side .caption-text {
-    color: rgb(58, 124, 168);
-}
+/* Formats autodoc */
 
 div.autodoc-docstring {
   padding-left: 20px;
@@ -19,4 +9,19 @@ div.autodoc-docstring {
 div.autodoc-members {
   padding-left: 20px;
   margin-bottom: 15px;
+}
+
+/* Fit the Twitter handle alongside the GitHub one. */
+
+div.md-header__source {
+    width: revert;
+    max-width: revert;
+}
+
+a.md-source {
+    display: inline-block;
+}
+
+.md-source__repository {
+    max-width: 100%;
 }

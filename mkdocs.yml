@@ -1,43 +1,57 @@
 theme:
-    name: readthedocs
-    prev_next_buttons_location: none
-    # Syntax highlighting is done manually instead.
-    # - This means the default github-theme CSS isn't loaded.
-    # - This means we only load the highlighting for those languages we specify manually.
-    highlightjs: false
+    name: material
+    features:
+        - navigation.sections
+        - toc.integrate
+        - search.suggest
+        - header.autohide
+    palette:
+        - scheme: default
+          primary: white
+          accent: indigo
+          media: "(prefers-color-scheme: light)"
+          toggle:
+             icon: material/weather-night
+             name: Switch to dark mode
+        - scheme: slate
+          primary: black
+          accent: amber
+          media: "(prefers-color-scheme: dark)"
+          toggle:
+             icon: material/weather-sunny
+             name: Switch to light mode
+    icon:
+        repo: fontawesome/brands/github
+        logo: "material/math-integral-box"
+    favicon: "_static/favicon.png"
+    custom_dir: "docs/_overrides"
 
-site_name: Diffrax Documentation
+    # These additions are my own custom ones, having modified a partial.
+    twitter_name: "@PatrickKidger"
+    twitter_url: "https://twitter.com/PatrickKidger"
+
+site_name: Diffrax
 site_description: The documentation for the Diffrax software library.
 site_author: Patrick Kidger
 
-# These are deliberately not included.
-# The reason is that our examples live outside the `docs` directory (and are accessed
-# via symlink). This mechanism isn't flexible enough to have two different edit_uri's
-# depending on the page.
-#repo_url: https://github.com/patrick-kidger/diffrax
-#repo_name: GitHub
-#edit_uri: blob/master/docs
+repo_url: https://github.com/patrick-kidger/diffrax
+repo_name: patrick-kidger/diffrax
+edit_uri: ""  # No edit button, as some of our pages are in /docs and some in /examples via symlink, so it's impossible for them all to be accurate
 
 strict: true  # Don't allow warnings during the build process
 
 extra_javascript: 
-    # TODO: Switch to MathJax v3.
-    # Seems mildly faffy to get arithmatex to work with it so haven't done this.
+    # TODO: Switch to MathJax v3: https://squidfunk.github.io/mkdocs-material/reference/mathjax
     - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS_CHTML
-    # Python-only syntax-highlighting from https://highlightjs.org/download/
-    - _static/highlight.min.js
-    # Needed to enable syntax highlighting.
-    - _static/run_highlight.js
 
 extra_css:
-    # Syntax highlighting
-    - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/foundation.min.css
-    # Tweaks to the navbar. # TODO: would be nice to just use a proper theme
     - _static/custom_css.css
+    # Awful hack to get the favicon to load.  # TODO: find a proper way to include extra static files.
+    - _static/favicon.png
 
 markdown_extensions:
     - pymdownx.arithmatex  # Render LaTeX via MathJax
-    - pymdownx.superfences  # When rendering notebooks, distinguishes between (BibTex) fences. and code cells.
+    - pymdownx.superfences  # Seems to enable syntax highlighting when used with the Material theme.
     - admonition
     - mkautodoc
 
