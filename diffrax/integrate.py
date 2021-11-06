@@ -270,7 +270,7 @@ def diffeqsolve(
         maximum number of steps).
 
     !!! note
-        It is possible to have `t1 < t0`, in which case integration proceeds backawrds
+        It is possible to have `t1 < t0`, in which case integration proceeds backwards
         in time.
 
     !!! note

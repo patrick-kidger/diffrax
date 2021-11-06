@@ -14,6 +14,8 @@ _SolverState = TypeVar("_SolverState", bound=Optional[PyTree])
 
 @in_public_docs
 class AbstractSolver(eqx.Module):
+    """Abstract base class for all differential equation solvers."""
+
     @property
     @abc.abstractmethod
     def interpolation_cls(self) -> Type[AbstractLocalInterpolation]:

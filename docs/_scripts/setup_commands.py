@@ -1,6 +1,7 @@
 import argparse
 import importlib
 import typing
+import warnings
 from typing import Any
 
 import pytkdocs
@@ -49,7 +50,9 @@ def _postprocess(obj, path, bases):
                     docstring = f"Inherited from [`{base_alias}`][]."
                     break
             else:
-                assert False
+                raise RuntimeError(
+                    f"Inherited object {obj_name} not available on a public base class."
+                )
         else:
             for base in bases:
                 if obj_name in base.__dict__:
@@ -118,7 +121,10 @@ def main():
         out = _process_config(config)
         for path, out_object in zip(paths, out["objects"]):
             # (a, b, c, f, g)
-            _postprocess(out_object, path, bases=None)
+            try:
+                _postprocess(out_object, path, bases=None)
+            except Exception as e:
+                warnings.warn(f"Exception of type {type(e)} with message '{str(e)}'.")
         return out
 
     pytkdocs.cli.process_config = process_config

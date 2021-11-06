@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import ContainerMeta
+from .misc import ContainerMeta, in_public_docs
 from .path import AbstractPath
 
 
@@ -23,7 +23,10 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     RESULTS = int  # noqa: F811
 
 
+@in_public_docs
 class Solution(AbstractPath):
+    """The solution to a differential equation."""
+
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     ts: Optional[Array]
@@ -32,7 +35,7 @@ class Solution(AbstractPath):
     solver_state: Optional[PyTree]
     interpolation: Optional[DenseInterpolation]
     stats: Dict[str, Any]
-    result: int  # from RESULTS
+    result: RESULTS
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         if self.interpolation is None:
