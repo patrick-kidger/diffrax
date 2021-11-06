@@ -1,3 +1,4 @@
+import typing
 from dataclasses import field
 from typing import Any, Dict, Optional
 
@@ -16,6 +17,10 @@ class RESULTS(metaclass=ContainerMeta):
     implicit_nonconvergence = (
         "Implicit method did not converge within the required number of iterations."
     )
+
+
+if getattr(typing, "GENERATING_DOCUMENTATION", False):
+    RESULTS = int  # noqa: F811
 
 
 class Solution(AbstractPath):

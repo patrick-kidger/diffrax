@@ -4,6 +4,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jrandom
 
+from ..custom_types import Array, Scalar
 from ..misc import check_no_derivative, force_bitcast_convert_type
 from .base import AbstractBrownianPath
 
@@ -25,15 +26,10 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     interval, ignoring the correlation between samples exhibited in true Brownian
     motion. Hence the restrictions above. (They are when the correlation structure
     isn't needed.)
-
-    **Arguments:**
-
-    - **shape** (`tuple[int]`): What shape each individual Brownian sample should be.
-    - **key** (`jax.random.PRNGKey`): A random key.
     """
 
     shape: Tuple[int] = eqx.static_field()
-    key: jrandom.PRNGKey
+    key: "jax.random.PRNGKey"  # noqa: F821
 
     @property
     def t0(self):
@@ -43,14 +39,14 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def t1(self):
         return None
 
-    def evaluate(self, t0, t1):
+    def evaluate(self, t0: Scalar, t1: Scalar) -> Array:
         r"""Return a Brownian increment
         $w(t_1) - w(t_0) \sim \mathcal{N}(0, t_1 - t_0)$.
 
         **Arguments:**
 
-        - **t0** (`Scalar`)
-        - **t1** (`Scalar`)
+        - `t0`: Start of interval
+        - `t1`: End of interval
 
         **Returns:**
 
@@ -63,3 +59,11 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         key = jrandom.fold_in(self.key, t0_)
         key = jrandom.fold_in(key, t1_)
         return jrandom.normal(key, self.shape) * jnp.sqrt(t1 - t0)
+
+
+UnsafeBrownianPath.__init__.__doc__ = """
+**Arguments:**
+
+- `shape`: What shape each individual Brownian sample should be.
+- `key`: A random key.
+"""

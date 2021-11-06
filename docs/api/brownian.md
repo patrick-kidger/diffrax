@@ -2,8 +2,12 @@
 
 SDEs are simulated using a Brownian motion as a control. (See the neural SDE example.)
 
-## UnsafeBrownianPath
+::: diffrax.AbstractBrownianPath
+    selection:
+        members: false
 
 ::: diffrax.UnsafeBrownianPath
-    :docstring:
-    :members: evaluate
+    selection:
+        members:
+            - __init__
+            - evaluate

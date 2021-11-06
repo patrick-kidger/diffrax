@@ -2,4 +2,4 @@ from ..path import AbstractPath
 
 
 class AbstractBrownianPath(AbstractPath):
-    pass
+    "Abstract base class for all Brownian paths."
