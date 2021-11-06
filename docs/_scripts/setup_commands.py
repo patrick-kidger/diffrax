@@ -1,5 +1,6 @@
 import argparse
 import importlib
+import traceback
 import typing
 import warnings
 from typing import Any
@@ -9,6 +10,10 @@ import pytkdocs
 
 def _import(string: str) -> Any:
     pieces = string.split(".")
+    if len(pieces) == 1:
+        # Not a relative module.class lookup.
+        # Must be a builtin.
+        return None
     obj = importlib.import_module(pieces[0])
     for piece in pieces[1:]:
         obj = getattr(obj, piece)
@@ -21,6 +26,8 @@ def _postprocess(obj, path, bases):
         bases = []
         for base in obj["bases"]:
             base = _import(base)
+            if base is None:
+                continue
             # Only include those bases that are part of the public documentation.
             if "_import_alias" in base.__dict__:
                 bases.append(base)
@@ -35,9 +42,22 @@ def _postprocess(obj, path, bases):
             obj["properties"].remove(prop)
         except ValueError:
             pass
-    _obj = _import(path)
-    if getattr(_obj, "__isabstractmethod__", False):
-        obj["properties"].append("abstractmethod")
+    try:
+        _obj = _import(path)
+    except AttributeError:
+        pass
+        # Can happen when doing:
+        #
+        # @dataclass
+        # class A:
+        #       myfield: int
+        #
+        # and then trying to access `A.myfield`.
+        # This doesn't actually exist on the class object -- only on instances.
+        # Which means that the _import line will fail.
+    else:
+        if getattr(_obj, "__isabstractmethod__", False):
+            obj["properties"].append("abstractmethod")
 
     # (c)
     if obj["docstring"] == "":
@@ -124,7 +144,12 @@ def main():
             try:
                 _postprocess(out_object, path, bases=None)
             except Exception as e:
-                warnings.warn(f"Exception of type {type(e)} with message '{str(e)}'.")
+                tb = traceback.format_exc()
+                warnings.warn(
+                    f"When loading {out_object['name']}, an exception of type "
+                    f"{type(e)} was raised, with message '{str(e)}' and "
+                    f"traceback:\n{tb}."
+                )
         return out
 
     pytkdocs.cli.process_config = process_config

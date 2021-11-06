@@ -1,4 +1,4 @@
-# Differential Equation Solvers
+# Differential equation solvers
 
 ::: diffrax.AbstractSolver
     selection:

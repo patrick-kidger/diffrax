@@ -2,4 +2,15 @@
 
 ::: diffrax.Solution
     selection:
-        members: false
+        members:
+            - t0
+            - t1
+            - ts
+            - ys
+            - solver_state
+            - controller_state
+            - stats
+            - result
+            - message
+            - evaluate
+            - derivative

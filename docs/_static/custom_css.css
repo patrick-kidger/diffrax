@@ -36,13 +36,18 @@ nav.md-nav--secondary {
 div.doc-contents {
   padding-left: 25px;
   border-left: 4px solid rgba(230, 230, 230);
-  margin-bottom: 80px;
 }
 
 /* More space at the bottom of the page */
 
 .md-main__inner {
   margin-bottom: 1.5rem;
+}
+
+/* More space between root-level entries */
+
+article > .doc-object {
+    margin-bottom: 5rem;
 }
 
 /* Remove prev/next footer buttons */
