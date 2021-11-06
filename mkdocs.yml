@@ -94,7 +94,9 @@ nav:
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Stochastic Gradient Descent: 'examples/stochastic_gradient_descent.ipynb'
-    - API:
+    - Usage:
+        - Overview: 'usage/overview.md'
+    - Full API:
         - Type terminology: 'api/type_terminology.md'
         - Brownian controls: 'api/brownian.md'
         - Nonlinear solvers: 'api/nonlinear_solver.md'

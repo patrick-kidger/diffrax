@@ -5,12 +5,14 @@ import equinox as eqx
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
+from ..misc import in_public_docs
 from ..solution import RESULTS
 
 
 _SolverState = TypeVar("_SolverState", bound=Optional[PyTree])
 
 
+@in_public_docs
 class AbstractSolver(eqx.Module):
     @property
     @abc.abstractmethod
