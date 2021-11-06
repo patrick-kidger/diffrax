@@ -4,7 +4,8 @@ SDEs are simulated using a Brownian motion as a control. (See the neural SDE exa
 
 ::: diffrax.AbstractBrownianPath
     selection:
-        members: false
+        members:
+            - evaluate
 
 ::: diffrax.UnsafeBrownianPath
     selection:

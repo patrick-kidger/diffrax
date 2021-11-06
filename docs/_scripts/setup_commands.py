@@ -1,21 +1,80 @@
 import argparse
+import importlib
 import typing
+from typing import Any
 
 import pytkdocs
 
 
-def _postprocess_properties(x):
+def _import(string: str) -> Any:
+    pieces = string.split(".")
+    obj = importlib.import_module(pieces[0])
+    for piece in pieces[1:]:
+        obj = getattr(obj, piece)
+    return obj
+
+
+def _postprocess(obj, path, bases):
+    # (f)
+    if "bases" in obj:
+        bases = []
+        for base in obj["bases"]:
+            base = _import(base)
+            # Only include those bases that are part of the public documentation.
+            if "_import_alias" in base.__dict__:
+                bases.append(base)
+        obj["bases"] = [base._import_alias for base in bases]
+
+    # (a)
+    obj["path"] = path
+
+    # (b)
     for prop in ("dataclass", "special"):
         try:
-            x["properties"].remove(prop)
+            obj["properties"].remove(prop)
         except ValueError:
             pass
-    if "inherited" in x["properties"] and x["docstring"] == "":
-        docstring = "Inherited; check the documentation for the parent class(es)."
-        x["docstring"] = docstring
-        x["docstring_sections"] = [{"type": "markdown", "value": docstring}]
-    for child in x["children"].values():
-        _postprocess_properties(child)
+    _obj = _import(path)
+    if getattr(_obj, "__isabstractmethod__", False):
+        obj["properties"].append("abstractmethod")
+
+    # (c)
+    if obj["docstring"] == "":
+        docstring = ""
+        obj_name = obj["name"]
+        if "inherited" in obj["properties"]:
+            for base in bases:
+                if obj_name in base.__dict__:
+                    base_alias = base.__dict__["_import_alias"] + "." + obj_name
+                    docstring = f"Inherited from [`{base_alias}`][]."
+                    break
+            else:
+                assert False
+        else:
+            for base in bases:
+                if obj_name in base.__dict__:
+                    base_method = getattr(base, obj_name)
+                    if getattr(base_method, "__isabstractmethod__", False):
+                        base_alias = base.__dict__["_import_alias"] + "." + obj_name
+                        docstring = f"Implements [`{base_alias}`][]."
+                        break
+        if docstring != "":
+            obj["docstring_sections"] = [{"type": "markdown", "value": docstring}]
+
+    # (g)
+    if obj["name"] == "__init__":
+        del obj["signature"]["return_annotation"]
+
+    # Delete properties that are similar to those we're modifying. This is essentially
+    # "assert they're not used downstream".
+    # (As they may report the wrong result, given that we modify their siblings.)
+    del obj["docstring"]
+    del obj["parent_path"]
+
+    # Recurse into methods of classes, etc.
+    for child in obj["children"].values():
+        child_path = path + "." + child["name"]
+        _postprocess(child, child_path, bases)
 
 
 def main():
@@ -31,16 +90,26 @@ def main():
     # diffrax.folder.file.something.
 
     # (b)
-    # A few properties are removed to avoid common visual noise.
+    # A few properties are removed to avoid common visual noise. Some extras are added.
 
     # (c)
+    # Some docstrings are automatically provided for inherited methods, or methods
+    # implementing abstract methods
+
+    # (d)
     # By default pytkdocs has some really weird behaviour in which the docstring for
     # inherited magic methods are removed. This change enhances that check to apply
     # to all methods, not just magic methods.
 
-    # (d)
-    # A flag to say we're generating documentation is set, which Diffrax uses to
+    # (e)
+    # Set a flag to say we're generating documentation is set, which Diffrax uses to
     # customise how its types are displayed.
+
+    # (f)
+    # Only include those base classes that are part of the public documentation.
+
+    # (g)
+    # Skip the "-> None" return type annotation for __init__ methods.
 
     _process_config = pytkdocs.cli.process_config
 
@@ -48,16 +117,14 @@ def main():
         paths = [c["path"] for c in config["objects"]]
         out = _process_config(config)
         for path, out_object in zip(paths, out["objects"]):
-            # (a)
-            out_object["path"] = path
-            # (b)
-            _postprocess_properties(out_object)
+            # (a, b, c, f, g)
+            _postprocess(out_object, path, bases=None)
         return out
 
     pytkdocs.cli.process_config = process_config
 
-    # (c)
+    # (d)
     pytkdocs.loader.RE_SPECIAL = argparse.Namespace(match=lambda x: True)
 
-    # (d)
+    # (e)
     typing.GENERATING_DOCUMENTATION = True

@@ -63,6 +63,8 @@ plugins:
     - autorefs  # Cross-links to headings
     - mknotebooks  # Jupyter notebooks
     - mkdocstrings:
+        watch:
+            - diffrax
         handlers:
             python:
                 # Monkey-patches mkdocstrings/pytkdocs to get custom behaviuor

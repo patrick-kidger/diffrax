@@ -39,14 +39,21 @@ div.doc-contents {
   margin-bottom: 80px;
 }
 
-/* Avoid breaking parameters name, etc. in table cells. */
-
-td code {
-  word-break: normal !important;
-}
-
 /* More space at the bottom of the page */
 
 .md-main__inner {
   margin-bottom: 1.5rem;
+}
+
+/* Remove prev/next footer buttons */
+
+.md-footer__inner {
+    display: none;
+}
+
+/* Change font size for webpage */
+
+html {
+    /* Down from 137.5% which is the Material default */
+    font-size: 110%;
 }
