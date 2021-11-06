@@ -3,7 +3,6 @@ theme:
     features:
         - navigation.sections  # Sections are included in the navigation on the left.
         - toc.integrate  # Table of contents is integrated on the left; does not appear separately on the right.
-        - search.suggest  # autocomplete searches
         - header.autohide  # header disappears as you scroll
     palette:
         # Light mode / dark mode
@@ -53,6 +52,8 @@ extra_css:
 markdown_extensions:
     - pymdownx.arithmatex  # Render LaTeX via MathJax
     - pymdownx.superfences  # Seems to enable syntax highlighting when used with the Material theme.
+    - pymdownx.snippets:  # Include one Markdown file into another
+        base_path: docs
     - admonition
     - toc:
         permalink: "¤"  # Adds a clickable permalink to each section heading
@@ -98,3 +99,6 @@ nav:
     - Further Details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'
+        - 'further_details/citation.md'
+    - Developer Documentation:
+        - 'devdocs/predictor_dirk.md'
