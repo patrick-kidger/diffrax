@@ -46,7 +46,7 @@ def heun(
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,
     bm: Optional[AbstractBrownianPath] = None,
     **kwargs,
-):
+) -> Heun:
     if diffusion is None:
         if bm is not None:
             raise ValueError

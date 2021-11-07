@@ -106,6 +106,7 @@ nav:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
         - 'api/solver.md'
+        - 'api/saveat.md'
         - 'api/solution.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'

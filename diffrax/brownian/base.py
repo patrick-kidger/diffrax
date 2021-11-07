@@ -1,11 +1,9 @@
 import abc
 
 from ..custom_types import Array, Scalar
-from ..misc import in_public_docs
 from ..path import AbstractPath
 
 
-@in_public_docs
 class AbstractBrownianPath(AbstractPath):
     "Abstract base class for all Brownian paths."
 

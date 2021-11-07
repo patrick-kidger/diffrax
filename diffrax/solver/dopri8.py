@@ -337,5 +337,7 @@ class Dopri8(AbstractERK):
     order = 8
 
 
-def dopri8(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def dopri8(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> Dopri8:
     return Dopri8(term=ODETerm(vector_field=vector_field), **kwargs)

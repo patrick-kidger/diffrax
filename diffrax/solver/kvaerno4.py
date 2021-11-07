@@ -115,5 +115,7 @@ class Kvaerno4(AbstractESDIRK):
     order = 4
 
 
-def kvaerno4(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def kvaerno4(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> Kvaerno4:
     return Kvaerno4(term=ODETerm(vector_field=vector_field), **kwargs)

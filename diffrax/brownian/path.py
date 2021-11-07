@@ -5,11 +5,10 @@ import jax.numpy as jnp
 import jax.random as jrandom
 
 from ..custom_types import Array, Scalar
-from ..misc import check_no_derivative, force_bitcast_convert_type, in_public_docs
+from ..misc import check_no_derivative, force_bitcast_convert_type
 from .base import AbstractBrownianPath
 
 
-@in_public_docs
 class UnsafeBrownianPath(AbstractBrownianPath):
     """Brownian simulation that is only suitable for certain cases.
 

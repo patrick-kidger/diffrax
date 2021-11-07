@@ -5,7 +5,6 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
-from .docs import in_public_docs
 from .ravel import ravel_pytree
 
 
@@ -79,7 +78,6 @@ def _fill_forward(
     return yi, yi
 
 
-@in_public_docs(submodule="utils")
 @jax.jit
 def fill_forward(
     ys: Array["times", "channels"],  # noqa: F821

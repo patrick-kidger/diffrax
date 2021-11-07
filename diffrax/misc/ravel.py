@@ -8,7 +8,6 @@ import jax.numpy as jnp
 import numpy as np
 
 from ..custom_types import Array, PyTree
-from .docs import in_public_docs
 from .frozenarray import frozenarray, frozenndarray
 
 
@@ -70,7 +69,6 @@ def _unravel_pytree(
     return jax.tree_unflatten(treedef.value, unravel_list(flat))
 
 
-@in_public_docs(submodule="utils")
 @jax.jit
 def ravel_pytree(
     pytree: PyTree,

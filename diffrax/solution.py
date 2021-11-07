@@ -4,11 +4,10 @@ from typing import Any, Dict, Optional
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import ContainerMeta, in_public_docs
+from .misc import ContainerMeta
 from .path import AbstractPath
 
 
-@in_public_docs
 class RESULTS(metaclass=ContainerMeta):
     successful = ""
     max_steps_reached = "The maximum number of solver steps was reached."
@@ -24,7 +23,6 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     RESULTS = int  # noqa: F811
 
 
-@in_public_docs
 class Solution(AbstractPath):
     """The solution to a differential equation.
 
@@ -48,8 +46,8 @@ class Solution(AbstractPath):
 
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
-    ts: Optional[Array]
-    ys: Optional[PyTree]
+    ts: Optional[Array["times"]]  # noqa: F821
+    ys: Optional[PyTree["times", ...]]  # noqa: F821
     solver_state: Optional[PyTree]
     controller_state: Optional[PyTree]
     interpolation: Optional[DenseInterpolation]

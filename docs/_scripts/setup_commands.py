@@ -1,15 +1,27 @@
 import argparse
 import importlib
+import json
+import pathlib
 import sys
 import traceback
 import typing
 import warnings
-from typing import Any
+from typing import Any, Dict
 
 import pytkdocs
 
 
-def _import(string: str) -> Any:
+_here = pathlib.Path(__file__).resolve().parent
+_cachefile = _here / ".all_objects.cache"
+
+
+def _populate_cache(data: Dict[str, Any], cache: Dict[str, str], path: str):
+    cache[data["path"]] = path
+    for child in data["children"].values():
+        _populate_cache(child, cache, path + "." + child["name"])
+
+
+def _str_to_obj(string: str) -> Any:
     pieces = string.split(".")
     if len(pieces) == 1:
         # Not a relative module.class lookup.
@@ -21,30 +33,83 @@ def _import(string: str) -> Any:
     return obj
 
 
-def _postprocess(obj, path, bases):
-    # (f)
-    if "bases" in obj:
-        bases = []
-        for base in obj["bases"]:
-            base = _import(base)
-            if base is None:
-                continue
-            # Only include those bases that are part of the public documentation.
-            if "_import_alias" in base.__dict__:
-                bases.append(base)
-        obj["bases"] = [base._import_alias for base in bases]
+def _obj_to_str(obj: Any) -> str:
+    module = obj.__module__
+    name = obj.__qualname__
+    if module == "builtins":
+        return name
+    else:
+        return module + "." + name
 
-    # (a)
-    obj["path"] = path
 
-    # (b)
+def _find_public_bases(bases, cache):
+    out = []
+    for base in bases:
+        if base in cache.keys():
+            out.append(base)
+        else:
+            base_obj = _str_to_obj(base)
+            if base_obj is not None:
+                base_bases = [_obj_to_str(b) for b in base_obj.__bases__]
+                out.extend(_find_public_bases(base_bases, cache))
+    return out
+
+
+def _postprocess(data, cache, bases):
+    #
+    # Very important: update the displayed path for each doc item to being in "import
+    # form" rather than "full form".
+    #
+    data["path"] = cache[data["path"]]
+
+    #
+    # By default str(Optional[Foo]), str(Tuple[Foo]) etc. uses
+    # Foo.__module__ + "." + Foo.__qualname__
+    # to produce e.g.
+    # "Optional[package.module.Foo]"
+    # However str(Foo) just produces "Foo".
+    # We fix this inconsistency here.
+    #
+
+    try:
+        signature = data["signature"]
+    except KeyError:
+        pass
+    else:
+        for parameter in signature["parameters"]:
+            if "annotation" in parameter:
+                for p in cache:
+                    parameter["annotation"] = parameter["annotation"].replace(
+                        p, p.rsplit(".", 1)[1]
+                    )
+        if "return_annotation" in signature:
+            for p in cache:
+                signature["return_annotation"] = signature["return_annotation"].replace(
+                    p, p.rsplit(".", 1)[1]
+                )
+
+    if "bases" in data:
+        # Find those base classes which are part of our public documentation.
+        # This is used for a couple of things lower down.
+        bases = _find_public_bases(data["bases"], cache)
+
+        # Display base classes in "import form" not "full form".
+        data["bases"] = [cache[base] for base in bases]
+
+    #
+    # Remove some properties we don't want to display; this reduces visual noise.
+    #
     for prop in ("dataclass", "special"):
         try:
-            obj["properties"].remove(prop)
+            data["properties"].remove(prop)
         except ValueError:
             pass
+
+    #
+    # Add on some extra properties.
+    #
     try:
-        _obj = _import(path)
+        obj = _str_to_obj(data["path"])
     except AttributeError:
         pass
         # Can happen when doing:
@@ -55,116 +120,110 @@ def _postprocess(obj, path, bases):
         #
         # and then trying to access `A.myfield`.
         # This doesn't actually exist on the class object -- only on instances.
-        # Which means that the _import line will fail.
+        # Which means that the _str_to_obj line will fail.
     else:
-        if getattr(_obj, "__isabstractmethod__", False):
-            if "property" in obj["properties"]:
-                obj["properties"] = [
+        if getattr(obj, "__isabstractmethod__", False):
+            if "property" in data["properties"]:
+                data["properties"] = [
                     "abstractproperty" if x == "property" else x
-                    for x in obj["properties"]
+                    for x in data["properties"]
                 ]
             else:
-                obj["properties"].append("abstractmethod")
+                data["properties"].append("abstractmethod")
+        del obj
 
-    # (c)
-    if obj["docstring"] == "":
+    #
+    # Add documentation pointing towards base classes that we inherit methods from, or
+    # implement abstractmethods of.
+    #
+    if data["docstring"] == "":
         docstring = ""
-        obj_name = obj["name"]
-        if "inherited" in obj["properties"]:
+        if "inherited" in data["properties"]:
             for base in bases:
-                if obj_name in base.__dict__:
-                    base_alias = base.__dict__["_import_alias"] + "." + obj_name
-                    docstring = f"Inherited from [`{base_alias}`][]."
+                if data["name"] in _str_to_obj(base).__dict__:
+                    docstring = f"Inherited from [`{cache[base]}.{data['name']}`][]."
                     break
             else:
                 raise RuntimeError(
-                    f"Inherited object {obj_name} not available on a public base class."
+                    f"Inherited object {data['name']} not available on a public base "
+                    "class."
                 )
         else:
             for base in bases:
-                if obj_name in base.__dict__:
-                    base_method = getattr(base, obj_name)
+                if data["name"] in _str_to_obj(base).__dict__:
+                    base_method = getattr(_str_to_obj(base), data["name"])
                     if getattr(base_method, "__isabstractmethod__", False):
-                        base_alias = base.__dict__["_import_alias"] + "." + obj_name
-                        docstring = f"Implements [`{base_alias}`][]."
+                        docstring = f"Implements [`{cache[base]}.{data['name']}`][]."
                         break
         if docstring != "":
-            obj["docstring_sections"] = [{"type": "markdown", "value": docstring}]
+            data["docstring_sections"] = [{"type": "markdown", "value": docstring}]
+            # We're modifying docstring_sections, so del docstring as an assertion that
+            # it's not used downstream (and that we're not inconsistent as a result).
+            del data["docstring"]
 
-    # (g)
-    if obj["name"] == "__init__":
-        del obj["signature"]["return_annotation"]
-
-    # Delete properties that are similar to those we're modifying. This is essentially
-    # "assert they're not used downstream".
-    # (As they may report the wrong result, given that we modify their siblings.)
-    del obj["docstring"]
-    del obj["parent_path"]
+    #
+    # Don't display "-> None" annotations on __init__ methods.
+    #
+    if data["name"] == "__init__":
+        data["signature"].pop("return_annotation", None)
 
     # Recurse into methods of classes, etc.
-    for child in obj["children"].values():
-        child_path = path + "." + child["name"]
-        _postprocess(child, child_path, bases)
+    for child in data["children"].values():
+        _postprocess(child, cache, bases)
 
 
 def main():
-    # This does a few things.
-
-    # (a)
-    # When doing the following the documentation markdown file:
+    # Monkey-patch process_config to modify how objects are displayed.
     #
-    # ::: diffrax.something
+    # Note that this uses a cache file written to disk -- this cache is used to keep
+    # track of a list of mappings from "full form" to "import form", where e.g.
+    # full form: package.subpackage.module.foo
+    # import form: package.foo
+    # due to package/__init__.py importing foo so as to expose it publicly.
+    # "Full form" is used ubiquitously throughout mkdocstrings, and this allows us to
+    # convert it to the more-readable "import form" (which is how one should actually
+    # be using each foo).
     #
-    # Then this tweak will mean that `diffrax.something` is the name also used in
-    # the documentation, rather than something potentially larger like
-    # diffrax.folder.file.something.
-
-    # (b)
-    # A few properties are removed to avoid common visual noise. Some extras are added.
-
-    # (c)
-    # Some docstrings are automatically provided for inherited methods, or methods
-    # implementing abstract methods
-
-    # (d)
-    # By default pytkdocs has some really weird behaviour in which the docstring for
-    # inherited magic methods are removed. This change enhances that check to apply
-    # to all methods, not just magic methods.
-
-    # (e)
-    # Set a flag to say we're generating documentation is set, which Diffrax uses to
-    # customise how its types are displayed.
-
-    # (f)
-    # Only include those base classes that are part of the public documentation.
-
-    # (g)
-    # Skip the "-> None" return type annotation for __init__ methods.
+    # In addition this cache performs double-duty as a record of all public objects.
+    #
+    # As such to get accurate documentation this should be run twice: once to generate
+    # the cache, and a second time to use it. (Although in practice a lot of the cache
+    # will often get populated before the entry is needed on a first run.)
 
     _process_config = pytkdocs.cli.process_config
 
     def process_config(config):
         paths = [c["path"] for c in config["objects"]]
-        out = _process_config(config)
-        for path, out_object in zip(paths, out["objects"]):
-            # (a, b, c, f, g)
+        datas = _process_config(config)
+        with _cachefile.open() as f:
+            cache = json.load(f)
+        for path, data in zip(paths, datas["objects"]):
+            _populate_cache(data, cache, path)
             try:
-                _postprocess(out_object, path, bases=None)
+                _postprocess(data, cache, bases=None)
             except Exception as e:
                 tb = traceback.format_exc()
                 warnings.warn(
-                    f"When loading {out_object['name']}, an exception of type "
+                    f"When loading {data['name']}, an exception of type "
                     f"{type(e)} was raised, with message '{str(e)}' and "
                     f"traceback:\n{tb}."
                 )
-        return out
+        with _cachefile.open("w") as f:
+            json.dump(cache, f)
+        return datas
 
+    if not _cachefile.exists():
+        with _cachefile.open("w") as f:
+            json.dump({}, f)
     pytkdocs.cli.process_config = process_config
 
-    # (d)
+    # By default pytkdocs has some really weird behaviour in which the docstring for
+    # inherited magic methods are removed. This change enhances that check to apply
+    # to all methods, not just magic methods.
     pytkdocs.loader.RE_SPECIAL = argparse.Namespace(match=lambda x: True)
 
-    # (e)
+    # Set a flag to say we're generating documentation is set, which Diffrax uses to
+    # customise how its types are displayed.
     if "diffrax" in sys.modules:
         warnings.warn(
             "Diffrax already loaded; generated documentation may not be accurate."

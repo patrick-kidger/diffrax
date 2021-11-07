@@ -98,5 +98,5 @@ class LeapfrogMidpoint(AbstractSolver):
 def leapfrog_midpoint(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs,
-):
+) -> LeapfrogMidpoint:
     return LeapfrogMidpoint(term=ODETerm(vector_field=vector_field), **kwargs)

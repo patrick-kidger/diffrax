@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import in_public_docs, ravel_pytree, stack_pytrees, unvmap
+from .misc import ravel_pytree, stack_pytrees, unvmap
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
@@ -189,7 +189,6 @@ def _compress_output_adaptive(
     return ts, ys, out_indices
 
 
-@in_public_docs
 def diffeqsolve(
     solver: AbstractSolver,
     t0: Scalar,

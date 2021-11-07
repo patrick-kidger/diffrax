@@ -34,5 +34,7 @@ class Fehlberg2(AbstractERK):
     order = 2
 
 
-def fehlberg2(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def fehlberg2(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> Fehlberg2:
     return Fehlberg2(term=ODETerm(vector_field=vector_field), **kwargs)

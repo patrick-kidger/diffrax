@@ -7,14 +7,13 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import PyTree
-from ..misc import in_public_docs, is_perturbed, ravel_pytree
+from ..misc import is_perturbed, ravel_pytree
 from ..solution import RESULTS
 
 
 LU_Jacobian = "LU_Jacobian"
 
 
-@in_public_docs
 class AbstractNonlinearSolver(eqx.Module):
     """Abstract base class for all nonlinear root-finding algorithms.
 

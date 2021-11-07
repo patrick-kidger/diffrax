@@ -1,4 +1,3 @@
-from .docs import in_public_docs
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
     check_no_derivative,

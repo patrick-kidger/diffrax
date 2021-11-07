@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import Bool, PyTree, Scalar
-from ..misc import in_public_docs, ravel_pytree, rms_norm
+from ..misc import ravel_pytree, rms_norm
 from ..solution import RESULTS
 from .base import AbstractNonlinearSolver, LU_Jacobian
 
@@ -50,7 +50,6 @@ def _converged(factor: Scalar, tol: Scalar) -> Bool:
 # - Choice of initial guess.
 # - Transform Jacobians into W, in particular when treating FIRKs.
 # - (+The entire space of quasi-Newton methods.)
-@in_public_docs
 class NewtonNonlinearSolver(AbstractNonlinearSolver):
     """Newton's method for root-finding. (Also known as Newton--Raphson.)
 

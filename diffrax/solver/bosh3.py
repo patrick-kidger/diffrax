@@ -38,5 +38,5 @@ class Bosh3(AbstractERK):
     order = 3
 
 
-def bosh3(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def bosh3(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs) -> Bosh3:
     return Bosh3(term=ODETerm(vector_field=vector_field), **kwargs)

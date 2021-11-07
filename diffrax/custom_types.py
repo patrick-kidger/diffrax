@@ -5,28 +5,28 @@ from typing import Any, Dict, Generic, Tuple, TypeVar, Union
 import jax
 
 
-def _item_to_str(item: Union[str, type]) -> str:
-    if inspect.isclass(item):
-        return item.__name__
-    else:
-        return repr(item)
-
-
-def _maybe_tuple_to_str(item: Union[str, type, Tuple[Union[str, type], ...]]) -> str:
-    if isinstance(item, tuple):
-        if len(item) == 0:
-            # Explicit brackets
-            return "()"
-        else:
-            # No brackets
-            return ", ".join([_item_to_str(i) for i in item])
-    else:
-        return _item_to_str(item)
-
-
 # Custom flag we set when generating documentation.
 # We do a lot of custom hackery in here to produce nice-looking docs.
 if getattr(typing, "GENERATING_DOCUMENTATION", False):
+
+    def _item_to_str(item: Union[str, type]) -> str:
+        if inspect.isclass(item):
+            return item.__name__
+        else:
+            return repr(item)
+
+    def _maybe_tuple_to_str(
+        item: Union[str, type, Tuple[Union[str, type], ...]]
+    ) -> str:
+        if isinstance(item, tuple):
+            if len(item) == 0:
+                # Explicit brackets
+                return "()"
+            else:
+                # No brackets
+                return ", ".join([_item_to_str(i) for i in item])
+        else:
+            return _item_to_str(item)
 
     #
     # First we have custom versions of Array and PyTree, that the usual Array and
@@ -40,6 +40,9 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     #
     # c.f.
     # https://github.com/python/cpython/blob/634984d7dbdd91e0a51a793eed4d870e139ae1e0/Lib/typing.py#L203  # noqa: E501
+    #
+    # Note that in general overriding __module__ can be a bit dangerous, and will break
+    # functionality in the inspect standard library.
     #
 
     _Annotation = TypeVar("_Annotation")
@@ -56,7 +59,7 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     _PyTree.__qualname__ = "PyTree"
 
     #
-    # Now we have Array and PyTree themselves. In order to get the desired behaviuor in
+    # Now we have Array and PyTree themselves. In order to get the desired behaviour in
     # docs, we now pass in a type variable with the right __qualname__ (and __module__
     # set to "builtins" as usual) that will render in the desired way.
     #
