@@ -11,11 +11,6 @@ from ..term import ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
-# Alpha/beta/c_sol/c_error coefficients are from
-# J. Dormand and P. Prince, High order embedded Runge-Kutta formulae (1981)
-#
-# Interpolation scheme is from
-# P. Bogacki and L. Shampine, Interpolating high-order Runge-Kutta formulas (1990)
 _dopri8_tableau = ButcherTableau(
     a_lower=(
         np.array([1 / 18]),
@@ -303,6 +298,40 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
 
 
 class Dopri8(AbstractERK):
+    """Dormand--Prince's 8/7 method.
+
+    8th order Runge--Kutta method. Has an embedded 7th order method.
+
+    ??? References
+
+        Coefficients from:
+        ```bibtex
+        @article{prince1981high,
+            author={Prince, P. J and Dormand, J. R.},
+            title={High order embedded {R}unge--{K}utta formulae},
+            journal={J. Comp. Appl. Math},
+            year={1981},
+            volume={7},
+            number={1},
+            pages={67--75}
+        }
+        ```
+
+        Dense interpolation from:
+        ```bibtex
+        @article{bogacki1990interpolating,
+            author={Bogacki, P. and Shampine, L. F.},
+            title={Interpolating high-order {R}unge--{K}utta formulas},
+            journal={Comput. Math. with Appl.},
+            year={1990},
+            volume={20},
+            number={3},
+            pages={15--24},
+            doi={https://doi.org/10.1016/0898-1221(90)90027-H}
+        }
+        ```
+    """
+
     tableau = _dopri8_tableau
     interpolation_cls = _Dopri8Interpolation
     order = 8

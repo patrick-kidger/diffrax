@@ -91,20 +91,24 @@ class Kvaerno4(AbstractESDIRK):
     A-L stable stiffly accurate 4th order ESDIRK method. Has an embedded 3rd order
     method. Uses 5 stages.
 
-    When solving an ODE over the interval [t0, t1], note that this method will make
-    some evaluations slightly past t1.
+    When solving an ODE over the interval $[t_0, t_1]$, note that this method will make
+    some evaluations slightly past $t_1$.
 
-    @article{kvaerno2004singly,
-      title={Singly diagonally implicit Runge--Kutta methods with an explicit first
-             stage},
-      author={Kv{\ae}rn{\o}, Anne},
-      journal={BIT Numerical Mathematics},
-      volume={44},
-      number={3},
-      pages={489--502},
-      year={2004},
-      publisher={Springer}
-    }
+    ??? Reference
+
+        ```bibtex
+        @article{kvaerno2004singly,
+          title={Singly diagonally implicit Runge--Kutta methods with an explicit first
+                 stage},
+          author={Kv{\ae}rn{\o}, Anne},
+          journal={BIT Numerical Mathematics},
+          volume={44},
+          number={3},
+          pages={489--502},
+          year={2004},
+          publisher={Springer}
+        }
+        ```
     """
     tableau = _kvaerno4_tableau
     interpolation_cls = _Kvaerno4Interpolation

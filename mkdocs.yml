@@ -52,6 +52,7 @@ extra_css:
 markdown_extensions:
     - pymdownx.arithmatex  # Render LaTeX via MathJax
     - pymdownx.superfences  # Seems to enable syntax highlighting when used with the Material theme.
+    - pymdownx.details  # Allowing hidden expandable regions denoted by ???
     - pymdownx.snippets:  # Include one Markdown file into another
         base_path: docs
     - admonition
@@ -83,9 +84,16 @@ plugins:
                     show_signature_annotations: true  # do _not_ show type annotations in the signature. These are detailed in a table below instead.
                     show_source: false  # don't include source code
                     members_order: source  # order methods according to their order of definition in the source code, not alphabetical order
+                    heading_level: 4
 
 nav:
     - 'index.md'
+    - Usage:
+        - 'usage/overview.md'
+        - 'usage/how-to-choose-a-solver.md'
+        - 'usage/terms.md'
+        - 'usage/manual-stepping.md'
+        - 'usage/extending.md'
     - Examples:
         - Neural ODE: 'examples/neural_ode.ipynb'
         - Neural CDE: 'examples/neural_cde.ipynb'
@@ -94,15 +102,14 @@ nav:
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Stochastic Gradient Descent: 'examples/stochastic_gradient_descent.ipynb'
-    - Usage:
-        - 'usage/overview.md'
-        - 'usage/extending.md'
     - Full API:
         - 'api/type_terminology.md'
+        - 'api/diffeqsolve.md'
         - 'api/solver.md'
         - 'api/solution.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
+        - 'api/utils.md'
     - Further Details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'

@@ -144,17 +144,21 @@ class Tsit5(AbstractERK):
 
     5th order Runge--Kutta method. Has an embedded 4th order method.
 
-    @article{tsitouras2011runge,
-      title={Runge--Kutta pairs of order 5 (4) satisfying only the first column
-             simplifying assumption},
-      author={Tsitouras, Ch},
-      journal={Computers \& Mathematics with Applications},
-      volume={62},
-      number={2},
-      pages={770--775},
-      year={2011},
-      publisher={Elsevier}
-    }
+    ??? Reference
+
+        ```bibtex
+        @article{tsitouras2011runge,
+          title={Runge--Kutta pairs of order 5 (4) satisfying only the first column
+                 simplifying assumption},
+          author={Tsitouras, Ch},
+          journal={Computers \& Mathematics with Applications},
+          volume={62},
+          number={2},
+          pages={770--775},
+          year={2011},
+          publisher={Elsevier}
+        }
+        ```
     """
     tableau = _tsit5_tableau
     interpolation_cls = _Tsit5Interpolation

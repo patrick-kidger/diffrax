@@ -5,6 +5,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
+from .docs import in_public_docs
 from .ravel import ravel_pytree
 
 
@@ -78,11 +79,34 @@ def _fill_forward(
     return yi, yi
 
 
+@in_public_docs(submodule="utils")
 @jax.jit
 def fill_forward(
     ys: Array["times", "channels"],  # noqa: F821
     replace_nans_at_start: Optional[Array["channels"]] = None,  # noqa: F821
 ) -> Array["times, channels"]:  # noqa: F821
+    """Fill-forwards over missing data (represented as NaN).
+
+    By default it works its was along the "times" axis, filling in NaNs with the most
+    recent non-NaN observation.
+
+    The "channels" dimension is just for convenience, and the operation is essentially
+    vmap'd over this dimension.
+
+    Any NaNs at the start (with no previous non-NaN observation) may be left alone, or
+    filled in, depending on `replace_nans_at_start`.
+
+    **Arguments:**
+
+    - `ys`: The data, which should use NaN to represent missing data.
+    - `replace_nans_at_start`: Optional. If passed, used to fill-forward NaNs occuring
+        at the start, prior to any non-NaN observations being made.
+
+    **Returns:**
+
+    The fill-forwarded data.
+    """
+
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:

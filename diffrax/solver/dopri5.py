@@ -52,14 +52,18 @@ class Dopri5(AbstractERK):
 
     5th order Runge--Kutta method. Has an embedded 4th order method.
 
-    @article{dormand1980family,
-        author={Dormand, J. R. and Prince, P. J.},
-        title={A family of embedded {R}unge--{K}utta formulae},
-        journal={J. Comp. Appl. Math},
-        year={1980},
-        volume={6},
-        pages={19--26}
-    }
+    ??? Reference
+
+        ```bibtex
+        @article{dormand1980family,
+            author={Dormand, J. R. and Prince, P. J.},
+            title={A family of embedded {R}unge--{K}utta formulae},
+            journal={J. Comp. Appl. Math},
+            year={1980},
+            volume={6},
+            pages={19--26}
+        }
+        ```
     """
     tableau = _dopri5_tableau
     interpolation_cls = _Dopri5Interpolation

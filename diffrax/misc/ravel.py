@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from ..custom_types import Array, PyTree
+from .docs import in_public_docs
 from .frozenarray import frozenarray, frozenndarray
 
 
@@ -69,18 +70,31 @@ def _unravel_pytree(
     return jax.tree_unflatten(treedef.value, unravel_list(flat))
 
 
+@in_public_docs(submodule="utils")
 @jax.jit
 def ravel_pytree(
     pytree: PyTree,
 ) -> Tuple[Array["flat"], jax.tree_util.Partial]:  # noqa: F821
-    """Like jax.flatten_util.ravel_pytree, but doesn't create a new unravel function
+    """Like `jax.flatten_util.ravel_pytree`, but doesn't create a new unravel function
     each time. This means the unravel function can be passed to JIT-compiled functions
-    without triggering recompilation, if pytree has the same structure.
+    without triggering recompilation, if `pytree` has the same structure.
 
     In addition, unravelling will consider the dtype of the argment to be unravelled.
     In particular this means that if the object to be raveled consists of all-integers,
     and the object to unraveled has a floating-point dtype, then it will be unraveled
     with floating point dtype.
+
+    **Arguments:**
+
+    - `pytree`: Some PyTree with JAX arrays on the leaves.
+
+    **Returns:**
+
+    A 2-tuple. The first element is a single-dimensional JAX array, featuring all of
+    the leaves of the input `pytree` flattened and concatenated. The second element is
+    a function that can be used to reconstitute an array of the same shape (but
+    possibly different dtype) into a PyTree with the same structure, and leaves of the
+    same shape, as the original `pytree` input.
     """
 
     leaves, treedef = jax.tree_flatten(pytree)

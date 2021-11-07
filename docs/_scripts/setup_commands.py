@@ -1,5 +1,6 @@
 import argparse
 import importlib
+import sys
 import traceback
 import typing
 import warnings
@@ -57,7 +58,13 @@ def _postprocess(obj, path, bases):
         # Which means that the _import line will fail.
     else:
         if getattr(_obj, "__isabstractmethod__", False):
-            obj["properties"].append("abstractmethod")
+            if "property" in obj["properties"]:
+                obj["properties"] = [
+                    "abstractproperty" if x == "property" else x
+                    for x in obj["properties"]
+                ]
+            else:
+                obj["properties"].append("abstractmethod")
 
     # (c)
     if obj["docstring"] == "":
@@ -158,4 +165,8 @@ def main():
     pytkdocs.loader.RE_SPECIAL = argparse.Namespace(match=lambda x: True)
 
     # (e)
+    if "diffrax" in sys.modules:
+        warnings.warn(
+            "Diffrax already loaded; generated documentation may not be accurate."
+        )
     typing.GENERATING_DOCUMENTATION = True

@@ -1,0 +1,3 @@
+# diffeqsolve
+
+::: diffrax.diffeqsolve

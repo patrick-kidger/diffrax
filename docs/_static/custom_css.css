@@ -13,7 +13,7 @@ a.md-source {
     max-width: 100%;
 }
 
-/* Emphasise sections of nav */
+/* Emphasise sections of nav on left hand side */
 
 nav.md-nav {
   padding-left: 5px;
@@ -38,16 +38,16 @@ div.doc-contents {
   border-left: 4px solid rgba(230, 230, 230);
 }
 
+/* Increase visibility of splitters "---" */
+
+.md-typeset hr {
+    border-bottom-color: rgb(230, 230, 230);
+}
+
 /* More space at the bottom of the page */
 
 .md-main__inner {
   margin-bottom: 1.5rem;
-}
-
-/* More space between root-level entries */
-
-article > .doc-object {
-    margin-bottom: 5rem;
 }
 
 /* Remove prev/next footer buttons */
@@ -56,9 +56,59 @@ article > .doc-object {
     display: none;
 }
 
-/* Change font size for webpage */
+/* Change font sizes */
 
 html {
-    /* Down from 137.5% which is the Material default */
+    /* Decrease font size for overall webpage
+       Down from 137.5% which is the Material default */
     font-size: 110%;
+}
+
+.md-typeset .admonition {
+    /* Increase font size in admonitions */
+    font-size: 100% !important;
+}
+
+.md-typeset details {
+    /* Increase font size in details */
+    font-size: 100% !important;
+}
+
+.md-typeset h1 {
+    font-size: 1.6rem;
+}
+
+.md-typeset h2 {
+    font-size: 1.5rem;
+}
+
+.md-typeset h3 {
+    font-size: 1.3rem;
+}
+
+.md-typeset h4 {
+    font-size: 1.1rem;
+}
+
+.md-typeset h5 {
+    font-size: 0.9rem;
+}
+
+.md-typeset h6 {
+    font-size: 0.8rem;
+}
+
+/* Bugfix: remove the superfluous parts generated when doing:
+
+??? Blah
+
+    ::: diffrax.something
+*/
+
+.md-typeset details .mkdocstrings > h4 {
+    display: none;
+}
+
+.md-typeset details .mkdocstrings > h5 {
+    display: none;
 }
