@@ -2,11 +2,16 @@
 
 ## Solver classes
 
-All of the classes implement the following interface specified by [`diffrax.AbstractSolver`][].
+The complete list of solvers, categorised by type, is as follows.
 
-(The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface; otherwise this is all just internal to the library.)
+Unless otherwise specified, their `__init__` method always takes a single [`diffrax.AbstractTerm`][].
+
 
 ??? "`diffrax.AbstractSolver`"
+
+    All of the classes implement the following interface specified by [`diffrax.AbstractSolver`][].
+
+    The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface; otherwise this is all just internal to the library.
 
     ::: diffrax.AbstractSolver
         selection:

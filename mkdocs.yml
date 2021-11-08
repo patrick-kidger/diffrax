@@ -88,6 +88,7 @@ plugins:
 
 nav:
     - 'index.md'
+    - 'further_details/citation.md'
     - Usage:
         - 'usage/overview.md'
         - 'usage/how-to-choose-a-solver.md'
@@ -102,18 +103,20 @@ nav:
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Stochastic Gradient Descent: 'examples/stochastic_gradient_descent.ipynb'
-    - Full API:
+    - Basic API:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
         - 'api/solver.md'
         - 'api/saveat.md'
+        - 'api/stepsize_controller.md'
         - 'api/solution.md'
+    - Advanced API:
+        - 'api/terms.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
         - 'api/utils.md'
-    - Further Details:
-        - 'further_details/faq.md'
-        - 'further_details/acknowledgements.md'
-        - 'further_details/citation.md'
     - Developer Documentation:
         - 'devdocs/predictor_dirk.md'
+    - Further details:
+        - 'further_details/faq.md'
+        - 'further_details/acknowledgements.md'

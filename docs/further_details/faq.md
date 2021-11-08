@@ -1,7 +1,7 @@
 # FAQ
 
 ### Is it possible to JIT a `diffeqsolve`?
-No: solving a differential equation can involve a variable number of time steps. This kind of variable-step behaviour isn't something that JAX is capable of jitting.
+No: solving a differential equation can involve a variable number of time steps. This kind of variable-step behaviour is something that JAX isn't always capable of jitting.
 
 Instead, Diffrax uses JIT internally, so that good performance is still maintained.
 

@@ -55,7 +55,7 @@ class AbstractSolver(eqx.Module):
 
         **Returns:**
 
-        A copy of the solver, updated to reflect the information passed in.
+        A copy of the solver, updated to reflect the additional information.
         """
         kwargs = self._wrap(t0, y0, args, direction)
         return type(self)(**kwargs)
@@ -69,9 +69,9 @@ class AbstractSolver(eqx.Module):
     ) -> _SolverState:
         """Initialises any hidden state for the solver.
 
-        **Arguments** are as [`diffrax.diffeqsolve`][], with the exception that `y0`
-        must be a one-dimensional JAX array. (Obtained by ravelling it if it is a
-        PyTree; see [`diffrax.utils.ravel_pytree`][])
+        **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
+        flattened one-dimensional JAX array. (Obtained via
+        [`diffrax.utils.ravel_pytree`][] if `y0` was originally a PyTree.)
 
         **Returns:**
 
@@ -123,7 +123,7 @@ class AbstractSolver(eqx.Module):
             routine to calculate dense output. (Used with `SaveAt(ts=...)` or
             `SaveAt(dense=...)`.)
         - The value of the solver state at `t1`.
-        - An integer (correspondign to `diffrax.RESULTS`) indicating whether the step
+        - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
             happened successfully, or if it failed for some reason. (e.g. no solution
             could be found to the nonlinear problem in an implicit solver.)
         """

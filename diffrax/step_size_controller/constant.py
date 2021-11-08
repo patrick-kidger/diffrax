@@ -7,6 +7,10 @@ from .base import AbstractStepSizeController
 
 
 class ConstantStepSize(AbstractStepSizeController):
+    """Use a constant step size, equal to the `dt0` argument of
+    [`diffrax.diffeqsolve`][].
+    """
+
     def wrap(self, unravel_y: callable, direction: Scalar):
         return self
 

@@ -14,6 +14,7 @@ from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 
 
+# TODO: this is making one step too many.
 @jax.jit
 def _not_done(tprev, t1, result):
     return (tprev < t1) & (result == RESULTS.successful)

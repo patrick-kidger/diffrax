@@ -9,14 +9,20 @@ import jax
 # We do a lot of custom hackery in here to produce nice-looking docs.
 if getattr(typing, "GENERATING_DOCUMENTATION", False):
 
-    def _item_to_str(item: Union[str, type]) -> str:
-        if inspect.isclass(item):
+    def _item_to_str(item: Union[str, type, slice]) -> str:
+        if isinstance(item, slice):
+            if item.step is not None:
+                raise NotImplementedError
+            return _item_to_str(item.start) + ": " + _item_to_str(item.stop)
+        elif item is ...:
+            return "..."
+        elif inspect.isclass(item):
             return item.__name__
         else:
             return repr(item)
 
     def _maybe_tuple_to_str(
-        item: Union[str, type, Tuple[Union[str, type], ...]]
+        item: Union[str, type, slice, Tuple[Union[str, type, slice], ...]]
     ) -> str:
         if isinstance(item, tuple):
             if len(item) == 0:
