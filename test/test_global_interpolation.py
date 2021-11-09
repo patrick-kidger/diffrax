@@ -11,12 +11,14 @@ from helpers import all_ode_solvers, tree_allclose
 
 
 @pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])
-def test_interpolation_coeffs(mode):
+@pytest.mark.parametrize("unsqueeze", [True, False])
+def test_interpolation_coeffs(mode, unsqueeze):
     # Data is linear so both linear and cubic interpolation should produce the same
     # results where there is missing data.
     ts = ys = jnp.linspace(0.0, 9.0, 10)
     nan_ys = ys.at[jnp.array([0, 3, 4, 6, 9])].set(jnp.nan)
-    nan_ys = nan_ys[:, None]
+    if unsqueeze:
+        nan_ys = nan_ys[:, None]
 
     def _interp(tree, duplicate, **kwargs):
         if duplicate:
@@ -51,26 +53,35 @@ def test_interpolation_coeffs(mode):
         return jax.tree_map(_merge, left, right)
 
     interp_ys = _interp(tree=False, duplicate=False)
-    true_ys = ys.at[jnp.array([0, 9])].set(jnp.nan)[:, None]
+    true_ys = ys.at[jnp.array([0, 9])].set(jnp.nan)
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    interp_ys = _interp(tree=False, duplicate=True)
-    assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
+    if unsqueeze:
+        interp_ys = _interp(tree=False, duplicate=True)
+        assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
     (interp_ys,) = _interp(tree=True, duplicate=False)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
     interp_ys = _interp(tree=False, duplicate=False, fill_forward_nans_at_end=True)
-    true_ys = ys.at[0].set(jnp.nan).at[9].set(8.0)[:, None]
+    true_ys = ys.at[0].set(jnp.nan).at[9].set(8.0)
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    interp_ys = _interp(tree=False, duplicate=True, fill_forward_nans_at_end=True)
-    assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
+    if unsqueeze:
+        interp_ys = _interp(tree=False, duplicate=True, fill_forward_nans_at_end=True)
+        assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
     (interp_ys,) = _interp(tree=True, duplicate=False, fill_forward_nans_at_end=True)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
     interp_ys = _interp(tree=False, duplicate=False, replace_nans_at_start=5.5)
-    true_ys = ys.at[0].set(5.5).at[9].set(jnp.nan)[:, None]
+    true_ys = ys.at[0].set(5.5).at[9].set(jnp.nan)
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    interp_ys = _interp(tree=False, duplicate=True, replace_nans_at_start=5.5)
-    assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
+    if unsqueeze:
+        interp_ys = _interp(tree=False, duplicate=True, replace_nans_at_start=5.5)
+        assert jnp.allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
     (interp_ys,) = _interp(tree=True, duplicate=False, replace_nans_at_start=(5.5,))
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
@@ -79,76 +90,80 @@ def test_rectilinear_interpolation_coeffs():
     ts = jnp.linspace(0.0, 9.0, 10)
     ys = jnp.array(
         [jnp.nan, 0.2, 0.1, jnp.nan, jnp.nan, 0.5, jnp.nan, 0.8, 0.1, jnp.nan]
-    )[:, None]
+    )
 
-    interp_ys = diffrax.rectilinear_interpolation(ts, ys)
+    interp_ts, interp_ys = diffrax.rectilinear_interpolation(ts, ys)
+    true_ts = jnp.array([0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9.0])
     true_ys = jnp.array(
         [
-            [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9],
-            [
-                jnp.nan,
-                jnp.nan,
-                0.2,
-                0.2,
-                0.1,
-                0.1,
-                0.1,
-                0.1,
-                0.1,
-                0.1,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.8,
-                0.8,
-                0.1,
-                0.1,
-                0.1,
-            ],
+            jnp.nan,
+            jnp.nan,
+            0.2,
+            0.2,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.8,
+            0.8,
+            0.1,
+            0.1,
+            0.1,
         ]
-    ).T
+    )
+    assert jnp.allclose(interp_ts, true_ts)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
+    interp_ts, (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
+    assert jnp.allclose(interp_ts, true_ts)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
-    interp_ys = diffrax.rectilinear_interpolation(ts, ys, replace_nans_at_start=5.5)
+    interp_ts, interp_ys = diffrax.rectilinear_interpolation(
+        ts, ys, replace_nans_at_start=5.5
+    )
     true_ys = jnp.array(
         [
-            [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9],
-            [
-                5.5,
-                5.5,
-                0.2,
-                0.2,
-                0.1,
-                0.1,
-                0.1,
-                0.1,
-                0.1,
-                0.1,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.8,
-                0.8,
-                0.1,
-                0.1,
-                0.1,
-            ],
+            5.5,
+            5.5,
+            0.2,
+            0.2,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.8,
+            0.8,
+            0.1,
+            0.1,
+            0.1,
         ]
-    ).T
+    )
+    assert jnp.allclose(interp_ts, true_ts)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ys,) = diffrax.rectilinear_interpolation(
+    interp_ts, (interp_ys,) = diffrax.rectilinear_interpolation(
         ts, (ys,), replace_nans_at_start=(5.5,)
     )
+    assert jnp.allclose(interp_ts, true_ts)
     assert jnp.allclose(interp_ys, true_ys, equal_nan=True)
 
 
-def test_cubic_interpolation_no_deriv0():
+@pytest.mark.parametrize("unsqueeze", [True, False])
+def test_cubic_interpolation_no_deriv0(unsqueeze):
     ts = jnp.array([-0.5, 0, 1.0])
-    ys = jnp.array([[0.1], [0.5], [-0.2]])
+    ys = jnp.array([0.1, 0.5, -0.2])
+    if unsqueeze:
+        ys = ys[:, None]
     coeffs = diffrax.backward_hermite_coefficients(ts, ys)
     interp = diffrax.CubicInterpolation(ts, coeffs)
 
@@ -157,7 +172,9 @@ def test_cubic_interpolation_no_deriv0():
     points = jnp.linspace(-0.5, 0, 10)
 
     interp_ys = jax.vmap(interp.evaluate)(points)
-    true_ys = 0.1 + 0.4 * jnp.linspace(0, 1, 10)[:, None]
+    true_ys = 0.1 + 0.4 * jnp.linspace(0, 1, 10)
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
@@ -169,22 +186,27 @@ def test_cubic_interpolation_no_deriv0():
     points = jnp.linspace(0, 1.0, 10)
 
     interp_ys = jax.vmap(interp.evaluate)(points)
-    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(
-        points
-    )[:, None]
+    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(points)
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
-    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)[
-        :, None
-    ]
+    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)
+    if unsqueeze:
+        true_derivs = true_derivs[:, None]
     assert jnp.allclose(derivs, true_derivs)
 
 
-def test_cubic_interpolation_deriv0():
+@pytest.mark.parametrize("unsqueeze", [True, False])
+def test_cubic_interpolation_deriv0(unsqueeze):
     ts = jnp.array([-0.5, 0, 1.0])
-    ys = jnp.array([[0.1], [0.5], [-0.2]])
-    coeffs = diffrax.backward_hermite_coefficients(ts, ys, deriv0=jnp.array([0.4]))
+    ys = jnp.array([0.1, 0.5, -0.2])
+    deriv0 = jnp.array(0.4)
+    if unsqueeze:
+        ys = ys[:, None]
+        deriv0 = deriv0[None]
+    coeffs = diffrax.backward_hermite_coefficients(ts, ys, deriv0=deriv0)
     interp = diffrax.CubicInterpolation(ts, coeffs)
 
     # First piece is cubic
@@ -194,13 +216,17 @@ def test_cubic_interpolation_deriv0():
     interp_ys = jax.vmap(interp.evaluate)(points)
     true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([-1.6, -0.8, 0.8, 0.5]), p))(
         points
-    )[:, None]
+    )
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
     true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([-4.8, -1.6, 0.8]), p))(
         points
-    )[:, None]
+    )
+    if unsqueeze:
+        true_derivs = true_derivs[:, None]
     assert jnp.allclose(derivs, true_derivs)
 
     # Second piece is cubic
@@ -208,15 +234,15 @@ def test_cubic_interpolation_deriv0():
     points = jnp.linspace(0, 1.0, 10)
 
     interp_ys = jax.vmap(interp.evaluate)(points)
-    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(
-        points
-    )[:, None]
+    true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(points)
+    if unsqueeze:
+        true_ys = true_ys[:, None]
     assert jnp.allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
-    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)[
-        :, None
-    ]
+    true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)
+    if unsqueeze:
+        true_derivs = true_derivs[:, None]
     assert jnp.allclose(derivs, true_derivs)
 
 

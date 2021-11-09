@@ -5,6 +5,7 @@ from .misc import (
     fill_forward,
     force_bitcast_convert_type,
     is_perturbed,
+    left_broadcast_to,
     linear_rescale,
     nextafter,
     nextbefore,

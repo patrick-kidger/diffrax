@@ -112,6 +112,7 @@ nav:
         - 'api/solution.md'
     - Advanced API:
         - 'api/terms.md'
+        - 'api/interpolation.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
         - 'api/utils.md'
