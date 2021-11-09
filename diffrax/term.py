@@ -178,7 +178,7 @@ ODETerm.__init__.__doc__ = """**Arguments:**
 def _prod(
     vf: Array["state":..., "control":...], control: Array["control":...]  # noqa: F821
 ) -> Array["state":...]:  # noqa: F821
-    return jnp.tensordot(vf, control, axes=control.ndim)
+    return jnp.tensordot(vf, control, axes=jnp.asarray(control).ndim)
 
 
 class ControlTerm(AbstractTerm):

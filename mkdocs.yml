@@ -92,7 +92,6 @@ nav:
     - Usage:
         - 'usage/overview.md'
         - 'usage/how-to-choose-a-solver.md'
-        - 'usage/terms.md'
         - 'usage/manual-stepping.md'
         - 'usage/extending.md'
     - Examples:
@@ -112,6 +111,7 @@ nav:
         - 'api/solution.md'
     - Advanced API:
         - 'api/terms.md'
+        - 'api/path.md'
         - 'api/interpolation.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'

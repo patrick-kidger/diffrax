@@ -78,11 +78,13 @@ class LinearInterpolation(AbstractGlobalInterpolation):
             or right-continuous. [In practice linear interpolation is always continuous
             except around `NaN`s.]
 
-        (Note that we use $t_0$ and $t_1$ to refer
-        to the overall interval, as obtained via `instance.t0` and `instance.t1`. We
-        use `t0` and `t1` to refer to some subinterval of $[t_0, t_1]$. This is an API
-        that is used for consistency with the rest of the package, and just happens to
-        be a little confusing here.)
+        !!! faq "FAQ"
+
+            Note that we use $t_0$ and $t_1$ to refer to the overall interval, as
+            obtained via `instance.t0` and `instance.t1`. We use `t0` and `t1` to refer
+            to some subinterval of $[t_0, t_1]$. This is an API that is used for
+            consistency with the rest of the package, and just happens to be a little
+            confusing here.
 
         **Returns:**
 
@@ -118,12 +120,10 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         return jax.tree_map(_combine, prev_ys, next_ys)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        r"""Evaluate the derivative of the linear interpolation.
+        r"""Evaluate the derivative of the linear interpolation. Essentially equivalent
+        to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
 
         **Arguments:**
-
-        Let $x$ denote the continuous-time interpolation over the interval
-        $[t_0, t_1]$.
 
         - `t`: Any point in $[t_0, t_1]$ to evaluate the derivative at.
         - `left`: Whether to obtain the left-derivative or right-derivative at that
@@ -188,11 +188,13 @@ class CubicInterpolation(AbstractGlobalInterpolation):
             or right-continuous. [In practice cubic interpolation is always continuous
             except around `NaN`s.]
 
-        (Note that we use $t_0$ and $t_1$ to refer
-        to the overall interval, as obtained via `instance.t0` and `instance.t1`. We
-        use `t0` and `t1` to refer to some subinterval of $[t_0, t_1]$. This is an API
-        that is used for consistency with the rest of the package, and just happens to
-        be a little confusing here.)
+        !!! faq "FAQ"
+
+            Note that we use $t_0$ and $t_1$ to refer to the overall interval, as
+            obtained via `instance.t0` and `instance.t1`. We use `t0` and `t1` to refer
+            to some subinterval of $[t_0, t_1]$. This is an API that is used for
+            consistency with the rest of the package, and just happens to be a little
+            confusing here.
 
         **Returns:**
 
@@ -215,12 +217,11 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         return jax.tree_map(_index, *self.coeffs)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        r"""Evaluate the derivative of the cubic interpolation.
+        r"""Evaluate the derivative of the cubic interpolation. Essentially equivalent
+        to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
+
 
         **Arguments:**
-
-        Let $x$ denote the continuous-time interpolation over the interval
-        $[t_0, t_1]$.
 
         - `t`: Any point in $[t_0, t_1]$ to evaluate the derivative at.
         - `left`: Whether to obtain the left-derivative or right-derivative at that

@@ -42,7 +42,8 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def t1(self):
         return None
 
-    def evaluate(self, t0: Scalar, t1: Scalar) -> Array:
+    def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> Array:
+        del left
         check_no_derivative(t0, "t0")
         check_no_derivative(t1, "t1")
         t0_ = force_bitcast_convert_type(t0, jnp.int32)
