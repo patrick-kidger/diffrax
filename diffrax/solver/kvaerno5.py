@@ -97,25 +97,31 @@ class Kvaerno5(AbstractESDIRK):
     A-L stable stiffly accurate 5th order ESDIRK method. Has an embedded 4th order
     method. Uses 7 stages.
 
-    When solving an ODE over the interval [t0, t1], note that this method will make
-    some evaluations slightly past t1.
+    When solving an ODE over the interval $[t_0, t_1]$, note that this method will make
+    some evaluations slightly past $t_1$.
 
-    @article{kvaerno2004singly,
-      title={Singly diagonally implicit Runge--Kutta methods with an explicit first
-             stage},
-      author={Kv{\ae}rn{\o}, Anne},
-      journal={BIT Numerical Mathematics},
-      volume={44},
-      number={3},
-      pages={489--502},
-      year={2004},
-      publisher={Springer}
-    }
+    ??? Reference
+
+        ```bibtex
+        @article{kvaerno2004singly,
+          title={Singly diagonally implicit Runge--Kutta methods with an explicit first
+                 stage},
+          author={Kv{\ae}rn{\o}, Anne},
+          journal={BIT Numerical Mathematics},
+          volume={44},
+          number={3},
+          pages={489--502},
+          year={2004},
+          publisher={Springer}
+        }
+        ```
     """
     tableau = _kvaerno5_tableau
     interpolation_cls = _Kvaerno5Interpolation
     order = 5
 
 
-def kvaerno5(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def kvaerno5(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> Kvaerno5:
     return Kvaerno5(term=ODETerm(vector_field=vector_field), **kwargs)

@@ -71,7 +71,9 @@ class ImplicitEuler(AbstractSolver):
         return self.term.func_for_init(t0, y0, args)
 
 
-def implicit_euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def implicit_euler(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> ImplicitEuler:
     return ImplicitEuler(term=ODETerm(vector_field=vector_field), **kwargs)
 
 
@@ -80,7 +82,7 @@ def implicit_euler_maruyama(
     diffusion: Callable[[Scalar, PyTree, PyTree], PyTree],
     bm: AbstractBrownianPath,
     **kwargs
-):
+) -> ImplicitEuler:
     term = MultiTerm(
         terms=(
             ODETerm(vector_field=drift),

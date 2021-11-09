@@ -72,17 +72,39 @@ class ContainerMeta(type):
 
 
 def _fill_forward(
-    last_observed_yi: Array["channels"], yi: Array["channels"]  # noqa: F821
-) -> Tuple[Array["channels"], Array["channels"]]:  # noqa: F821
+    last_observed_yi: Array["channels":...], yi: Array["channels":...]  # noqa: F821
+) -> Tuple[Array["channels":...], Array["channels":...]]:  # noqa: F821
     yi = jnp.where(jnp.isnan(yi), last_observed_yi, yi)
     return yi, yi
 
 
 @jax.jit
 def fill_forward(
-    ys: Array["times", "channels"],  # noqa: F821
-    replace_nans_at_start: Optional[Array["channels"]] = None,  # noqa: F821
-) -> Array["times, channels"]:  # noqa: F821
+    ys: Array["times", ...],  # noqa: F821
+    replace_nans_at_start: Optional[Array[...]] = None,  # noqa: F821
+) -> Array["times", ...]:  # noqa: F821
+    """Fill-forwards over missing data (represented as NaN).
+
+    By default it works its was along the "times" axis, filling in NaNs with the most
+    recent non-NaN observation.
+
+    The "channels" dimension is just for convenience, and the operation is essentially
+    vmap'd over this dimension.
+
+    Any NaNs at the start (with no previous non-NaN observation) may be left alone, or
+    filled in, depending on `replace_nans_at_start`.
+
+    **Arguments:**
+
+    - `ys`: The data, which should use NaN to represent missing data.
+    - `replace_nans_at_start`: Optional. If passed, used to fill-forward NaNs occuring
+        at the start, prior to any non-NaN observations being made.
+
+    **Returns:**
+
+    The fill-forwarded data.
+    """
+
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
@@ -138,3 +160,12 @@ def rms_norm(x: PyTree) -> Scalar:
     # See JAX issues #5039 and #1052.
     _sqnorm = jnp.where(cond, 1.0, sqnorm)
     return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
+
+
+def left_broadcast_to(arr, shape):
+    """As `jax.numpy.broadcast_to`, except that `arr` is lined up with the left-hand
+    edge of `shape`, rather than the right-hand edge.
+    """
+
+    indices = tuple(slice(None) if i < arr.ndim else None for i in range(len(shape)))
+    return jnp.broadcast_to(arr[indices], shape)

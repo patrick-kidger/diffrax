@@ -88,7 +88,7 @@ def reversible_heun(
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,
     bm: Optional[AbstractBrownianPath] = None,
     **kwargs,
-):
+) -> ReversibleHeun:
     if diffusion is None:
         if bm is not None:
             raise ValueError

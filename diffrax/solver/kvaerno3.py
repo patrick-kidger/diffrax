@@ -53,22 +53,28 @@ class Kvaerno3(AbstractESDIRK):
     A-L stable stiffly accurate 3rd order ESDIRK method. Has an embedded 2nd order
     method. Uses 4 stages.
 
-    @article{kvaerno2004singly,
-      title={Singly diagonally implicit Runge--Kutta methods with an explicit first
-             stage},
-      author={Kv{\ae}rn{\o}, Anne},
-      journal={BIT Numerical Mathematics},
-      volume={44},
-      number={3},
-      pages={489--502},
-      year={2004},
-      publisher={Springer}
-    }
+    ??? Reference
+
+        ```bibtex
+        @article{kvaerno2004singly,
+          title={Singly diagonally implicit Runge--Kutta methods with an explicit first
+                 stage},
+          author={Kv{\ae}rn{\o}, Anne},
+          journal={BIT Numerical Mathematics},
+          volume={44},
+          number={3},
+          pages={489--502},
+          year={2004},
+          publisher={Springer}
+        }
+        ```
     """
     tableau = _kvaerno3_tableau
     interpolation_cls = _Kvaerno3Interpolation
     order = 3
 
 
-def kvaerno3(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def kvaerno3(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> Kvaerno3:
     return Kvaerno3(term=ODETerm(vector_field=vector_field), **kwargs)

@@ -24,10 +24,17 @@ class _Fehlberg2Interpolation(FourthOrderPolynomialInterpolation):
 
 
 class Fehlberg2(AbstractERK):
+    """Fehlberg's method.
+
+    Explicit 2nd order Runge--Kutta method. Has an embedded Euler method.
+    """
+
     tableau = _fehlberg2_tableau
     interpolation_cls = _Fehlberg2Interpolation
     order = 2
 
 
-def fehlberg2(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def fehlberg2(
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
+) -> Fehlberg2:
     return Fehlberg2(term=ODETerm(vector_field=vector_field), **kwargs)

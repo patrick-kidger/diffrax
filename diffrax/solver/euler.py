@@ -53,7 +53,7 @@ class Euler(AbstractSolver):
         return self.term.func_for_init(t0, y0, args)
 
 
-def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs):
+def euler(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs) -> Euler:
     return Euler(term=ODETerm(vector_field=vector_field), **kwargs)
 
 
@@ -62,7 +62,7 @@ def euler_maruyama(
     diffusion: Callable[[Scalar, PyTree, PyTree], PyTree],
     bm: AbstractBrownianPath,
     **kwargs
-):
+) -> Euler:
     term = MultiTerm(
         terms=(
             ODETerm(vector_field=drift),
