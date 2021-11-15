@@ -74,13 +74,21 @@ class ReversibleHeun(AbstractSolver):
         solver_state = (yhat1, vf1)
         return y1, y1_error, dense_info, solver_state, RESULTS.successful
 
+    def func_for_init(
+        self,
+        t0: Scalar,
+        y0: Array["state"],  # noqa: F821
+        args: PyTree,
+    ) -> Array["state"]:  # noqa: F821
+        return self.term.func_for_init(t0, y0, args)
+
 
 def reversible_heun(
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
     diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,
     bm: Optional[AbstractBrownianPath] = None,
     **kwargs,
-):
+) -> ReversibleHeun:
     if diffusion is None:
         if bm is not None:
             raise ValueError

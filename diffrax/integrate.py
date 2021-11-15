@@ -106,6 +106,7 @@ def _python_bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
 #
 
 
+# TODO: this is making one step too many.
 @jax.jit
 def _not_done(tprev, t1, result):
     return (tprev < t1) & (result == RESULTS.successful)
@@ -297,6 +298,77 @@ def diffeqsolve(
     jit: bool = True,
     throw: bool = True,
 ) -> Solution:
+    """Solves a differential equation.
+
+    This function is the main entry point for solving all kinds of initial value
+    problems, whether they're ODEs, SDEs, or CDEs.
+
+    The differential equation is integrated from `t0` to `t1`.
+
+    **Main arguments:**
+
+    These are the arguments most commonly used day-to-day.
+
+    - `solver`: The solver for the differential equation. The vector field of the
+        differential equation is specified when instantiating the solver.
+    - `t0`: The start of the region of integration.
+    - `t1`: The end of the region of integration.
+    - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
+        can be coerced to JAX arrays, like Python floats.)
+    - `dt0`: The step size to use for the first step. If using fixed step sizes then
+        this will also be the step size for all other steps. (Except the last one,
+        which may be slightly smaller and clipped to `t1`.) If set as `None` then the
+        initial step size will be determined automatically if possible.
+    - `args`: Any additional arguments to pass to the vector field.
+    - `saveat`: What times to save the solution of the differential equation. Defaults
+        to just the last time `t1`.
+    - `stepsize_controller`: How to change the step size as the integration progresses.
+        Defaults to using a fixed constant step size.
+
+    **Other arguments:**
+
+    These arguments are infrequently used, and for most purposes you shouldn't need to
+    understand these.
+
+    - `solver_state`: Some initial state for the solver. Can be useful when for example
+        using a reversible solver to recompute a solution.
+    - `controller_state`: Some initial state for the step size controller.
+    - `max_steps`: The maximum number of steps to take before quitting the computation
+        unconditionally. The `result` of the returned solution object will have a flag
+        set to indicate that this happened. Can be useful to bound the total amount of
+        work expended on problems of unknown complexity.
+    - `jit`: Whether to `jax.jit` anything using the vector field. The default is to do
+        so. Not doing so will typically be much slower, but allows for operations other
+        than pure JAX in the vector field.
+    - `throw`: Whether to raise an exception if the integration fails for any reason.
+        If `False` then the returned solution object will have a `result` field
+        indicating whether any failures occurred.
+        Possible failures include hitting `max_steps`, or the problem becoming too
+        stiff to integrate. (For most purposes these failures are unusual.) Note that
+        when `jax.vmap`-ing a differential equation solve, this means that an exception
+        will be raised if any batch element fails. You may prefer to set it to `False`
+        and inspect the `result` field of the returned solution object, to determine
+        which batch elements succeeded and which failed.
+
+    **Returns:**
+
+    Returns a [`diffrax.Solution`][] object specifying the solution to the differential
+    equation.
+
+    **Raises:**
+
+    - `ValueError` for bad inputs.
+    - `RuntimeError` if `throw=True` and the integration fails (e.g. hitting the
+        maximum number of steps).
+
+    !!! note
+        It is possible to have `t1 < t0`, in which case integration proceeds backwards
+        in time.
+
+    !!! note
+        It is possible to use this function directly on Python types that can be
+        coerced to JAX arrys, e.g. `diffeqsolve(..., t0=0, t1=1, y0=1, dt0=0.1)`.
+    """
 
     if dt0 is not None and _jit_any(unvmap((t1 - t0) * dt0 <= 0)):
         raise ValueError("Must have (t1 - t0) * dt0 > 0")
@@ -330,6 +402,7 @@ def diffeqsolve(
         assert dt0 is not None
         tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
+    tnext_before = t0
 
     if solver_state is None:
         solver_state = solver.init(t0, tnext, y, args)
@@ -357,7 +430,7 @@ def diffeqsolve(
     has_minus_one = False
     result = jnp.full_like(t1, RESULTS.successful)
     not_done = _not_done(tprev, t1, result)
-    save_intermediate = (saveat.ts is not None) or saveat.steps or saveat.dense
+    save_intermediate = (saveat.ts is not None) or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
     while _jit_any(unvmap(not_done)):
         # We have to keep track of several different times -- tprev, tnext,
@@ -376,6 +449,8 @@ def diffeqsolve(
         # solution at tnext_before.
         num_steps = num_steps + not_done
         raw_num_steps = raw_num_steps + 1
+        y_before = y
+        tnext_before_before = tnext_before
         tprev_before = tprev
         tnext_before = tnext
         (
@@ -427,13 +502,13 @@ def diffeqsolve(
                         interp_cond,
                     )
                     ys.append(yinterp)
-            if saveat.steps:
-                out_indices.append(len(ys))
-                ts.append(tnext_before)
-                ys.append(y)
             if saveat.dense:
                 dense_ts.append(tprev_before)
                 dense_infos.append(dense_info)
+        if saveat.steps:
+            out_indices.append(len(ys))
+            ts.append(jnp.where(made_step, tnext_before, tnext_before_before))
+            ys.append(jnp.where(made_step, y, y_before))
 
         should_break = False
 
@@ -473,7 +548,7 @@ def diffeqsolve(
     # saveat.steps will include the final timepoint anyway
     if saveat.t1 and not saveat.steps:
         out_indices.append(len(ys))
-        ts.append(tprev)
+        ts.append(tnext_before)
         ys.append(y)
 
     if saveat.dense:

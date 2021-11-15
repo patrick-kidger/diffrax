@@ -2,11 +2,12 @@ from . import utils
 from .brownian import AbstractBrownianPath, UnsafeBrownianPath
 from .global_interpolation import (
     AbstractGlobalInterpolation,
+    backward_hermite_coefficients,
     CubicInterpolation,
     DenseInterpolation,
-    hermite_cubic_with_backward_differences_coefficients,
     linear_interpolation,
     LinearInterpolation,
+    rectilinear_interpolation,
 )
 from .integrate import diffeqsolve
 from .local_interpolation import (

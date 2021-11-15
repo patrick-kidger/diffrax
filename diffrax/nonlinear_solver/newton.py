@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import equinox as eqx
 import jax
@@ -54,13 +54,28 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     """Newton's method for root-finding. (Also known as Newton--Raphson.)
 
     Also supports the quasi-Newton chord method.
+
+    !!! note
+        If using this as part of a implicit ODE solver, then:
+
+        - An adaptive step size controller should be used (e.g. `diffrax.IController`).
+          This will allow smaller steps to be made if the nonlinear solver fails to
+          converge.
+        - As a general rule, the values for `rtol` and `atol` should be set to the same
+          values as used for the adaptive step size controller.
+        - The value for `kappa` should usually be left alone.
+
+    !!! warning
+        Note that backpropagation through `__call__` may not produce accurate values if
+        `tolerate_nonconvergence=True`, as the backpropagation calculation implicitly
+        assumes that the forward pass converged.
     """
 
     max_steps: int = 10
-    rtol: float = 1e-3
-    atol: float = 1e-6
-    kappa: float = 1e-2
-    norm: callable = rms_norm
+    rtol: Scalar = 1e-3
+    atol: Scalar = 1e-6
+    kappa: Scalar = 1e-2
+    norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
 
     def __post_init__(self):
@@ -80,7 +95,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         flat, unflatten = ravel_pytree(x)
         if flat.size == 0:
             return x, RESULTS.successful
-        curried = lambda z: ravel_pytree(fn(unflatten(z), *args))[0]
+        curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
 
         def cond_fn(val):
             _, step, diffsize, diffsize_prev = val
@@ -127,3 +142,18 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             result = jnp.where(diverged, RESULTS.implicit_divergence, result)
             result = jnp.where(small, RESULTS.successful, result)
         return unflatten(flat), result
+
+
+NewtonNonlinearSolver.__init__.__doc__ = """
+**Arguments:**
+
+- `max_steps`: The maximum number of steps allowed. If more than this are required then
+    the iteration fails.
+- `rtol`: The relative tolerance for determining convergence.
+- `atol`: The absolute tolerance for determining convergence.
+- `kappa`: The kappa value for determining convergence.
+- `norm`: A function `PyTree -> Scalar`, which is called to determine the size of the
+    current value. (Used in determining convergence.)
+- `tolerate_nonconvergence`: Whether to return an error code if the iteration fails to
+    converge (or to silently pretend it was successful).
+"""

@@ -1,8 +1,12 @@
 from .bounded_while_loop import bounded_while_loop, Index
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
+    check_no_derivative,
     ContainerMeta,
     fill_forward,
+    force_bitcast_convert_type,
+    is_perturbed,
+    left_broadcast_to,
     linear_rescale,
     nextafter,
     nextbefore,

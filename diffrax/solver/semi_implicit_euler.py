@@ -95,7 +95,7 @@ def semi_implicit_euler(
     vector_field1: Callable[[Scalar, PyTree, PyTree], PyTree],
     vector_field2: Callable[[Scalar, PyTree, PyTree], PyTree],
     **kwargs
-):
+) -> SemiImplicitEuler:
     return SemiImplicitEuler(
         term1=ODETerm(vector_field=vector_field1),
         term2=ODETerm(vector_field=vector_field2),

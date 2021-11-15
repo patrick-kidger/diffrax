@@ -21,7 +21,7 @@ author = "Patrick Kidger"
 
 author_email = "contact@kidger.site"
 
-description = "GPU/autodiff-capable ODE/SDE/CDE solvers written in JAX."
+description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 
 with open(_here / "README.md", "r") as f:
     readme = f.read()
