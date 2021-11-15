@@ -50,6 +50,8 @@ class _InplaceArray:
             self.values = _existing.values
             self.indices.append(_index)
             self.values.append(_value)
+            # This is an optimisation for the fact that we only ever use each
+            # _InplaceArray once, so that we don't have to copy .indices and .values.
             _existing.clean = False
         self.clean = True
 
