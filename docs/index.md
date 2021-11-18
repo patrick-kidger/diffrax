@@ -1,4 +1,4 @@
-# Getting started with Diffrax
+# Getting started
 
 Diffrax is a [JAX](https://github.com/google/jax)-based library providing numerical differential equation solvers.
 
@@ -35,3 +35,7 @@ solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
 ## Citation
 
 --8<-- "further_details/.citation.md"
+
+!!! tip
+
+    The documentation is still very new. We'd welcome any suggestions if you find anything confusing! Open an issue or pull request on [GitHub](https://github.com/patrick-kidger/diffrax).
