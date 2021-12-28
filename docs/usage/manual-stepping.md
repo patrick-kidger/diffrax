@@ -1,4 +1,4 @@
-# Manual stepping
+# Interactively step through a solve
 
 !!! warning
 

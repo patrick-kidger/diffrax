@@ -269,7 +269,7 @@ class MultiTerm(AbstractTerm):
     This has two terms on the right hand side. It may be represented with a single
     term as
 
-    $\mathrm{d}y(t) = [f(t, y(t)), g(t, y(t))]] \cdot [\mathrm{d}t, \mathrm{d}w(t)]$
+    $\mathrm{d}y(t) = [f(t, y(t)), g(t, y(t))] \cdot [\mathrm{d}t, \mathrm{d}w(t)]$
 
     whose vector field - control interaction is a dot product.
 

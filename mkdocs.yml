@@ -97,6 +97,7 @@ nav:
     - Examples:
         - Neural ODE: 'examples/neural_ode.ipynb'
         - Neural CDE: 'examples/neural_cde.ipynb'
+        - Neural SDE: 'examples/neural_sde.ipynb'
         - Latent ODE: 'examples/latent_ode.ipynb'
         - Continuous Normalising Flow: 'examples/continuous_normalising_flow.ipynb'
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'

@@ -17,18 +17,23 @@ Diffrax offers a way to represent all of the above, and all of the solvers accep
 
 Every term implements the following interface:
 
-::: diffrax.AbstractTerm
-    selection:
-        members:
-            - vf
-            - contr
-            - prod
-            - vf_prod
-            - func_for_init
+??? "`diffrax.AbstractTerm`"
+
+    ::: diffrax.AbstractTerm
+        selection:
+            members:
+                - vf
+                - contr
+                - prod
+                - vf_prod
+                - func_for_init
 
 ---
 
 Several common cases are already specified.
+
+!!! note
+    You can create your own terms if appropriate: e.g. if a diffusion matrix has some particular structure, and you want to use a specialised more efficient matrix-vector product algorithm in `prod`.
 
 ::: diffrax.ODETerm
     selection:
@@ -42,7 +47,4 @@ Several common cases are already specified.
 ::: diffrax.MultiTerm
     selection:
         members: false
-
-!!! note
-    You can create your own terms if appropriate: e.g. if a diffusion matrix has some particular structure, and you want to use a specialised more efficient matrix-vector product algorithm in `prod`.
 

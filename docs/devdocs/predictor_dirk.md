@@ -10,12 +10,12 @@ for $i = 1, \ldots, s$.
 
 How do we initialise our guess for $f_i$? Given the information available to us at each stage, a natural choice is to take some linear combination of the $f_j$ already available to us. (This feels a bit like using an explicit RK (ERK) method, although we don't use $y_0$ and don't make any extra function evaluations.)
 
-Making a good choice of predictor is important, and can have a strong impact on whether the Newton solver converges. One anecdotal example: for a particular stiff ODE, a zero-predictor was able to solve only 34% of initial conditions. (And otherwise failures of the Newton solver, even over adaptively-chosen small timesteps, meant that the ODE could not be resolved in a timely manner.) Switching to a linear-combination-predictor increased this dramatically, to 98% of initial conditions studied.
+Making a good choice of predictor is important, and can have a strong impact on whether the Newton solver converges. One anecdotal example: for a particular stiff ODE, naively always predicting $f_i=0$ meant the Kvaerno5 solver could solve about 34% of initial conditions. (And otherwise failures of the Newton solver, even over adaptively-chosen small timesteps, meant that the ODE could not be resolved in a timely manner.) Switching to a linear-combination-predictor increased this dramatically, to 98% of initial conditions studied.
 
 What is an appropriate choice of linear combination? This is something that seems to have frequently been left out of the literature, e.g.:
 
 - Kvaerno's paper presents only the implicit tableaus.
-- Hairer and Wanner only seems to discuss predictors for fully-implicit RK (FIRK) methods (by polynomial interpolating the stages of the previous step).
+- Hairer and Wanner only seems to discuss predictors for fully-implicit RK (FIRK) methods (by polynomially interpolating the stages of the previous step).
 - Mistakes are made in practice, e.g. [OrdinaryDiffEq.jl](https://github.com/SciML/OrdinaryDiffEq.jl/blob/6fdc99fa4da79633e0161f0bb8aaff3f39cd39bc/src/perform_step/kencarp_kvaerno_perform_step.jl#L652) use zero as the predictor for a second stage of an ESDIRK method -- when it would make sense to at least use the result of the first stage.
 
 As a result, an additional part of each DIRK method's Butcher tableau is some collection of values $α_{ij}$ for $i > j$. At each stage we will initialise
