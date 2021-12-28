@@ -8,7 +8,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, DenseInfo, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
-from .misc import fill_forward, left_broadcast_to, unvmap
+from .misc import error_if, fill_forward, left_broadcast_to
 from .path import AbstractPath
 
 
@@ -16,7 +16,7 @@ class AbstractGlobalInterpolation(AbstractPath):
     ts: Array["times"]  # noqa: F821
 
     def __post_init__(self):
-        assert self.ts.ndim == 1
+        error_if(self.ts.ndim != 1, "`ts` must be one dimensional.")
 
     def _interpret_t(self, t: Scalar, left: bool) -> Tuple[Scalar, Scalar]:
         maxlen = self.ts.shape[0] - 2
@@ -60,10 +60,14 @@ class LinearInterpolation(AbstractGlobalInterpolation):
     ys: PyTree["times", ...]  # noqa: F821
 
     def __post_init__(self):
-        def _assert(_ys):
-            assert _ys.shape[0] == self.ts.shape[0]
+        def _check(_ys):
+            error_if(
+                _ys.shape[0] != self.ts.shape[0],
+                "Must have ts.shape[0] == ys.shape[0], that is to say the same number "
+                "of entries along the timelike dimension.",
+            )
 
-        jax.tree_map(_assert, self.ys)
+        jax.tree_map(_check, self.ys)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -167,13 +171,17 @@ class CubicInterpolation(AbstractGlobalInterpolation):
     ]
 
     def __post_init__(self):
-        def _assert(d, c, b, a):
-            assert d.shape[0] + 1 == self.ts.shape[0]
-            assert c.shape[0] + 1 == self.ts.shape[0]
-            assert b.shape[0] + 1 == self.ts.shape[0]
-            assert a.shape[0] + 1 == self.ts.shape[0]
+        def _check(d, c, b, a):
+            error_msg = (
+                "Each cubic coefficient must have `times - 1` entries, where "
+                "`times = self.ts.shape[0]`."
+            )
+            error_if(d.shape[0] + 1 != self.ts.shape[0], error_msg)
+            error_if(c.shape[0] + 1 != self.ts.shape[0], error_msg)
+            error_if(b.shape[0] + 1 != self.ts.shape[0], error_msg)
+            error_if(a.shape[0] + 1 != self.ts.shape[0], error_msg)
 
-        jax.tree_map(_assert, *self.coeffs)
+        jax.tree_map(_check, *self.coeffs)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -318,13 +326,10 @@ class DenseInterpolation(AbstractGlobalInterpolation):
 
 
 def _check_ts(ts: Array["times"]) -> None:  # noqa: F821
-    if ts.ndim != 1:
-        raise ValueError(f"ts must be 1-dimensional; got {ts.ndim}.")
-    if ts.shape[0] < 2:
-        raise ValueError(f"ts must be of length at least 2; got {ts.shape[0]}")
-    if not isinstance(ts, jax.core.Tracer) and jnp.any(unvmap(ts[:-1] >= ts[1:])):
-        # Also catches any NaN times.
-        raise ValueError("ts must be monotonically strictly increasing.")
+    error_if(ts.ndim != 1, f"`ts` must be 1-dimensional; got {ts.ndim}.")
+    error_if(ts.shape[0] < 2, f"`ts` must be of length at least 2; got {ts.shape[0]}")
+    # Also catches any NaN times.
+    error_if(ts[:-1] >= ts[1:], "`ts` must be monotonically strictly increasing.")
 
 
 def _interpolation_reverse(

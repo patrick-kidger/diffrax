@@ -26,22 +26,22 @@ def test_functional_no_vmap_no_inplace():
     init_val = (jnp.array([0.3]), 0)
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
-    assert val[0] == 0.3 and val[1] == 0
+    assert jnp.allclose(val[0], 0.3) and val[1] == 0
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
-    assert val[0] == 0.4 and val[1] == 1
+    assert jnp.allclose(val[0], 0.4) and val[1] == 1
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
-    assert val[0] == 0.5 and val[1] == 2
+    assert jnp.allclose(val[0], 0.5) and val[1] == 2
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
-    assert val[0] == 0.7 and val[1] == 4
+    assert jnp.allclose(val[0], 0.7) and val[1] == 4
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
-    assert val[0] == 0.8 and val[1] == 5
+    assert jnp.allclose(val[0], 0.8) and val[1] == 5
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
-    assert val[0] == 0.8 and val[1] == 5
+    assert jnp.allclose(val[0], 0.8) and val[1] == 5
 
 
 def test_functional_no_vmap_inplace():

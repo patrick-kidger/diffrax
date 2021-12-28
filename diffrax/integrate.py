@@ -7,12 +7,18 @@ import jax.numpy as jnp
 
 from .custom_types import Array, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import ravel_pytree, stack_pytrees, unvmap
+from .misc import error_if, ravel_pytree, stack_pytrees, unvmap_all, unvmap_any
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import AbstractSolver
 from .step_size_controller import AbstractStepSizeController, ConstantStepSize
 
+
+# TODO:
+# - Delete helpers below
+# - Delete any superfluous JIT helpers
+# - Rewrite using bounded_while_loop
+# - Handle throw=True and errors
 
 #
 # Helpers meant to emulate JAX, until JAX issues #8239, #8193, #8184 are fixed.
@@ -94,7 +100,7 @@ def _python_bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
     val = init_val
     cond = cond_fun(val)
     num_steps = 0
-    while _jit_any(unvmap(cond)) and num_steps < max_steps:
+    while unvmap_any(cond) and num_steps < max_steps:
         num_steps += 1
         update, index = body_fun(val)
         new_val = jax.tree_map(_make_update, index, update, val)
@@ -372,8 +378,8 @@ def diffeqsolve(
         coerced to JAX arrys, e.g. `diffeqsolve(..., t0=0, t1=1, y0=1, dt0=0.1)`.
     """
 
-    if dt0 is not None and _jit_any(unvmap((t1 - t0) * dt0 <= 0)):
-        raise ValueError("Must have (t1 - t0) * dt0 > 0")
+    if dt0 is not None:
+        error_if((t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
 
     # Normalise state: ravel PyTree state down to just a flat Array.
     # Normalise time: if t0 > t1 then flip things around.
@@ -389,10 +395,13 @@ def diffeqsolve(
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
 
     if saveat.ts is not None:
-        if _jit_any(unvmap(saveat.ts[1:] < saveat.ts[:-1])):
-            raise ValueError("saveat.ts must be increasing or decreasing.")
-        if _jit_any(unvmap((saveat.ts > t1) | (saveat.ts < t0))):
-            raise ValueError("saveat.ts must lie between t0 and t1.")
+        error_if(
+            saveat.ts[1:] < saveat.ts[:-1],
+            "saveat.ts must be increasing or decreasing.",
+        )
+        error_if(
+            (saveat.ts > t1) | (saveat.ts < t0), "saveat.ts must lie between t0 and t1."
+        )
         tinterp_index = 0
 
     tprev = t0
@@ -434,7 +443,7 @@ def diffeqsolve(
     not_done = _not_done(tprev, t1, result)
     save_intermediate = (saveat.ts is not None) or saveat.dense
     # We don't use lax.while_loop as it doesn't support reverse-mode autodiff
-    while _jit_any(unvmap(not_done)):
+    while unvmap_any(not_done):
         # We have to keep track of several different times -- tprev, tnext,
         # tprev_before, tnext_before, t1.
         #
@@ -482,17 +491,15 @@ def diffeqsolve(
         )
 
         # save_intermediate=False offers a fast path that avoids JAX operations
-        if save_intermediate and _jit_any(unvmap(made_step)):
+        if save_intermediate and unvmap_any(made_step):
             if saveat.ts is not None:
                 tinterp, interp_cond = _pre_save_interp(
                     tnext_before, tinterp_index, saveat.ts
                 )
-                while _jit_any(unvmap(interp_cond)):
+                while unvmap_any(interp_cond):
                     ts.append(tinterp)
                     out_indices.append(jnp.where(interp_cond, len(ys), -1))
-                    has_minus_one = (
-                        has_minus_one or _jit_any(unvmap(~interp_cond)).item()
-                    )
+                    has_minus_one = has_minus_one or unvmap_any(~interp_cond).item()
                     tinterp, yinterp, interp_cond, tinterp_index = _save_interp(
                         solver.interpolation_cls,
                         tprev_before,
@@ -517,7 +524,7 @@ def diffeqsolve(
         _controller_unsuccessful = _jit_neq(
             stepsize_controller_result, RESULTS.successful
         )
-        if _jit_any(unvmap(_controller_unsuccessful)):
+        if unvmap_any(_controller_unsuccessful):
             cond = jnp.where(
                 result == RESULTS.successful, _controller_unsuccessful, False
             )
@@ -525,13 +532,13 @@ def diffeqsolve(
             should_break = throw
 
         _solver_unsuccessful = _jit_neq(solver_result, RESULTS.successful)
-        if _jit_any(unvmap(_solver_unsuccessful)):
+        if unvmap_any(_solver_unsuccessful):
             cond = jnp.where(result == RESULTS.successful, _solver_unsuccessful, False)
             result = jnp.where(cond, solver_result, result)
             should_break = throw
 
         _nan_tnext = jnp.isnan(tnext)
-        if _jit_any(unvmap(_nan_tnext)):
+        if unvmap_any(_nan_tnext):
             cond = jnp.where(result == RESULTS.successful, _nan_tnext, False)
             result = jnp.where(cond, RESULTS.nan_time, result)
             should_break = throw
@@ -543,10 +550,6 @@ def diffeqsolve(
         if should_break:
             break
 
-    if throw and _jit_any(unvmap(_jit_neq(result, RESULTS.successful))):
-        error = RESULTS[jnp.max(unvmap(result)).item()]
-        raise RuntimeError(error)
-
     # saveat.steps will include the final timepoint anyway
     if saveat.t1 and not saveat.steps:
         out_indices.append(len(ys))
@@ -557,7 +560,7 @@ def diffeqsolve(
         dense_ts.append(t1)
         dense_ts = jnp.stack(dense_ts)
         if not len(dense_infos):
-            assert jnp.all(unvmap(t0 == t1))
+            assert unvmap_all(t0 == t1)
             raise ValueError("Cannot save dense output when t0 == t1")
         dense_infos = stack_pytrees(dense_infos)
         interpolation = DenseInterpolation(

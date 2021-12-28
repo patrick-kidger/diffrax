@@ -1,11 +1,13 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import jax
+import jax.experimental.host_callback as hcb
 import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
 from .ravel import ravel_pytree
+from .unvmap import unvmap_any
 
 
 _itemsize_kind_type = {
@@ -169,3 +171,28 @@ def left_broadcast_to(arr, shape):
 
     indices = tuple(slice(None) if i < arr.ndim else None for i in range(len(shape)))
     return jnp.broadcast_to(arr[indices], shape)
+
+
+def error_if(x: Union[bool, Array[..., bool]], msg: str) -> bool:
+    """For use as part of validating inputs.
+
+    Example:
+        def f(x):
+            cond = cond_fn(x)
+            error_if(cond)
+    """
+    if not isinstance(x, bool):
+        x = unvmap_any(x)
+    error = ValueError(msg)
+    if isinstance(x, jax.core.Tracer):
+        # Under JIT
+        lax.cond(
+            x,
+            lambda _: hcb.id_print("Exception suppressed under JIT: {error!r}"),
+            lambda _: None,
+            None,
+        )
+    else:
+        # Not under JIT
+        if x:
+            raise error

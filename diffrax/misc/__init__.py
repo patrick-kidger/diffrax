@@ -3,6 +3,7 @@ from .frozenarray import frozenarray, frozenndarray
 from .misc import (
     check_no_derivative,
     ContainerMeta,
+    error_if,
     fill_forward,
     force_bitcast_convert_type,
     is_perturbed,
