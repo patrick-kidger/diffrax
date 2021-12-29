@@ -1,3 +1,5 @@
+import math
+
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -5,7 +7,7 @@ import jax.numpy as jnp
 from .unvmap import unvmap_any
 
 
-def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
+def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
     """Reverse-mode autodifferentiable while loop.
 
     Mostly as `lax.while_loop`, with a few small changes.
@@ -15,8 +17,9 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
         body_fun: function `a -> (a, b)`, where `b` is a pytree prefix of `a`.
         init_val: pytree with structure `a`.
         max_steps: integer or `None`.
+        baes: integer.
 
-    Limitation:
+    Limitations/details:
         `body_fun` should not make any in-place updates to its argument. When running
         on the CPU then the XLA compiler will fail to treat these as in-place and will
         make a copy every time. (See JAX issue #8192.)
@@ -45,6 +48,12 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
     will fall back to `lax.while_loop` (which is not reverse-mode autodifferentiable).
     If it is a non-negative integer then this is the maximum number of steps which may
     be taken in the loop, after which the loop will exit unconditionally.
+
+    Note the extra `base` argument.
+    - Run time will increase slightly as `base` increases.
+    - Compilation time will decrease substantially as
+      `math.ceil(math.log(max_steps, base))` decreases. (Which happens as `base`
+      increases.)
     """
 
     init_val = jax.tree_map(jnp.asarray, init_val)
@@ -71,11 +80,13 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
         raise ValueError("max_steps must be a non-negative integer")
     if max_steps == 0:
         return init_val
-    if max_steps & (max_steps - 1) != 0:
-        raise ValueError("max_steps must be a power of two")
 
-    init_data = (cond_fun(init_val), init_val)
-    _, val = _while_loop(cond_fun, body_fun, init_data, max_steps)
+    def _cond_fun(val, step):
+        return cond_fun(val) & (step < max_steps)
+
+    init_data = (cond_fun(init_val), init_val, 0)
+    rounded_max_steps = base ** int(math.ceil(math.log(max_steps, base)))
+    _, val, _ = _while_loop(_cond_fun, body_fun, init_data, rounded_max_steps, base)
     return val
 
 
@@ -90,7 +101,7 @@ def _identity(x):
     return x
 
 
-# There's several tricks happening here to work around various limitations.
+# There's several tricks happening here to work around various limitations of JAX.
 # 1. `unvmap_any` prior to using `lax.cond`. JAX has a problem in that vmap-of-cond
 #    is converted to a `lax.select`, which executes both branches unconditionally.
 #    Thus writing this naively, using a plain `lax.cond`, will mean the loop always
@@ -107,9 +118,14 @@ def _identity(x):
 #    with XLA's need for fixed/bounded memory requirements). It was on that hypothesis
 #    that I decided to try checkpointing, and was pleased to see that it worked. c.f.
 #    JAX issue #8239.
-def _while_loop(cond_fun, body_fun, data, max_steps):
+# 4. The use of `base`. In theory `base=2` is optimal at run time, as it implies the
+#    fewest superfluous operations. In practice this implies quite deep recursion in
+#    the construction of the bounded while loop, and this slows down the jaxpr
+#    creation and the XLA compilation. We choose `base=16` as a reasonable-looking
+#    compromise between compilation time and run time.
+def _while_loop(cond_fun, body_fun, data, max_steps, base):
     if max_steps == 1:
-        pred, val = data
+        pred, val, step = data
 
         def _make_update(_index, _val, _new_val):
             if _index is None:
@@ -125,19 +141,20 @@ def _while_loop(cond_fun, body_fun, data, max_steps):
         new_val = jax.tree_map(
             _make_update, index, val, new_val, is_leaf=lambda x: x is None
         )
-        return cond_fun(new_val), new_val
+        new_step = step + 1
+        return cond_fun(new_val, new_step), new_val, new_step
     else:
 
         def _call(_data):
-            return _while_loop(cond_fun, body_fun, _data, max_steps // 2)
+            return _while_loop(cond_fun, body_fun, _data, max_steps // base, base)
 
         @jax.checkpoint
         def _scan_fn(_data, _):
-            _pred, _ = _data
+            _pred, _, _ = _data
             _unvmap_pred = unvmap_any(_pred)
             return lax.cond(_unvmap_pred, _call, _identity, _data), None
 
-        return lax.scan(_scan_fn, data, xs=None, length=2)[0]
+        return lax.scan(_scan_fn, data, xs=None, length=base)[0]
 
 
 def _monkey_patch():
