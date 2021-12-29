@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import pytest
 import scipy.integrate as integrate
 
-from helpers import all_ode_solvers, fixed_ode_solvers, tree_allclose
+from helpers import all_ode_solvers, fixed_ode_solvers, shaped_allclose
 
 
 #
@@ -439,4 +439,4 @@ def _test(solver_ctr, problems, higher):
             rtol = 3e-5
             atol = 3e-5
 
-        assert tree_allclose(y1, scipy_y1, rtol=rtol, atol=atol)
+        assert shaped_allclose(y1, scipy_y1, rtol=rtol, atol=atol)

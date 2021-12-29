@@ -1,7 +1,9 @@
 # TODO:
-# - Test jvp, grad speed
+# - Test forward times
+# - Test grad time
 # - Test compile time
-# However these tests will currently fail because of JAX bugs.
+
+import functools as ft
 
 import diffrax
 import equinox as eqx
@@ -11,7 +13,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
 
-from helpers import time_fn
+from helpers import shaped_allclose, time_fn
 
 
 def test_functional_no_vmap_no_inplace():
@@ -26,22 +28,22 @@ def test_functional_no_vmap_no_inplace():
     init_val = (jnp.array([0.3]), 0)
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
-    assert jnp.allclose(val[0], 0.3) and val[1] == 0
+    assert shaped_allclose(val[0], jnp.array([0.3])) and val[1] == 0
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
-    assert jnp.allclose(val[0], 0.4) and val[1] == 1
+    assert shaped_allclose(val[0], jnp.array([0.4])) and val[1] == 1
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
-    assert jnp.allclose(val[0], 0.5) and val[1] == 2
+    assert shaped_allclose(val[0], jnp.array([0.5])) and val[1] == 2
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
-    assert jnp.allclose(val[0], 0.7) and val[1] == 4
+    assert shaped_allclose(val[0], jnp.array([0.7])) and val[1] == 4
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
-    assert jnp.allclose(val[0], 0.8) and val[1] == 5
+    assert shaped_allclose(val[0], jnp.array([0.8])) and val[1] == 5
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
-    assert jnp.allclose(val[0], 0.8) and val[1] == 5
+    assert shaped_allclose(val[0], jnp.array([0.8])) and val[1] == 5
 
 
 def test_functional_no_vmap_inplace():
@@ -51,27 +53,30 @@ def test_functional_no_vmap_inplace():
 
     def body_fun(val):
         x, step = val
-        return (x + 0.1, step + 1), (min(step, 4), diffrax.utils.Index(()))
+        return (x[step] + 0.1, step + 1), (
+            jnp.minimum(step + 1, 4),
+            diffrax.utils.Index(()),
+        )
 
     init_val = (jnp.array([0.3, 0.3, 0.3, 0.3, 0.3]), 0)
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
-    assert jnp.array_equal(val[0], jnp.array([0.3, 0.3, 0.3, 0.3, 0.3])) and val[1] == 0
+    assert shaped_allclose(val[0], jnp.array([0.3, 0.3, 0.3, 0.3, 0.3])) and val[1] == 0
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
-    assert jnp.array_equal(val[0], jnp.array([0.3, 0.4, 0.3, 0.3, 0.3])) and val[1] == 1
+    assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.3, 0.3, 0.3])) and val[1] == 1
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
-    assert jnp.array_equal(val[0], jnp.array([0.3, 0.4, 0.5, 0.3, 0.3])) and val[1] == 2
+    assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.3, 0.3])) and val[1] == 2
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
-    assert jnp.array_equal(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.7])) and val[1] == 4
+    assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.7])) and val[1] == 4
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
-    assert jnp.array_equal(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.8])) and val[1] == 5
+    assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.8])) and val[1] == 5
 
     val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
-    assert jnp.array_equal(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.8])) and val[1] == 5
+    assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.8])) and val[1] == 5
 
 
 def test_functional_vmap_no_inplace():
@@ -88,35 +93,35 @@ def test_functional_vmap_no_inplace():
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=0)
     )(init_val)
-    assert jnp.array_equal(val[0], jnp.array([[0.3], [0.4]])) and jnp.array_equal(
+    assert shaped_allclose(val[0], jnp.array([[0.3], [0.4]])) and jnp.array_equal(
         val[1], jnp.array([0, 3])
     )
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=1)
     )(init_val)
-    assert jnp.array_equal(val[0], jnp.array([[0.4], [0.5]])) and jnp.array_equal(
+    assert shaped_allclose(val[0], jnp.array([[0.4], [0.5]])) and jnp.array_equal(
         val[1], jnp.array([1, 4])
     )
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=2)
     )(init_val)
-    assert jnp.array_equal(val[0], jnp.array([[0.5], [0.6]])) and jnp.array_equal(
+    assert shaped_allclose(val[0], jnp.array([[0.5], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([2, 5])
     )
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=4)
     )(init_val)
-    assert jnp.array_equal(val[0], jnp.array([[0.7], [0.6]])) and jnp.array_equal(
+    assert shaped_allclose(val[0], jnp.array([[0.7], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([4, 5])
     )
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=8)
     )(init_val)
-    assert jnp.array_equal(val[0], jnp.array([[0.8], [0.6]])) and jnp.array_equal(
+    assert shaped_allclose(val[0], jnp.array([[0.8], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([5, 5])
     )
 
@@ -125,68 +130,73 @@ def test_functional_vmap_no_inplace():
             cond_fun, body_fun, v, max_steps=None
         )
     )(init_val)
-    assert jnp.array_equal(val[0], jnp.array([[0.8], [0.6]])) and jnp.array_equal(
+    assert shaped_allclose(val[0], jnp.array([[0.8], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([5, 5])
     )
 
 
 def test_functional_vmap_inplace():
     def cond_fun(val):
-        x, step = val
-        return step < 5
+        x, step, max_step = val
+        return step < max_step
 
     def body_fun(val):
-        x, step = val
-        return (x + 0.1, step + 1), (min(step, 4), diffrax.utils.Index(()))
+        x, step, max_step = val
+        return (x[step] + 0.1, step + 1, max_step), (
+            jnp.minimum(step + 1, 4),
+            diffrax.utils.Index(()),
+            None,
+        )
 
     init_val = (
         jnp.array([[0.3, 0.3, 0.3, 0.3, 0.3], [0.4, 0.4, 0.4, 0.4, 0.4]]),
-        jnp.array([0, 3]),
+        jnp.array([0, 1]),
+        jnp.array([5, 3]),
     )
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=0)
     )(init_val)
-    assert jnp.array_equal(
+    assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.3, 0.3, 0.3, 0.3], [0.4, 0.4, 0.4, 0.4, 0.4]])
-    ) and jnp.array_equal(val[1], jnp.array([0, 3]))
+    ) and jnp.array_equal(val[1], jnp.array([0, 1]))
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=1)
     )(init_val)
-    assert jnp.array_equal(
-        val[0], jnp.array([[0.3, 0.4, 0.3, 0.3, 0.3], [0.4, 0.5, 0.4, 0.4, 0.4]])
-    ) and jnp.array_equal(val[1], jnp.array([1, 4]))
+    assert shaped_allclose(
+        val[0], jnp.array([[0.3, 0.4, 0.3, 0.3, 0.3], [0.4, 0.4, 0.5, 0.4, 0.4]])
+    ) and jnp.array_equal(val[1], jnp.array([1, 2]))
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=2)
     )(init_val)
-    assert jnp.array_equal(
-        val[0], jnp.array([[0.3, 0.4, 0.5, 0.3, 0.3], [0.4, 0.5, 0.6, 0.4, 0.4]])
-    ) and jnp.array_equal(val[1], jnp.array([2, 5]))
+    assert shaped_allclose(
+        val[0], jnp.array([[0.3, 0.4, 0.5, 0.3, 0.3], [0.4, 0.4, 0.5, 0.6, 0.4]])
+    ) and jnp.array_equal(val[1], jnp.array([2, 3]))
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=4)
     )(init_val)
-    assert jnp.array_equal(
-        val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.7], [0.4, 0.5, 0.6, 0.4, 0.4]])
-    ) and jnp.array_equal(val[1], jnp.array([4, 5]))
+    assert shaped_allclose(
+        val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.7], [0.4, 0.4, 0.5, 0.6, 0.4]])
+    ) and jnp.array_equal(val[1], jnp.array([4, 3]))
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=8)
     )(init_val)
-    assert jnp.array_equal(
-        val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.8], [0.4, 0.5, 0.6, 0.4, 0.4]])
-    ) and jnp.array_equal(val[1], jnp.array([5, 5]))
+    assert shaped_allclose(
+        val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.8], [0.4, 0.4, 0.5, 0.6, 0.4]])
+    ) and jnp.array_equal(val[1], jnp.array([5, 3]))
 
     val = jax.vmap(
         lambda v: diffrax.utils.bounded_while_loop(
             cond_fun, body_fun, v, max_steps=None
         )
     )(init_val)
-    assert jnp.array_equal(
-        val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.8], [0.4, 0.5, 0.6, 0.4, 0.4]])
-    ) and jnp.array_equal(val[1], jnp.array([5, 5]))
+    assert shaped_allclose(
+        val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.8], [0.4, 0.4, 0.5, 0.6, 0.4]])
+    ) and jnp.array_equal(val[1], jnp.array([5, 3]))
 
 
 #
@@ -212,9 +222,9 @@ def _quadratic_fit(x, y):
     return np.polynomial.Polynomial.fit(x, y, deg=2).convert().coef
 
 
-def test_scaling_max_steps():
+def _test_scaling_max_steps():
     key = jrandom.PRNGKey(567)
-    expensive_fn = eqx.nn.MLP(in_size=1, out_size=1, width_size=2048, depth=5, key=key)
+    expensive_fn = eqx.nn.MLP(in_size=1, out_size=1, width_size=1024, depth=2, key=key)
 
     def cond_fun(val):
         x, step = val
@@ -222,76 +232,57 @@ def test_scaling_max_steps():
 
     def body_fun(val):
         x, step = val
-        return (expensive_fn(x), step + 1), (min(step, 5), None)
+        return (expensive_fn(x[step, None])[0], step + 1), (
+            jnp.minimum(step + 1, 5),
+            None,
+        )
 
     init_val = (
         jnp.array([[0.3, 0.3, 0.3, 0.3, 0.3], [0.4, 0.4, 0.4, 0.4, 0.4]]),
         jnp.array([0, 3]),
     )
 
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, v, max_steps=16
-            )
-        )
-    )(init_val)
-    time16 = time_fn(fn, repeat=10)
+    @ft.partial(jax.jit, static_argnums=1)
+    @ft.partial(jax.vmap, in_axes=(0, None))
+    def test_fun(val, max_steps):
+        return diffrax.utils.bounded_while_loop(cond_fun, body_fun, val, max_steps)
 
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, v, max_steps=32
-            )
-        )
-    )(init_val)
-    time32 = time_fn(fn, repeat=10)
+    time16 = time_fn(lambda: test_fun(init_val, 16), repeat=10)
+    time32 = time_fn(lambda: test_fun(init_val, 32), repeat=10)
+    time64 = time_fn(lambda: test_fun(init_val, 64), repeat=10)
+    time128 = time_fn(lambda: test_fun(init_val, 128), repeat=10)
+    time256 = time_fn(lambda: test_fun(init_val, 256), repeat=10)
+    maxtime = max(time16, time32, time64, time128, time256)
 
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, v, max_steps=64
-            )
-        )
-    )(init_val)
-    time64 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, v, max_steps=128
-            )
-        )
-    )(init_val)
-    time128 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, v, max_steps=256
-            )
-        )
-    )(init_val)
-    time256 = time_fn(fn, repeat=10)
-
-    c2, c1, _ = _quadratic_fit(
-        [16, 32, 64, 128, 256], [time16, time32, time64, time128, time256]
+    # Rescale to fit the graph inside [0, 1] x [0, 1] so that polynomials are actually
+    # a reasonable thing to use.
+    _, c1, c2 = _quadratic_fit(
+        [16 / 256, 32 / 256, 64 / 256, 128 / 256, 256 / 256],
+        [
+            time16 / maxtime,
+            time32 / maxtime,
+            time64 / maxtime,
+            time128 / maxtime,
+            time256 / maxtime,
+        ],
     )
-    # constant scaling
-    assert -0.05 < c2 < 0.05
+    # Runtime expected to be O(1)
     assert -0.05 < c1 < 0.05
+    assert -0.05 < c2 < 0.05
 
-    fn = lambda: jax.vmap(lambda v: lax.while_loop(cond_fun, _body_fun(body_fun), v))(
-        init_val
-    )
-    time_lax = time_fn(fn, repeat=10)
+    @ft.partial(jax.jit, static_argnums=1)
+    @jax.vmap
+    def lax_test_fun(val):
+        return lax.while_loop(cond_fun, _body_fun(body_fun), val)
 
-    assert max(time16, time32, time64, time128, time256) < 2 * time_lax
+    lax_time = time_fn(lambda: lax_test_fun(init_val), repeat=10)
+
+    assert maxtime < 2 * lax_time
 
 
-def test_scaling_num_steps():
+def _test_scaling_num_steps():
     key = jrandom.PRNGKey(567)
-    expensive_fn = eqx.nn.MLP(in_size=1, out_size=1, width_size=2048, depth=5, key=key)
+    expensive_fn = eqx.nn.MLP(in_size=1, out_size=1, width_size=1024, depth=2, key=key)
 
     def cond_fun(val):
         x, step, num_steps = val
@@ -299,90 +290,44 @@ def test_scaling_num_steps():
 
     def body_fun(val):
         x, step, num_steps = val
-        return (expensive_fn(x), step + 1, num_steps), (
-            min(step, num_steps),
+        return (expensive_fn(x[step, None])[0], step + 1, num_steps), (
+            jnp.minimum(step + 1, num_steps),
             None,
             None,
         )
 
     init_val = (jnp.array([[0.3] * 256, [0.4] * 256]), jnp.array([0, 3]))
 
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, (*v, 16), max_steps=256
-            )
+    @ft.partial(jax.jit, static_argnums=1)
+    @ft.partial(jax.vmap, in_axes=(0, None))
+    def test_fun(val, num_steps):
+        return diffrax.utils.bounded_while_loop(
+            cond_fun, body_fun, (*val, num_steps), max_steps=256
         )
-    )(init_val)
-    time16 = time_fn(fn, repeat=10)
 
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, (*v, 32), max_steps=256
-            )
-        )
-    )(init_val)
-    time32 = time_fn(fn, repeat=10)
+    time16 = time_fn(lambda: test_fun(init_val, 16), repeat=10)
+    time32 = time_fn(lambda: test_fun(init_val, 32), repeat=10)
+    time64 = time_fn(lambda: test_fun(init_val, 64), repeat=10)
+    time128 = time_fn(lambda: test_fun(init_val, 128), repeat=10)
+    time256 = time_fn(lambda: test_fun(init_val, 256), repeat=10)
 
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, (*v, 64), max_steps=256
-            )
-        )
-    )(init_val)
-    time64 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, (*v, 128), max_steps=256
-            )
-        )
-    )(init_val)
-    time128 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(
-            lambda v: diffrax.utils.bounded_while_loop(
-                cond_fun, body_fun, (*v, 256), max_steps=256
-            )
-        )
-    )(init_val)
-    time256 = time_fn(fn, repeat=10)
-
-    c2, c1, _ = _quadratic_fit(
+    _, c1, c2 = _quadratic_fit(
         [16, 32, 64, 128, 256], [time16, time32, time64, time128, time256]
     )
-    # linear scaling
-    assert -0.05 < c2 < 0.05
+    # Runtime expected to be O(steps taken)
     assert 0.95 < c1 < 1.05
+    assert -0.05 < c2 < 0.05
 
-    fn = lambda: jax.jit(
-        jax.vmap(lambda v: lax.while_loop(cond_fun, _body_fun(body_fun), (*v, 16)))
-    )(init_val)
-    lax_time16 = time_fn(fn, repeat=10)
+    @ft.partial(jax.jit, static_argnums=1)
+    @ft.partial(jax.vmap, in_axes=(0, None))
+    def lax_test_fun(val, num_steps):
+        return lax.while_loop(cond_fun, _body_fun(body_fun), (*val, num_steps))
 
-    fn = lambda: jax.jit(
-        jax.vmap(lambda v: lax.while_loop(cond_fun, _body_fun(body_fun), (*v, 32)))
-    )(init_val)
-    lax_time32 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(lambda v: lax.while_loop(cond_fun, _body_fun(body_fun), (*v, 64)))
-    )(init_val)
-    lax_time64 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(lambda v: lax.while_loop(cond_fun, _body_fun(body_fun), (*v, 128)))
-    )(init_val)
-    lax_time128 = time_fn(fn, repeat=10)
-
-    fn = lambda: jax.jit(
-        jax.vmap(lambda v: lax.while_loop(cond_fun, _body_fun(body_fun), (*v, 256)))
-    )(init_val)
-    lax_time256 = time_fn(fn, repeat=10)
+    lax_time16 = time_fn(lambda: lax_test_fun(init_val, 16), repeat=10)
+    lax_time32 = time_fn(lambda: lax_test_fun(init_val, 32), repeat=10)
+    lax_time64 = time_fn(lambda: lax_test_fun(init_val, 64), repeat=10)
+    lax_time128 = time_fn(lambda: lax_test_fun(init_val, 128), repeat=10)
+    lax_time256 = time_fn(lambda: lax_test_fun(init_val, 256), repeat=10)
 
     assert time16 < 2 * lax_time16
     assert time32 < 2 * lax_time32

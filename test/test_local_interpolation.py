@@ -2,6 +2,8 @@ import diffrax.local_interpolation
 import jax
 import jax.numpy as jnp
 
+from helpers import shaped_allclose
+
 
 def test_local_linear_interpolation():
     t0 = 2.0
@@ -17,30 +19,29 @@ def test_local_linear_interpolation():
             # evaluate position
             pred = interp.evaluate(t0_)
             true = y0 + (y1 - y0) * (t0_ - t0) / (t1 - t0)
-            assert jnp.allclose(pred, true)
+            assert shaped_allclose(pred, true)
 
             _, pred = jax.jvp(interp.evaluate, (t0_,), (jnp.ones_like(t0_),))
             true = (y1 - y0) / (t1 - t0)
-            assert jnp.allclose(pred, true)
+            assert shaped_allclose(pred, true)
 
             # evaluate increment
             pred = interp.evaluate(t0_, t1_)
             true = (y1 - y0) * (t1_ - t0_) / (t1 - t0)
-            assert jnp.allclose(pred, true)
+            assert shaped_allclose(pred, true)
 
             _, pred = jax.jvp(
                 interp.evaluate, (t0_, t1_), (jnp.ones_like(t0_), jnp.ones_like(t1_))
             )
-            assert jnp.allclose(pred, 0)
+            assert shaped_allclose(pred, jnp.zeros_like(pred))
 
             # evaluate over zero-length interval. Note t1=t0.
             interp = diffrax.local_interpolation.LocalLinearInterpolation(
                 t0=t0, t1=t0, y0=y0, y1=y1
             )
             pred = interp.evaluate(t0)
-            true = y0
-            assert jnp.allclose(pred, true)
+            true, _ = jnp.broadcast_arrays(y0, y1)
+            assert shaped_allclose(pred, true)
 
             _, pred = jax.jvp(interp.evaluate, (t0,), (jnp.ones_like(t0),))
-            true = jnp.zeros_like(y0)
-            assert jnp.allclose(pred, true)
+            assert shaped_allclose(pred, jnp.zeros_like(pred))

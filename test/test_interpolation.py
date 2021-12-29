@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
-import helpers
+from helpers import all_ode_solvers, shaped_allclose
 
 
 def _test_path_derivative(path, name):
@@ -11,12 +11,12 @@ def _test_path_derivative(path, name):
         t = path.t0 + percentage * (path.t1 - path.t0)
         _, x = jax.jvp(path.evaluate, (t,), (jnp.ones_like(t),))
         y = path.derivative(t)
-        assert jnp.allclose(x, y, rtol=1e-3, atol=1e-4)
+        assert shaped_allclose(x, y, rtol=1e-3, atol=1e-4)
 
 
 def _test_path_endpoints(path, name, y0, y1):
-    assert jnp.allclose(y0, path.evaluate(path.t0))
-    assert jnp.allclose(y1, path.evaluate(path.t1))
+    assert shaped_allclose(y0, path.evaluate(path.t0))
+    assert shaped_allclose(y1, path.evaluate(path.t1))
 
 
 def test_derivative(getkey):
@@ -53,7 +53,7 @@ def test_derivative(getkey):
     )
     paths.append((local_linear_interp, "local linear", ys[0], ys[-1]))
 
-    for solver in helpers.all_ode_solvers:
+    for solver in all_ode_solvers:
         if solver is diffrax.tsit5:
             continue
         y0 = jrandom.normal(getkey(), (3,))

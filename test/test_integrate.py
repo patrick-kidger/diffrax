@@ -8,7 +8,7 @@ import jax.random as jrandom
 import pytest
 import scipy.stats
 
-from helpers import all_ode_solvers, random_pytree, tree_allclose, treedefs
+from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -152,15 +152,15 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     )
 
     if saveat.t0 or saveat.t1 or saveat.ts is not None or saveat.steps:
-        assert jnp.allclose(sol1.ts, -sol2.ts[::-1])
-        assert jnp.allclose(sol1.ys, sol2.ys)
+        assert shaped_allclose(sol1.ts, -sol2.ts[::-1])
+        assert shaped_allclose(sol1.ys, sol2.ys)
     if saveat.dense:
         t = jnp.linspace(4, 0.3, 20)
         for ti in t:
-            assert jnp.allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
+            assert shaped_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
             if solver_ctr is not diffrax.tsit5:
                 # derivative not implemented for Tsit5
-                assert jnp.allclose(sol1.derivative(ti), -sol2.derivative(-ti))
+                assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
 
 @pytest.mark.parametrize(
@@ -180,4 +180,4 @@ def test_pytree_state(solver_ctr, stepsize_controller, dt0, treedef, getkey):
     )
     y1 = sol.ys
     true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
-    assert tree_allclose(y1, true_y1)
+    assert shaped_allclose(y1, true_y1)

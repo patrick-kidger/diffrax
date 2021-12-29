@@ -4,6 +4,8 @@ import diffrax
 import jax.numpy as jnp
 import pytest
 
+from helpers import shaped_allclose
+
 
 def test_results():
     assert len(diffrax.RESULTS) > 5
@@ -64,7 +66,7 @@ def test_saveat_solution():
             assert sol.ts.shape == (1,)
             assert sol.ys.shape == (1, 1)
             assert sol.ts[0] == _t1
-            assert jnp.allclose(sol.ys[0], _y0 * math.exp(-0.5))
+            assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.5))
             if controller_state:
                 assert sol.controller_state is not None
             else:
@@ -97,8 +99,8 @@ def test_saveat_solution():
     assert sol.ys.shape == (2, 1)
     assert sol.ts[0] == jnp.asarray(0.5)
     assert sol.ts[1] == jnp.asarray(0.8)
-    assert jnp.allclose(sol.ys[0], _y0 * math.exp(-0.2))
-    assert jnp.allclose(sol.ys[1], _y0 * math.exp(-0.35))
+    assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.2))
+    assert shaped_allclose(sol.ys[1], _y0 * math.exp(-0.35))
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -116,7 +118,7 @@ def test_saveat_solution():
     assert sol.t1 == _t1
     assert sol.ts.shape == (num_steps,)
     assert sol.ys.shape == (num_steps, 1)
-    assert jnp.allclose(sol.ys, _y0 * jnp.exp(-0.5 * (sol.ts - _t0))[:, None])
+    assert shaped_allclose(sol.ys, _y0 * jnp.exp(-0.5 * (sol.ts - _t0))[:, None])
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -135,10 +137,12 @@ def test_saveat_solution():
     assert sol.ys is None
     assert sol.controller_state is None
     assert sol.solver_state is None
-    assert jnp.allclose(sol.evaluate(0.2, 0.8), sol.evaluate(0.8) - sol.evaluate(0.2))
-    assert jnp.allclose(sol.evaluate(0.2), _y0 * math.exp(-0.05))
-    assert jnp.allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
-    assert jnp.allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
+    assert shaped_allclose(
+        sol.evaluate(0.2, 0.8), sol.evaluate(0.8) - sol.evaluate(0.2)
+    )
+    assert shaped_allclose(sol.evaluate(0.2), _y0 * math.exp(-0.05))
+    assert shaped_allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
+    assert shaped_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
     assert sol.stats["num_steps"] > 0
     assert sol.stats["num_observations"] == 0
     assert sol.result == diffrax.RESULTS.successful

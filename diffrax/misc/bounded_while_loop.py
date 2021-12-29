@@ -1,5 +1,6 @@
 import jax
 import jax.lax as lax
+import jax.numpy as jnp
 
 from .unvmap import unvmap_any
 
@@ -45,6 +46,8 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps):
     If it is a non-negative integer then this is the maximum number of steps which may
     be taken in the loop, after which the loop will exit unconditionally.
     """
+
+    init_val = jax.tree_map(jnp.asarray, init_val)
 
     if max_steps is None:
 

@@ -2,6 +2,8 @@ import diffrax
 import jax.numpy as jnp
 import pytest
 
+from helpers import shaped_allclose
+
 
 def test_step_to_location():
     def f(t, y, args):
@@ -20,7 +22,7 @@ def test_step_to_location():
         saveat=diffrax.SaveAt(ts=ts),
     )
     true_ys = jnp.array([1.0, 0.0, 0.0])
-    assert jnp.allclose(sol.ys, true_ys)
+    assert shaped_allclose(sol.ys, true_ys)
 
     ts = jnp.linspace(0.0, 2.0, 5)
     sol = diffrax.diffeqsolve(
@@ -33,7 +35,7 @@ def test_step_to_location():
         saveat=diffrax.SaveAt(ts=ts),
     )
     true_ys = jnp.array([1.0, 0.5, 0.25, 0.125, 0.0625])
-    assert jnp.allclose(sol.ys, true_ys)
+    assert shaped_allclose(sol.ys, true_ys)
 
     ts = jnp.linspace(0.1, 2.0, 5)
     with pytest.raises(ValueError):
