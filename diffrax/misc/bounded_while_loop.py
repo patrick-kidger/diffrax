@@ -138,3 +138,35 @@ def _while_loop(cond_fun, body_fun, data, max_steps):
             return lax.cond(_unvmap_pred, _call, _identity, _data), None
 
         return lax.scan(_scan_fn, data, xs=None, length=2)[0]
+
+
+def _monkey_patch():
+    """
+    Monkey-patches some JAX internals to improve compilation speed of
+    `bounded_while_loop`.
+
+    Works around JAX issues #8184 and #8193.
+    """
+
+    def cache(fn):
+        fn_with_cache = jax.util.cache()(fn)
+
+        def fn_with_casts(*args, **kwargs):
+            args = tuple(tuple(x) if isinstance(x, list) else x for x in args)
+            kwargs = {
+                k: tuple(x) if isinstance(x, list) else x for k, x in kwargs.items()
+            }
+            return fn_with_cache(*args, **kwargs)
+
+        return fn_with_casts
+
+    batching = jax.interpreters.batching
+    pe = jax.interpreters.partial_eval
+    ad = jax.interpreters.ad
+
+    batching.batch_jaxpr = cache(batching.batch_jaxpr)
+    pe.partial_eval_jaxpr = cache(pe.partial_eval_jaxpr)
+    ad.jvp_jaxpr = cache(ad.jvp_jaxpr)
+
+
+_monkey_patch()
