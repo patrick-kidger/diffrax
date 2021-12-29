@@ -87,6 +87,23 @@ def _identity(x):
     return x
 
 
+# There's several tricks happening here to work around various limitations.
+# 1. `unvmap_any` prior to using `lax.cond`. JAX has a problem in that vmap-of-cond
+#    is converted to a `lax.select`, which executes both branches unconditionally.
+#    Thus writing this naively, using a plain `lax.cond`, will mean the loop always
+#    runs to `max_steps` when executing under vmap.
+# 2. Treating in-place updates specially in the body_fun. Specifically we need to
+#    `lax.select` the update-to-make, not the updated buffer. This is because the
+#    latter instead results in XLA:CPU failing to determine that the buffer can be
+#    updated in-place, and instead it makes a copy. c.f. JAX issue #8192.
+# 3. The use of the `@jax.checkpoint` decorator. Backpropagating through a
+#    `bounded_while_loop` will otherwise run in θ(max_steps) time, rather than
+#    θ(number of steps actually taken). I've not tracked the issue down exactly but
+#    my best guess is that this is something to do with storing the forward pass prior
+#    to the backward pass (which has always been difficult in while loops in XLA, what
+#    with XLA's need for fixed/bounded memory requirements). It was on that hypothesis
+#    that I decided to try checkpointing, and was pleased to see that it worked. c.f.
+#    JAX issue #8239.
 def _while_loop(cond_fun, body_fun, data, max_steps):
     if max_steps == 1:
         pred, val = data
@@ -96,11 +113,6 @@ def _while_loop(cond_fun, body_fun, data, max_steps):
                 _keep = lambda a, b: lax.select(pred, a, b)
                 return jax.tree_map(_keep, _new_val, _val)
             else:
-                # This is the reason for the in-place update being returned from
-                # body_fun, rather than happening within it. We need to `lax.select`
-                # the update-to-make, not the updated buffer. (The latter results in
-                # XLA:CPU failing to determine that the buffer can be updated in-place;
-                # instead it makes a copy. c.f. JAX issue #8192.)
                 if isinstance(_index, Index):
                     _index = _index.value
                 _new_val = lax.select(pred, _new_val, _val[_index])
@@ -116,6 +128,7 @@ def _while_loop(cond_fun, body_fun, data, max_steps):
         def _call(_data):
             return _while_loop(cond_fun, body_fun, _data, max_steps // 2)
 
+        @jax.checkpoint
         def _scan_fn(_data, _):
             _pred, _ = _data
             _unvmap_pred = unvmap_any(_pred)
