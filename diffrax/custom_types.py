@@ -125,4 +125,5 @@ else:
 
     Bool = Union[bool, Array[(), bool]]
 
-DenseInfo = Dict[str, PyTree]
+DenseInfo = Dict[str, PyTree[...]]
+DenseInfos = Dict[str, PyTree["times", ...]]  # noqa: F821

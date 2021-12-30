@@ -4,6 +4,8 @@ import jax.interpreters.xla as xla
 import jax.numpy as jnp
 
 
+# unvmap_all
+
 unvmap_all_p = jax.core.Primitive("unvmap_all")
 
 
@@ -31,6 +33,7 @@ xla.translations_with_avals[unvmap_all_p] = xla.lower_fun(
     _unvmap_all_impl, multiple_results=False, with_avals=True
 )
 
+# unvmap_any
 
 unvmap_any_p = jax.core.Primitive("unvmap_any")
 
@@ -57,4 +60,33 @@ unvmap_any_p.def_abstract_eval(_unvmap_any_abstract_eval)
 batching.primitive_batchers[unvmap_any_p] = _unvmap_any_batch
 xla.translations_with_avals[unvmap_any_p] = xla.lower_fun(
     _unvmap_any_impl, multiple_results=False, with_avals=True
+)
+
+# unvmap_max
+
+unvmap_max_p = jax.core.Primitive("unvmap_max")
+
+
+def unvmap_max(x):
+    return unvmap_max_p.bind(x)
+
+
+def _unvmap_max_impl(x):
+    return jnp.max(x)
+
+
+def _unvmap_max_abstract_eval(x):
+    return jax.ShapedArray(shape=(), dtype=x.dtype)
+
+
+def _unvmap_max_batch(x, batch_axes):
+    (x,) = x
+    return unvmap_max(x), batching.not_mapped
+
+
+unvmap_max_p.def_impl(_unvmap_max_impl)
+unvmap_max_p.def_abstract_eval(_unvmap_max_abstract_eval)
+batching.primitive_batchers[unvmap_max_p] = _unvmap_max_batch
+xla.translations_with_avals[unvmap_max_p] = xla.lower_fun(
+    _unvmap_max_impl, multiple_results=False, with_avals=True
 )

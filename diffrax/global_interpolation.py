@@ -6,7 +6,7 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from .custom_types import Array, DenseInfo, PyTree, Scalar
+from .custom_types import Array, DenseInfos, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
 from .misc import error_if, fill_forward, left_broadcast_to
 from .path import AbstractPath
@@ -270,7 +270,7 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 
 
 class DenseInterpolation(AbstractGlobalInterpolation):
-    infos: DenseInfo
+    infos: DenseInfos
     direction: Scalar
     unravel_y: jax.tree_util.Partial
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()

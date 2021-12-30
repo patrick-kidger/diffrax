@@ -22,6 +22,12 @@ The list of step size controllers is as follows.
     selection:
         members: false
 
+::: diffrax.StepTo
+    selection:
+        members:
+            - __init__
+            - ts
+
 ::: diffrax.IController
     selection:
         members:

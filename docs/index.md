@@ -1,4 +1,4 @@
-# Getting started
+# Diffrax in a nutshell
 
 Diffrax is a [JAX](https://github.com/google/jax)-based library providing numerical differential equation solvers.
 
@@ -32,10 +32,12 @@ solver = dopri5(f)
 solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
 ```
 
+(Here, `dopri5` refers to the Dormand--Prince 5(4) numerical differential equation solver, which is a standard choice for many problems.)
+
 ## Citation
 
 --8<-- "further_details/.citation.md"
 
-!!! tip
+## Getting started
 
-    The documentation is still very new. We'd welcome any suggestions if you find anything confusing! Open an issue or pull request on [GitHub](https://github.com/patrick-kidger/diffrax).
+If this page has caught your interest, then have a look at the [Getting Started](./usage/overview.md) page.

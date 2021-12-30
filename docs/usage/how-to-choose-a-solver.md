@@ -12,7 +12,7 @@ For non-stiff problems then [`diffrax.Tsit5`][] is a good general-purpose solver
 
 !!! note
     
-    For a long time the recommend default solver for many problems was [`diffrax.Dopri5`][]. This is the default solved used in [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq/), and is the solver used in MATLAB's `ode45`. However `Tsit5` is now reckoned on being slightly more efficient overall.
+    For a long time the recommend default solver for many problems was [`diffrax.Dopri5`][]. This is the default solver used in [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq/), and is the solver used in MATLAB's `ode45`. However `Tsit5` is now reckoned on being slightly more efficient overall.
 
 If you need accurate solutions at high tolerances then try [`diffrax.Dopri8`][].
 
@@ -53,6 +53,6 @@ Then use any of the ODE solvers as discussed above.
 
 The other option is to directly discretise the control. Given some control $x \colon [0, T] \to \mathbb{R}^d$ then this means solving $\mathrm{d}y(t) = f(y(t)) \mathrm{d} x(t)$ by treating $x$ a bit like time, and replacing the $\Delta t$ in most numerical solvers with some $\Delta x(t)$ instead.
 
-For example, this is the principle on which many SDE solvers work.
+(This is actually the principle on which many SDE solvers work.)
 
-It is an open question what are the best solvers to use when taking this approach. Low-order solvers are typical, such as [`diffrax.Euler`][] or [`diffrax.Heun`][].
+It is an open question what are the best solvers to use when taking this approach, but low-order solvers are typical: for example [`diffrax.Euler`][] or [`diffrax.Heun`][].

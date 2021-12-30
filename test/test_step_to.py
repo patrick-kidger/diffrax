@@ -18,7 +18,7 @@ def test_step_to_location():
         t1=2,
         y0=y0,
         dt0=None,
-        stepsize_controller=diffrax.StepToLocation(ts=ts),
+        stepsize_controller=diffrax.StepTo(ts=ts),
         saveat=diffrax.SaveAt(ts=ts),
     )
     true_ys = jnp.array([1.0, 0.0, 0.0])
@@ -31,7 +31,7 @@ def test_step_to_location():
         t1=2,
         y0=y0,
         dt0=None,
-        stepsize_controller=diffrax.StepToLocation(ts=ts),
+        stepsize_controller=diffrax.StepTo(ts=ts),
         saveat=diffrax.SaveAt(ts=ts),
     )
     true_ys = jnp.array([1.0, 0.5, 0.25, 0.125, 0.0625])
@@ -45,7 +45,7 @@ def test_step_to_location():
             t1=2,
             y0=y0,
             dt0=None,
-            stepsize_controller=diffrax.StepToLocation(ts=ts),
+            stepsize_controller=diffrax.StepTo(ts=ts),
         )
 
     ts = jnp.linspace(0.0, 2.1, 5)
@@ -56,5 +56,5 @@ def test_step_to_location():
             t1=2,
             y0=y0,
             dt0=None,
-            stepsize_controller=diffrax.StepToLocation(ts=ts),
+            stepsize_controller=diffrax.StepTo(ts=ts),
         )

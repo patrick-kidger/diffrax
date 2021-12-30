@@ -32,4 +32,4 @@ In each case we recommend looking up existing solvers/etc. in Diffrax to underst
 
 !!! warning
 
-    In practice the APIs provided by these abstract base classes is now pretty stable. In principle however they may still be subject to change.
+    In practice the APIs provided by these abstract base classes are now pretty stable. In principle however they may still be subject to change.

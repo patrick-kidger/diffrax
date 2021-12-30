@@ -1,6 +1,7 @@
 from .bounded_while_loop import bounded_while_loop, Index
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
+    branched_error_if,
     check_no_derivative,
     ContainerMeta,
     error_if,
@@ -16,4 +17,4 @@ from .misc import (
 )
 from .ravel import ravel_pytree
 from .sde_kl_divergence import sde_kl_divergence
-from .unvmap import unvmap_all, unvmap_any
+from .unvmap import unvmap_all, unvmap_any, unvmap_max

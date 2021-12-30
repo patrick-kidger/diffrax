@@ -54,15 +54,20 @@ class ConstantStepSize(AbstractStepSizeController):
         )
 
 
-class StepToLocation(AbstractStepSizeController):
+class StepTo(AbstractStepSizeController):
+    """Make steps to just prespecified times."""
+
     ts: Array["times"]  # noqa: F821
 
     def __post_init__(self):
         error_if(len(self.ts) < 2, "`ts` must have length at least 2.")
-        error_if(self.ts[1:] <= self.ts[:-1], "`ts` must be strictly increasing.")
 
     def wrap(self, unravel_y: callable, direction: Scalar):
         ts = self.ts * direction
+        # Only tested after we've set the direction.
+        error_if(
+            self.ts[1:] <= self.ts[:-1], "`StepTo(ts=...)` must be strictly increasing."
+        )
         return type(self)(ts=ts)
 
     def init(
@@ -106,3 +111,10 @@ class StepToLocation(AbstractStepSizeController):
             controller_state + 1,
             RESULTS.successful,
         )
+
+
+StepTo.__init__.__doc__ = """**Arguments:**
+
+- `ts`: The times to step to. Must be an increasing/decreasing sequence of times
+    between the `t0` and `t1` passed to `diffeqsolve`.
+"""

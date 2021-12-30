@@ -1,18 +1,16 @@
-# Diffrax in a nutshell
+# Getting started
 
 !!! tip
 
-    If you're new to Diffrax, then read this page first! Get started with Diffrax by adapting one of the quick examples below to your problem.
+    If you're new to Diffrax, then this page should tell you everything you need to get started. Try adapting one of the quick examples below to your problem.
 
-The main function in Diffrax is `diffeqsolve`. This solves the initial value problem corresponding to an ordinary/stochastic/controlled differential equation.
+    After that:
 
-!!! note
+    - Have a look through the "Examples" on the sidebar for in-depth examples including things like training loops for neural ODEs, etc.
+    - The "Basic API" on the sidebar is the complete reference for everything you need to know to solve ODEs.
+    - The "Advanced API" on the sidebar is the extended reference to include everything needed to solve SDEs and CDEs.
 
-    Have a look through the "Examples" on the sidebar for in-depth examples including things like training loops for neural ODEs, etc.
-
-    The "Basic API" on the sidebar is the complete reference for everything you need to know to solve ODEs.
-
-    The "Advanced API" on the sidebar is the extended referenec to include everything needed to solve SDEs and CDEs.
+The main function in Diffrax is [`diffrax.diffeqsolve`][]. This solves the initial value problem corresponding to an ordinary/stochastic/controlled differential equation.
 
 ## Ordinary differential equations (ODEs)
 
@@ -48,16 +46,16 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
 
     This example demonstrates pretty much everything you'll need to get started solving ODEs with Diffrax, just by switching things out in the obvious way.
 
-- The numerical solver (here `dopri5`) can be switched out.
-    - See the guide on [How to choose a solver](./how-to-choose-a-solver.md).
-    - See the [Solvers](../api/solver.md) page for the full list of solvers.
-- Where to save the result (e.g. to obtain dense output) can be adjusted by changing [`diffrax.SaveAt`][].
-- Step sizes and locations can be changed.
-    - The initial step size can be selected adaptively by setting `dt0=None`.
-    - A constant step size can be used by setting `stepsize_controller = ConstantStepSize()`.
-    - Things like solver tolerances, jumps in the vector field, etc. can be passed as arguments to the step size controller.
-    - See the page on [Step size controllers](../api/stepsize_controller.md).
-- Any static arguments (that do not evolve over time) can be passed as `diffeqsolve(..., args=...)`.
+    - The numerical solver (here `dopri5`) can be switched out.
+        - See the guide on [How to choose a solver](./how-to-choose-a-solver.md).
+        - See the [Solvers](../api/solver.md) page for the full list of solvers.
+    - Where to save the result (e.g. to obtain dense output) can be adjusted by changing [`diffrax.SaveAt`][].
+    - Step sizes and locations can be changed.
+        - The initial step size can be selected adaptively by setting `dt0=None`.
+        - A constant step size can be used by setting `stepsize_controller = ConstantStepSize()`.
+        - Things like solver tolerances, jumps in the vector field, etc. can be passed as arguments to the step size controller.
+        - See the page on [Step size controllers](../api/stepsize_controller.md).
+    - Any static arguments (that do not change during the integration) for the `vector_field` can be passed as `diffeqsolve(..., args=...)`.
 
 ---
 

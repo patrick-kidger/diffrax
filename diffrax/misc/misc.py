@@ -1,5 +1,6 @@
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Sequence, Tuple, Type, Union
 
+import equinox as eqx
 import jax
 import jax.experimental.host_callback as hcb
 import jax.lax as lax
@@ -52,25 +53,25 @@ def check_no_derivative(x: Array, name: str) -> None:
 
 class ContainerMeta(type):
     def __new__(cls, name, bases, dict):
-        assert "_reverse_lookup" not in dict
+        assert "reverse_lookup" not in dict
         _dict = {}
-        _reverse_lookup = {}
+        reverse_lookup = []
         i = 0
         for key, value in dict.items():
             if key.startswith("__") and key.endswith("__"):
                 _dict[key] = value
             else:
                 _dict[key] = i
-                _reverse_lookup[i] = value
+                reverse_lookup.append(value)
                 i += 1
-        _dict["_reverse_lookup"] = _reverse_lookup
+        _dict["reverse_lookup"] = reverse_lookup
         return super().__new__(cls, name, bases, _dict)
 
     def __getitem__(cls, item):
-        return cls._reverse_lookup[item]
+        return cls.reverse_lookup[item]
 
     def __len__(cls):
-        return len(cls._reverse_lookup)
+        return len(cls.reverse_lookup)
 
 
 def _fill_forward(
@@ -173,7 +174,11 @@ def left_broadcast_to(arr, shape):
     return jnp.broadcast_to(arr[indices], shape)
 
 
-def error_if(x: Union[bool, Array[..., bool]], msg: str) -> bool:
+def error_if(
+    pred: Union[bool, Array[..., bool]],
+    msg: str,
+    error_cls: Type[Exception] = ValueError,
+) -> bool:
     """For use as part of validating inputs.
 
     Example:
@@ -181,18 +186,44 @@ def error_if(x: Union[bool, Array[..., bool]], msg: str) -> bool:
             cond = cond_fn(x)
             error_if(cond)
     """
-    if not isinstance(x, bool):
-        x = unvmap_any(x)
-    error = ValueError(msg)
-    if isinstance(x, jax.core.Tracer):
+    branched_error_if(pred, 0, [msg], error_cls)
+
+
+def _jax_str(string: str):
+    class M(eqx.Module):
+        def __repr__(self):
+            return string
+
+    return M()
+
+
+def branched_error_if(
+    pred: Union[bool, Array[..., bool]],
+    index: Union[int, Array[(), int]],
+    msgs: Sequence[str],
+    error_cls: Type[Exception] = ValueError,
+) -> bool:
+    pred = unvmap_any(pred)
+    if isinstance(pred, jax.core.Tracer):
         # Under JIT
+        branches = []
+        for msg in msgs:
+            msg = _jax_str(f"Exception suppressed under JIT: {error_cls(msg)!r}")
+
+            def branch(_, msg=msg):
+                hcb.id_print(msg)
+
+            branches.append(branch)
+
         lax.cond(
-            x,
-            lambda _: hcb.id_print("Exception suppressed under JIT: {error!r}"),
+            pred,
+            lambda _: lax.switch(index, branches, None),
             lambda _: None,
             None,
         )
     else:
         # Not under JIT
-        if x:
-            raise error
+        if pred:
+            if eqx.is_array(index):
+                index = index.item()
+            raise error_cls(msgs[index])
