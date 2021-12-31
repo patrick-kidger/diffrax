@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Optional, Sequence, Tuple, Type, Union
 
 import equinox as eqx
 import jax
@@ -6,7 +6,7 @@ import jax.experimental.host_callback as hcb
 import jax.lax as lax
 import jax.numpy as jnp
 
-from ..custom_types import Array, PyTree, Scalar
+from ..custom_types import Array, Int, PyTree, Scalar
 from .ravel import ravel_pytree
 from .unvmap import unvmap_any
 
@@ -27,14 +27,6 @@ def force_bitcast_convert_type(val, new_type):
     intermediate_type = _itemsize_kind_type[new_type.dtype.itemsize, val.dtype.kind]
     val = val.astype(intermediate_type)
     return lax.bitcast_convert_type(val, new_type)
-
-
-def _stack_pytrees(*arrays):
-    return jnp.stack(arrays)
-
-
-def stack_pytrees(pytrees: List[PyTree]) -> PyTree:
-    return jax.tree_map(_stack_pytrees, *pytrees)
 
 
 def is_perturbed(x: Any) -> bool:
@@ -199,7 +191,7 @@ def _jax_str(string: str):
 
 def branched_error_if(
     pred: Union[bool, Array[..., bool]],
-    index: Union[int, Array[(), int]],
+    index: Int,
     msgs: Sequence[str],
     error_cls: Type[Exception] = ValueError,
 ) -> bool:

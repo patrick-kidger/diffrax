@@ -13,7 +13,6 @@ from .misc import (
     nextafter,
     nextbefore,
     rms_norm,
-    stack_pytrees,
 )
 from .ravel import ravel_pytree
 from .sde_kl_divergence import sde_kl_divergence

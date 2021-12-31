@@ -6,7 +6,7 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from .custom_types import Array, DenseInfos, PyTree, Scalar
+from .custom_types import Array, DenseInfos, Int, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
 from .misc import error_if, fill_forward, left_broadcast_to
 from .path import AbstractPath
@@ -18,8 +18,11 @@ class AbstractGlobalInterpolation(AbstractPath):
     def __post_init__(self):
         error_if(self.ts.ndim != 1, "`ts` must be one dimensional.")
 
+    def _ts_size(self):
+        return self.ts.shape[0]
+
     def _interpret_t(self, t: Scalar, left: bool) -> Tuple[Scalar, Scalar]:
-        maxlen = self.ts.shape[0] - 2
+        maxlen = self._ts_size() - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
         index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
         # Will never access the final element of `ts`; this is correct behaviour.
@@ -270,6 +273,7 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 
 
 class DenseInterpolation(AbstractGlobalInterpolation):
+    ts_size: Int
     infos: DenseInfos
     direction: Scalar
     unravel_y: jax.tree_util.Partial
@@ -280,6 +284,12 @@ class DenseInterpolation(AbstractGlobalInterpolation):
             assert _d.shape[0] + 1 == self.ts.shape[0]
 
         jax.tree_map(_assert, self.infos)
+
+    # DenseInterpolations typically get `ts` and `infos` that are way longer than they
+    # need to be, and padded with `nan`s. This means the normal way of measuring how
+    # many entries we have - ts.shape[0] - won't be correct.
+    def _ts_size(self):
+        return self.ts_size
 
     def _get_local_interpolation(self, t: Scalar, left: bool):
         index, _ = self._interpret_t(t, left)

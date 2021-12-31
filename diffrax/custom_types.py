@@ -102,6 +102,7 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     Scalar.__module__ = "builtins"  # once again __qualname__ is already good.
 
     # Skip the union with Array in docs.
+    Int = int
     Bool = bool
 
     #
@@ -123,6 +124,7 @@ else:
 
     Scalar = Union[int, float, Array[()]]
 
+    Int = Union[int, Array[(), int]]
     Bool = Union[bool, Array[(), bool]]
 
 DenseInfo = Dict[str, PyTree[...]]
