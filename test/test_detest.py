@@ -27,31 +27,31 @@ from helpers import all_ode_solvers, fixed_ode_solvers, shaped_allclose
 
 def _a1():
     diffeq = lambda t, y, args: -y
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a2():
     diffeq = lambda t, y, args: -0.5 * y ** 3
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a3():
     diffeq = lambda t, y, args: y * jnp.cos(t)
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a4():
     diffeq = lambda t, y, args: 0.25 * y * (1 - 0.05 * y)
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a5():
     diffeq = lambda t, y, args: (y - t) / (y + t)
-    init = 4
+    init = 4.0
     return diffeq, init
 
 
@@ -67,7 +67,7 @@ def _b1():
         dy2 = -y2 + y1 * y2
         return dy1, dy2
 
-    init = (1, 3)
+    init = (1.0, 3.0)
     return diffeq, init
 
 
@@ -79,7 +79,7 @@ def _b2():
         dy3 = y2 - y3
         return dy1, dy2, dy3
 
-    init = (2, 0, 1)
+    init = (2.0, 0.0, 1.0)
     return diffeq, init
 
 
@@ -91,7 +91,7 @@ def _b3():
         dy3 = y2 ** 2
         return dy1, dy2, dy3
 
-    init = (1, 0, 0)
+    init = (1.0, 0.0, 0.0)
     return diffeq, init
 
 
@@ -104,7 +104,7 @@ def _b4():
         dy3 = y1 / r
         return dy1, dy2, dy3
 
-    init = (3, 0, 0)
+    init = (3.0, 0.0, 0.0)
     return diffeq, init
 
 
@@ -116,7 +116,7 @@ def _b5():
         dy3 = -0.51 * y1 * y2
         return dy1, dy2, dy3
 
-    init = (0, 1, 1)
+    init = (0.0, 1.0, 1.0)
     return diffeq, init
 
 
@@ -281,7 +281,7 @@ def _make_d(ε):
         dy4 = -y2 / r_cubed
         return dy1, dy2, dy3, dy4
 
-    init = (1 - ε, 0, 0, math.sqrt((1 + ε) / (1 - ε)))
+    init = (1 - ε, 0.0, 0.0, math.sqrt((1 + ε) / (1 - ε)))
     return diffeq, init
 
 
@@ -315,7 +315,7 @@ def _e2():
         dy2 = (1 - y1 ** 2) * y2 - y1
         return dy1, dy2
 
-    init = (2, 0)
+    init = (2.0, 0.0)
     return diffeq, init
 
 
@@ -326,7 +326,7 @@ def _e3():
         dy2 = y1 ** 3 / 6 - y1 + 2 * jnp.sin(2.78535 * t)
         return dy1, dy2
 
-    init = (0, 0)
+    init = (0.0, 0.0)
     return diffeq, init
 
 
@@ -338,7 +338,7 @@ def _e4():
         dy2 = 0.032 - 0.4 * y2 ** 2
         return dy1, dy2
 
-    init = (30, 0)
+    init = (30.0, 0.0)
     return diffeq, init
 
 
@@ -350,7 +350,7 @@ def _e5():
         dy2 = jnp.sqrt(1 + y2 ** 2) / (25 - t)
         return dy1, dy2
 
-    init = (0, 0)
+    init = (0.0, 0.0)
     return diffeq, init
 
 
@@ -404,8 +404,8 @@ def _test(solver_ctr, problems, higher):
             stepsize_controller = diffrax.IController(rtol=rtol, atol=atol)
         sol = diffrax.diffeqsolve(
             solver,
-            t0=0,
-            t1=20,
+            t0=0.0,
+            t1=20.0,
             y0=init,
             dt0=dt0,
             stepsize_controller=stepsize_controller,

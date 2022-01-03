@@ -4,12 +4,13 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from .custom_types import Array, Bool, PyTree, Scalar
+from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
 from .misc import (
     bounded_while_loop,
     branched_error_if,
     error_if,
+    HadInplaceUpdate,
     ravel_pytree,
     unvmap_max,
 )
@@ -28,14 +29,22 @@ class _State(eqx.Module):
     solver_state: PyTree
     controller_state: PyTree
     result: RESULTS
-    step: Scalar
+    step: Int
     # Output that is .at[].set() updated during the solve (and their indices)
+    saveat_ts_index: Scalar
     ts: Array["times"]  # noqa: F821
     ys: Array["times"]  # noqa: F821
-    save_index: Scalar
+    save_index: Int
     dense_ts: Optional[Array["times + 1"]]  # noqa: F821
     dense_infos: Optional[Array["times"]]  # noqa: F821
-    dense_save_index: Scalar
+    dense_save_index: Int
+
+
+class _InnerState(eqx.Module):
+    saveat_ts_index: Int
+    ts: Array
+    ys: Array
+    save_index: Array
 
 
 def _init_diffeqsolve(
@@ -112,6 +121,7 @@ def _init_diffeqsolve(
         out_size += 1
 
     step = 0
+    saveat_ts_index = 0
     save_index = 0
     made_jump = jnp.array(False)
     ts = jnp.full(out_size, jnp.nan)
@@ -148,6 +158,7 @@ def _init_diffeqsolve(
         controller_state=controller_state,
         result=result,
         step=step,
+        saveat_ts_index=saveat_ts_index,
         ts=ts,
         ys=ys,
         save_index=save_index,
@@ -159,10 +170,11 @@ def _init_diffeqsolve(
     return solver, stepsize_controller, saveat, args, unravel_y, direction, state
 
 
-def _save(state, t, y):
+def _save(state, t):
     ts = state.ts
     ys = state.ys
     save_index = state.save_index
+    y = state.y
 
     ts = ts.at[save_index].set(t)
     ys = ys.at[save_index].set(y)
@@ -170,24 +182,6 @@ def _save(state, t, y):
 
     return eqx.tree_at(
         lambda s: (s.ts, s.ys, s.save_index), state, (ts, ys, save_index)
-    )
-
-
-def _save_dense(state, t, dense_info):
-    dense_ts = state.dense_ts
-    dense_infos = state.dense_infos
-    dense_save_index = state.dense_save_index
-
-    dense_ts = dense_ts.at[dense_save_index].set(t)
-    dense_infos = jax.tree_map(
-        lambda d, v: d.at[dense_save_index].set(v), dense_infos, dense_info
-    )
-    dense_save_index = dense_save_index + 1
-
-    return eqx.tree_at(
-        lambda s: (s.dense_ts, s.dense_infos, s.dense_save_index),
-        state,
-        (dense_ts, dense_infos, dense_save_index),
     )
 
 
@@ -317,8 +311,7 @@ def diffeqsolve(
     )
 
     if saveat.t0:
-        # `init_state.y` is (at this point) the ravelled version of `y0`
-        init_state = _save(init_state, t0, init_state.y)
+        init_state = _save(init_state, t0)
 
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -332,7 +325,13 @@ def diffeqsolve(
     def cond_fun(state):
         return (state.tprev < t1) & (state.result == RESULTS.successful)
 
-    def body_fun(state):
+    def body_fun(state, inplace):
+
+        #
+        # Actually do some differential equation solving! Make numerical steps, adapt
+        # step sizes, all that jazz.
+        #
+
         (y, y_error, dense_info, solver_state, solver_result,) = solver.step(
             state.tprev, state.tnext, state.y, args, state.solver_state, state.made_jump
         )
@@ -355,6 +354,10 @@ def diffeqsolve(
             state.controller_state,
         )
 
+        #
+        # Do some book-keeping.
+        #
+
         # The 1e-6 tolerance means that we don't end up with too-small intervals for
         # dense output, which then gives numerically unstable answers due to floating
         # point errors.
@@ -376,11 +379,111 @@ def diffeqsolve(
         # `tprev` that is actually saved. (And not just the value of `y` at the
         # previous step's `tnext`, i.e. immediately before the jump.)
 
+        # Store the first unsuccessful result we get whilst iterating (if any).
         result = state.result
         result = jnp.where(result == RESULTS.successful, solver_result, result)
         result = jnp.where(
             result == RESULTS.successful, stepsize_controller_result, result
         )
+
+        # Count the number of steps, just for statistical purposes.
+        step = state.step + 1
+
+        #
+        # Store the output produced from this numerical step.
+        # This is a bit involved, and uses the `inplace` function passed as an argument
+        # to this body function.
+        # This is because we need to make in-place updates to store our results, but
+        # doing is a bit of a hassle inside `bounded_while_loop`. (See its docstring
+        # for details.)
+        #
+
+        saveat_ts_index = state.saveat_ts_index
+        ts = state.ts
+        ys = state.ys
+        save_index = state.save_index
+        dense_ts = state.dense_ts
+        dense_infos = state.dense_infos
+        dense_save_index = state.dense_save_index
+        made_inplace_update = False
+
+        if saveat.ts is not None:
+            made_inplace_update = True
+
+            def _saveat_get(_saveat_ts_index):
+                return saveat.ts[jnp.minimum(_saveat_ts_index, len(saveat.ts) - 1)]
+
+            def _cond_fun(_state):
+                _saveat_ts_index = _state.saveat_ts_index
+                _saveat_t = _saveat_get(_saveat_ts_index)
+                return (_saveat_t <= state.tnext) & (_saveat_ts_index < len(saveat.ts))
+
+            def _body_fun(_state, _inplace):
+                _saveat_ts_index = _state.saveat_ts_index
+                _ts = _state.ts
+                _ys = _state.ys
+                _save_index = _state.save_index
+
+                _inplace = _inplace.merge(inplace)
+
+                def _maybe_inplace(x, i, u):
+                    return _inplace(x).at[i].set(jnp.where(keep_step, u, x[i]))
+
+                _interpolator = solver.interpolation_cls(
+                    t0=state.tprev, t1=state.tnext, **dense_info
+                )
+
+                _saveat_t = _saveat_get(_saveat_ts_index)
+                _saveat_y = _interpolator.evaluate(_saveat_t)
+                _saveat_ts_index = _saveat_ts_index + 1
+
+                _ts = _maybe_inplace(_ts, _save_index, _saveat_t)
+                _ys = _maybe_inplace(_ys, _save_index, _saveat_y)
+                _save_index = _save_index + 1
+
+                return _InnerState(
+                    saveat_ts_index=_saveat_ts_index,
+                    ts=_ts,
+                    ys=_ys,
+                    save_index=_save_index,
+                )
+
+            init_inner_state = _InnerState(
+                saveat_ts_index=saveat_ts_index, ts=ts, ys=ys, save_index=save_index
+            )
+            final_inner_state = bounded_while_loop(
+                _cond_fun, _body_fun, init_inner_state, max_steps=len(saveat.ts)
+            )
+
+            saveat_ts_index = final_inner_state.saveat_ts_index
+            ts = final_inner_state.ts
+            ys = final_inner_state.ys
+            save_index = final_inner_state.save_index
+
+        def maybe_inplace(x, i, u):
+            return inplace(x).at[i].set(jnp.where(keep_step, u, x[i]))
+
+        if saveat.steps:
+            made_inplace_update = True
+            ts = maybe_inplace(ts, save_index, tprev)
+            ys = maybe_inplace(ys, save_index, y)
+            save_index = save_index + keep_step
+
+        if saveat.dense:
+            made_inplace_update = True
+            dense_ts = maybe_inplace(dense_ts, dense_save_index, tprev)
+            dense_infos = jax.tree_map(
+                lambda x, u: maybe_inplace(x, dense_save_index, u),
+                dense_infos,
+                dense_info,
+            )
+            dense_save_index = dense_save_index + keep_step
+
+        if made_inplace_update:
+            ts = HadInplaceUpdate(ts)
+            ys = HadInplaceUpdate(ys)
+            dense_ts = HadInplaceUpdate(dense_ts)
+            dense_infos = jax.tree_map(HadInplaceUpdate, dense_infos)
 
         new_state = _State(
             y=y,
@@ -390,28 +493,22 @@ def diffeqsolve(
             solver_state=solver_state,
             controller_state=controller_state,
             result=result,
-            step=state.step + 1,
-            ts=state.ts,
-            ys=state.ys,
-            save_index=state.save_index,
-            dense_ts=state.dense_ts,
-            dense_infos=state.dense_infos,
-            dense_save_index=state.dense_save_index,
+            step=step,
+            saveat_ts_index=saveat_ts_index,
+            ts=ts,
+            ys=ys,
+            save_index=save_index,
+            dense_ts=dense_ts,
+            dense_infos=dense_infos,
+            dense_save_index=dense_save_index,
         )
-
-        if saveat.ts is not None:
-            ...
-            # TODO: fill in this branch
-
-        if saveat.steps:
-            new_state = _save(new_state, tprev, y)
-
-        if saveat.dense:
-            new_state = _save_dense(new_state, tprev, dense_info)
 
         return new_state
 
     final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
+    done = cond_fun(final_state)
+    result = final_state.result
+    result = jnp.where(done, result, RESULTS.max_steps_reached)
 
     #
     # Finish up
@@ -419,7 +516,7 @@ def diffeqsolve(
 
     error_index = unvmap_max(final_state.result)
     branched_error_if(
-        throw & (final_state.result != RESULTS.succesful),
+        throw & (final_state.result != RESULTS.successful),
         error_index,
         RESULTS.reverse_lookup,
         RuntimeError,
@@ -427,7 +524,7 @@ def diffeqsolve(
 
     # saveat.steps will include the final timepoint anyway
     if saveat.t1 and not saveat.steps:
-        final_state = _save(final_state, t1, final_state.y)
+        final_state = _save(final_state, t1)
 
     if saveat.t0 or saveat.t1 or saveat.steps or (saveat.ts is not None):
         ts = final_state.ts
@@ -467,5 +564,5 @@ def diffeqsolve(
         solver_state=solver_state,
         interpolation=interpolation,
         stats=stats,
-        result=final_state.result,
+        result=result,
     )

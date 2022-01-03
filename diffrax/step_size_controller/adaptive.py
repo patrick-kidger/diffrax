@@ -249,7 +249,7 @@ class IController(AbstractStepSizeController):
         # Clip next step size based on dtmin/dtmax
         #
 
-        result = jnp.full_like(t0, RESULTS.successful)
+        result = jnp.full_like(t0, RESULTS.successful, dtype=int)
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
         if self.dtmin is None:

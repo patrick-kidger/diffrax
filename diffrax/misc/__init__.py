@@ -1,4 +1,4 @@
-from .bounded_while_loop import bounded_while_loop, Index
+from .bounded_while_loop import bounded_while_loop, HadInplaceUpdate
 from .frozenarray import frozenarray, frozenndarray
 from .misc import (
     branched_error_if,

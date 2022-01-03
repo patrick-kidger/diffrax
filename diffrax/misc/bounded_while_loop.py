@@ -1,9 +1,11 @@
 import math
 
+import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
+from ..custom_types import Array
 from .unvmap import unvmap_any
 
 
@@ -14,35 +16,77 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
 
     Arguments:
         cond_fun: function `a -> a`
-        body_fun: function `a -> (a, b)`, where `b` is a pytree prefix of `a`.
+        body_fun: function `a -> b -> a`, where `b` is a function that should be used
+            instead of performing in-place updates with .at[].set() etc; see below.
         init_val: pytree with structure `a`.
         max_steps: integer or `None`.
-        baes: integer.
+        base: integer.
 
-    Limitations/details:
-        `body_fun` should not make any in-place updates to its argument. When running
-        on the CPU then the XLA compiler will fail to treat these as in-place and will
-        make a copy every time. (See JAX issue #8192.)
+    Limitations with in-place updates.:
+        The single big limitation is around making in-place updates. Done naively then
+        the XLA compiler will fail to treat these as in-place and will make a copy
+        every time. (See JAX issue #8192.)
 
-        It is for this reason that `body_fun` returns a second argument. In the simple
-        case that `a` is a single JAX array, it is semantically equivalent to using
+        Working around this is a bit of a hassle -- as follows -- and it is for this
+        reason that `body_fun` takes a second argument.
+
+        If you ever have:
+        - an inplace update...
+        - ...made to the input to the body_fun...
+        - ...whose result is returned from the body_fun...
+        ...then you should use
+
+        ```python
+        x = inplace(x).at[i].set(u)
+        x = HadInplaceUpdate(x)
         ```
-        def _body_fun(val):
-            new_val, index = body_fun(val)
-            if index is None:
-                return new_val
-            else:
-                return new_val.at[index].set(val)
+
+        in place of
+
+        ```python
+        x = x.at[i].set(u)
         ```
-        as the `body_fun` of a `lax.while_loop`. (And in the general case things are
-        tree-map'd in the obvious way.)
+
+        where `inplace` is the second argument to `body_fun`, and `HadInplaceUpdate` is
+        available at `diffrax.misc.HadInplaceUpdate`.
 
         Internally, `bounded_while_loop` will treat things so as to work around this
         limitation of XLA.
 
-        If this extra `index` returned needs to be a tuple, then it should be wrapped
-        into a `diffrax.utils.Index`: i.e. `return new_val, Index(index)`. This is
-        because a tuple is a pytree, and then `b` will not be a pytree prefix of `a`.
+        !!! faq
+
+            `HadInplaceUpdate` is available separately (instead of being returned
+            automatically from `inplace().at[].set()`) in case the in-place update
+            takes place inside e.g. a `lax.scan` or similar, and you need to maintain
+            PyTree structures. Just place the `HadInplaceUpdate` at the very end of
+            `body_fun`. (And applied only to those array(s) that actually had in-place
+            update(s), if the state is a PyTree.)
+
+        !!! note
+
+            If you need to nest `bounded_while_loop`s, then the two `inplace` functions
+            can be merged:
+
+            ```python
+            def body_fun(val, inplace):
+                ...  # stuff (use inplace)
+
+                def inner_body_fun(_val, _inplace):
+                    _inplace = _inplace.merge(inplace)
+                    ...  # stuff (use _inplace)
+
+                bounded_while_loop(body_fun=inner_body_fun, ...)
+
+                ... # stuff (use inplace)
+
+            bounded_while_loop(body_fun=body_fun, ...)
+            ```
+
+        !!! note
+
+            In-place updates to arrays that are _created_ inside of `body_fun` can be
+            made as normal. It's just those arrays that are part of the state (that is
+            passed in and out) that need to be treated specially.
 
     Note the extra `max_steps` argument. If this is `None` then `bounded_while_loop`
     will fall back to `lax.while_loop` (which is not reverse-mode autodifferentiable).
@@ -60,19 +104,15 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
 
     if max_steps is None:
 
-        def _make_update(_index, _val, _new_val):
-            if _index is None:
-                return _new_val
+        def _make_update(_new_val):
+            if isinstance(_new_val, HadInplaceUpdate):
+                return _new_val.val
             else:
-                if isinstance(_index, Index):
-                    _index = _index.value
-                return _val.at[_index].set(_new_val)
+                return _new_val
 
         def _body_fun(_val):
-            _new_val, _index = body_fun(_val)
-            return jax.tree_map(
-                _make_update, _index, _val, _new_val, is_leaf=lambda x: x is None
-            )
+            _new_val = body_fun(_val, lambda x: x)
+            return jax.tree_map(_make_update, _new_val)
 
         return lax.while_loop(cond_fun, _body_fun, init_val)
 
@@ -90,26 +130,62 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
     return val
 
 
-class Index:
-    """Used with diffrax.utils.bounded_while_loop."""
+class _InplaceUpdate(eqx.Module):
+    pred: Array[bool]
 
-    def __init__(self, value):
-        self.value = value
+    def __call__(self, val: Array):
+        return _InplaceUpdateInner(self.pred, val)
+
+    def merge(self, other: "_InplaceUpdate") -> "_InplaceUpdate":
+        return _InplaceUpdate(self.pred & other.pred)
 
 
-def _identity(x):
-    return x
+class _InplaceUpdateInner(eqx.Module):
+    pred: Array[bool]
+    val: Array
+
+    @property
+    def at(self):
+        return _InplaceUpdateInnerInner(self.pred, self.val)
+
+
+class _InplaceUpdateInnerInner(eqx.Module):
+    pred: Array[bool]
+    val: Array
+
+    def __getitem__(self, index: Array):
+        return _InplaceUpdateInnerInnerInner(self.pred, self.val, index)
+
+
+class _InplaceUpdateInnerInnerInner(eqx.Module):
+    pred: Array[bool]
+    val: Array
+    index: Array
+
+    # TODO: implement other .add() etc. methods if required.
+
+    def set(self, update: Array) -> Array:
+        old = self.val[self.index]
+        new = lax.select(self.pred, update, old)
+        return self.val.at[self.index].set(new)
+
+
+class HadInplaceUpdate:
+    def __init__(self, val):
+        self.val = val
 
 
 # There's several tricks happening here to work around various limitations of JAX.
 # 1. `unvmap_any` prior to using `lax.cond`. JAX has a problem in that vmap-of-cond
 #    is converted to a `lax.select`, which executes both branches unconditionally.
 #    Thus writing this naively, using a plain `lax.cond`, will mean the loop always
-#    runs to `max_steps` when executing under vmap.
+#    runs to `max_steps` when executing under vmap. Instead we run (only) until every
+#    batch element has finished.
 # 2. Treating in-place updates specially in the body_fun. Specifically we need to
 #    `lax.select` the update-to-make, not the updated buffer. This is because the
 #    latter instead results in XLA:CPU failing to determine that the buffer can be
 #    updated in-place, and instead it makes a copy. c.f. JAX issue #8192.
+#    This is done through the extra `inplace` argument provided to `body_fun`.
 # 3. The use of the `@jax.checkpoint` decorator. Backpropagating through a
 #    `bounded_while_loop` will otherwise run in θ(max_steps) time, rather than
 #    θ(number of steps actually taken). I've not tracked the issue down exactly but
@@ -123,24 +199,23 @@ def _identity(x):
 #    the construction of the bounded while loop, and this slows down the jaxpr
 #    creation and the XLA compilation. We choose `base=16` as a reasonable-looking
 #    compromise between compilation time and run time.
+# 5. The monkey-patching of JAX internals. This works around JAX issues #8184 and
+#    #8193, which are compilation speed bugs. We use a few judiciously placed LRU
+#    caches to hack around this.
 def _while_loop(cond_fun, body_fun, data, max_steps, base):
     if max_steps == 1:
         pred, val, step = data
 
-        def _make_update(_index, _val, _new_val):
-            if _index is None:
-                _keep = lambda a, b: lax.select(pred, a, b)
-                return jax.tree_map(_keep, _new_val, _val)
-            else:
-                if isinstance(_index, Index):
-                    _index = _index.value
-                _new_val = lax.select(pred, _new_val, _val[_index])
-                return _val.at[_index].set(_new_val)
+        inplace_update = _InplaceUpdate(pred)
+        new_val = body_fun(val, inplace_update)
 
-        new_val, index = body_fun(val)
-        new_val = jax.tree_map(
-            _make_update, index, val, new_val, is_leaf=lambda x: x is None
-        )
+        def _make_update(_new_val, _val):
+            if isinstance(_new_val, HadInplaceUpdate):
+                return _new_val.val
+            else:
+                return lax.select(pred, _new_val, _val)
+
+        new_val = jax.tree_map(_make_update, new_val, val)
         new_step = step + 1
         return cond_fun(new_val, new_step), new_val, new_step
     else:
@@ -152,7 +227,7 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
         def _scan_fn(_data, _):
             _pred, _, _ = _data
             _unvmap_pred = unvmap_any(_pred)
-            return lax.cond(_unvmap_pred, _call, _identity, _data), None
+            return lax.cond(_unvmap_pred, _call, lambda x: x, _data), None
 
         return lax.scan(_scan_fn, data, xs=None, length=base)[0]
 

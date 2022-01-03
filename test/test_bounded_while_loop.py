@@ -21,9 +21,9 @@ def test_functional_no_vmap_no_inplace():
         x, step = val
         return step < 5
 
-    def body_fun(val):
+    def body_fun(val, _):
         x, step = val
-        return (x + 0.1, step + 1), None
+        return (x + 0.1, step + 1)
 
     init_val = (jnp.array([0.3]), 0)
 
@@ -51,12 +51,13 @@ def test_functional_no_vmap_inplace():
         x, step = val
         return step < 5
 
-    def body_fun(val):
+    def body_fun(val, inplace):
         x, step = val
-        return (x[step] + 0.1, step + 1), (
-            jnp.minimum(step + 1, 4),
-            diffrax.utils.Index(()),
-        )
+        x = inplace(x).at[jnp.minimum(step + 1, 4)].set(x[step] + 0.1)
+        step = inplace(step).at[()].set(step + 1)
+        x = diffrax.utils.HadInplaceUpdate(x)
+        step = diffrax.utils.HadInplaceUpdate(step)
+        return x, step
 
     init_val = (jnp.array([0.3, 0.3, 0.3, 0.3, 0.3]), 0)
 
@@ -84,9 +85,9 @@ def test_functional_vmap_no_inplace():
         x, step = val
         return step < 5
 
-    def body_fun(val):
+    def body_fun(val, _):
         x, step = val
-        return (x + 0.1, step + 1), None
+        return (x + 0.1, step + 1)
 
     init_val = (jnp.array([[0.3], [0.4]]), jnp.array([0, 3]))
 
@@ -140,13 +141,13 @@ def test_functional_vmap_inplace():
         x, step, max_step = val
         return step < max_step
 
-    def body_fun(val):
+    def body_fun(val, inplace):
         x, step, max_step = val
-        return (x[step] + 0.1, step + 1, max_step), (
-            jnp.minimum(step + 1, 4),
-            diffrax.utils.Index(()),
-            None,
-        )
+        x = inplace(x).at[jnp.minimum(step + 1, 4)].set(x[step] + 0.1)
+        step = inplace(step).at[()].set(step + 1)
+        x = diffrax.utils.HadInplaceUpdate(x)
+        step = diffrax.utils.HadInplaceUpdate(step)
+        return x, step, max_step
 
     init_val = (
         jnp.array([[0.3, 0.3, 0.3, 0.3, 0.3], [0.4, 0.4, 0.4, 0.4, 0.4]]),
