@@ -185,6 +185,7 @@ def _save(state, t):
     )
 
 
+@eqx.filter_jit
 def diffeqsolve(
     solver: AbstractSolver,
     t0: Scalar,
