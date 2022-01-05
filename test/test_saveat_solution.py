@@ -52,7 +52,6 @@ def test_saveat_solution():
     with pytest.raises(ValueError):
         sol.derivative(0.2)
     assert sol.stats["num_steps"] > 0
-    assert sol.stats["num_observations"] == 1
     assert sol.result == diffrax.RESULTS.successful
 
     for controller_state in (True, False):
@@ -80,7 +79,6 @@ def test_saveat_solution():
             with pytest.raises(ValueError):
                 sol.derivative(0.2)
             assert sol.stats["num_steps"] > 0
-            assert sol.stats["num_observations"] == 1
             assert sol.result == diffrax.RESULTS.successful
 
     # Outside [t0, t1]
@@ -108,7 +106,6 @@ def test_saveat_solution():
     with pytest.raises(ValueError):
         sol.derivative(0.2)
     assert sol.stats["num_steps"] > 0
-    assert sol.stats["num_observations"] == 2
     assert sol.result == diffrax.RESULTS.successful
 
     saveat = diffrax.SaveAt(steps=True)
@@ -126,7 +123,6 @@ def test_saveat_solution():
     with pytest.raises(ValueError):
         sol.derivative(0.2)
     assert num_steps > 0
-    assert sol.stats["num_observations"] == num_steps
     assert sol.result == diffrax.RESULTS.successful
 
     saveat = diffrax.SaveAt(dense=True)
@@ -144,5 +140,4 @@ def test_saveat_solution():
     assert shaped_allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
     assert shaped_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
     assert sol.stats["num_steps"] > 0
-    assert sol.stats["num_observations"] == 0
     assert sol.result == diffrax.RESULTS.successful

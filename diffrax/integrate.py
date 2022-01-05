@@ -288,6 +288,14 @@ def diffeqsolve(
     # Initial set-up
     #
 
+    if dt0 is not None:
+        # Allow setting t0 as an int with dt0 as a float. (We need consistent
+        # types for JAX to be happy with the bounded_while_loop below.)
+        dtype = jnp.result_type(t0, t1, dt0)
+        t0 = jnp.asarray(t0, dtype=dtype)
+        t1 = jnp.asarray(t1, dtype=dtype)
+        dt0 = jnp.asarray(dt0, dtype=dtype)
+
     (
         solver,
         stepsize_controller,
@@ -506,17 +514,17 @@ def diffeqsolve(
         return new_state
 
     final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
-    done = cond_fun(final_state)
-    result = final_state.result
-    result = jnp.where(done, result, RESULTS.max_steps_reached)
+    result = jnp.where(
+        cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
+    )
 
     #
     # Finish up
     #
 
-    error_index = unvmap_max(final_state.result)
+    error_index = unvmap_max(result)
     branched_error_if(
-        throw & (final_state.result != RESULTS.successful),
+        throw & (result != RESULTS.successful),
         error_index,
         RESULTS.reverse_lookup,
         RuntimeError,
@@ -553,7 +561,7 @@ def diffeqsolve(
     else:
         interpolation = None
 
-    stats = {"steps": final_state.step}
+    stats = {"num_steps": final_state.step}
 
     return Solution(
         t0=t0,

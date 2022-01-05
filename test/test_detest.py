@@ -358,32 +358,37 @@ def _e5():
 def test_a(solver_ctr):
     if solver_ctr in (diffrax.euler, diffrax.implicit_euler):
         # Euler is pretty bad at solving things, so only do some simple tests.
-        _test(solver_ctr, [_a1, _a2], higher=False)
+        _test(solver_ctr, [_a1, _a2], higher=False, max_steps=4096)
+    elif solver_ctr is diffrax.heun:
+        _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False, max_steps=4096 * 16)
     else:
-        _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False)
+        _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False, max_steps=4096)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_b(solver_ctr):
-    _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True)
+    if solver_ctr is diffrax.kvaerno4:
+        _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True, max_steps=4096 * 16)
+    else:
+        _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True, max_steps=4096)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_c(solver_ctr):
-    _test(solver_ctr, [_c1, _c2, _c3, _c4, _c5], higher=True)
+    _test(solver_ctr, [_c1, _c2, _c3, _c4, _c5], higher=True, max_steps=4096)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_d(solver_ctr):
-    _test(solver_ctr, [_d1, _d2, _d3, _d4, _d5], higher=True)
+    _test(solver_ctr, [_d1, _d2, _d3, _d4, _d5], higher=True, max_steps=4096)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_e(solver_ctr):
-    _test(solver_ctr, [_e1, _e2, _e3, _e4, _e5], higher=True)
+    _test(solver_ctr, [_e1, _e2, _e3, _e4, _e5], higher=True, max_steps=4096)
 
 
-def _test(solver_ctr, problems, higher):
+def _test(solver_ctr, problems, higher, max_steps):
     for problem in problems:
         vector_field, init = problem()
         solver = solver_ctr(vector_field)
@@ -409,6 +414,7 @@ def _test(solver_ctr, problems, higher):
             y0=init,
             dt0=dt0,
             stepsize_controller=stepsize_controller,
+            max_steps=max_steps,
         )
         y1 = jax.tree_map(lambda yi: yi[0], sol.ys)
 
