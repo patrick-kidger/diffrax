@@ -131,6 +131,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     sol1 = diffrax.diffeqsolve(
         solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, saveat=saveat
     )
+    assert shaped_allclose(sol1.t0, 4)
+    assert shaped_allclose(sol1.t1, 0.3)
 
     def f(t, y, args):
         return y
@@ -150,12 +152,14 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
+    assert shaped_allclose(sol2.t0, -4)
+    assert shaped_allclose(sol2.t1, -0.3)
 
     if saveat.t0 or saveat.t1 or saveat.ts is not None or saveat.steps:
-        assert shaped_allclose(sol1.ts, -sol2.ts[::-1])
-        assert shaped_allclose(sol1.ys, sol2.ys)
+        assert shaped_allclose(sol1.ts, -sol2.ts, equal_nan=True)
+        assert shaped_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
-        t = jnp.linspace(4, 0.3, 20)
+        t = jnp.linspace(0.3, 4, 20)
         for ti in t:
             assert shaped_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
             if solver_ctr is not diffrax.tsit5:

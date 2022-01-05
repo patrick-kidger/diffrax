@@ -181,41 +181,23 @@ def error_if(
     branched_error_if(pred, 0, [msg], error_cls)
 
 
-def _jax_str(string: str):
-    class M(eqx.Module):
-        def __repr__(self):
-            return string
-
-    return M()
-
-
 def branched_error_if(
     pred: Union[bool, Array[..., bool]],
     index: Int,
     msgs: Sequence[str],
     error_cls: Type[Exception] = ValueError,
 ) -> bool:
+    def raises(_arg):
+        _pred, _index = _arg
+        if _pred:
+            if eqx.is_array(_index):
+                _index = _index.item()
+            raise error_cls(msgs[_index])
+
     pred = unvmap_any(pred)
     if isinstance(pred, jax.core.Tracer):
         # Under JIT
-        branches = []
-        for msg in msgs:
-            msg = _jax_str(f"Exception suppressed under JIT: {error_cls(msg)!r}")
-
-            def branch(_, msg=msg):
-                hcb.id_print(msg)
-
-            branches.append(branch)
-
-        lax.cond(
-            pred,
-            lambda _: lax.switch(index, branches, None),
-            lambda _: None,
-            None,
-        )
+        hcb.call(raises, (pred, index))
     else:
         # Not under JIT
-        if pred:
-            if eqx.is_array(index):
-                index = index.item()
-            raise error_cls(msgs[index])
+        raises((pred, index))

@@ -47,129 +47,6 @@ class _InnerState(eqx.Module):
     save_index: Array
 
 
-def _init_diffeqsolve(
-    solver,
-    t0,
-    t1,
-    y0,
-    args,
-    dt0,
-    saveat,
-    stepsize_controller,
-    solver_state,
-    controller_state,
-    max_steps,
-):
-    """
-    - Performs error checking.
-    - Normalises PyTree states down to just a flat Array.
-    - Normalises time: if t0 > t1 then flip things around.
-    - Initialise loop state.
-    """
-
-    if dt0 is not None:
-        error_if((t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
-
-    direction = jnp.where(t0 < t1, 1, -1)
-    y, unravel_y = ravel_pytree(y0)
-    solver = solver.wrap(t0, y0, args, direction)
-    stepsize_controller = stepsize_controller.wrap(unravel_y, direction)
-    t0 = t0 * direction
-    t1 = t1 * direction
-    if dt0 is not None:
-        dt0 = dt0 * direction
-    if saveat.ts is not None:
-        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
-
-    if saveat.ts is not None:
-        error_if(
-            saveat.ts[1:] < saveat.ts[:-1],
-            "saveat.ts must be increasing or decreasing.",
-        )
-        error_if(
-            (saveat.ts > t1) | (saveat.ts < t0), "saveat.ts must lie between t0 and t1."
-        )
-
-    tprev = t0
-    if controller_state is None:
-        (tnext, controller_state) = stepsize_controller.init(
-            t0, t1, y, dt0, args, solver
-        )
-    else:
-        error_if(dt0 is None, "Must provide `dt0` if providing `controller_state`.")
-        tnext = t0 + dt0
-    tnext = jnp.minimum(tnext, t1)
-
-    if solver_state is None:
-        solver_state = solver.init(t0, tnext, y, args)
-
-    out_size = 0
-    if saveat.t0:
-        out_size += 1
-    if saveat.ts is not None:
-        out_size += len(saveat.ts)
-    if saveat.steps:
-        # We have no way of knowing how many steps we'll actually end up taking, and
-        # XLA doesn't support dynamic shapes. So we just have to allocate the maximum
-        # amount of steps we can possibly take.
-        error_if(
-            max_steps is None,
-            "`max_steps=None` is incompatible with `saveat.steps=True`",
-        )
-        out_size += max_steps
-    if saveat.t1 and not saveat.steps:
-        out_size += 1
-
-    step = 0
-    saveat_ts_index = 0
-    save_index = 0
-    made_jump = jnp.array(False)
-    ts = jnp.full(out_size, jnp.nan)
-    ys = jnp.full((out_size, y.size), jnp.nan)
-    result = jnp.array(RESULTS.successful)
-    if saveat.dense:
-        error_if(t0 == t1, "Cannot save dense output if t0 == t1")
-        (
-            _,
-            _,
-            dense_info,
-            _,
-            _,
-        ) = solver.step(tprev, tnext, y, args, solver_state, made_jump)
-        dense_ts = jnp.full(max_steps + 1, jnp.nan)
-        error_if(
-            max_steps is None,
-            "`max_steps=None` is incompatible with `saveat.dense=True`",
-        )
-        _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.nan)
-        dense_infos = jax.tree_map(_make_full, dense_info)
-        dense_save_index = 0
-    else:
-        dense_ts = None
-        dense_infos = None
-        dense_save_index = None
-
-    state = _State(
-        y=y,
-        tprev=tprev,
-        tnext=tnext,
-        made_jump=made_jump,
-        solver_state=solver_state,
-        controller_state=controller_state,
-        result=result,
-        step=step,
-        saveat_ts_index=saveat_ts_index,
-        ts=ts,
-        ys=ys,
-        save_index=save_index,
-        dense_ts=dense_ts,
-        dense_infos=dense_infos,
-        dense_save_index=dense_save_index,
-    )
-
-    return solver, stepsize_controller, saveat, args, unravel_y, direction, state
-
-
 def _save(state, t):
     ts = state.ts
     ys = state.ys
@@ -196,7 +73,7 @@ def diffeqsolve(
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
-    max_steps: Optional[Scalar] = 4096,
+    max_steps: Optional[Scalar] = 16 ** 4,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
@@ -241,8 +118,9 @@ def diffeqsolve(
         optimise-then-discretise will still work), and also disables
         `saveat.steps=True` and `saveat.dense=True`.
 
-        Note that using larger values of `max_steps` will start to increase compilation
-        time, so try to use the smallest value that is reasonable for your problem.
+        Note that compile times will increase as `max_steps` increases. (Specifically,
+        each time `max_steps` passes a power of 16.) You can reduce compilation times
+        by using the smallest value of `max_steps` that is reasonable for your problem.
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
@@ -277,10 +155,11 @@ def diffeqsolve(
     **Raises:**
 
     - `ValueError` for bad inputs.
-    - `RuntimeError` if `throw=True`, not using `jax.jit`, and the integration fails
-        (e.g. hitting the maximum number of steps).
+    - `RuntimeError` if `throw=True` and the integration fails (e.g. hitting the
+        maximum number of steps).
 
     !!! note
+
         It is possible to have `t1 < t0`, in which case integration proceeds backwards
         in time.
     """
@@ -289,39 +168,126 @@ def diffeqsolve(
     # Initial set-up
     #
 
+    # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
+    # types for JAX to be happy with the bounded_while_loop below.)
+    timelikes = [t0, t1, jnp.array(0.0)]
     if dt0 is not None:
-        # Allow setting t0 as an int with dt0 as a float. (We need consistent
-        # types for JAX to be happy with the bounded_while_loop below.)
-        dtype = jnp.result_type(t0, t1, dt0)
-        t0 = jnp.asarray(t0, dtype=dtype)
-        t1 = jnp.asarray(t1, dtype=dtype)
+        timelikes.append(dt0)
+    dtype = jnp.result_type(*timelikes)
+    t0 = jnp.asarray(t0, dtype=dtype)
+    t1 = jnp.asarray(t1, dtype=dtype)
+    if dt0 is not None:
         dt0 = jnp.asarray(dt0, dtype=dtype)
+    del timelikes, dtype
 
-    (
-        solver,
-        stepsize_controller,
-        saveat,
-        args,
-        unravel_y,
-        direction,
-        init_state,
-    ) = _init_diffeqsolve(
-        solver,
-        t0,
-        t1,
-        y0,
-        args,
-        dt0,
-        saveat,
-        stepsize_controller,
-        solver_state,
-        controller_state,
-        max_steps,
+    # Error checking
+    if dt0 is not None:
+        error_if((t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
+
+    # - Normalises PyTree states down to just a flat Array.
+    # - Normalises time: if t0 > t1 then flip things around.
+    direction = jnp.where(t0 < t1, 1, -1)
+    y, unravel_y = ravel_pytree(y0)
+    solver = solver.wrap(t0, y0, args, direction)
+    stepsize_controller = stepsize_controller.wrap(unravel_y, direction)
+    t0 = t0 * direction
+    t1 = t1 * direction
+    if dt0 is not None:
+        dt0 = dt0 * direction
+    if saveat.ts is not None:
+        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
+
+    # Error checking
+    if saveat.ts is not None:
+        error_if(
+            saveat.ts[1:] < saveat.ts[:-1],
+            "saveat.ts must be increasing or decreasing.",
+        )
+        error_if(
+            (saveat.ts > t1) | (saveat.ts < t0), "saveat.ts must lie between t0 and t1."
+        )
+
+    # Initialise states
+    tprev = t0
+    if controller_state is None:
+        (tnext, controller_state) = stepsize_controller.init(
+            t0, t1, y, dt0, args, solver
+        )
+    else:
+        error_if(dt0 is None, "Must provide `dt0` if providing `controller_state`.")
+        tnext = t0 + dt0
+    tnext = jnp.minimum(tnext, t1)
+    if solver_state is None:
+        solver_state = solver.init(t0, tnext, y, args)
+
+    # Allocate memory to store output.
+    out_size = 0
+    if saveat.t0:
+        out_size += 1
+    if saveat.ts is not None:
+        out_size += len(saveat.ts)
+    if saveat.steps:
+        # We have no way of knowing how many steps we'll actually end up taking, and
+        # XLA doesn't support dynamic shapes. So we just have to allocate the maximum
+        # amount of steps we can possibly take.
+        error_if(
+            max_steps is None,
+            "`max_steps=None` is incompatible with `saveat.steps=True`",
+        )
+        out_size += max_steps
+    if saveat.t1 and not saveat.steps:
+        out_size += 1
+    step = 0
+    saveat_ts_index = 0
+    save_index = 0
+    made_jump = jnp.array(False)
+    ts = jnp.full(out_size, jnp.nan)
+    ys = jnp.full((out_size, y.size), jnp.nan)
+    result = jnp.array(RESULTS.successful)
+    if saveat.dense:
+        error_if(t0 == t1, "Cannot save dense output if t0 == t1")
+        (
+            _,
+            _,
+            dense_info,
+            _,
+            _,
+        ) = solver.step(tprev, tnext, y, args, solver_state, made_jump)
+        dense_ts = jnp.full(max_steps + 1, jnp.nan)
+        error_if(
+            max_steps is None,
+            "`max_steps=None` is incompatible with `saveat.dense=True`",
+        )
+        _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.nan)
+        dense_infos = jax.tree_map(_make_full, dense_info)
+        dense_save_index = 0
+    else:
+        dense_ts = None
+        dense_infos = None
+        dense_save_index = None
+
+    # Initialise state
+    init_state = _State(
+        y=y,
+        tprev=tprev,
+        tnext=tnext,
+        made_jump=made_jump,
+        solver_state=solver_state,
+        controller_state=controller_state,
+        result=result,
+        step=step,
+        saveat_ts_index=saveat_ts_index,
+        ts=ts,
+        ys=ys,
+        save_index=save_index,
+        dense_ts=dense_ts,
+        dense_infos=dense_infos,
+        dense_save_index=dense_save_index,
     )
 
+    # Initial saving
     if saveat.t0:
         init_state = _save(init_state, t0)
-
     if saveat.dense:
         dense_ts = init_state.dense_ts
         dense_ts = dense_ts.at[0].set(t0)
@@ -523,21 +489,13 @@ def diffeqsolve(
     # Finish up
     #
 
-    error_index = unvmap_max(result)
-    branched_error_if(
-        throw & (result != RESULTS.successful),
-        error_index,
-        RESULTS.reverse_lookup,
-        RuntimeError,
-    )
-
     # saveat.steps will include the final timepoint anyway
     if saveat.t1 and not saveat.steps:
         final_state = _save(final_state, t1)
 
     if saveat.t0 or saveat.t1 or saveat.steps or (saveat.ts is not None):
         ts = final_state.ts
-        ts = jnp.where(direction == 1, ts, -ts[::-1])
+        ts = ts * direction
         ys = jax.vmap(unravel_y)(final_state.ys)
     else:
         ts = None
@@ -562,7 +520,18 @@ def diffeqsolve(
     else:
         interpolation = None
 
+    t0 = t0 * direction
+    t1 = t1 * direction
+
     stats = {"num_steps": final_state.step}
+
+    error_index = unvmap_max(result)
+    branched_error_if(
+        throw & (result != RESULTS.successful),
+        error_index,
+        RESULTS.reverse_lookup,
+        RuntimeError,
+    )
 
     return Solution(
         t0=t0,

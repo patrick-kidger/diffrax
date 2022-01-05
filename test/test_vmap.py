@@ -93,8 +93,11 @@ def test_vmap_y0(stepsize_controller):
         assert len(set(num_steps)) > 1
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert sol.ts.shape == (10, 4096)  # 4096 is the default diffeqsolve(max_steps=...)
-    assert sol.ys.shape == (10, 4096, 2)
+    assert sol.ts.shape == (
+        10,
+        65536,
+    )  # 65536 is the default diffeqsolve(max_steps=...)
+    assert sol.ys.shape == (10, 65536, 2)
 
     saveat = diffrax.SaveAt(dense=True)
     sol = jax.vmap(
