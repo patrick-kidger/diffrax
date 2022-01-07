@@ -164,15 +164,14 @@ class _InplaceUpdateInnerInnerInner(eqx.Module):
 
     # TODO: implement other .add() etc. methods if required.
 
-    def set(self, update: Array) -> Array:
+    def set(self, update: Array, **kwargs) -> Array:
         old = self.val[self.index]
         new = lax.select(self.pred, update, old)
-        return self.val.at[self.index].set(new)
+        return self.val.at[self.index].set(new, **kwargs)
 
 
-class HadInplaceUpdate:
-    def __init__(self, val):
-        self.val = val
+class HadInplaceUpdate(eqx.Module):
+    val: Array
 
 
 # There's several tricks happening here to work around various limitations of JAX.
@@ -215,7 +214,12 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
             else:
                 return lax.select(pred, _new_val, _val)
 
-        new_val = jax.tree_map(_make_update, new_val, val)
+        new_val = jax.tree_map(
+            _make_update,
+            new_val,
+            val,
+            is_leaf=lambda x: isinstance(x, HadInplaceUpdate),
+        )
         new_step = step + 1
         return cond_fun(new_val, new_step), new_val, new_step
     else:
