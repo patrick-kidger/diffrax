@@ -386,6 +386,10 @@ def diffeqsolve(
         if saveat.ts is not None:
             made_inplace_update = True
 
+            _interpolator = solver.interpolation_cls(
+                t0=state.tprev, t1=state.tnext, **dense_info
+            )
+
             def _saveat_get(_saveat_ts_index):
                 return saveat.ts[jnp.minimum(_saveat_ts_index, len(saveat.ts) - 1)]
 
@@ -403,18 +407,57 @@ def diffeqsolve(
                 _ts = _state.ts
                 _ys = _state.ys
                 _save_index = _state.save_index
-                _inplace = _inplace.merge(inplace)
-
-                _interpolator = solver.interpolation_cls(
-                    t0=state.tprev, t1=state.tnext, **dense_info
-                )
 
                 _saveat_t = _saveat_get(_saveat_ts_index)
                 _saveat_y = _interpolator.evaluate(_saveat_t)
 
+                # VOODOO MAGIC
+                #
+                # Okay, time for some voodoo that I absolutely don't understand.
+                #
+                # Shown in the comment is what I would to write:
+                #
+                #  _inplace = _inplace.merge(inplace)
+                #  _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
+                #  _ys = _inplace(_ys).at[_save_index].set(_saveat_y)
+                #
+                # Seems reasonable, right? Just updating a value.
+                #
+                # Below is what we actually run:
+
+                _inplace.merge(inplace)
+                _pred = cond_fun(state) & _cond_fun(_state)
+                _ts = _ts.at[_save_index].set(
+                    jnp.where(_pred, _saveat_t, _ts[_save_index])
+                )
+                _ys = _ys.at[_save_index].set(
+                    jnp.where(_pred, _saveat_y, _ys[_save_index])
+                )
+
+                # Some immediate questions you might have:
+                #
+                # - Isn't this essentially equivalent to the commented-out version?
+                #   - Nitpick: the commented-out version includes an enhanced cond_fun
+                #     that checks the step count, but it shouldn't matter here.
+                # - It looks like `_inplace.merge(inplace)` isn't even used?
+                #   - I think it will appear in the jaxpr, interestingly, based off of
+                #     the toy example:
+                #     >>> def f(x, y):
+                #     ...     x & y
+                #     ...     return x + 1
+                #     >>> jax.make_jaxpr(f)(1, 2)
+                #     Which is presumably how this manages to affect anything at all.
+                #
+                # And you are right. Those are both reasonable questions, at least as
+                # far as I can see.
+                #
+                # And yet for some reason this version will run substantially faster.
+                # (At time of writing: on the `small_neural_ode.py` benchmark, on the
+                # CPU.)
+                #
+                # ~VOODOO MAGIC
+
                 _saveat_ts_index = _saveat_ts_index + 1
-                _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
-                _ys = _inplace(_ys).at[_save_index].set(_saveat_y)
                 _save_index = _save_index + 1
 
                 _ts = HadInplaceUpdate(_ts)
@@ -430,6 +473,7 @@ def diffeqsolve(
             init_inner_state = _InnerState(
                 saveat_ts_index=saveat_ts_index, ts=ts, ys=ys, save_index=save_index
             )
+
             final_inner_state = bounded_while_loop(
                 _cond_fun, _body_fun, init_inner_state, max_steps=len(saveat.ts)
             )
