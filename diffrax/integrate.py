@@ -170,14 +170,15 @@ def diffeqsolve(
 
     # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
     # types for JAX to be happy with the bounded_while_loop below.)
-    timelikes = [t0, t1, jnp.array(0.0)]
-    if dt0 is not None:
-        timelikes.append(dt0)
+    timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
+    timelikes = [x for x in timelikes if x is not None]
     dtype = jnp.result_type(*timelikes)
     t0 = jnp.asarray(t0, dtype=dtype)
     t1 = jnp.asarray(t1, dtype=dtype)
     if dt0 is not None:
         dt0 = jnp.asarray(dt0, dtype=dtype)
+    if saveat.ts is not None:
+        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
     del timelikes, dtype
 
     # Error checking
@@ -391,18 +392,18 @@ def diffeqsolve(
             def _cond_fun(_state):
                 _saveat_ts_index = _state.saveat_ts_index
                 _saveat_t = _saveat_get(_saveat_ts_index)
-                return (_saveat_t <= state.tnext) & (_saveat_ts_index < len(saveat.ts))
+                return (
+                    keep_step
+                    & (_saveat_t <= state.tnext)
+                    & (_saveat_ts_index < len(saveat.ts))
+                )
 
             def _body_fun(_state, _inplace):
                 _saveat_ts_index = _state.saveat_ts_index
                 _ts = _state.ts
                 _ys = _state.ys
                 _save_index = _state.save_index
-
                 _inplace = _inplace.merge(inplace)
-
-                def _maybe_inplace(x, i, u):
-                    return _inplace(x).at[i].set(jnp.where(keep_step, u, x[i]))
 
                 _interpolator = solver.interpolation_cls(
                     t0=state.tprev, t1=state.tnext, **dense_info
@@ -410,11 +411,14 @@ def diffeqsolve(
 
                 _saveat_t = _saveat_get(_saveat_ts_index)
                 _saveat_y = _interpolator.evaluate(_saveat_t)
-                _saveat_ts_index = _saveat_ts_index + 1
 
-                _ts = _maybe_inplace(_ts, _save_index, _saveat_t)
-                _ys = _maybe_inplace(_ys, _save_index, _saveat_y)
+                _saveat_ts_index = _saveat_ts_index + 1
+                _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
+                _ys = _inplace(_ys).at[_save_index].set(_saveat_y)
                 _save_index = _save_index + 1
+
+                _ts = HadInplaceUpdate(_ts)
+                _ys = HadInplaceUpdate(_ys)
 
                 return _InnerState(
                     saveat_ts_index=_saveat_ts_index,
@@ -523,7 +527,7 @@ def diffeqsolve(
     t0 = t0 * direction
     t1 = t1 * direction
 
-    stats = {"num_steps": final_state.step}
+    stats = {"num_steps": final_state.step, "max_steps": max_steps}
 
     error_index = unvmap_max(result)
     branched_error_if(

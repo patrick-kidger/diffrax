@@ -44,7 +44,7 @@ def _select_initial_step(
     d2 = norm(unravel_y((f1 - f0) / scale)) / h0
 
     h1 = jnp.where(
-        (d1 <= 1e-15) | (d2 <= 1e-15),
+        (d1 <= 1e-15) & (d2 <= 1e-15),
         jnp.maximum(1e-6, h0 * 1e-3),
         (0.01 * jnp.maximum(d1, d2)) ** (1 / solver.order),
     )
@@ -61,7 +61,7 @@ def _scale_error_estimate(
     atol: Scalar,
     norm: Callable[[Array], Scalar],
 ) -> Scalar:
-    scale = y_error / (atol + jnp.maximum(y0, y1_candidate) * rtol)
+    scale = y_error / (atol + jnp.maximum(jnp.abs(y0), jnp.abs(y1_candidate)) * rtol)
     scale = unravel_y(scale)
     return norm(scale)
 

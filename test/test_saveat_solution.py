@@ -110,19 +110,20 @@ def test_saveat_solution():
 
     saveat = diffrax.SaveAt(steps=True)
     sol = _integrate(saveat)
-    num_steps = sol.stats["num_steps"]
     assert sol.t0 == _t0
     assert sol.t1 == _t1
-    assert sol.ts.shape == (num_steps,)
-    assert sol.ys.shape == (num_steps, 1)
-    assert shaped_allclose(sol.ys, _y0 * jnp.exp(-0.5 * (sol.ts - _t0))[:, None])
+    assert sol.ts.shape == (65536,)
+    assert sol.ys.shape == (65536, 1)
+    assert shaped_allclose(
+        sol.ys, _y0 * jnp.exp(-0.5 * (sol.ts - _t0))[:, None], equal_nan=True
+    )
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
         sol.evaluate(0.2, 0.8)
     with pytest.raises(ValueError):
         sol.derivative(0.2)
-    assert num_steps > 0
+    assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
     saveat = diffrax.SaveAt(dense=True)
