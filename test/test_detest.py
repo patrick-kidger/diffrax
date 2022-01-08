@@ -13,6 +13,7 @@ import math
 
 import diffrax
 import jax
+import jax.flatten_util as fu
 import jax.numpy as jnp
 import pytest
 import scipy.integrate as integrate
@@ -417,13 +418,13 @@ def _test(solver_ctr, problems, higher):
         )
         y1 = jax.tree_map(lambda yi: yi[0], sol.ys)
 
-        scipy_y0, unravel = diffrax.utils.ravel_pytree(init)
+        scipy_y0, unravel = fu.ravel_pytree(init)
         scipy_y0 = scipy_y0.to_py()
 
         def scipy_fn(t, y):
             y = unravel(y)
             dy = vector_field(t, y, None)
-            dy, _ = diffrax.utils.ravel_pytree(dy)
+            dy, _ = fu.ravel_pytree(dy)
             return dy.to_py()
 
         scipy_sol = integrate.solve_ivp(

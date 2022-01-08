@@ -2,10 +2,10 @@ from dataclasses import field
 from typing import Callable, Tuple
 
 import jax
+import jax.flatten_util as fu
 
 from ..custom_types import Array, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
-from ..misc import ravel_pytree
 from ..solution import RESULTS
 from ..term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractSolver
@@ -32,7 +32,7 @@ class SemiImplicitEuler(AbstractSolver):
     ):
         kwargs = super()._wrap(t0, y0, args, direction)
         y0_1, y0_2 = y0
-        _, unravel_y = ravel_pytree(y0)
+        _, unravel_y = fu.ravel_pytree(y0)
         kwargs["term1"] = WrapTerm(
             term=self.term1, t=t0, y=y0_2, args=args, direction=direction
         )
@@ -57,15 +57,15 @@ class SemiImplicitEuler(AbstractSolver):
         control2 = self.term2.contr(t0, t1)
 
         y0_1, y0_2 = self.unravel_y(y0)
-        y0_1, unravel_y1 = ravel_pytree(y0_1)
-        y0_2, unravel_y2 = ravel_pytree(y0_2)
+        y0_1, unravel_y1 = fu.ravel_pytree(y0_1)
+        y0_2, unravel_y2 = fu.ravel_pytree(y0_2)
 
         y1_1 = y0_1 + self.term1.vf_prod(t0, y0_2, args, control1)
         y1_2 = y0_2 + self.term2.vf_prod(t0, y1_1, args, control2)
 
         y1_1 = unravel_y1(y1_1)
         y1_2 = unravel_y2(y1_2)
-        y1, _ = ravel_pytree((y0_1, y0_2))
+        y1, _ = fu.ravel_pytree((y0_1, y0_2))
 
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
@@ -78,15 +78,15 @@ class SemiImplicitEuler(AbstractSolver):
     ) -> Array["state"]:  # noqa: F821
 
         y0_1, y0_2 = self.unravel_y(y0)
-        y0_1, unravel_y1 = ravel_pytree(y0_1)
-        y0_2, unravel_y2 = ravel_pytree(y0_2)
+        y0_1, unravel_y1 = fu.ravel_pytree(y0_1)
+        y0_2, unravel_y2 = fu.ravel_pytree(y0_2)
 
         f1 = self.term1.func_for_init(t0, y0_2, args)
         f2 = self.term2.func_for_init(t0, y0_1, args)
 
         f1 = unravel_y1(f1)
         f2 = unravel_y2(f2)
-        f, _ = ravel_pytree((f1, f2))
+        f, _ = fu.ravel_pytree((f1, f2))
 
         return f
 

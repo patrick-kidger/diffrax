@@ -4,6 +4,7 @@ from ..custom_types import Array, PyTree, Scalar
 from ..misc import error_if
 from ..solution import RESULTS
 from ..solver import AbstractSolver
+from ..term import AbstractTerm
 from .base import AbstractStepSizeController
 
 
@@ -17,6 +18,7 @@ class ConstantStepSize(AbstractStepSizeController):
 
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
@@ -65,13 +67,12 @@ class StepTo(AbstractStepSizeController):
     def wrap(self, unravel_y: callable, direction: Scalar):
         ts = self.ts * direction
         # Only tested after we've set the direction.
-        error_if(
-            self.ts[1:] <= self.ts[:-1], "`StepTo(ts=...)` must be strictly increasing."
-        )
+        error_if(ts[1:] <= ts[:-1], "`StepTo(ts=...)` must be strictly increasing.")
         return type(self)(ts=ts)
 
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821

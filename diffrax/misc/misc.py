@@ -1,13 +1,15 @@
+import functools as ft
+import typing
 from typing import Any, Optional, Sequence, Tuple, Type, Union
 
 import equinox as eqx
 import jax
 import jax.experimental.host_callback as hcb
+import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, Int, PyTree, Scalar
-from .ravel import ravel_pytree
 from .unvmap import unvmap_any
 
 
@@ -45,6 +47,11 @@ def check_no_derivative(x: PyTree, name: str) -> None:
 
 class ContainerMeta(type):
     def __new__(cls, name, bases, dict):
+
+        if getattr(typing, "GENERATING_DOCUMENTATION", False):
+            # Display containers as ints in documentation
+            return int
+
         assert "reverse_lookup" not in dict
         _dict = {}
         reverse_lookup = []
@@ -146,7 +153,7 @@ def linear_rescale(t0, t, t1):
 
 
 def rms_norm(x: PyTree) -> Scalar:
-    x, _ = ravel_pytree(x)
+    x, _ = fu.ravel_pytree(x)
     if x.size == 0:
         return 0
     sqnorm = jnp.mean(x ** 2)
@@ -201,3 +208,7 @@ def branched_error_if(
     else:
         # Not under JIT
         raises((pred, index))
+
+
+def curry(fn):
+    return ft.partial(ft.partial, fn)

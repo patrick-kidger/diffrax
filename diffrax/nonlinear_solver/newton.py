@@ -2,12 +2,13 @@ from typing import Callable, Optional, Tuple
 
 import equinox as eqx
 import jax
+import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import Bool, PyTree, Scalar
-from ..misc import ravel_pytree, rms_norm
+from ..misc import rms_norm
 from ..solution import RESULTS
 from .base import AbstractNonlinearSolver, LU_Jacobian
 
@@ -92,10 +93,10 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     ) -> Tuple[PyTree, RESULTS]:
         args = eqx.combine(nondiff_args, diff_args)
         scale = self.atol + self.rtol * self.norm(x)
-        flat, unflatten = ravel_pytree(x)
+        flat, unflatten = fu.ravel_pytree(x)
         if flat.size == 0:
             return x, RESULTS.successful
-        curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
+        curried = lambda z: fu.ravel_pytree(fn(unflatten(z), args))[0]
 
         def cond_fn(val):
             _, step, diffsize, diffsize_prev = val

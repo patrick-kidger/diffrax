@@ -1,4 +1,3 @@
-import typing
 from dataclasses import field
 from typing import Any, Dict, Optional
 
@@ -8,19 +7,15 @@ from .misc import ContainerMeta
 from .path import AbstractPath
 
 
-if getattr(typing, "GENERATING_DOCUMENTATION", False):
-    RESULTS = int
-else:
-
-    class RESULTS(metaclass=ContainerMeta):
-        successful = ""
-        max_steps_reached = "The maximum number of solver steps was reached."
-        dt_min_reached = "The minimum step size was reached."
-        nan_time = "NaN time encountered during timestepping."
-        implicit_divergence = "Implicit method diverged."
-        implicit_nonconvergence = (
-            "Implicit method did not converge within the required number of iterations."
-        )
+class RESULTS(metaclass=ContainerMeta):
+    successful = ""
+    max_steps_reached = "The maximum number of solver steps was reached."
+    dt_min_reached = "The minimum step size was reached."
+    nan_time = "NaN time encountered during timestepping."
+    implicit_divergence = "Implicit method diverged."
+    implicit_nonconvergence = (
+        "Implicit method did not converge within the required number of iterations."
+    )
 
 
 class Solution(AbstractPath):

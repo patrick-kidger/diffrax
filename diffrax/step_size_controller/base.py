@@ -5,6 +5,7 @@ import equinox as eqx
 
 from ..custom_types import Array, PyTree, Scalar
 from ..solver import AbstractSolver
+from ..term import AbstractTerm
 
 
 _ControllerState = TypeVar("ControllerState", bound=PyTree)
@@ -24,7 +25,7 @@ class AbstractStepSizeController(eqx.Module):
 
         **Arguments:**
 
-        - `unravel_y`: as returned by [`diffrax.utils.ravel_pytree`][]; specifies how
+        - `unravel_y`: as returned by `jax.flatten_util.ravel_pytree`; specifies how
             to unravel the flattened PyTree back to its original PyTree structure.
         - `direction`: Either 1 or -1, indicating whether the integration is going to
             be performed forwards-in-time or backwards-in-time respectively.
@@ -34,11 +35,11 @@ class AbstractStepSizeController(eqx.Module):
         A copy of the the step size controller, updated to reflect the additional
         information.
         """
-        pass
 
     @abc.abstractmethod
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
@@ -51,7 +52,7 @@ class AbstractStepSizeController(eqx.Module):
 
         **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
         flattened one-dimensional JAX array. (Obtained via
-        [`diffrax.utils.ravel_pytree`][] if `y0` was originally a PyTree.)
+        `jax.flatten_util.ravel_pytree` if `y0` was originally a PyTree.)
 
         **Returns:**
 
@@ -64,7 +65,6 @@ class AbstractStepSizeController(eqx.Module):
         - The initial hidden state for the step size controller, which is used the
             first time `adapt_step_size` is called.
         """
-        pass
 
     @abc.abstractmethod
     def adapt_step_size(
@@ -124,4 +124,3 @@ class AbstractStepSizeController(eqx.Module):
             rejected -- often step size controllers want to maintain state across
             step rejections, which would make this impossible.)
         """
-        pass

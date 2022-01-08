@@ -4,16 +4,18 @@
 
     ::: diffrax.AbstractAdjoint
         selection:
-            members: false
+            members:
+                - loop
+
+::: diffrax.RecursiveCheckpointAdjoint
+    selection:
+        members: false
 
 ::: diffrax.BacksolveAdjoint
     selection:
-        members: false
+        members:
+            - __init__
 
 ::: diffrax.NoAdjoint
-    selection:
-        members: false
-
-::: diffrax.RecursiveCheckpointAdjoint
     selection:
         members: false

@@ -3,10 +3,10 @@ from typing import Callable, Tuple
 
 import equinox as eqx
 import jax
+import jax.flatten_util as fu
 import jax.numpy as jnp
 
 from .custom_types import Array, PyTree, Scalar
-from .misc import ravel_pytree
 from .path import AbstractPath
 
 
@@ -280,6 +280,13 @@ class MultiTerm(AbstractTerm):
 
     terms: Tuple[AbstractTerm, ...]
 
+    def __init__(self, *terms):
+        """**Arguments:**
+
+        - `*terms`: Any number of [`diffrax.AbstractTerm`][]s to combine.
+        """
+        self.terms = terms
+
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> Tuple[PyTree, ...]:
         return tuple(term.vf(t, y, args) for term in self.terms)
 
@@ -295,12 +302,6 @@ class MultiTerm(AbstractTerm):
 
     def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> Tuple[PyTree, ...]:
         return tuple(term.func_for_init(t, y, args) for term in self.terms)
-
-
-MultiTerm.__init__.__doc__ = """**Arguments:**
-
-- `terms`: A tuple of [`diffrax.AbstractTerm`][]s to combine.
-"""
 
 
 class WrapTerm(AbstractTerm):
@@ -325,9 +326,9 @@ class WrapTerm(AbstractTerm):
         control = term.contr(t, t + 1e-6)
         vf = term.vf(t, y, args)
 
-        _, unravel_y = ravel_pytree(y)
-        _, unravel_control = ravel_pytree(control)
-        _, unravel_vf = ravel_pytree(vf)
+        _, unravel_y = fu.ravel_pytree(y)
+        _, unravel_control = fu.ravel_pytree(control)
+        _, unravel_vf = fu.ravel_pytree(vf)
 
         self.term = term
         self.direction = direction
@@ -344,14 +345,14 @@ class WrapTerm(AbstractTerm):
         t = t * self.direction
         y = self.unravel_y(y)
         vf = self.term.vf(t, y, args)
-        vf, _ = ravel_pytree(vf)
+        vf, _ = fu.ravel_pytree(vf)
         return vf
 
     def contr(self, t0: Scalar, t1: Scalar) -> Array["control"]:  # noqa: F821
         t0, t1 = jnp.where(self.direction == 1, t0, -t1), jnp.where(
             self.direction == 1, t1, -t0
         )
-        control, _ = ravel_pytree(self.term.contr(t0, t1))
+        control, _ = fu.ravel_pytree(self.term.contr(t0, t1))
         control = control * self.direction
         return control
 
@@ -363,7 +364,7 @@ class WrapTerm(AbstractTerm):
         vf = self.unravel_vf(vf)
         control = self.unravel_control(control)
         prod = self.term.prod(vf, control)
-        prod, _ = ravel_pytree(prod)
+        prod, _ = fu.ravel_pytree(prod)
         return prod
 
     # Define this to skip the extra ravel/unravelling that prod(vf(...), ...) does
@@ -379,7 +380,7 @@ class WrapTerm(AbstractTerm):
         control = self.unravel_control(control)
         vf = self.term.vf(t, y, args)
         prod = self.term.prod(vf, control)
-        prod, _ = ravel_pytree(prod)
+        prod, _ = fu.ravel_pytree(prod)
         return prod
 
     def func_for_init(
@@ -391,5 +392,5 @@ class WrapTerm(AbstractTerm):
         t = t * self.direction
         y = self.unravel_y(y)
         vf = self.term.func_for_init(t, y, args)
-        vf, _ = ravel_pytree(vf)
+        vf, _ = fu.ravel_pytree(vf)
         return vf

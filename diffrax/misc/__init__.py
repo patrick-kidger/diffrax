@@ -4,6 +4,7 @@ from .misc import (
     branched_error_if,
     check_no_derivative,
     ContainerMeta,
+    curry,
     error_if,
     fill_forward,
     force_bitcast_convert_type,
@@ -14,6 +15,5 @@ from .misc import (
     nextbefore,
     rms_norm,
 )
-from .ravel import ravel_pytree
 from .sde_kl_divergence import sde_kl_divergence
 from .unvmap import unvmap_all, unvmap_any, unvmap_max

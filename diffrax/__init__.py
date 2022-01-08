@@ -1,4 +1,3 @@
-from . import utils
 from .adjoint import (
     AbstractAdjoint,
     BacksolveAdjoint,
@@ -66,6 +65,7 @@ from .solver import (
     tsit5,
 )
 from .step_size_controller import (
+    AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
     ConstantStepSize,
     IController,

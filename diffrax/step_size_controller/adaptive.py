@@ -1,9 +1,7 @@
-import functools as ft
 import typing
 from dataclasses import field
 from typing import Callable, Optional, Tuple
 
-import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -12,14 +10,15 @@ from ..custom_types import Array, PyTree, Scalar
 from ..misc import nextafter, nextbefore, rms_norm
 from ..solution import RESULTS
 from ..solver import AbstractSolver
+from ..term import AbstractTerm
 from .base import AbstractStepSizeController
 
 
 # Empirical initial step selection algorithm from:
 # E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential Equations I:
 # Nonstiff Problems", Sec. II.4, 2nd edition.
-@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
 def _select_initial_step(
+    terms: PyTree[AbstractTerm],
     t0: Scalar,
     y0: Array["state"],  # noqa: F821
     args: PyTree,
@@ -29,7 +28,7 @@ def _select_initial_step(
     unravel_y: jax.tree_util.Partial,
     norm: Callable[[Array], Scalar],
 ):
-    f0 = solver.func_for_init(t0, y0, args)
+    f0 = solver.func_for_init(terms, t0, y0, args)
     scale = atol + jnp.abs(y0) * rtol
     d0 = norm(unravel_y(y0 / scale))
     d1 = norm(unravel_y(f0 / scale))
@@ -40,7 +39,7 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = y0 + h0 * f0
-    f1 = solver.func_for_init(t1, y1, args)
+    f1 = solver.func_for_init(terms, t1, y1, args)
     d2 = norm(unravel_y((f1 - f0) / scale)) / h0
 
     h1 = jnp.where(
@@ -80,18 +79,21 @@ class _gendocs_norm:
         return str(rms_norm)
 
 
+class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
+    # Default tolerances taken from scipy.integrate.solve_ivp
+    rtol: Scalar = 1e-3
+    atol: Scalar = 1e-6
+
+
 # https://diffeq.sciml.ai/stable/extras/timestepping/
 # are good notes on different step size control algorithms.
-class IController(AbstractStepSizeController):
+class IController(AbstractAdaptiveStepSizeController):
     """Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
 
     Steps are adapted using an I-controller.
     """
 
-    # Default tolerances taken from scipy.integrate.solve_ivp
-    rtol: Scalar = 1e-3
-    atol: Scalar = 1e-6
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
@@ -127,6 +129,7 @@ class IController(AbstractStepSizeController):
 
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: Array["state"],  # noqa: F821
@@ -137,6 +140,7 @@ class IController(AbstractStepSizeController):
         del t1
         if dt0 is None:
             dt0 = _select_initial_step(
+                terms,
                 t0,
                 y0,
                 args,

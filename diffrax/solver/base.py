@@ -71,7 +71,7 @@ class AbstractSolver(eqx.Module):
 
         **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
         flattened one-dimensional JAX array. (Obtained via
-        [`diffrax.utils.ravel_pytree`][] if `y0` was originally a PyTree.)
+        `jax.flatten_util.ravel_pytree` if `y0` was originally a PyTree.)
 
         **Returns:**
 
