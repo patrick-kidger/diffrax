@@ -1,4 +1,10 @@
 from . import utils
+from .adjoint import (
+    AbstractAdjoint,
+    BacksolveAdjoint,
+    NoAdjoint,
+    RecursiveCheckpointAdjoint,
+)
 from .brownian import AbstractBrownianPath, UnsafeBrownianPath
 from .global_interpolation import (
     AbstractGlobalInterpolation,

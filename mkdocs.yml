@@ -111,6 +111,7 @@ nav:
         - 'api/stepsize_controller.md'
         - 'api/solution.md'
     - Advanced API:
+        - 'api/adjoints.md'
         - 'api/terms.md'
         - 'api/path.md'
         - 'api/interpolation.md'

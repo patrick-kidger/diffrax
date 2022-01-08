@@ -38,8 +38,8 @@ def is_perturbed(x: Any) -> bool:
         return False
 
 
-def check_no_derivative(x: Array, name: str) -> None:
-    if is_perturbed(x):
+def check_no_derivative(x: PyTree, name: str) -> None:
+    if any(is_perturbed(xi) for xi in jax.tree_leaves(x)):
         raise ValueError(f"Cannot differentiate {name}.")
 
 

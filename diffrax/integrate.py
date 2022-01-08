@@ -2,8 +2,15 @@ from typing import Optional
 
 import equinox as eqx
 import jax
+import jax.lax as lax
 import jax.numpy as jnp
 
+from .adjoint import (
+    AbstractAdjoint,
+    BacksolveAdjoint,
+    NoAdjoint,
+    RecursiveCheckpointAdjoint,
+)
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
 from .misc import (
@@ -73,6 +80,7 @@ def diffeqsolve(
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
+    adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
     max_steps: Optional[Scalar] = 16 ** 4,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
@@ -109,6 +117,11 @@ def diffeqsolve(
 
     These arguments are infrequently used, and for most purposes you shouldn't need to
     understand these. All of these are keyword-only arguments.
+
+    - `adjoint`: How to backpropagate (and compute forward-mode autoderivatives) of
+        `diffeqsolve`. Defaults to discretise-then-optimise with recursive
+        checkpointing, which is usually the best option for most problems. See the page
+        on [Adjoints](./adjoints.md) for more information.
 
     - `max_steps`: The maximum number of steps to take before quitting the computation
         unconditionally.
@@ -168,6 +181,10 @@ def diffeqsolve(
     # Initial set-up
     #
 
+    # Error checking
+    if dt0 is not None:
+        error_if((t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
+
     # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
     # types for JAX to be happy with the bounded_while_loop below.)
     timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
@@ -181,16 +198,12 @@ def diffeqsolve(
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
     del timelikes, dtype
 
-    # Error checking
-    if dt0 is not None:
-        error_if((t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
-
     # - Normalises PyTree states down to just a flat Array.
     # - Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
     y, unravel_y = ravel_pytree(y0)
-    solver = solver.wrap(t0, y0, args, direction)
     stepsize_controller = stepsize_controller.wrap(unravel_y, direction)
+    solver = solver.wrap(t0, y0, args, direction)
     t0 = t0 * direction
     t1 = t1 * direction
     if dt0 is not None:
@@ -528,7 +541,17 @@ def diffeqsolve(
 
         return new_state
 
-    final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
+    if isinstance(adjoint, (NoAdjoint, BacksolveAdjoint)):
+
+        def _cond_fun(state):
+            return cond_fun(state) & (state.step < max_steps)
+
+        def _body_fun(state):
+            return _body_fun(state, lambda x: x)
+
+        final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
+    else:
+        final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
