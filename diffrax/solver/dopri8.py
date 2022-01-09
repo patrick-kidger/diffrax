@@ -7,6 +7,7 @@ import numpy as np
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
 from ..misc import linear_rescale, ω
+from .base import vector_tree_dot
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -286,12 +287,12 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
             return self.evaluate(t1) - self.evaluate(t0)
         t = linear_rescale(self.t0, t0, self.t1)
         coeffs = _vmap_polyval(self.eval_coeffs, t) * t
-        return (self.y0 ** ω + coeffs @ self.k ** ω).ω
+        return (self.y0 ** ω + vector_tree_dot(coeffs, self.k) ** ω).ω
 
     def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
         t = linear_rescale(self.t0, t, self.t1)
         coeffs = _vmap_polyval(self.diff_coeffs, t)
-        return (coeffs @ (self.k ** ω / (self.t1 - self.t0))).ω
+        return vector_tree_dot(coeffs, (self.k ** ω / (self.t1 - self.t0)).ω)
 
 
 class Dopri8(AbstractERK):

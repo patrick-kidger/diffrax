@@ -172,7 +172,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         t = jnp.linspace(0.3, 4, 20)
         for ti in t:
             assert shaped_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
-            if solver_ctr is not diffrax.tsit5:
+            if solver_ctr is not diffrax.Tsit5:
                 # derivative not implemented for Tsit5
                 assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
@@ -215,8 +215,8 @@ def test_semi_implicit_euler():
         y0,
         dt0,
         solver=diffrax.SemiImplicitEuler(),
-        max_steps=int(1 / dt0),
+        max_steps=100000,
     )
     term_combined = diffrax.ODETerm(lambda t, y, args: (-y[1], y[0]))
-    sol2 = diffrax.diffeqsolve(term_combined, 0, 1, y0, dt0, solver=diffrax.Tsit5())
+    sol2 = diffrax.diffeqsolve(term_combined, 0, 1, y0, 0.001, solver=diffrax.Tsit5())
     assert shaped_allclose(sol1.ys, sol2.ys)

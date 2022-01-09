@@ -2,6 +2,8 @@ import abc
 from typing import Optional, Tuple, Type, TypeVar
 
 import equinox as eqx
+import jax
+import jax.numpy as jnp
 
 from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
@@ -10,6 +12,10 @@ from ..term import AbstractTerm
 
 
 _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
+
+
+def vector_tree_dot(a, b):
+    return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
 
 
 class AbstractSolver(eqx.Module):

@@ -58,12 +58,12 @@ def _scale_error_estimate(
     atol: Scalar,
     norm: Callable[[Array], Scalar],
 ) -> Scalar:
-    def _calc(_y_error, _y0, _y1_candidate):
+    def _calc(_y0, _y1_candidate, _y_error):
         return _y_error / (
             atol + jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate)) * rtol
         )
 
-    scale = jax.tree_map(_calc, y_error, y0, y1_candidate)
+    scale = jax.tree_map(_calc, y0, y1_candidate, y_error)
     return norm(scale)
 
 

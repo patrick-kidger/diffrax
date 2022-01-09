@@ -13,7 +13,7 @@ from ..misc import ω
 from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver
+from .base import AbstractSolver, vector_tree_dot
 
 
 # Entries must be np.arrays, and not jnp.arrays, so that we can index into them during
@@ -107,10 +107,6 @@ def _implicit_relation(ki, nonlinear_solve_args):
     return diff
 
 
-def _contract(a, b):
-    return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
-
-
 class AbstractRungeKutta(AbstractSolver):
 
     term_structure = jax.tree_structure(0)
@@ -190,7 +186,7 @@ class AbstractRungeKutta(AbstractSolver):
                 ti = t1
             else:
                 ti = t0 + c_i * dt
-            yi_partial = (y0 ** ω + _contract(a_i, ω(k)[: i + 1].ω) ** ω).ω
+            yi_partial = (y0 ** ω + vector_tree_dot(a_i, ω(k)[: i + 1].ω) ** ω).ω
             ki, jac, new_result = self._eval_stage(
                 terms, i + 1, ti, yi_partial, args, control, jac, k
             )
@@ -201,17 +197,25 @@ class AbstractRungeKutta(AbstractSolver):
         if self.tableau.ssal:
             y1 = yi_partial
         else:
-            y1 = (y0 ** ω + _contract(self.tableau.b_sol, k) ** ω).ω
+            y1 = (y0 ** ω + vector_tree_dot(self.tableau.b_sol, k) ** ω).ω
         if self.tableau.fsal:
             k1 = (k ** ω)[-1].ω
         else:
             k1 = None
-        y_error = _contract(self.tableau.b_error, k)
+        y_error = vector_tree_dot(self.tableau.b_error, k)
         y_error = jax.tree_map(
             lambda _y_error: jnp.where(result == RESULTS.successful, _y_error, jnp.inf),
             y_error,
         )
         dense_info = dict(y0=y0, y1=y1, k=k)
+        if y1 is None:
+            # Edge case: our state, passed in as diffeqsolve(y0=...) might a `None`
+            # PyTree. In this case `y_error` will also be `None`, which can cause
+            # incorrect downstream errors with adaptive step sizing. (As we use
+            # `y_error=None` to indicate that the solver does not support that.)
+            # TODO: introduce a special no-error-estimate flag?
+            assert y_error is None
+            y_error = 0
         return y1, y_error, dense_info, (k1, dt), result
 
     def func_for_init(
@@ -239,7 +243,7 @@ class AbstractRungeKutta(AbstractSolver):
                 # predictor for the solution to the first stage.
                 ki_pred = terms.vf_prod(ti, yi_partial, args, control)
             else:
-                ki_pred = _contract(self.tableau.a_predictor[i - 1], ω(k)[:i].ω)
+                ki_pred = vector_tree_dot(self.tableau.a_predictor[i - 1], ω(k)[:i].ω)
             ki_pred, unravel = fu.ravel_pytree(ki_pred)
             if self._recompute_jac(i):
                 jac = self.nonlinear_solver.jac(

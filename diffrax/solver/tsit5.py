@@ -6,6 +6,7 @@ import numpy as np
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
 from ..misc import ω
+from .base import vector_tree_dot
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -132,7 +133,10 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         )
         b6 = -34.87065786149660974 * (t - 1.2) * (t - 0.666666666666666667) * t ** 2
         b7 = 2.5 * (t - 1) * (t - 0.6) * t ** 2
-        return (self.y0 ** ω + jnp.stack([b1, b2, b3, b4, b5, b6, b7]) @ self.k ** ω).ω
+        return (
+            self.y0 ** ω
+            + vector_tree_dot(jnp.stack([b1, b2, b3, b4, b5, b6, b7]), self.k) ** ω
+        ).ω
 
     # TODO: implement derivative
 

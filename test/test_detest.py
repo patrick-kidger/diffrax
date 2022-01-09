@@ -360,8 +360,6 @@ def test_a(solver_ctr):
     if solver_ctr in (diffrax.Euler, diffrax.ImplicitEuler):
         # Euler is pretty bad at solving things, so only do some simple tests.
         _test(solver_ctr, [_a1, _a2], higher=False)
-    elif solver_ctr is diffrax.Heun:
-        _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False)
     else:
         _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False)
 
@@ -395,8 +393,28 @@ def _test(solver_ctr, problems, higher):
         if higher and solver_ctr.order < 4:
             # Too difficult to get accurate solutions with a low-order solver
             return
+        max_steps = 16 ** 4
         if solver_ctr in fixed_ode_solvers:
             dt0 = 0.01
+            if solver_ctr is diffrax.LeapfrogMidpoint:
+                # This is an *awful* long-time-horizon solver.
+                # It gets decent results to begin with, but then the oscillations
+                # build up by t=20.
+                # Teeny-tiny steps fix this.
+                dt0 = 0.000001
+                max_steps = 20_000_000
+            stepsize_controller = diffrax.ConstantStepSize()
+        elif solver_ctr is diffrax.ReversibleHeun and problem is _a1:
+            # ReversibleHeun is a bit like LeapfrogMidpoint, and therefore bad over
+            # long time horizons. (It develops very large oscillations over long time
+            # horizons.)
+            # Unlike LeapfrogMidpoint, however, ReversibleHeun offers adaptive step
+            # sizing... which picks up on the problem, and tries to take teeny-tiny
+            # steps to compensate. In practice this means the solve does not terminate
+            # even for very large values of max_steps.
+            # Just for this one problem, therefore, we switch to using a constant step
+            # size. (To avoid the adaptive step sizing sabotaging us.)
+            dt0 = 0.001
             stepsize_controller = diffrax.ConstantStepSize()
         else:
             dt0 = None
@@ -415,6 +433,7 @@ def _test(solver_ctr, problems, higher):
             dt0=dt0,
             solver=solver_ctr(),
             stepsize_controller=stepsize_controller,
+            max_steps=max_steps,
         )
         y1 = jax.tree_map(lambda yi: yi[0], sol.ys)
 
@@ -442,7 +461,7 @@ def _test(solver_ctr, problems, higher):
             rtol = 1e-3
             atol = 1e-3
         else:
-            rtol = 3e-5
-            atol = 3e-5
+            rtol = 4e-5
+            atol = 4e-5
 
         assert shaped_allclose(y1, scipy_y1, rtol=rtol, atol=atol)

@@ -46,7 +46,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         super().__init__(**kwargs)
 
         def _calculate(_y0, _y1, _k):
-            _ymid = _y0 + self.c_mid @ _k
+            _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1)
             _f0 = _k[0]
             _f1 = _k[-1]
             # TODO: rewrite as matrix-vector product?

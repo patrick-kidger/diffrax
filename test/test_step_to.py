@@ -12,8 +12,8 @@ def _test(ts, flip=False):
     y0 = jnp.array(1.0)
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(f),
-        t0=0 if flip else 2,
-        t1=2 if flip else 0,
+        t0=2 if flip else 0,
+        t1=0 if flip else 2,
         y0=y0,
         dt0=None,
         solver=diffrax.Euler(),
@@ -54,5 +54,5 @@ def test_step_to_location():
     with pytest.raises(ValueError):
         _test(ts)
     sol = _test(ts, flip=True)
-    true_ys = jnp.array([1.0, 0.5, 0.25, 0.125, 0.0625])
+    true_ys = jnp.array([1.0, 1.5, 2.25, 3.375, 5.0625])
     assert shaped_allclose(sol.ys, true_ys)

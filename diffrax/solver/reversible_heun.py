@@ -56,8 +56,8 @@ class ReversibleHeun(AbstractSolver):
         control = terms.contr(t0, t1)
         yhat1 = (2 * y0 ** ω - yhat0 ** ω + terms.prod(vf0, control) ** ω).ω
         vf1 = terms.vf(t1, yhat1, args)
-        y1 = (y0 ** ω + 0.5 * terms.prod(vf0 + vf1, control) ** ω).ω
-        y1_error = (0.5 * terms.prod(vf1 - vf0, control) ** ω).ω
+        y1 = (y0 ** ω + 0.5 * terms.prod((vf0 ** ω + vf1 ** ω).ω, control) ** ω).ω
+        y1_error = (0.5 * terms.prod((vf1 ** ω - vf0 ** ω).ω, control) ** ω).ω
 
         dense_info = dict(y0=y0, y1=y1)
         solver_state = (yhat1, vf1)

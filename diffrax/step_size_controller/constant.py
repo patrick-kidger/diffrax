@@ -67,7 +67,11 @@ class StepTo(AbstractStepSizeController):
     def wrap(self, direction: Scalar):
         ts = self.ts * direction
         # Only tested after we've set the direction.
-        error_if(ts[1:] <= ts[:-1], "`StepTo(ts=...)` must be strictly increasing.")
+        error_if(
+            ts[1:] <= ts[:-1],
+            "`StepTo(ts=...)` must be strictly increasing (or strictly decreasing if "
+            "t0 > t1).",
+        )
         return type(self)(ts=ts)
 
     def init(

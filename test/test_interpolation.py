@@ -55,7 +55,7 @@ def test_derivative(getkey):
     paths.append((local_linear_interp, "local linear", ys[0], ys[-1]))
 
     for solver_ctr in all_ode_solvers:
-        if solver_ctr is diffrax.tsit5:
+        if solver_ctr is diffrax.Tsit5:
             continue
         y0 = jrandom.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
