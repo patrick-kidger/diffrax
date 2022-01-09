@@ -17,7 +17,6 @@ from .global_interpolation import DenseInterpolation
 from .misc import (
     bounded_while_loop,
     branched_error_if,
-    curry,
     error_if,
     HadInplaceUpdate,
     unvmap_max,
@@ -77,7 +76,6 @@ def _save(state: _State, t: Scalar) -> _State:
     )
 
 
-@curry
 def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
     def cond_fun(state):
         return (state.tprev < t1) & (state.result == RESULTS.successful)
@@ -646,8 +644,17 @@ def diffeqsolve(
     # Main loop
     #
 
-    make_cond_body_funs = _make_cond_body_funs(solver, stepsize_controller, saveat, t1)
-    final_state = adjoint.loop(make_cond_body_funs, max_steps, terms, args, init_state)
+    final_state = adjoint.loop(
+        _make_cond_body_funs,
+        solver,
+        stepsize_controller,
+        saveat,
+        t1,
+        max_steps,
+        terms,
+        args,
+        init_state,
+    )
 
     #
     # Finish up

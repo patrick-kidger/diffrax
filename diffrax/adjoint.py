@@ -18,15 +18,12 @@ def _at_max_steps(cond_fun, final_state):
     return eqx.tree_at(lambda s: s.result, final_state, result)
 
 
-def _loop_bounded(make_cond_body_funs, max_steps, terms, args, init_state):
-    cond_fun, body_fun = make_cond_body_funs(terms, args)
+def _loop_bounded(cond_fun, body_fun, init_state, max_steps):
     final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
     return _at_max_steps(cond_fun, final_state)
 
 
-def _loop_while(make_cond_body_funs, max_steps, terms, args, init_state):
-    cond_fun, body_fun = make_cond_body_funs(terms, args)
-
+def _loop_while(cond_fun, body_fun, init_state, max_steps):
     def _cond_fun(state):
         return cond_fun(state) & (state.step < max_steps)
 
@@ -41,7 +38,18 @@ class AbstractAdjoint(eqx.Module):
     """Abstract base class for all adjoint methods."""
 
     @abc.abstractmethod
-    def loop(self, make_cond_body_funs, max_steps, terms, args, init_state):
+    def loop(
+        self,
+        make_cond_body_funs,
+        solver,
+        stepsize_controller,
+        saveat,
+        t1,
+        max_steps,
+        terms,
+        args,
+        init_state,
+    ):
         """Runs the main solve loop. Subclasses can override this to provide custom
         backpropagation behaviour; see for example the implementation of
         [`diffrax.BacksolveAdjoint`][].
@@ -59,26 +67,81 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
     A binomial checkpointing scheme is used so that memory usage is low.
     """
 
-    loop = staticmethod(_loop_bounded)
+    def loop(
+        self,
+        make_cond_body_funs,
+        solver,
+        stepsize_controller,
+        saveat,
+        t1,
+        max_steps,
+        terms,
+        args,
+        init_state,
+    ):
+        cond_fun, body_fun = make_cond_body_funs(
+            solver, stepsize_controller, saveat, t1, terms, args
+        )
+        return _loop_bounded(cond_fun, body_fun, init_state, max_steps)
 
 
-@ft.partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2))
-def _loop_backsolve(self, make_cond_body_funs, max_steps, terms, args, init_state):
-    return _loop_while(make_cond_body_funs, max_steps, terms, args, init_state)
+@ft.partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 4, 5, 6))
+def _loop_backsolve(
+    self,
+    make_cond_body_funs,
+    solver,
+    stepsize_controller,
+    saveat,
+    t1,
+    max_steps,
+    terms,
+    args,
+    init_state,
+):
+    cond_fun, body_fun = make_cond_body_funs(
+        solver, stepsize_controller, saveat, t1, terms, args
+    )
+    return _loop_while(cond_fun, body_fun, init_state, max_steps)
 
 
 def _loop_backsolve_adjoint_fwd(
-    self, make_cond_body_funs, max_steps, terms, args, init_state
+    self,
+    make_cond_body_funs,
+    solver,
+    stepsize_controller,
+    saveat,
+    t1,
+    max_steps,
+    terms,
+    args,
+    init_state,
 ):
-    final_state = _loop_while(make_cond_body_funs, max_steps, terms, args, init_state)
-    context = None
+    cond_fun, body_fun = make_cond_body_funs(
+        solver, stepsize_controller, saveat, t1, terms, args
+    )
+    final_state = _loop_while(cond_fun, body_fun, init_state, max_steps)
+    t0 = init_state.tprev
+    context = (terms, t0, args)
     return final_state, context
 
 
 def _loop_backsolve_adjoint_bwd(
-    self, make_cond_body_funs, max_steps, context, grad_final_state
+    self,
+    _,
+    solver,
+    stepsize_controller,
+    saveat,
+    t1,
+    max_steps,
+    context,
+    grad_final_state,
 ):
-    ...  # TODO
+    terms, t0, args = context
+    del context
+    terms = jax.tree_map(lambda a: a.adjoint(), terms)
+
+    # TODO: implement this as a single diffeqsolve with events, once events are
+    # supported.
 
 
 _loop_backsolve.defvjp(_loop_backsolve_adjoint_fwd, _loop_backsolve_adjoint_bwd)
@@ -122,11 +185,34 @@ class BacksolveAdjoint(AbstractAdjoint):
         """
         self.kwargs = kwargs
 
-    # Not just loop = _loop_backsolve, as the latter doesn't have __get__ and so won't
-    # implicitly bind self.
-    def loop(self, make_cond_body_funs, max_steps, terms, args, init_state):
+    def loop(
+        self,
+        make_cond_body_funs,
+        solver,
+        stepsize_controller,
+        saveat,
+        t1,
+        max_steps,
+        terms,
+        args,
+        init_state,
+    ):
+        if saveat.steps or saveat.dense:
+            raise ValueError(
+                "Cannot use `adjoint=BacksolveAdjoint()` with "
+                "`saveat=Steps(steps=True)` or `saveat=Steps(dense=True)`."
+            )
         return _loop_backsolve(
-            self, make_cond_body_funs, max_steps, terms, args, init_state
+            self,
+            make_cond_body_funs,
+            solver,
+            stepsize_controller,
+            saveat,
+            t1,
+            max_steps,
+            terms,
+            args,
+            init_state,
         )
 
 
@@ -139,4 +225,19 @@ class NoAdjoint(AbstractAdjoint):
     this may sometimes improve the speed at which the differential equation is solved.
     """
 
-    loop = staticmethod(_loop_while)
+    def loop(
+        self,
+        make_cond_body_funs,
+        solver,
+        stepsize_controller,
+        saveat,
+        t1,
+        max_steps,
+        terms,
+        args,
+        init_state,
+    ):
+        cond_fun, body_fun = make_cond_body_funs(
+            solver, stepsize_controller, saveat, t1, terms, args
+        )
+        return _loop_while(cond_fun, body_fun, init_state, max_steps)
