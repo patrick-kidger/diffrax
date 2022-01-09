@@ -4,8 +4,10 @@ from typing import Callable, Tuple
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from .custom_types import Array, PyTree, Scalar
+from .misc import ω
 from .path import AbstractPath
 
 
@@ -80,6 +82,10 @@ class AbstractTerm(eqx.Module):
 
         The interaction between the vector field and control; a PyTree of structure
         $T$.
+
+        !!! note
+
+            This function must be bilinear.
         """
         pass
 
@@ -90,6 +96,11 @@ class AbstractTerm(eqx.Module):
         With a solution $y$ to a differential equation with vector field $f$ and
         control $x$, this computes $f(t, y(t), args) \Delta x(t)$ given $t$, $y(t)$,
         $args$, and $\Delta x(t)$.
+
+        Its default implementation is simply
+        ```python
+        self.prod(self.vf(t, y, args), control)
+        ```
 
         This is offered as a special case that can be overridden when it is more
         efficient to do so.
@@ -102,6 +113,11 @@ class AbstractTerm(eqx.Module):
             corresponding matrix-(matrix-vector) product. Overriding this method offers
             a way to reclaim that efficiency.
 
+        !!! example
+
+            This is used extensively for efficiency when backpropagating via
+            [`diffrax.BacksolveAdjoint`][]..
+
         **Arguments:**
 
         - `t`: the integration time.
@@ -112,6 +128,10 @@ class AbstractTerm(eqx.Module):
         **Returns:**
 
         A PyTree of structure $T$.
+
+        !!! note
+
+            This function must be linear in `control`.
         """
         return self.prod(self.vf(t, y, args), control)
 
@@ -138,6 +158,9 @@ class AbstractTerm(eqx.Module):
 
     def wrap(self, direction: Scalar) -> "WrapTerm":
         return WrapTerm(self, direction)
+
+    def adjoint(self) -> "AdjointTerm":
+        return AdjointTerm(self)
 
 
 class ODETerm(AbstractTerm):
@@ -326,3 +349,104 @@ class WrapTerm(AbstractTerm):
     def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         t = t * self.direction
         return self.term.func_for_init(t, y, args)
+
+
+class AdjointTerm(AbstractTerm):
+    term: AbstractTerm
+
+    def vf(
+        self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree], args: PyTree
+    ) -> Tuple[PyTree, PyTree, PyTree]:
+        # We compute the vector field via `self.vf_prod`. We could also do it manually,
+        # but this is relatively painless.#
+        #
+        # This can be done because `self.vf_prod` is linear in `control`. As such we
+        # can obtain just the vector field component by representing this linear
+        # operation as a matrix. Which in turn is simply computing the Jacobian.
+        #
+        # Notes:
+        # - Whilst `self.vf_prod` also involves autodifferentiation, we don't
+        #   actually compute a second derivative anywhere. (The derivatives are of
+        #   different quantities.)
+        # - Because the operation is linear, then in some sense this Jacobian isn't
+        #   really doing any autodifferentiation at all.
+        # - If we wanted we could manually perform the operations that this Jacobian is
+        #   doing; in particular this requires `jax.linear_transpose`-ing
+        #   `self.term.prod` to get something `control`-shaped.
+
+        # The value of `control` is never actually used -- just its shape, dtype, and
+        # PyTree structure. (This is because `self.vf_prod` is linear in `control`.)
+        control = self.contr(t, t)
+
+        y_size = sum(np.size(yi) for yi in jax.tree_leaves(y))
+        control_size = sum(np.size(ci) for ci in jax.tree_leaves(control))
+        if y_size > control_size:
+            make_jac = jax.jacfwd
+        else:
+            make_jac = jax.jacrev
+
+        # Find the tree structure of vf_prod by smuggling it out as an additional
+        # result from the Jacobian calculation.
+        vf_prod_tree = None
+        control_tree = jax.tree_structure(control)
+
+        def _fn(_control):
+            _out = self.vf_prod(t, y, args, _control)
+            nonlocal vf_prod_tree
+            vf_prod_tree = jax.tree_structure(_out)
+            return _out
+
+        jac = make_jac(_fn, control)
+        if jax.tree_structure(None) in (vf_prod_tree, control_tree):
+            # Very much a faffy, and highly unusual/not-useful edge case to handle.
+            raise NotImplementedError(
+                "`AdjointTerm` not implemented for `None` controls or states."
+            )
+        return jax.tree_transpose(vf_prod_tree, control_tree, jac)
+
+    def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
+        return (-self.term.contr(t0, t1) ** ω).ω
+
+    def prod(
+        self, vf: Tuple[PyTree, PyTree, PyTree], control: PyTree
+    ) -> Tuple[PyTree, PyTree, PyTree]:
+        # As per what is returnd from `self.vf`, then `vf` has a PyTree structure of
+        # (control_tree, vf_prod_tree)
+
+        # Calculate vf_prod_tree by smuggling it out.
+        sentinel = vf_prod_tree = object()
+        control_tree = jax.tree_structure(control)
+
+        def _get_vf_tree(_, tree):
+            nonlocal vf_prod_tree
+            structure = jax.tree_structure(tree)
+            if vf_prod_tree is sentinel:
+                vf_prod_tree = structure
+            else:
+                assert vf_prod_tree == structure
+
+        jax.tree_map(_get_vf_tree, control, vf)
+        assert vf_prod_tree is not sentinel
+
+        vf = jax.tree_transpose(control_tree, vf_prod_tree, vf)
+
+        example_vf_prod = jax.tree_unflatten(
+            vf_prod_tree, [0 for _ in range(vf_prod_tree.num_leaves)]
+        )
+
+        def _contract(_, vf_piece):
+            assert jax.tree_structure(vf_piece) == control_tree
+            _contracted = jax.tree_map(_prod, vf_piece, control_tree)
+            return sum(jax.tree_leaves(_contracted), 0)
+
+        return jax.tree_map(_contract, example_vf_prod, vf)
+
+    def vf_prod(
+        self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree], args: PyTree, control: PyTree
+    ) -> Tuple[PyTree, PyTree, PyTree]:
+        y, a_y, a_args = y
+        dy, vjp = jax.vjp(
+            lambda _y, _args: self.term.vf_prod(t, _y, _args, control), y, args
+        )
+        da_y, da_args = vjp(a_y)
+        return dy, da_y, da_args

@@ -70,8 +70,9 @@ def _loop_backsolve(self, make_cond_body_funs, max_steps, terms, args, init_stat
 def _loop_backsolve_adjoint_fwd(
     self, make_cond_body_funs, max_steps, terms, args, init_state
 ):
+    final_state = _loop_while(make_cond_body_funs, max_steps, terms, args, init_state)
     context = None
-    return _loop_while(make_cond_body_funs, max_steps, terms, args, init_state), context
+    return final_state, context
 
 
 def _loop_backsolve_adjoint_bwd(
