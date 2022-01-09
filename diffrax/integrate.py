@@ -544,6 +544,9 @@ def diffeqsolve(
     if saveat.ts is not None:
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
 
+    # Stepsize controller gets an opportunity to modify the solver.
+    solver = stepsize_controller.wrap_solver(solver)
+
     # Error checking
     if saveat.ts is not None:
         error_if(

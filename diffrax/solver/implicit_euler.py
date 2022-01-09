@@ -6,10 +6,9 @@ import jax.flatten_util as fu
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
-from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver
+from .base import AbstractImplicitSolver
 
 
 _ErrorEstimate = None
@@ -25,13 +24,11 @@ def _implicit_relation(z1, nonlinear_solve_args):
     return diff
 
 
-class ImplicitEuler(AbstractSolver):
+class ImplicitEuler(AbstractImplicitSolver):
     r"""Implicit Euler method.
 
     A-B-L stable 1st order SDIRK method. Does not support adaptive timestepping.
     """
-
-    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
 
     term_structure = jax.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation

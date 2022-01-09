@@ -10,10 +10,9 @@ import numpy as np
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..misc import ω
-from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver, vector_tree_dot
+from .base import AbstractImplicitSolver, AbstractSolver, vector_tree_dot
 
 
 # Entries must be np.arrays, and not jnp.arrays, so that we can index into them during
@@ -267,9 +266,7 @@ class AbstractERK(AbstractRungeKutta):
         assert False
 
 
-class AbstractDIRK(AbstractRungeKutta):
-    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
-
+class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver):
     def _recompute_jac(self, i: int) -> bool:
         return True
 

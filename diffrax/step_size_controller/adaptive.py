@@ -2,14 +2,16 @@ import typing
 from dataclasses import field
 from typing import Callable, Optional, Tuple
 
+import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, Bool, PyTree, Scalar
 from ..misc import nextafter, nextbefore, rms_norm, ω
+from ..nonlinear_solver import NewtonNonlinearSolver
 from ..solution import RESULTS
-from ..solver import AbstractSolver
+from ..solver import AbstractImplicitSolver, AbstractSolver
 from ..term import AbstractTerm
 from .base import AbstractStepSizeController
 
@@ -85,6 +87,17 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     # Default tolerances taken from scipy.integrate.solve_ivp
     rtol: Scalar = 1e-3
     atol: Scalar = 1e-6
+
+    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
+        # Poor man's multiple dispatch
+        if isinstance(solver, AbstractImplicitSolver):
+            if isinstance(solver.nonlinear_solver, NewtonNonlinearSolver):
+                solver = eqx.tree_at(
+                    lambda s: (s.nonlinear_solver.rtol, s.nonlinear_solver.atol),
+                    solver,
+                    (self.rtol, self.atol),
+                )
+        return solver
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/

@@ -73,8 +73,8 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     """
 
     max_steps: int = 10
-    rtol: Scalar = 1e-3
-    atol: Scalar = 1e-6
+    rtol: Optional[Scalar] = None
+    atol: Optional[Scalar] = None
     kappa: Scalar = 1e-2
     norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
@@ -92,7 +92,9 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         diff_args: PyTree,
     ) -> Tuple[PyTree, RESULTS]:
         args = eqx.combine(nondiff_args, diff_args)
-        scale = self.atol + self.rtol * self.norm(x)
+        rtol = 1e-3 if self.rtol is None else self.rtol
+        atol = 1e-6 if self.atol is None else self.atol
+        scale = atol + rtol * self.norm(x)
         flat, unflatten = fu.ravel_pytree(x)
         if flat.size == 0:
             return x, RESULTS.successful
@@ -150,8 +152,10 @@ NewtonNonlinearSolver.__init__.__doc__ = """
 
 - `max_steps`: The maximum number of steps allowed. If more than this are required then
     the iteration fails.
-- `rtol`: The relative tolerance for determining convergence.
-- `atol`: The absolute tolerance for determining convergence.
+- `rtol`: The relative tolerance for determining convergence. If using an adaptive step
+    size controller, will default to the same `rtol`. Else defaults to `1e-3`.
+- `atol`: The absolute tolerance for determining convergence. If using an adaptive step
+    size controller, will default to the same `atol`. Else defaults to `1e-6`.
 - `kappa`: The kappa value for determining convergence.
 - `norm`: A function `PyTree -> Scalar`, which is called to determine the size of the
     current value. (Used in determining convergence.)

@@ -7,6 +7,7 @@ import jax.numpy as jnp
 
 from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
+from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
 from ..term import AbstractTerm
 
@@ -129,3 +130,7 @@ class AbstractSolver(eqx.Module):
             "scenario for this error to occur is when trying to use adaptive step "
             "size solvers with SDEs. Please specify an initial `dt0` instead."
         )
+
+
+class AbstractImplicitSolver(AbstractSolver):
+    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()

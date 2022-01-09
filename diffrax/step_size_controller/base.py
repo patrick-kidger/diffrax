@@ -33,6 +33,13 @@ class AbstractStepSizeController(eqx.Module):
         information.
         """
 
+    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
+        """Remakes the solver, adding additional information.
+
+        Some step size controllers need to modify the solver slightly.
+        """
+        return solver
+
     @abc.abstractmethod
     def init(
         self,
