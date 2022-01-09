@@ -66,6 +66,9 @@ class ContainerMeta(type):
         _dict["reverse_lookup"] = reverse_lookup
         return super().__new__(cls, name, bases, _dict)
 
+    def __instancecheck__(cls, instance):
+        return isinstance(instance, int) or super().__instancecheck__(instance)
+
     def __getitem__(cls, item):
         return cls.reverse_lookup[item]
 

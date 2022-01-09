@@ -313,16 +313,21 @@ def test_interpolation_classes(mode, getkey):
 
 def _test_dense_interpolation(solver_ctr, getkey, t1):
     y0 = jrandom.uniform(getkey(), (), minval=0.4, maxval=2)
-    solver = solver_ctr(lambda t, y, args: -y)
     sol = diffrax.diffeqsolve(
-        solver, t0=0, t1=t1, y0=y0, dt0=0.01, saveat=diffrax.SaveAt(dense=True)
+        diffrax.ODETerm(lambda t, y, args: -y),
+        t0=0,
+        t1=t1,
+        y0=y0,
+        dt0=0.01,
+        saveat=diffrax.SaveAt(dense=True),
+        solver=solver_ctr(),
     )
     points = jnp.linspace(0, t1, 1000)  # finer resolution than the step size
     vals = jax.vmap(sol.evaluate)(points)
     true_vals = jnp.exp(-points) * y0
 
     # Tsit5 derivative is not yet implemented.
-    if solver_ctr is diffrax.tsit5:
+    if solver_ctr is diffrax.Tsit5:
         derivs = None
         true_derivs = None
     else:

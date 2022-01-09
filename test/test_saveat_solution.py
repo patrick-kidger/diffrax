@@ -23,14 +23,15 @@ _y0 = jnp.array([2.1])
 
 
 def _integrate(saveat):
-    solver = diffrax.dopri5(lambda t, y, args: -0.5 * y)
+    term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
     stepsize_controller = diffrax.IController(rtol=1e-8, atol=1e-8)
     return diffrax.diffeqsolve(
-        solver,
+        term,
         t0=_t0,
         t1=_t1,
         y0=_y0,
         dt0=None,
+        solver=diffrax.Dopri5(),
         saveat=saveat,
         stepsize_controller=stepsize_controller,
     )

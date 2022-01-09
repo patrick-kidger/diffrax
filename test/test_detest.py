@@ -357,10 +357,10 @@ def _e5():
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_a(solver_ctr):
-    if solver_ctr in (diffrax.euler, diffrax.implicit_euler):
+    if solver_ctr in (diffrax.Euler, diffrax.ImplicitEuler):
         # Euler is pretty bad at solving things, so only do some simple tests.
         _test(solver_ctr, [_a1, _a2], higher=False)
-    elif solver_ctr is diffrax.heun:
+    elif solver_ctr is diffrax.Heun:
         _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False)
     else:
         _test(solver_ctr, [_a1, _a2, _a3, _a4, _a5], higher=False)
@@ -368,7 +368,7 @@ def test_a(solver_ctr):
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_b(solver_ctr):
-    if solver_ctr is diffrax.kvaerno4:
+    if solver_ctr is diffrax.Kvaerno4:
         _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True)
     else:
         _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True)
@@ -392,8 +392,7 @@ def test_e(solver_ctr):
 def _test(solver_ctr, problems, higher):
     for problem in problems:
         vector_field, init = problem()
-        solver = solver_ctr(vector_field)
-        if higher and solver.order < 4:
+        if higher and solver_ctr.order < 4:
             # Too difficult to get accurate solutions with a low-order solver
             return
         if solver_ctr in fixed_ode_solvers:
@@ -401,7 +400,7 @@ def _test(solver_ctr, problems, higher):
             stepsize_controller = diffrax.ConstantStepSize()
         else:
             dt0 = None
-            if solver.order < 4:
+            if solver_ctr.order < 4:
                 rtol = 1e-6
                 atol = 1e-6
             else:
@@ -409,11 +408,12 @@ def _test(solver_ctr, problems, higher):
                 atol = 1e-8
             stepsize_controller = diffrax.IController(rtol=rtol, atol=atol)
         sol = diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(vector_field),
             t0=0.0,
             t1=20.0,
             y0=init,
             dt0=dt0,
+            solver=solver_ctr(),
             stepsize_controller=stepsize_controller,
         )
         y1 = jax.tree_map(lambda yi: yi[0], sol.ys)
@@ -438,7 +438,7 @@ def _test(solver_ctr, problems, higher):
         )
         scipy_y1 = unravel(scipy_sol.y[:, 0])
 
-        if solver.order < 4:
+        if solver_ctr.order < 4:
             rtol = 1e-3
             atol = 1e-3
         else:

@@ -3,11 +3,15 @@ from typing import Optional
 
 import equinox as eqx
 import jax
-import jax.flatten_util as fu
 import jax.numpy as jnp
 
-from .adjoint import AbstractAdjoint, BacksolveAdjoint, RecursiveCheckpointAdjoint
-from .brownian import AbstractBrownianPath
+from .adjoint import (
+    AbstractAdjoint,
+    BacksolveAdjoint,
+    NoAdjoint,
+    RecursiveCheckpointAdjoint,
+)
+from .brownian import AbstractBrownianPath, UnsafeBrownianPath
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
 from .misc import (
@@ -42,7 +46,7 @@ class _State(eqx.Module):
     # Output that is .at[].set() updated during the solve (and their indices)
     saveat_ts_index: Scalar
     ts: Array["times"]  # noqa: F821
-    ys: Array["times", "state"]  # noqa: F821
+    ys: PyTree[Array["times", ...]]  # noqa: F821
     save_index: Int
     dense_ts: Optional[Array["times + 1"]]  # noqa: F821
     dense_infos: Optional[PyTree[Array["times", ...]]]  # noqa: F821
@@ -51,23 +55,25 @@ class _State(eqx.Module):
 
 class _InnerState(eqx.Module):
     saveat_ts_index: Int
-    ts: Array
-    ys: Array
-    save_index: Array
+    ts: Array["times"]  # noqa: F821
+    ys: PyTree[Array["times", ...]]  # noqa: F821
+    save_index: Int
 
 
-def _save(state, t):
+def _save(state: _State, t: Scalar) -> _State:
     ts = state.ts
     ys = state.ys
     save_index = state.save_index
     y = state.y
 
     ts = ts.at[save_index].set(t)
-    ys = ys.at[save_index].set(y)
+    ys = jax.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
     save_index = save_index + 1
 
     return eqx.tree_at(
-        lambda s: (s.ts, s.ys, s.save_index), state, (ts, ys, save_index)
+        lambda s: [s.ts, s.save_index] + jax.tree_leaves(s.ys),
+        state,
+        [ts, save_index] + jax.tree_leaves(ys),
     )
 
 
@@ -83,7 +89,7 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
         # step sizes, all that jazz.
         #
 
-        (y, y_error, dense_info, solver_state, solver_result,) = solver.step(
+        (y, y_error, dense_info, solver_state, solver_result) = solver.step(
             terms,
             state.tprev,
             state.tnext,
@@ -125,7 +131,7 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
         # step was accepted) by the stepsize controller. But it doesn't get access to
         # these parts, so we do them here.
         keep = lambda a, b: jnp.where(keep_step, a, b)
-        y = keep(y, state.y)
+        y = jax.tree_map(keep, y, state.y)
         solver_state = jax.tree_map(keep, solver_state, state.solver_state)
         made_jump = keep(made_jump, state.made_jump)
         solver_result = keep(solver_result, RESULTS.successful)
@@ -200,7 +206,7 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
                 #
                 #  _inplace = _inplace.merge(inplace)
                 #  _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
-                #  _ys = _inplace(_ys).at[_save_index].set(_saveat_y)
+                #  _ys = jax.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
                 #
                 # Seems reasonable, right? Just updating a value.
                 #
@@ -211,8 +217,12 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
                 _ts = _ts.at[_save_index].set(
                     jnp.where(_pred, _saveat_t, _ts[_save_index])
                 )
-                _ys = _ys.at[_save_index].set(
-                    jnp.where(_pred, _saveat_y, _ys[_save_index])
+                _ys = jax.tree_map(
+                    lambda __ys, __saveat_y: __ys.at[_save_index].set(
+                        jnp.where(_pred, __saveat_y, __ys[_save_index])
+                    ),
+                    _ys,
+                    _saveat_y,
                 )
 
                 # Some immediate questions you might have:
@@ -242,7 +252,7 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
                 _save_index = _save_index + 1
 
                 _ts = HadInplaceUpdate(_ts)
-                _ys = HadInplaceUpdate(_ys)
+                _ys = jax.tree_map(HadInplaceUpdate, _ys)
 
                 return _InnerState(
                     saveat_ts_index=_saveat_ts_index,
@@ -270,7 +280,7 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
         if saveat.steps:
             made_inplace_update = True
             ts = maybe_inplace(save_index, ts, tprev)
-            ys = maybe_inplace(save_index, ys, y)
+            ys = jax.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
             save_index = save_index + keep_step
 
         if saveat.dense:
@@ -285,7 +295,7 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
 
         if made_inplace_update:
             ts = HadInplaceUpdate(ts)
-            ys = HadInplaceUpdate(ys)
+            ys = jax.tree_map(HadInplaceUpdate, ys)
             dense_ts = HadInplaceUpdate(dense_ts)
             dense_infos = jax.tree_map(HadInplaceUpdate, dense_infos)
 
@@ -312,12 +322,10 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
     return cond_fun, body_fun
 
 
-# Note: if we ever remove this filter_jit (and make JIT'ing diffeqsolve optional) then:
-# (a) We should JIT whatever subexpressions we can (i.e. that don't depend on
-#     user-structured input).
-# (b) jax.flatten_util.ravel_pytree should be replaced by a custom ravel_pytree
-#     (somewhere in the history of this repository, now deleted), whose returned
-#     `unravel` function won't trigger re-JITs when passed across JIT boundaries.
+# TODO: when t0, t1, dt0 are not tracers, and stepsize_controller is Constant, then
+# we know the exact number of steps in advance. In this case we could set max_steps and
+# base for the bounded_while_loop exactly, and probably get a slight improvement in
+# runtime.
 @eqx.filter_jit
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
@@ -438,6 +446,24 @@ def diffeqsolve(
     if dt0 is not None:
         error_if((t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
 
+    # Error checking
+    term_leaves, term_structure = jax.tree_flatten(
+        terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
+    )
+    raises = False
+    for leaf in term_leaves:
+        if not isinstance(leaf, AbstractTerm):
+            raises = True
+        del leaf
+    if term_structure != solver.term_structure:
+        raises = True
+    if raises:
+        raise ValueError(
+            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
+            f"structure {solver.term_structure}"
+        )
+    del term_leaves, term_structure, raises
+
     # TODO: this error check is pretty ad-hoc.
     #
     # - It should work for other kinds of solver.
@@ -474,6 +500,24 @@ def diffeqsolve(
                     "method; it will not converge to the correct solution."
                 )
 
+    # TODO: more ad-hoc checking.
+    if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+        for term in jax.tree_flatten(terms):
+            if isinstance(term, ControlTerm) and isinstance(
+                term.control, UnsafeBrownianPath
+            ):
+                raise ValueError(
+                    "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
+                )
+    if not isinstance(adjoint, NoAdjoint):
+        for term in jax.tree_flatten(terms):
+            if isinstance(term, ControlTerm) and isinstance(
+                term.control, UnsafeBrownianPath
+            ):
+                raise ValueError(
+                    "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()`."
+                )
+
     # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
     # types for JAX to be happy with the bounded_while_loop below.)
     timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
@@ -487,12 +531,14 @@ def diffeqsolve(
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
     del timelikes, dtype
 
-    # - Normalises PyTree states down to just a flat Array.
-    # - Normalises time: if t0 > t1 then flip things around.
+    # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
-    y, unravel_y = fu.ravel_pytree(y0)
-    stepsize_controller = stepsize_controller.wrap(unravel_y, direction)
-    solver = solver.wrap(t0, y0, args, direction)
+    stepsize_controller = stepsize_controller.wrap(direction)
+    terms = jax.tree_map(
+        lambda t: t.wrap(direction),
+        terms,
+        is_leaf=lambda x: isinstance(x, AbstractTerm),
+    )
     t0 = t0 * direction
     t1 = t1 * direction
     if dt0 is not None:
@@ -514,14 +560,14 @@ def diffeqsolve(
     tprev = t0
     if controller_state is None:
         (tnext, controller_state) = stepsize_controller.init(
-            terms, t0, t1, y, dt0, args, solver
+            terms, t0, t1, y0, dt0, args, solver
         )
     else:
         error_if(dt0 is None, "Must provide `dt0` if providing `controller_state`.")
         tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
     if solver_state is None:
-        solver_state = solver.init(terms, t0, tnext, y, args)
+        solver_state = solver.init(terms, t0, tnext, y0, args)
 
     # Allocate memory to store output.
     out_size = 0
@@ -543,9 +589,9 @@ def diffeqsolve(
     step = 0
     saveat_ts_index = 0
     save_index = 0
-    made_jump = jnp.array(False)
+    made_jump = False
     ts = jnp.full(out_size, jnp.nan)
-    ys = jnp.full((out_size, y.size), jnp.nan)
+    ys = jax.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.nan), y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         error_if(t0 == t1, "Cannot save dense output if t0 == t1")
@@ -555,7 +601,7 @@ def diffeqsolve(
             dense_info,
             _,
             _,
-        ) = solver.step(tprev, tnext, y, args, solver_state, made_jump)
+        ) = solver.step(terms, tprev, tnext, y0, args, solver_state, made_jump)
         dense_ts = jnp.full(max_steps + 1, jnp.nan)
         error_if(
             max_steps is None,
@@ -571,7 +617,7 @@ def diffeqsolve(
 
     # Initialise state
     init_state = _State(
-        y=y,
+        y=y0,
         tprev=tprev,
         tnext=tnext,
         made_jump=made_jump,
@@ -615,7 +661,7 @@ def diffeqsolve(
     if saveat.t0 or saveat.t1 or saveat.steps or (saveat.ts is not None):
         ts = final_state.ts
         ts = ts * direction
-        ys = jax.vmap(unravel_y)(final_state.ys)
+        ys = final_state.ys
     else:
         ts = None
         ys = None
@@ -633,7 +679,6 @@ def diffeqsolve(
             ts_size=final_state.dense_save_index,
             interpolation_cls=solver.interpolation_cls,
             infos=final_state.dense_infos,
-            unravel_y=unravel_y,
             direction=direction,
         )
     else:

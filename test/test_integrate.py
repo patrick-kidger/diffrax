@@ -8,7 +8,13 @@ import jax.random as jrandom
 import pytest
 import scipy.stats
 
-from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
+from helpers import (
+    all_ode_solvers,
+    fixed_ode_solvers,
+    random_pytree,
+    shaped_allclose,
+    treedefs,
+)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -18,21 +24,14 @@ from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
     "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
 )
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
-    if (
-        solver_ctr
-        in (
-            diffrax.euler,
-            diffrax.implicit_euler,
-            diffrax.leapfrog_midpoint,
-        )
-        and isinstance(stepsize_controller, diffrax.IController)
+    if solver_ctr in fixed_ode_solvers and isinstance(
+        stepsize_controller, diffrax.IController
     ):
         return
 
     def f(t, y, args):
         return jax.tree_map(operator.neg, y)
 
-    solver = solver_ctr(f)
     if t_dtype is int:
         t0 = 0
         t1 = 2
@@ -54,7 +53,13 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     y0 = random_pytree(getkey(), treedef)
     try:
         diffrax.diffeqsolve(
-            solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller
+            diffrax.ODETerm(f),
+            t0,
+            t1,
+            y0,
+            dt0,
+            solver=solver_ctr(),
+            stepsize_controller=stepsize_controller,
         )
     except RuntimeError as e:
         if isinstance(stepsize_controller, diffrax.ConstantStepSize) and str(
@@ -77,7 +82,6 @@ def test_order(solver_ctr):
     def f(t, y, args):
         return A @ y
 
-    solver = solver_ctr(f)
     t0 = 0
     t1 = 4
     y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
@@ -87,7 +91,7 @@ def test_order(solver_ctr):
     errors = []
     for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
         dt0 = 2 ** exponent
-        sol = diffrax.diffeqsolve(solver, t0, t1, y0, dt0)
+        sol = diffrax.diffeqsolve(diffrax.ODETerm(f), t0, t1, y0, dt0, solver_ctr())
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2 ** -28:
@@ -97,13 +101,13 @@ def test_order(solver_ctr):
 
     order = scipy.stats.linregress(exponents, errors).slope
     # We accept quite a wide range. Improving this test would be nice.
-    assert -0.9 < order - solver.order < 0.9
+    assert -0.9 < order - solver_ctr.order < 0.9
 
 
 # Step size deliberately chosen not to divide the time interval
 @pytest.mark.parametrize(
     "solver_ctr,dt0",
-    ((diffrax.euler, -0.3), (diffrax.tsit5, -0.3), (diffrax.tsit5, None)),
+    ((diffrax.Euler, -0.3), (diffrax.Tsit5, -0.3), (diffrax.Tsit5, None)),
 )
 @pytest.mark.parametrize(
     "saveat",
@@ -125,11 +129,17 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     def f(t, y, args):
         return -y
 
-    solver = solver_ctr(f)
     t0 = 4
     t1 = 0.3
     sol1 = diffrax.diffeqsolve(
-        solver, t0, t1, y0, dt0, stepsize_controller=stepsize_controller, saveat=saveat
+        diffrax.ODETerm(f),
+        t0,
+        t1,
+        y0,
+        dt0,
+        solver_ctr(),
+        stepsize_controller=stepsize_controller,
+        saveat=saveat,
     )
     assert shaped_allclose(sol1.t0, 4)
     assert shaped_allclose(sol1.t1, 0.3)
@@ -137,18 +147,18 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     def f(t, y, args):
         return y
 
-    solver = solver_ctr(f)
     t0 = -4
     t1 = -0.3
     negdt0 = None if dt0 is None else -dt0
     if saveat.ts is not None:
         saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.ts])
     sol2 = diffrax.diffeqsolve(
-        solver,
+        diffrax.ODETerm(f),
         t0,
         t1,
         y0,
         negdt0,
+        solver_ctr(),
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
@@ -170,18 +180,43 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
 @pytest.mark.parametrize(
     "solver_ctr,stepsize_controller,dt0",
     (
-        (diffrax.tsit5, diffrax.ConstantStepSize(), 0.3),
-        (diffrax.tsit5, diffrax.IController(rtol=1e-8, atol=1e-8), None),
-        (diffrax.kvaerno3, diffrax.IController(rtol=1e-8, atol=1e-8), None),
+        (diffrax.Tsit5, diffrax.ConstantStepSize(), 0.3),
+        (diffrax.Tsit5, diffrax.IController(rtol=1e-8, atol=1e-8), None),
+        (diffrax.Kvaerno3, diffrax.IController(rtol=1e-8, atol=1e-8), None),
     ),
 )
 @pytest.mark.parametrize("treedef", treedefs)
 def test_pytree_state(solver_ctr, stepsize_controller, dt0, treedef, getkey):
-    solver = solver_ctr(lambda t, y, args: jax.tree_map(operator.neg, y))
+    term = diffrax.ODETerm(lambda t, y, args: jax.tree_map(operator.neg, y))
     y0 = random_pytree(getkey(), treedef)
     sol = diffrax.diffeqsolve(
-        solver, t0=0, t1=1, y0=y0, dt0=dt0, stepsize_controller=stepsize_controller
+        term,
+        t0=0,
+        t1=1,
+        y0=y0,
+        dt0=dt0,
+        solver=solver_ctr(),
+        stepsize_controller=stepsize_controller,
     )
     y1 = sol.ys
     true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
     assert shaped_allclose(y1, true_y1)
+
+
+def test_semi_implicit_euler():
+    term1 = diffrax.ODETerm(lambda t, y, args: -y)
+    term2 = diffrax.ODETerm(lambda t, y, args: y)
+    y0 = (1.0, -0.5)
+    dt0 = 0.00001
+    sol1 = diffrax.diffeqsolve(
+        (term1, term2),
+        0,
+        1,
+        y0,
+        dt0,
+        solver=diffrax.SemiImplicitEuler(),
+        max_steps=int(1 / dt0),
+    )
+    term_combined = diffrax.ODETerm(lambda t, y, args: (-y[1], y[0]))
+    sol2 = diffrax.diffeqsolve(term_combined, 0, 1, y0, dt0, solver=diffrax.Tsit5())
+    assert shaped_allclose(sol1.ys, sol2.ys)

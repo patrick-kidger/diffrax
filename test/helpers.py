@@ -13,28 +13,27 @@ import jax.random as jrandom
 
 
 all_ode_solvers = (
-    diffrax.bosh3,
-    diffrax.dopri5,
-    diffrax.dopri8,
-    diffrax.euler,
-    diffrax.fehlberg2,
-    diffrax.heun,
-    # TODO: reinstate
-    #    diffrax.leapfrog_midpoint,
-    #    diffrax.reversible_heun,
-    diffrax.tsit5,
-    diffrax.implicit_euler,
-    diffrax.kvaerno3,
-    diffrax.kvaerno4,
-    diffrax.kvaerno5,
+    diffrax.Bosh3,
+    diffrax.Dopri5,
+    diffrax.Dopri8,
+    diffrax.Euler,
+    diffrax.Fehlberg2,
+    diffrax.Heun,
+    diffrax.LeapfrogMidpoint,
+    diffrax.ReversibleHeun,
+    diffrax.Tsit5,
+    diffrax.ImplicitEuler,
+    diffrax.Kvaerno3,
+    diffrax.Kvaerno4,
+    diffrax.Kvaerno5,
 )
 
 
 # TODO: encode this into the types somehow, whether via inheritance, traits, ...
 fixed_ode_solvers = (
-    diffrax.euler,
-    diffrax.leapfrog_midpoint,
-    diffrax.implicit_euler,
+    diffrax.Euler,
+    diffrax.LeapfrogMidpoint,
+    diffrax.ImplicitEuler,
 )
 
 

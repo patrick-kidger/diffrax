@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -6,8 +6,7 @@ import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import linear_rescale
-from ..term import ODETerm
+from ..misc import linear_rescale, ω
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -186,9 +185,9 @@ _vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
 
 
 class _Dopri8Interpolation(AbstractLocalInterpolation):
-    y0: Array["state"]  # noqa: F821
-    y1: Array["state"]  # noqa: F821  # Unused, just here for API compatibility
-    k: Array["order":14, "state"]  # noqa: F821
+    y0: PyTree[Array[...]]
+    y1: PyTree[Array[...]]  # Unused, just here for API compatibility
+    k: PyTree[Array["order":14, ...]]  # noqa: F821
 
     eval_coeffs = np.array(
         [
@@ -282,19 +281,17 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
     eval_coeffs = np.array(eval_coeffs)
     diff_coeffs = np.array(diff_coeffs)
 
-    def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None
-    ) -> Array["state"]:  # noqa: F821
+    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:  # noqa: F821
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
         t = linear_rescale(self.t0, t0, self.t1)
-        coeffs = _vmap_polyval(np.asarray(self.eval_coeffs), t) * t
-        return self.y0 + coeffs @ self.k
+        coeffs = _vmap_polyval(self.eval_coeffs, t) * t
+        return (self.y0 ** ω + coeffs @ self.k ** ω).ω
 
     def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
         t = linear_rescale(self.t0, t, self.t1)
-        coeffs = _vmap_polyval(np.asarray(self.diff_coeffs), t)
-        return coeffs @ (self.k / (self.t1 - self.t0))
+        coeffs = _vmap_polyval(self.diff_coeffs, t)
+        return (coeffs @ (self.k ** ω / (self.t1 - self.t0))).ω
 
 
 class Dopri8(AbstractERK):
@@ -335,9 +332,3 @@ class Dopri8(AbstractERK):
     tableau = _dopri8_tableau
     interpolation_cls = _Dopri8Interpolation
     order = 8
-
-
-def dopri8(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Dopri8:
-    return Dopri8(term=ODETerm(vector_field=vector_field), **kwargs)

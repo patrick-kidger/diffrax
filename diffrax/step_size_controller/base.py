@@ -3,7 +3,8 @@ from typing import Optional, Tuple, TypeVar
 
 import equinox as eqx
 
-from ..custom_types import Array, PyTree, Scalar
+from ..custom_types import Bool, PyTree, Scalar
+from ..solution import RESULTS
 from ..solver import AbstractSolver
 from ..term import AbstractTerm
 
@@ -15,9 +16,7 @@ class AbstractStepSizeController(eqx.Module):
     """Abstract base class for all step size controllers."""
 
     @abc.abstractmethod
-    def wrap(
-        self, unravel_y: callable, direction: Scalar
-    ) -> "AbstractStepSizeController":
+    def wrap(self, direction: Scalar) -> "AbstractStepSizeController":
         """Remakes this step size controller, adding additional information.
 
         Most step size controllers can't be used without first calling `wrap` to give
@@ -25,8 +24,6 @@ class AbstractStepSizeController(eqx.Module):
 
         **Arguments:**
 
-        - `unravel_y`: as returned by `jax.flatten_util.ravel_pytree`; specifies how
-            to unravel the flattened PyTree back to its original PyTree structure.
         - `direction`: Either 1 or -1, indicating whether the integration is going to
             be performed forwards-in-time or backwards-in-time respectively.
 
@@ -42,7 +39,7 @@ class AbstractStepSizeController(eqx.Module):
         terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
         solver: AbstractSolver,
@@ -71,13 +68,13 @@ class AbstractStepSizeController(eqx.Module):
         self,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state":...],  # noqa: F821
-        y1_candidate: Array["state":...],  # noqa: F821
+        y0: PyTree,
+        y1_candidate: PyTree,
         args: PyTree,
-        y_error: Optional[Array["state"]],  # noqa: F821
+        y_error: Optional[PyTree],
         solver_order: int,
         controller_state: _ControllerState,
-    ) -> Tuple[Array[(), bool], Scalar, Scalar, Array[(), bool], _ControllerState, int]:
+    ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
         """Determines whether to accept or reject the current step, and determines the
         step size to use on the next step.
 

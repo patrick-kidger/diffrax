@@ -1,11 +1,12 @@
 import abc
-from typing import Any, Dict, Optional, Tuple, Type, TypeVar
+from typing import Optional, Tuple, Type, TypeVar
 
 import equinox as eqx
 
-from ..custom_types import Array, Bool, DenseInfo, PyTree, Scalar
+from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
 from ..solution import RESULTS
+from ..term import AbstractTerm
 
 
 _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
@@ -16,55 +17,25 @@ class AbstractSolver(eqx.Module):
 
     @property
     @abc.abstractmethod
+    def term_structure(self) -> PyTreeDef:
+        """What PyTree structure `terms` should have when used with this solver."""
+
+    @property
+    @abc.abstractmethod
     def interpolation_cls(self) -> Type[AbstractLocalInterpolation]:
-        pass
+        """How to interpolate the solution in between steps."""
 
     @property
     @abc.abstractmethod
     def order(self) -> int:
         """Order of the solver."""
-        pass
-
-    def _wrap(
-        self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar
-    ) -> Dict[str, Any]:
-        """This method should be overloaded by subclasses, subject to co-operative
-        multiple inheritance.
-
-        It is called as part of [`diffrax.AbstractSolver.wrap`][].
-        """
-        return {}
-
-    # TODO: maybe rework the interface slightly?
-    # This feels a lot like a worse way of doing DifferentialEquation.jl's
-    # ODEProblem(...)
-    def wrap(
-        self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar
-    ) -> "AbstractSolver":
-        """Remakes this solver, adding additional information.
-
-        Most differential equation solvers can't be used without first calling `wrap`
-        to give them the extra information they need to integrate.
-
-        **Arguments:**
-
-        - `t0`: The initial timepoint from which to begin integrating.
-        - `y0`: The initial value from which to begin integrating.
-        - `direction:` Either 1 or -1, indicating whether the integration is going to
-             be performed forwards-in-time or backwards-in-time respectively.
-
-        **Returns:**
-
-        A copy of the solver, updated to reflect the additional information.
-        """
-        kwargs = self._wrap(t0, y0, args, direction)
-        return type(self)(**kwargs)
 
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
         """Initialises any hidden state for the solver.
@@ -82,19 +53,14 @@ class AbstractSolver(eqx.Module):
     @abc.abstractmethod
     def step(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
         solver_state: _SolverState,
         made_jump: Bool,
-    ) -> Tuple[
-        Array["state"],  # noqa: F821
-        Optional[Array["state"]],  # noqa: F821
-        DenseInfo,
-        _SolverState,
-        RESULTS,
-    ]:
+    ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
         A step is made over some interval $[t_0, t_1]$.
@@ -127,14 +93,10 @@ class AbstractSolver(eqx.Module):
             happened successfully, or if it failed for some reason. (e.g. no solution
             could be found to the nonlinear problem in an implicit solver.)
         """
-        pass
 
     def func_for_init(
-        self,
-        t0: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
-    ) -> Array["state"]:  # noqa: F821
+        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
+    ) -> PyTree:
         """Provides vector field evaluations to select the initial step size.
 
         Note that `step` operates over an interval, rather than acting at

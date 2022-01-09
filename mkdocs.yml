@@ -119,6 +119,7 @@ nav:
         - 'api/nonlinear_solver.md'
     - Developer Documentation:
         - 'devdocs/predictor_dirk.md'
+        - 'devdocs/omega.md'
     - Further details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'

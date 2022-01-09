@@ -36,11 +36,12 @@ def test_derivative(getkey):
 
     y0 = jrandom.normal(getkey(), (3,))
     dense_interp = diffrax.diffeqsolve(
-        diffrax.euler(lambda t, y, p: -y),
+        diffrax.ODETerm(lambda t, y, p: -y),
         0,
         1,
         y0,
         0.01,
+        diffrax.Euler(),
         saveat=diffrax.SaveAt(dense=True, t1=True),
     )
     y1 = dense_interp.ys[-1]
@@ -53,20 +54,21 @@ def test_derivative(getkey):
     )
     paths.append((local_linear_interp, "local linear", ys[0], ys[-1]))
 
-    for solver in all_ode_solvers:
-        if solver is diffrax.tsit5:
+    for solver_ctr in all_ode_solvers:
+        if solver_ctr is diffrax.tsit5:
             continue
         y0 = jrandom.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
-            solver(lambda t, y, p: -y),
+            diffrax.ODETerm(lambda t, y, p: -y),
             0,
             1,
             y0,
             0.01,
+            solver_ctr(),
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
         y1 = solution.ys[-1]
-        paths.append((solution, solver.__name__, y0, y1))
+        paths.append((solution, solver_ctr.__name__, y0, y1))
 
     # actually do tests
 

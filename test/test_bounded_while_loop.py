@@ -27,22 +27,22 @@ def test_functional_no_vmap_no_inplace():
 
     init_val = (jnp.array([0.3]), 0)
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
     assert shaped_allclose(val[0], jnp.array([0.3])) and val[1] == 0
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
     assert shaped_allclose(val[0], jnp.array([0.4])) and val[1] == 1
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
     assert shaped_allclose(val[0], jnp.array([0.5])) and val[1] == 2
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
     assert shaped_allclose(val[0], jnp.array([0.7])) and val[1] == 4
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
     assert shaped_allclose(val[0], jnp.array([0.8])) and val[1] == 5
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
     assert shaped_allclose(val[0], jnp.array([0.8])) and val[1] == 5
 
 
@@ -55,28 +55,28 @@ def test_functional_no_vmap_inplace():
         x, step = val
         x = inplace(x).at[jnp.minimum(step + 1, 4)].set(x[step] + 0.1)
         step = inplace(step).at[()].set(step + 1)
-        x = diffrax.utils.HadInplaceUpdate(x)
-        step = diffrax.utils.HadInplaceUpdate(step)
+        x = diffrax.misc.HadInplaceUpdate(x)
+        step = diffrax.misc.HadInplaceUpdate(step)
         return x, step
 
     init_val = (jnp.array([0.3, 0.3, 0.3, 0.3, 0.3]), 0)
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=0)
     assert shaped_allclose(val[0], jnp.array([0.3, 0.3, 0.3, 0.3, 0.3])) and val[1] == 0
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=1)
     assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.3, 0.3, 0.3])) and val[1] == 1
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=2)
     assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.3, 0.3])) and val[1] == 2
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=4)
     assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.7])) and val[1] == 4
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=8)
     assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.8])) and val[1] == 5
 
-    val = diffrax.utils.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
+    val = diffrax.misc.bounded_while_loop(cond_fun, body_fun, init_val, max_steps=None)
     assert shaped_allclose(val[0], jnp.array([0.3, 0.4, 0.5, 0.6, 0.8])) and val[1] == 5
 
 
@@ -92,44 +92,42 @@ def test_functional_vmap_no_inplace():
     init_val = (jnp.array([[0.3], [0.4]]), jnp.array([0, 3]))
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=0)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=0)
     )(init_val)
     assert shaped_allclose(val[0], jnp.array([[0.3], [0.4]])) and jnp.array_equal(
         val[1], jnp.array([0, 3])
     )
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=1)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=1)
     )(init_val)
     assert shaped_allclose(val[0], jnp.array([[0.4], [0.5]])) and jnp.array_equal(
         val[1], jnp.array([1, 4])
     )
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=2)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=2)
     )(init_val)
     assert shaped_allclose(val[0], jnp.array([[0.5], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([2, 5])
     )
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=4)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=4)
     )(init_val)
     assert shaped_allclose(val[0], jnp.array([[0.7], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([4, 5])
     )
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=8)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=8)
     )(init_val)
     assert shaped_allclose(val[0], jnp.array([[0.8], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([5, 5])
     )
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(
-            cond_fun, body_fun, v, max_steps=None
-        )
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=None)
     )(init_val)
     assert shaped_allclose(val[0], jnp.array([[0.8], [0.6]])) and jnp.array_equal(
         val[1], jnp.array([5, 5])
@@ -145,8 +143,8 @@ def test_functional_vmap_inplace():
         x, step, max_step = val
         x = inplace(x).at[jnp.minimum(step + 1, 4)].set(x[step] + 0.1)
         step = inplace(step).at[()].set(step + 1)
-        x = diffrax.utils.HadInplaceUpdate(x)
-        step = diffrax.utils.HadInplaceUpdate(step)
+        x = diffrax.misc.HadInplaceUpdate(x)
+        step = diffrax.misc.HadInplaceUpdate(step)
         return x, step, max_step
 
     init_val = (
@@ -156,44 +154,42 @@ def test_functional_vmap_inplace():
     )
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=0)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=0)
     )(init_val)
     assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.3, 0.3, 0.3, 0.3], [0.4, 0.4, 0.4, 0.4, 0.4]])
     ) and jnp.array_equal(val[1], jnp.array([0, 1]))
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=1)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=1)
     )(init_val)
     assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.4, 0.3, 0.3, 0.3], [0.4, 0.4, 0.5, 0.4, 0.4]])
     ) and jnp.array_equal(val[1], jnp.array([1, 2]))
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=2)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=2)
     )(init_val)
     assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.4, 0.5, 0.3, 0.3], [0.4, 0.4, 0.5, 0.6, 0.4]])
     ) and jnp.array_equal(val[1], jnp.array([2, 3]))
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=4)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=4)
     )(init_val)
     assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.7], [0.4, 0.4, 0.5, 0.6, 0.4]])
     ) and jnp.array_equal(val[1], jnp.array([4, 3]))
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(cond_fun, body_fun, v, max_steps=8)
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=8)
     )(init_val)
     assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.8], [0.4, 0.4, 0.5, 0.6, 0.4]])
     ) and jnp.array_equal(val[1], jnp.array([5, 3]))
 
     val = jax.vmap(
-        lambda v: diffrax.utils.bounded_while_loop(
-            cond_fun, body_fun, v, max_steps=None
-        )
+        lambda v: diffrax.misc.bounded_while_loop(cond_fun, body_fun, v, max_steps=None)
     )(init_val)
     assert shaped_allclose(
         val[0], jnp.array([[0.3, 0.4, 0.5, 0.6, 0.8], [0.4, 0.4, 0.5, 0.6, 0.4]])
@@ -246,7 +242,7 @@ def _test_scaling_max_steps():
     @ft.partial(jax.jit, static_argnums=1)
     @ft.partial(jax.vmap, in_axes=(0, None))
     def test_fun(val, max_steps):
-        return diffrax.utils.bounded_while_loop(cond_fun, body_fun, val, max_steps)
+        return diffrax.misc.bounded_while_loop(cond_fun, body_fun, val, max_steps)
 
     time16 = time_fn(lambda: test_fun(init_val, 16), repeat=10)
     time32 = time_fn(lambda: test_fun(init_val, 32), repeat=10)
@@ -302,7 +298,7 @@ def _test_scaling_num_steps():
     @ft.partial(jax.jit, static_argnums=1)
     @ft.partial(jax.vmap, in_axes=(0, None))
     def test_fun(val, num_steps):
-        return diffrax.utils.bounded_while_loop(
+        return diffrax.misc.bounded_while_loop(
             cond_fun, body_fun, (*val, num_steps), max_steps=256
         )
 

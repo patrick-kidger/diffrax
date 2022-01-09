@@ -1,10 +1,6 @@
-from typing import Callable
-
 import numpy as np
 
-from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -68,9 +64,3 @@ class Dopri5(AbstractERK):
     tableau = _dopri5_tableau
     interpolation_cls = _Dopri5Interpolation
     order = 5
-
-
-def dopri5(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Dopri5:
-    return Dopri5(term=ODETerm(vector_field=vector_field), **kwargs)

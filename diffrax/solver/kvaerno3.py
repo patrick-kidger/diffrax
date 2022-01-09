@@ -1,10 +1,6 @@
-from typing import Callable
-
 import numpy as np
 
-from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ODETerm
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
 
@@ -72,9 +68,3 @@ class Kvaerno3(AbstractESDIRK):
     tableau = _kvaerno3_tableau
     interpolation_cls = _Kvaerno3Interpolation
     order = 3
-
-
-def kvaerno3(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Kvaerno3:
-    return Kvaerno3(term=ODETerm(vector_field=vector_field), **kwargs)

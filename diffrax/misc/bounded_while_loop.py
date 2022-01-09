@@ -112,7 +112,11 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
 
         def _body_fun(_val):
             _new_val = body_fun(_val, lambda x: x)
-            return jax.tree_map(_make_update, _new_val)
+            return jax.tree_map(
+                _make_update,
+                _new_val,
+                is_leaf=lambda x: isinstance(x, HadInplaceUpdate),
+            )
 
         return lax.while_loop(cond_fun, _body_fun, init_val)
 

@@ -21,16 +21,15 @@ def test_vmap_y0(stepsize_controller):
     def f(t, y, args):
         return a @ y
 
-    solver = diffrax.heun(f)
-
     saveat = diffrax.SaveAt(t0=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
             t0,
             t1,
             y0i,
             dt0,
+            diffrax.Heun(),
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -43,11 +42,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(t1=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
             t0,
             t1,
             y0i,
             dt0,
+            diffrax.Heun(),
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -61,11 +61,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(ts=_t)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
             t0,
             t1,
             y0i,
             dt0,
+            diffrax.Heun(),
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -78,11 +79,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(steps=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
             t0,
             t1,
             y0i,
             dt0,
+            diffrax.Heun(),
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -102,11 +104,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(dense=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
             t0,
             t1,
             y0i,
             dt0,
+            diffrax.Heun(),
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )

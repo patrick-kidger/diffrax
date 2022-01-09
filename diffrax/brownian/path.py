@@ -17,7 +17,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     1. You are using a fixed step size controller. (Not an adaptive one.)
 
-    2. If you are backpropagating, you are doing it with discretise-then-optimise.
+    2. You do not need to backpropagate through the differential equation.
 
     3. You do not need deterministic solutions with respect to `key`. (This
        implementation will produce different results based on fluctuations in

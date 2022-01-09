@@ -8,7 +8,7 @@ import jax.numpy as jnp
 
 from .custom_types import Array, DenseInfos, Int, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
-from .misc import error_if, fill_forward, left_broadcast_to
+from .misc import error_if, fill_forward, left_broadcast_to, ω
 from .path import AbstractPath
 
 
@@ -60,7 +60,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         ```
     """
 
-    ys: PyTree["times", ...]  # noqa: F821
+    ys: PyTree[Array["times", ...]]  # noqa: F821
 
     def __post_init__(self):
         def _check(_ys):
@@ -116,15 +116,14 @@ class LinearInterpolation(AbstractGlobalInterpolation):
             return _ys[index]
 
         prev_ys = jax.tree_map(_index, self.ys)
-        next_ys = jax.tree_map(lambda _ys: _ys[index + 1], self.ys)
+        next_ys = (self.ys ** ω)[index + 1].ω
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
         diff_t = next_t - prev_t
 
-        def _combine(_prev_ys, _next_ys):
-            return _prev_ys + (_next_ys - _prev_ys) * (fractional_part / diff_t)
-
-        return jax.tree_map(_combine, prev_ys, next_ys)
+        return (
+            prev_ys ** ω + (next_ys ** ω - prev_ys ** ω) * (fractional_part / diff_t)
+        ).ω
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         r"""Evaluate the derivative of the linear interpolation. Essentially equivalent
@@ -145,10 +144,10 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
         index, _ = self._interpret_t(t, left)
 
-        def _index(_ys):
-            return (_ys[index + 1] - _ys[index]) / (self.ts[index + 1] - self.ts[index])
-
-        return jax.tree_map(_index, self.ys)
+        return (
+            (ω(self.ys)[index + 1] - ω(self.ys)[index])
+            / (self.ts[index + 1] - self.ts[index])
+        ).ω
 
 
 LinearInterpolation.__init__.__doc__ = """**Arguments:**
@@ -222,10 +221,12 @@ class CubicInterpolation(AbstractGlobalInterpolation):
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         index, frac = self._interpret_t(t0, left)
 
-        def _index(d, c, b, a):
-            return a[index] + frac * (b[index] + frac * (c[index] + frac * d[index]))
+        d, c, b, a = self.coeffs
 
-        return jax.tree_map(_index, *self.coeffs)
+        return (
+            ω(a)[index]
+            + frac * (ω(b)[index] + frac * (ω(c)[index] + frac * ω(d)[index]))
+        ).ω
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         r"""Evaluate the derivative of the cubic interpolation. Essentially equivalent
@@ -246,10 +247,9 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
         index, frac = self._interpret_t(t, left)
 
-        def _index(d, c, b, _):
-            return b[index] + frac * (2 * c[index] + frac * 3 * d[index])
+        d, c, b, _ = self.coeffs
 
-        return jax.tree_map(_index, *self.coeffs)
+        return (ω(b)[index] + frac * (2 * ω(c)[index] + frac * 3 * ω(d)[index])).ω
 
 
 CubicInterpolation.__init__.__doc__ = """**Arguments:**
@@ -276,14 +276,13 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     ts_size: Int
     infos: DenseInfos
     direction: Scalar
-    unravel_y: jax.tree_util.Partial
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
 
     def __post_init__(self):
-        def _assert(_d):
-            assert _d.shape[0] + 1 == self.ts.shape[0]
+        def _check(_infos):
+            assert _infos.shape[0] + 1 == self.ts.shape[0]
 
-        jax.tree_map(_assert, self.infos)
+        jax.tree_map(_check, self.infos)
 
     # DenseInterpolations typically get `ts` and `infos` that are way longer than they
     # need to be, and padded with `nan`s. This means the normal way of measuring how
@@ -295,20 +294,8 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         index, _ = self._interpret_t(t, left)
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
-
-        def _index(_d):
-            return _d[index]
-
-        infos = jax.tree_map(_index, self.infos)
+        infos = ω(self.infos)[index].ω
         return self.interpolation_cls(t0=prev_t, t1=next_t, **infos)
-
-    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        # Passing `left` doesn't matter on a local interpolation, which is globally
-        # continuous.
-        t = t * self.direction
-        out = self._get_local_interpolation(t, left).derivative(t)
-        out = out * self.direction
-        return self.unravel_y(out)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -318,7 +305,14 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         t0 = t0 * self.direction
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
-        return self.unravel_y(self._get_local_interpolation(t0, left).evaluate(t0))
+        return self._get_local_interpolation(t0, left).evaluate(t0)
+
+    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+        # Passing `left` doesn't matter on a local interpolation, which is globally
+        # continuous.
+        t = t * self.direction
+        out = self._get_local_interpolation(t, left).derivative(t)
+        return (self.direction * out ** ω).ω
 
     @property
     def t0(self):

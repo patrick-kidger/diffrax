@@ -1,6 +1,6 @@
 from typing import Optional, Tuple
 
-from ..custom_types import Array, PyTree, Scalar
+from ..custom_types import Array, Int, PyTree, Scalar
 from ..misc import error_if
 from ..solution import RESULTS
 from ..solver import AbstractSolver
@@ -13,7 +13,7 @@ class ConstantStepSize(AbstractStepSizeController):
     [`diffrax.diffeqsolve`][].
     """
 
-    def wrap(self, unravel_y: callable, direction: Scalar):
+    def wrap(self, direction: Scalar):
         return self
 
     def init(
@@ -21,7 +21,7 @@ class ConstantStepSize(AbstractStepSizeController):
         terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
         solver: AbstractSolver,
@@ -38,10 +38,10 @@ class ConstantStepSize(AbstractStepSizeController):
         self,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
-        y1_candidate: Array["state"],  # noqa: F821
+        y0: PyTree,
+        y1_candidate: PyTree,
         args: PyTree,
-        y_error: Array["state"],  # noqa: F821
+        y_error: PyTree,
         solver_order: int,
         controller_state: Scalar,
     ) -> Tuple[bool, Scalar, Scalar, bool, Scalar, RESULTS]:
@@ -64,7 +64,7 @@ class StepTo(AbstractStepSizeController):
     def __post_init__(self):
         error_if(len(self.ts) < 2, "`ts` must have length at least 2.")
 
-    def wrap(self, unravel_y: callable, direction: Scalar):
+    def wrap(self, direction: Scalar):
         ts = self.ts * direction
         # Only tested after we've set the direction.
         error_if(ts[1:] <= ts[:-1], "`StepTo(ts=...)` must be strictly increasing.")
@@ -75,7 +75,7 @@ class StepTo(AbstractStepSizeController):
         terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         dt0: None,
         args: PyTree,
         solver: AbstractSolver,
@@ -102,7 +102,7 @@ class StepTo(AbstractStepSizeController):
         y_error: Array["state"],  # noqa: F821
         solver_order: int,
         controller_state: int,
-    ) -> Tuple[bool, Scalar, Scalar, bool, int, RESULTS]:
+    ) -> Tuple[bool, Scalar, Scalar, bool, Int, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, solver_order
         return (
             True,

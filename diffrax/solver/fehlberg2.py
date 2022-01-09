@@ -1,10 +1,6 @@
-from typing import Callable
-
 import numpy as np
 
-from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -32,9 +28,3 @@ class Fehlberg2(AbstractERK):
     tableau = _fehlberg2_tableau
     interpolation_cls = _Fehlberg2Interpolation
     order = 2
-
-
-def fehlberg2(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Fehlberg2:
-    return Fehlberg2(term=ODETerm(vector_field=vector_field), **kwargs)

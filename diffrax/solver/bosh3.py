@@ -1,10 +1,6 @@
-from typing import Callable
-
 import numpy as np
 
-from ..custom_types import PyTree, Scalar
 from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ODETerm
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -36,7 +32,3 @@ class Bosh3(AbstractERK):
     tableau = _bosh3_tableau
     interpolation_cls = _Bosh3Interpolation
     order = 3
-
-
-def bosh3(vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs) -> Bosh3:
-    return Bosh3(term=ODETerm(vector_field=vector_field), **kwargs)

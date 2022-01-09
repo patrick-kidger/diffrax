@@ -3,17 +3,21 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 import jax
+import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import numpy as np
 
-from ..custom_types import Array, DenseInfo, PyTree, Scalar
+from ..custom_types import Bool, DenseInfo, PyTree, Scalar
+from ..misc import ω
 from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
-from ..term import AbstractTerm, WrapTerm
+from ..term import AbstractTerm
 from .base import AbstractSolver
 
 
+# Entries must be np.arrays, and not jnp.arrays, so that we can index into them during
+# trace time.
 @dataclass(frozen=True)
 class ButcherTableau:
     # Explicit RK methods
@@ -79,7 +83,7 @@ class ButcherTableau:
         )
 
 
-_SolverState = Tuple[Optional[Array["state"]], Scalar]  # noqa: F821
+_SolverState = Tuple[Optional[PyTree], Scalar]  # noqa: F821
 
 
 # TODO: examine termination criterion for Newton iteration
@@ -93,11 +97,23 @@ def _implicit_relation(ki, nonlinear_solve_args):
     # https://github.com/SciML/DiffEqDevMaterials/blob/master/newton/output/main.pdf
     # (Bearing in mind that our ki is dt times smaller than theirs.)
     diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
-    return vf_prod(ti, yi_partial + diagonal * ki, args, control) - ki
+    _, unravel = fu.ravel_pytree(yi_partial)
+    ki = unravel(ki)
+    diff = (
+        vf_prod(ti, (yi_partial ** ω + diagonal * ki ** ω).ω, args, control) ** ω
+        - ki ** ω
+    ).ω
+    diff, _ = fu.ravel_pytree(diff)
+    return diff
+
+
+def _contract(a, b):
+    return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
 
 
 class AbstractRungeKutta(AbstractSolver):
-    term: AbstractTerm
+
+    term_structure = jax.tree_structure(0)
 
     @property
     @abc.abstractmethod
@@ -105,57 +121,48 @@ class AbstractRungeKutta(AbstractSolver):
         pass
 
     @abc.abstractmethod
-    def _init_jac(self, t0, y0, args, control):
+    def _recompute_jac(self, i: int) -> bool:
         pass
-
-    @abc.abstractmethod
-    def _stage_jac(self, i, ti, yi_partial, args, control, jac):
-        pass
-
-    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        kwargs = super()._wrap(t0, y0, args, direction)
-        kwargs["term"] = WrapTerm(
-            term=self.term, t=t0, y=y0, args=args, direction=direction
-        )
-        return kwargs
 
     def init(
         self,
+        terms: AbstractTerm,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
-    ) -> _SolverState:  # noqa: F821
-        control = self.term.contr(t0, t1)
+    ) -> _SolverState:
+        control = terms.contr(t0, t1)
         if self.tableau.fsal:
-            k0 = self.term.vf_prod(t0, y0, args, control)
+            k0 = terms.vf_prod(t0, y0, args, control)
         else:
             k0 = None
         dt = t1 - t0
-        return (k0, dt)
+        return k0, dt
 
     def step(
         self,
+        terms: AbstractTerm,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Array[(), bool],
-    ) -> Tuple[Array["state"], Array["state"], DenseInfo, _SolverState]:  # noqa: F821
+        made_jump: Bool,
+    ) -> Tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
 
-        control = self.term.contr(t0, t1)
+        control = terms.contr(t0, t1)
         dt = t1 - t0
         k0, prev_dt = solver_state
-        jac = self._init_jac(t0, y0, args, control)
 
         if self.tableau.fsal:
             k0 = lax.cond(
                 made_jump,
-                lambda _: self.term.vf_prod(t0, y0, args, control),
-                lambda _: k0 * (dt / prev_dt),
+                lambda _: terms.vf_prod(t0, y0, args, control),
+                lambda _: (k0 ** ω * (dt / prev_dt)).ω,
                 None,
             )
+            jac = None
             result = RESULTS.successful
         else:
             if self.tableau.a_diagonal is None:
@@ -166,15 +173,16 @@ class AbstractRungeKutta(AbstractSolver):
                     t0_ = t1
                 else:
                     t0_ = t0 + self.tableau.diagonal[0] * dt
-            k0, result = self._eval_stage(0, t0_, y0, args, control, jac, None)
+            k0, jac, result = self._eval_stage(
+                terms, 0, t0_, y0, args, control, jac=None, k=None
+            )
 
         # Note that our `k` is (for an ODE) `dt` times smaller than the usual
         # implementation (e.g. what you see in torchdiffeq or in the reference texts).
         # This is because of our vector-field-control approach.
-        k = jnp.empty(
-            (len(self.tableau.c) + 1,) + y0.shape
-        )  # y0.shape is actually single-dimensional
-        k = k.at[0].set(k0)
+        lentime = (len(self.tableau.c) + 1,)
+        k = jax.tree_map(lambda y: jnp.empty(lentime + y.shape), y0)
+        k = (k ** ω).at[0].set(k0 ** ω).ω
 
         for i, (a_i, c_i) in enumerate(zip(self.tableau.a_lower, self.tableau.c)):
             if c_i == 1:
@@ -182,91 +190,84 @@ class AbstractRungeKutta(AbstractSolver):
                 ti = t1
             else:
                 ti = t0 + c_i * dt
-            yi_partial = y0 + a_i @ k[: i + 1]
-            jac = self._stage_jac(i + 1, ti, yi_partial, args, control, jac)
-            ki, new_result = self._eval_stage(
-                i + 1, ti, yi_partial, args, control, jac, k
+            yi_partial = (y0 ** ω + _contract(a_i, ω(k)[: i + 1].ω) ** ω).ω
+            ki, jac, new_result = self._eval_stage(
+                terms, i + 1, ti, yi_partial, args, control, jac, k
             )
             result = jnp.where(result == RESULTS.successful, new_result, result)
             # TODO: fast path to skip the rest of the stages if result is not successful
-            k = k.at[i + 1].set(ki)
+            k = ω(k).at[i + 1].set(ω(ki)).ω
 
         if self.tableau.ssal:
             y1 = yi_partial
         else:
-            y1 = y0 + self.tableau.b_sol @ k
+            y1 = (y0 ** ω + _contract(self.tableau.b_sol, k) ** ω).ω
         if self.tableau.fsal:
-            k1 = k[-1]
+            k1 = (k ** ω)[-1].ω
         else:
             k1 = None
-        y_error = jnp.where(
-            result == RESULTS.successful, self.tableau.b_error @ k, jnp.inf
+        y_error = _contract(self.tableau.b_error, k)
+        y_error = jax.tree_map(
+            lambda _y_error: jnp.where(result == RESULTS.successful, _y_error, jnp.inf),
+            y_error,
         )
-        dense_info = {"y0": y0, "y1": y1, "k": k}
+        dense_info = dict(y0=y0, y1=y1, k=k)
         return y1, y_error, dense_info, (k1, dt), result
 
     def func_for_init(
         self,
+        terms: AbstractTerm,
         t0: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
-    ) -> Array["state"]:  # noqa: F821
-        return self.term.func_for_init(t0, y0, args)
+    ) -> PyTree:
+        return terms.func_for_init(t0, y0, args)
 
-    def _eval_stage(self, i, ti, yi_partial, args, control, jac, k):
+    def _eval_stage(self, terms, i, ti, yi_partial, args, control, jac, k):
         if self.tableau.a_diagonal is None:
             diagonal = 0
         else:
             diagonal = self.tableau.a_diagonal[i]
         if diagonal == 0:
             # Explicit stage
-            ki = self.term.vf_prod(ti, yi_partial, args, control)
-            return ki, RESULTS.successful
+            ki = terms.vf_prod(ti, yi_partial, args, control)
+            return ki, jac, RESULTS.successful
         else:
             # Implicit stage
             if i == 0:
                 # Implicit first stage. Make an extra function evaluation to use as a
                 # predictor for the solution to the first stage.
-                ki_pred = self.term.vf_prod(ti, yi_partial, args, control)
+                ki_pred = terms.vf_prod(ti, yi_partial, args, control)
             else:
-                ki_pred = self.tableau.a_predictor[i - 1] @ k[:i]
+                ki_pred = _contract(self.tableau.a_predictor[i - 1], ω(k)[:i].ω)
+            ki_pred, unravel = fu.ravel_pytree(ki_pred)
+            if self._recompute_jac(i):
+                jac = self.nonlinear_solver.jac(
+                    _implicit_relation,
+                    ki_pred,
+                    (diagonal, terms.vf_prod, ti, yi_partial, args, control),
+                )
+            assert jac is not None
             ki, result = self.nonlinear_solver(
                 _implicit_relation,
                 ki_pred,
-                (diagonal, self.term.vf_prod, ti, yi_partial, args, control),
+                (diagonal, terms.vf_prod, ti, yi_partial, args, control),
                 jac,
             )
-            return ki, result
+            ki = unravel(ki)
+            return ki, jac, result
 
 
 class AbstractERK(AbstractRungeKutta):
-    def _init_jac(self, t0, y0, args, control):
-        pass
-
-    def _stage_jac(self, i, ti, yi_partial, args, control, jac):
-        pass
+    def _recompute_jac(self, i: int) -> bool:
+        assert False
 
 
 class AbstractDIRK(AbstractRungeKutta):
     nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
 
-    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        kwargs = super()._wrap(t0, y0, args, direction)
-        kwargs["nonlinear_solver"] = self.nonlinear_solver
-        return kwargs
-
-    def _init_jac(self, t0, y0, args, control):
-        pass
-
-    def _stage_jac(self, i, ti, yi_partial, args, control, jac):
-        del jac
-        diagonal = self.tableau.a_diagonal[i]
-        zero = jax.tree_map(jnp.zeros_like, yi_partial)
-        return self.nonlinear_solver.jac(
-            _implicit_relation,
-            zero,
-            (diagonal, self.term.vf_prod, ti, yi_partial, args, control),
-        )
+    def _recompute_jac(self, i: int) -> bool:
+        return True
 
 
 class AbstractSDIRK(AbstractDIRK):
@@ -276,17 +277,8 @@ class AbstractSDIRK(AbstractDIRK):
             diagonal = cls.tableau.a_diagonal[0]
             assert (cls.tableau.a_diagonal == diagonal).all()
 
-    def _init_jac(self, t0, y0, args, control):
-        diagonal = self.tableau.a_diagonal[0]
-        zero = jax.tree_map(jnp.zeros_like, y0)
-        return self.nonlinear_solver.jac(
-            _implicit_relation,
-            zero,
-            (diagonal, self.term.vf_prod, t0, y0, args, control),
-        )
-
-    def _stage_jac(self, i, ti, yi_partial, args, control, jac):
-        return jac
+    def _recompute_jac(self, i: int) -> bool:
+        return i == 0
 
 
 class AbstractESDIRK(AbstractDIRK):
@@ -297,14 +289,5 @@ class AbstractESDIRK(AbstractDIRK):
             diagonal = cls.tableau.a_diagonal[1]
             assert (cls.tableau.a_diagonal[1:] == diagonal).all()
 
-    def _init_jac(self, t0, y0, args, control):
-        diagonal = self.tableau.a_diagonal[1]
-        zero = jax.tree_map(jnp.zeros_like, y0)
-        return self.nonlinear_solver.jac(
-            _implicit_relation,
-            zero,
-            (diagonal, self.term.vf_prod, t0, y0, args, control),
-        )
-
-    def _stage_jac(self, i, ti, yi_partial, args, control, jac):
-        return jac
+    def _recompute_jac(self, i: int) -> bool:
+        return i == 1
