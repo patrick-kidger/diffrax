@@ -320,6 +320,24 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
     return cond_fun, body_fun
 
 
+def _is_sde(terms: PyTree[AbstractTerm]) -> bool:
+    for term in jax.tree_flatten(terms):
+        if isinstance(term, ControlTerm) and isinstance(
+            term.control, AbstractBrownianPath
+        ):
+            return True
+    return False
+
+
+def _is_unsafe_sde(terms: PyTree[AbstractTerm]) -> bool:
+    for term in jax.tree_flatten(terms):
+        if isinstance(term, ControlTerm) and isinstance(
+            term.control, UnsafeBrownianPath
+        ):
+            return True
+    return False
+
+
 # TODO: when t0, t1, dt0 are not tracers, and stepsize_controller is Constant, then
 # we know the exact number of steps in advance. In this case we could set max_steps and
 # base for the bounded_while_loop exactly, and probably get a slight improvement in
@@ -462,59 +480,31 @@ def diffeqsolve(
         )
     del term_leaves, term_structure, raises
 
-    # TODO: this error check is pretty ad-hoc.
-    #
-    # - It should work for other kinds of solver.
-    # - It should work for other kinds of control terms.
-    #
-    # In practice that ends up being a lot of machinery: we'd need a way of determining
-    # what kind of calculus that solver/term/path uses, and checking that it's
-    # geometric.
-    if isinstance(adjoint, BacksolveAdjoint) and isinstance(solver, Euler):
-        for term in jax.tree_flatten(terms):
-            if isinstance(term, ControlTerm) and isinstance(
-                term.control, AbstractBrownianPath
-            ):
-                raise NotImplementedError(
-                    "Solving an SDE with Euler's method will converge to the Itô "
-                    "solution. However BacksolveAdjoint currently only supports "
-                    "Stratonovich SDEs."
-                )
-    # TODO: this error check is pretty ad-hoc.
-    #
-    # - It should work for other kinds of control terms.
-    #
-    # General conditions for when adaptive step sizing is valid are actually pretty
-    # complicated though, so this just catches a common error.
-    if isinstance(
-        stepsize_controller, AbstractAdaptiveStepSizeController
-    ) and isinstance(solver, Euler):
-        for term in jax.tree_flatten(terms):
-            if isinstance(term, ControlTerm) and isinstance(
-                term.control, AbstractBrownianPath
-            ):
-                raise ValueError(
-                    "An SDE should not be solved with adaptive step sizes with Euler's "
-                    "method; it will not converge to the correct solution."
-                )
-
-    # TODO: more ad-hoc checking.
-    if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-        for term in jax.tree_flatten(terms):
-            if isinstance(term, ControlTerm) and isinstance(
-                term.control, UnsafeBrownianPath
-            ):
-                raise ValueError(
-                    "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
-                )
-    if not isinstance(adjoint, NoAdjoint):
-        for term in jax.tree_flatten(terms):
-            if isinstance(term, ControlTerm) and isinstance(
-                term.control, UnsafeBrownianPath
-            ):
-                raise ValueError(
-                    "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()`."
-                )
+    # TODO: this error checking is pretty ad-hoc: it only really works for built-in
+    # types, and not user-provided ones.
+    if _is_sde(terms):
+        if isinstance(adjoint, BacksolveAdjoint) and isinstance(solver, Euler):
+            raise NotImplementedError(
+                "Solving an SDE with Euler's method will converge to the Itô "
+                "solution. However BacksolveAdjoint currently only supports "
+                "Stratonovich SDEs."
+            )
+        if isinstance(
+            stepsize_controller, AbstractAdaptiveStepSizeController
+        ) and isinstance(solver, Euler):
+            raise ValueError(
+                "An SDE should not be solved with adaptive step sizes with Euler's "
+                "method; it will not converge to the correct solution."
+            )
+    if _is_unsafe_sde(terms):
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            raise ValueError(
+                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
+            )
+        if not isinstance(adjoint, NoAdjoint):
+            raise ValueError(
+                "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()`."
+            )
 
     # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
     # types for JAX to be happy with the bounded_while_loop below.)
