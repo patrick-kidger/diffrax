@@ -20,6 +20,7 @@ class SaveAt(eqx.Module):
     dense: bool
     solver_state: bool
     controller_state: bool
+    made_jump: bool
 
     # Explicit __init__ so we can do jnp.asarray(ts)
     # No super().__init__ call in mimicry of dataclasses' (and thus Equinox's) lack of
@@ -33,7 +34,8 @@ class SaveAt(eqx.Module):
         steps=False,
         dense=False,
         solver_state=False,
-        controller_state=False
+        controller_state=False,
+        made_jump=False,
     ):
         self.t0 = t0
         self.t1 = t1
@@ -42,6 +44,7 @@ class SaveAt(eqx.Module):
         self.dense = dense
         self.solver_state = solver_state
         self.controller_state = controller_state
+        self.made_jump = made_jump
 
         if (
             not self.t0
@@ -53,7 +56,7 @@ class SaveAt(eqx.Module):
             raise ValueError("Empty saveat -- nothing will be saved.")
 
 
-SaveAt.__init__.__doc__ = """**Arguments:**
+SaveAt.__init__.__doc__ = """**Main Arguments:**
 
 - `t0`: If `True`, save the initial input `y0`.
 - `t1`: If `True`, save the output at `t1`.
@@ -61,8 +64,14 @@ SaveAt.__init__.__doc__ = """**Arguments:**
 - `steps`: If `True`, save the output at every step of the numerical solver.
 - `dense`: If `True`, save dense output, that can later be evaluated at any part of
     the interval $[t_0, t_1]$.
+
+**Other Arguments:**
+
+It is unlikely you will need to use options.
+
 - `solver_state`: If `True`, save the internal state of the numerical solver at
     `t1`.
 - `controller_state`: If `True`, save the internal state of the step size
     controller at `t1`.
+- `made_jump`: If `True`, save the internal state of the jump tracker at `t1`.
 """

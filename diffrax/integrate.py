@@ -3,6 +3,7 @@ from typing import Optional
 
 import equinox as eqx
 import jax
+import jax.lax as lax
 import jax.numpy as jnp
 
 from .adjoint import (
@@ -76,7 +77,27 @@ def _save(state: _State, t: Scalar) -> _State:
     )
 
 
-def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
+def _loop(
+    solver,
+    stepsize_controller,
+    saveat,
+    t1,
+    max_steps,
+    terms,
+    args,
+    init_state,
+    is_bounded,
+):
+
+    t0 = init_state.tprev
+    if saveat.t0:
+        init_state = _save(init_state, t0)
+    if saveat.dense:
+        dense_ts = init_state.dense_ts
+        dense_ts = dense_ts.at[0].set(t0)
+        init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
+    del t0
+
     def cond_fun(state):
         return (state.tprev < t1) & (state.result == RESULTS.successful)
 
@@ -317,7 +338,25 @@ def _make_cond_body_funs(solver, stepsize_controller, saveat, t1, terms, args):
 
         return new_state
 
-    return cond_fun, body_fun
+    if is_bounded:
+        final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
+    else:
+
+        def _cond_fun(state):
+            return cond_fun(state) & (state.step < max_steps)
+
+        def _body_fun(state):
+            return _body_fun(state, lambda x: x)
+
+        final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
+
+    if saveat.t1 and not saveat.steps:
+        # if saveat.steps then the final value is already saved.
+        final_state = _save(final_state, t1)
+    result = jnp.where(
+        cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
+    )
+    return eqx.tree_at(lambda s: s.result, final_state, result)
 
 
 def _is_sde(terms: PyTree[AbstractTerm]) -> bool:
@@ -359,6 +398,7 @@ def diffeqsolve(
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
+    made_jump: Optional[Bool] = None,
 ) -> Solution:
     """Solves a differential equation.
 
@@ -433,9 +473,15 @@ def diffeqsolve(
             succeeded and which failed.
 
     - `solver_state`: Some initial state for the solver. Can be useful when for example
-        using a reversible solver to recompute a solution.
+        using a reversible solver to recompute a solution. Generally obtained by
+        `SaveAt(solver_state=True)`. It is unlikely you will need to use this option.
 
-    - `controller_state`: Some initial state for the step size controller.
+    - `controller_state`: Some initial state for the step size controller. Generally
+        obtained by `SaveAt(controller_state=True)`. It is unlikely you will need to
+        use this option.
+
+    - `made_jump`: Whether a jump has just been made at `t0`. Used to update
+        `solver_state` (if passed). It is unlikely you will need to use this option.
 
     **Returns:**
 
@@ -580,7 +626,7 @@ def diffeqsolve(
     step = 0
     saveat_ts_index = 0
     save_index = 0
-    made_jump = False
+    made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.nan)
     ys = jax.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.nan), y0)
     result = jnp.array(RESULTS.successful)
@@ -625,25 +671,19 @@ def diffeqsolve(
         dense_save_index=dense_save_index,
     )
 
-    # Initial saving
-    if saveat.t0:
-        init_state = _save(init_state, t0)
-    if saveat.dense:
-        dense_ts = init_state.dense_ts
-        dense_ts = dense_ts.at[0].set(t0)
-        init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
-
     #
     # Main loop
     #
 
     final_state = adjoint.loop(
-        _make_cond_body_funs,
+        _loop,
         solver,
         stepsize_controller,
         saveat,
+        dt0,
         t1,
         max_steps,
+        throw,
         terms,
         args,
         init_state,
@@ -653,15 +693,13 @@ def diffeqsolve(
     # Finish up
     #
 
-    # Final saving
-    if saveat.t1 and not saveat.steps:
-        # saveat.steps will include the final timepoint anyway, so skip if so.
-        final_state = _save(final_state, t1)
-
     if saveat.t0 or saveat.t1 or saveat.steps or (saveat.ts is not None):
         ts = final_state.ts
         ts = ts * direction
         ys = final_state.ys
+        # It's important that we don't do any further postprocessing on `ys` here, as
+        # it is the `final_state` value that is used when backpropagating via
+        # optimise-then-discretise.
     else:
         ts = None
         ys = None
@@ -673,6 +711,10 @@ def diffeqsolve(
         solver_state = final_state.solver_state
     else:
         solver_state = None
+    if saveat.made_jump:
+        made_jump = final_state.made_jump
+    else:
+        made_jump = None
     if saveat.dense:
         interpolation = DenseInterpolation(
             ts=final_state.dense_ts,
@@ -703,9 +745,10 @@ def diffeqsolve(
         t1=t1,
         ts=ts,
         ys=ys,
-        controller_state=controller_state,
-        solver_state=solver_state,
         interpolation=interpolation,
         stats=stats,
         result=result,
+        solver_state=solver_state,
+        controller_state=controller_state,
+        made_jump=made_jump,
     )

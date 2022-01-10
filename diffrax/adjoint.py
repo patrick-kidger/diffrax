@@ -7,31 +7,9 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from .misc import bounded_while_loop
-from .solution import RESULTS
-
-
-def _at_max_steps(cond_fun, final_state):
-    result = jnp.where(
-        cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
-    )
-    return eqx.tree_at(lambda s: s.result, final_state, result)
-
-
-def _loop_bounded(cond_fun, body_fun, init_state, max_steps):
-    final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
-    return _at_max_steps(cond_fun, final_state)
-
-
-def _loop_while(cond_fun, body_fun, init_state, max_steps):
-    def _cond_fun(state):
-        return cond_fun(state) & (state.step < max_steps)
-
-    def _body_fun(state):
-        return _body_fun(state, lambda x: x)
-
-    final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
-    return _at_max_steps(cond_fun, final_state)
+from .integrate import diffeqsolve
+from .misc import nondifferentiable_output, ω
+from .saveat import SaveAt
 
 
 class AbstractAdjoint(eqx.Module):
@@ -40,12 +18,14 @@ class AbstractAdjoint(eqx.Module):
     @abc.abstractmethod
     def loop(
         self,
-        make_cond_body_funs,
+        loop_fn,
         solver,
         stepsize_controller,
         saveat,
+        dt0,
         t1,
         max_steps,
+        throw,
         terms,
         args,
         init_state,
@@ -69,7 +49,83 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
 
     def loop(
         self,
-        make_cond_body_funs,
+        loop_fn,
+        solver,
+        stepsize_controller,
+        saveat,
+        _dt0,
+        t1,
+        max_steps,
+        _throw,
+        terms,
+        args,
+        init_state,
+    ):
+        return loop_fn(
+            solver,
+            stepsize_controller,
+            saveat,
+            t1,
+            max_steps,
+            terms,
+            args,
+            init_state,
+            is_bounded=True,
+        )
+
+
+class NoAdjoint(AbstractAdjoint):
+    """Disable backpropagation through [`diffrax.diffeqsolve`][].
+
+    Forward-mode autodifferentiation (`jax.jvp`) will continue to work as normal.
+
+    If you do not need to differentiate the results of [`diffrax.diffeqsolve`][] then
+    this may sometimes improve the speed at which the differential equation is solved.
+    """
+
+    def loop(
+        self,
+        loop_fn,
+        solver,
+        stepsize_controller,
+        saveat,
+        _dt0,
+        t1,
+        max_steps,
+        _throw,
+        terms,
+        args,
+        init_state,
+    ):
+        return loop_fn(
+            solver,
+            stepsize_controller,
+            saveat,
+            t1,
+            max_steps,
+            terms,
+            args,
+            init_state,
+            is_bounded=False,
+        )
+
+
+@ft.partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 4, 5, 6, 7, 8))
+def _loop_backsolve(
+    self,
+    loop_fn,
+    solver,
+    stepsize_controller,
+    saveat,
+    _dt0,
+    t1,
+    max_steps,
+    _throw,
+    terms,
+    args,
+    init_state,
+):
+    return loop_fn(
         solver,
         stepsize_controller,
         saveat,
@@ -78,73 +134,144 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         terms,
         args,
         init_state,
-    ):
-        cond_fun, body_fun = make_cond_body_funs(
-            solver, stepsize_controller, saveat, t1, terms, args
-        )
-        return _loop_bounded(cond_fun, body_fun, init_state, max_steps)
+        is_bounded=False,
+    )
 
 
-@ft.partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 4, 5, 6))
-def _loop_backsolve(
+def _loop_backsolve_fwd(
     self,
-    make_cond_body_funs,
+    loop_fn,
     solver,
     stepsize_controller,
     saveat,
+    _dt0,
     t1,
     max_steps,
+    _throw,
     terms,
     args,
     init_state,
 ):
-    cond_fun, body_fun = make_cond_body_funs(
-        solver, stepsize_controller, saveat, t1, terms, args
+    final_state = loop_fn(
+        solver,
+        stepsize_controller,
+        saveat,
+        t1,
+        max_steps,
+        terms,
+        args,
+        init_state,
+        is_bounded=False,
     )
-    return _loop_while(cond_fun, body_fun, init_state, max_steps)
-
-
-def _loop_backsolve_adjoint_fwd(
-    self,
-    make_cond_body_funs,
-    solver,
-    stepsize_controller,
-    saveat,
-    t1,
-    max_steps,
-    terms,
-    args,
-    init_state,
-):
-    cond_fun, body_fun = make_cond_body_funs(
-        solver, stepsize_controller, saveat, t1, terms, args
-    )
-    final_state = _loop_while(cond_fun, body_fun, init_state, max_steps)
     t0 = init_state.tprev
-    context = (terms, t0, args)
+    ts = final_state.ts
+    ys = final_state.ys
+    context = (t0, terms, args, ts, ys)
     return final_state, context
 
 
-def _loop_backsolve_adjoint_bwd(
+# TODO: implement this as a single diffeqsolve with events, once events are supported.
+def _loop_backsolve_bwd(
     self,
-    _,
+    _loop_fn,
     solver,
     stepsize_controller,
     saveat,
-    t1,
+    dt0,
+    _t1,
     max_steps,
+    throw,
     context,
     grad_final_state,
 ):
-    terms, t0, args = context
-    del context
+    t0, terms, args, ts, ys = context
     terms = jax.tree_map(lambda a: a.adjoint(), terms)
+    kwargs = dict(
+        terms=terms,
+        dt0=dt0,
+        solver=solver,
+        args=args,
+        stepsize_controller=stepsize_controller,
+        adjoint=self,
+        max_steps=max_steps,
+        throw=throw,
+    )
+    kwargs.update(self.kwargs)
+    grad_ys = grad_final_state.ys
+    had_t0 = saveat.t0
+    del (
+        self,
+        _loop_fn,
+        solver,
+        stepsize_controller,
+        saveat,
+        dt0,
+        _t1,
+        max_steps,
+        throw,
+        context,
+        terms,
+        grad_final_state,
+    )
 
-    # TODO: implement this as a single diffeqsolve with events, once events are
-    # supported.
+    saveat = SaveAt(t1=True, solver_state=True, controller_state=True)
+
+    def _scan_fun(_state, _vals, first=False):
+        _t1, _t0, _y0, _grad_y0 = _vals
+        _y_aug0, _solver_state, _controller_state = _state
+        _a_y0, _a_args0 = _y_aug0
+        _a_y0 = (_a_y0 ** ω + _grad_y0 ** ω).ω
+        _y_aug0 = (_y0, _a_y0, _a_args0)
+        _sol = diffeqsolve(
+            t0=_t0,
+            t1=_t1,
+            y0=_y_aug0,
+            solver_state=_solver_state,
+            controller_state=_controller_state,
+            made_jump=not first,
+            saveat=saveat,
+            **kwargs,
+        )
+
+        def __get(__y):
+            assert __y.shape[0] == 1
+            return __y[0]
+
+        _y1 = ω(_sol.ys).call(__get).ω
+        _, _a_y1, _a_args1 = _y1
+        _y1 = (_a_y1, _a_args1)
+        _solver_state = _sol.solver_state
+        _controller_state = _sol.controller_state
+
+        return (_y1, _solver_state, _controller_state), None
+
+    a_y0 = ω(grad_ys)[-1].ω
+    a_args0 = ω(args).call(jnp.zeros_like).ω
+    y_aug0 = (a_y0, a_args0)
+    scan_init = (y_aug0, None, None)
+    # Run once outside the loop to get access to solver_state etc. of the correct
+    # structure.
+    val0 = (ts[-2], ts[-1], ω(ys)[-1].ω, ω(grad_ys)[-1].ω)
+    if had_t0:
+        vals = (ts[:-2], ts[1:-1], ω(ys)[1:-1].ω, ω(grad_ys)[1:-1].ω)
+    else:
+        vals = (
+            jnp.concatenate([t0[None], ts[:-2]]),
+            ts[:-1],
+            ω(ys)[:-1].ω,
+            ω(grad_ys)[:-1].ω,
+        )
+    scan_init = _scan_fun(scan_init, val0, first=True)
+    scan_out, _ = lax.scan(_scan_fun, scan_init, vals, reverse=True)
+    y_augm1, _, _, _ = scan_out
+    a_ym1, a_argsm1 = y_augm1
+    if had_t0:
+        a_ym1 = (ω(a_ym1) + ω(grad_ys)[0]).ω
+
+    # TODO: returns
 
 
-_loop_backsolve.defvjp(_loop_backsolve_adjoint_fwd, _loop_backsolve_adjoint_bwd)
+_loop_backsolve.defvjp(_loop_backsolve_fwd, _loop_backsolve_bwd)
 
 
 class BacksolveAdjoint(AbstractAdjoint):
@@ -183,61 +310,65 @@ class BacksolveAdjoint(AbstractAdjoint):
             to specify a particular solver to use on the backward pass.
             ```
         """
+        valid_keys = {
+            "dt0",
+            "solver",
+            "stepsize_controller",
+            "adjoint",
+            "max_steps",
+            "throw",
+        }
+        given_keys = set(kwargs.keys())
+        diff_keys = given_keys - valid_keys
+        if len(diff_keys):
+            raise ValueError(
+                f"The following keys are not valid for `BacksolveAdjoint`: {diff_keys}"
+            )
         self.kwargs = kwargs
 
     def loop(
         self,
-        make_cond_body_funs,
+        loop_fn,
         solver,
         stepsize_controller,
         saveat,
+        dt0,
         t1,
         max_steps,
+        throw,
         terms,
         args,
         init_state,
     ):
         if saveat.steps or saveat.dense:
-            raise ValueError(
+            raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
                 "`saveat=Steps(steps=True)` or `saveat=Steps(dense=True)`."
             )
-        return _loop_backsolve(
+        final_state = _loop_backsolve(
             self,
-            make_cond_body_funs,
+            loop_fn,
             solver,
             stepsize_controller,
             saveat,
+            dt0,
             t1,
             max_steps,
+            throw,
             terms,
             args,
             init_state,
         )
 
+        # We only allow backpropagation through `ys`; in particular not through
+        # `solver_state` etc.
+        sentinel = object()
+        final_state_no_ys = eqx.tree_at(lambda s: s.ys, final_state, sentinel)
+        leaves, treedef = jax.tree_flatten(final_state_no_ys)
+        leaves = [
+            final_state.ys if x is sentinel else nondifferentiable_output(x)
+            for x in leaves
+        ]
+        final_state = jax.tree_unflatten(treedef, leaves)
 
-class NoAdjoint(AbstractAdjoint):
-    """Disable backpropagation through [`diffrax.diffeqsolve`][].
-
-    Forward-mode autodifferentiation (`jax.jvp`) will continue to work as normal.
-
-    If you do not need to differentiate the results of [`diffrax.diffeqsolve`][] then
-    this may sometimes improve the speed at which the differential equation is solved.
-    """
-
-    def loop(
-        self,
-        make_cond_body_funs,
-        solver,
-        stepsize_controller,
-        saveat,
-        t1,
-        max_steps,
-        terms,
-        args,
-        init_state,
-    ):
-        cond_fun, body_fun = make_cond_body_funs(
-            solver, stepsize_controller, saveat, t1, terms, args
-        )
-        return _loop_while(cond_fun, body_fun, init_state, max_steps)
+        return final_state

@@ -1,7 +1,7 @@
 from dataclasses import field
 from typing import Any, Dict, Optional
 
-from .custom_types import Array, PyTree, Scalar
+from .custom_types import Array, Bool, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
 from .misc import ContainerMeta
 from .path import AbstractPath
@@ -29,30 +29,27 @@ class Solution(AbstractPath):
         (i.e. just `diffeqsolve(..., saveat=SaveAt(dense=True))` is used.)
     - `ys`: The value of the solution at each of the times in `ts`. Might `None` if no
         values were saved.
+    - `stats`: Statistics for the solve (number of steps etc.).
+    - `result`: Integer specifying the success or cause of failure of the solve. A
+        value of `0` corresponds to a successful solve. Any other value is a failure.
+        A human-readable message can be obtained by looking up messages via
+        `diffrax.RESULTS[<integer>]`.
     - `solver_state`: If saved, is the final internal state of the numerical solver.
     - `controller_state`: If saved, is the final internal state for the step size
         controller.
-    - `stats`: Statistics for the solve (number of steps etc.).
-    - `result`: Integer specifying the success or cause of failure of the solve. A
-        value of `0` corresponds to a successful solve. Any other value is a failure;
-        a human-readable message can be obtained via [`diffrax.Solution.message`][] or
-        via `diffrax.RESULTS[result]`.
+    - `made_jump`: If saved, the final internal state for the jump tracker.
     """
 
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     ts: Optional[Array["times"]]  # noqa: F821
     ys: Optional[PyTree["times", ...]]  # noqa: F821
-    solver_state: Optional[PyTree]
-    controller_state: Optional[PyTree]
     interpolation: Optional[DenseInterpolation]
     stats: Dict[str, Any]
     result: RESULTS
-
-    @property
-    def message(self):
-        """Human-readable version of `result`."""
-        return RESULTS[self.result]
+    solver_state: Optional[PyTree]
+    controller_state: Optional[PyTree]
+    made_jump: Optional[Bool]
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
