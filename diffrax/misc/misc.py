@@ -1,16 +1,12 @@
-import functools as ft
 import typing
-from typing import Any, Optional, Sequence, Tuple, Type, Union
+from typing import Optional, Tuple
 
-import equinox as eqx
 import jax
-import jax.experimental.host_callback as hcb
 import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 
-from ..custom_types import Array, Int, PyTree, Scalar
-from .unvmap import unvmap_any
+from ..custom_types import Array, PyTree, Scalar
 
 
 _itemsize_kind_type = {
@@ -29,20 +25,6 @@ def force_bitcast_convert_type(val, new_type):
     intermediate_type = _itemsize_kind_type[new_type.dtype.itemsize, val.dtype.kind]
     val = val.astype(intermediate_type)
     return lax.bitcast_convert_type(val, new_type)
-
-
-def is_perturbed(x: Any) -> bool:
-    if isinstance(x, jax.ad.JVPTracer):
-        return True
-    elif isinstance(x, jax.core.Tracer):
-        return any(is_perturbed(attr) for name, attr in x._contents())
-    else:
-        return False
-
-
-def check_no_derivative(x: PyTree, name: str) -> None:
-    if any(is_perturbed(xi) for xi in jax.tree_leaves(x)):
-        raise ValueError(f"Cannot differentiate {name}.")
 
 
 class ContainerMeta(type):
@@ -118,29 +100,6 @@ def fill_forward(
     return ys
 
 
-@jax.custom_jvp
-def nextafter(x: Array) -> Array:
-    y = jnp.nextafter(x, jnp.inf)
-    # Flush denormal to normal.
-    # Our use for these is to handle jumps in the vector field. Typically that means
-    # there will be an "if x > cond" condition somewhere. However JAX uses DAZ
-    # (denormals-are-zero), which will cause this check to fail near zero:
-    # `jnp.nextafter(0, jnp.inf) > 0` gives `False`.
-    return jnp.where(x == 0, jnp.finfo(x.dtype).tiny, y)
-
-
-nextafter.defjvps(lambda x_dot, _, __: x_dot)
-
-
-@jax.custom_jvp
-def nextbefore(x: Array) -> Array:
-    y = jnp.nextafter(x, jnp.NINF)
-    return jnp.where(x == 0, -jnp.finfo(x.dtype).tiny, y)
-
-
-nextbefore.defjvps(lambda x_dot, _, __: x_dot)
-
-
 def linear_rescale(t0, t, t1):
     """Calculates (t - t0) / (t1 - t0), assuming t0 <= t <= t1.
 
@@ -174,44 +133,3 @@ def left_broadcast_to(arr, shape):
 
     indices = tuple(slice(None) if i < arr.ndim else None for i in range(len(shape)))
     return jnp.broadcast_to(arr[indices], shape)
-
-
-def error_if(
-    pred: Union[bool, Array[..., bool]],
-    msg: str,
-    error_cls: Type[Exception] = ValueError,
-) -> bool:
-    """For use as part of validating inputs.
-
-    Example:
-        def f(x):
-            cond = cond_fn(x)
-            error_if(cond)
-    """
-    branched_error_if(pred, 0, [msg], error_cls)
-
-
-def branched_error_if(
-    pred: Union[bool, Array[..., bool]],
-    index: Int,
-    msgs: Sequence[str],
-    error_cls: Type[Exception] = ValueError,
-) -> bool:
-    def raises(_arg):
-        _pred, _index = _arg
-        if _pred:
-            if eqx.is_array(_index):
-                _index = _index.item()
-            raise error_cls(msgs[_index])
-
-    pred = unvmap_any(pred)
-    if isinstance(pred, jax.core.Tracer):
-        # Under JIT
-        hcb.call(raises, (pred, index))
-    else:
-        # Not under JIT
-        raises((pred, index))
-
-
-def curry(fn):
-    return ft.partial(ft.partial, fn)

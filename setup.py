@@ -47,7 +47,7 @@ classifiers = [
 python_requires = "~=3.8"
 
 install_requires = [
-    "jax>=0.2.20",
+    "jax>=0.2.26",
     "equinox>=0.1.4",
 ]
 
