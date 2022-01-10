@@ -82,3 +82,74 @@ def test_ω_is_leaf(getkey):
             ω(a, is_leaf=lambda x: isinstance(x, int)).at[()].set(ω(a2))
         with pytest.raises(ValueError):
             ω(a).at[()].set(ω(a2, is_leaf=lambda x: isinstance(x, int)))
+
+
+def test_unvmap():
+    unvmap_all = diffrax.misc.unvmap_all
+    unvmap_any = diffrax.misc.unvmap_any
+    jit_unvmap_all = jax.jit(unvmap_all)
+    jit_unvmap_any = jax.jit(unvmap_any)
+    vmap_unvmap_all = jax.vmap(unvmap_all, out_axes=None)
+    vmap_unvmap_any = jax.vmap(unvmap_any, out_axes=None)
+
+    tt = jnp.array([True, True])
+    tf = jnp.array([True, False])
+    ff = jnp.array([False, False])
+
+    assert jnp.array_equal(unvmap_all(tt), jnp.array(True))
+    assert jnp.array_equal(unvmap_all(tf), jnp.array(False))
+    assert jnp.array_equal(unvmap_all(ff), jnp.array(False))
+    assert jnp.array_equal(unvmap_any(tt), jnp.array(True))
+    assert jnp.array_equal(unvmap_any(tf), jnp.array(True))
+    assert jnp.array_equal(unvmap_any(ff), jnp.array(False))
+
+    assert jnp.array_equal(jit_unvmap_all(tt), jnp.array(True))
+    assert jnp.array_equal(jit_unvmap_all(tf), jnp.array(False))
+    assert jnp.array_equal(jit_unvmap_all(ff), jnp.array(False))
+    assert jnp.array_equal(jit_unvmap_any(tt), jnp.array(True))
+    assert jnp.array_equal(jit_unvmap_any(tf), jnp.array(True))
+    assert jnp.array_equal(jit_unvmap_any(ff), jnp.array(False))
+
+    assert jnp.array_equal(vmap_unvmap_all(tt), jnp.array(True))
+    assert jnp.array_equal(vmap_unvmap_all(tf), jnp.array(False))
+    assert jnp.array_equal(vmap_unvmap_all(ff), jnp.array(False))
+    assert jnp.array_equal(vmap_unvmap_any(tt), jnp.array(True))
+    assert jnp.array_equal(vmap_unvmap_any(tf), jnp.array(True))
+    assert jnp.array_equal(vmap_unvmap_any(ff), jnp.array(False))
+
+    unvmap_max = diffrax.misc.unvmap_max
+    jit_unvmap_max = jax.jit(unvmap_max)
+    vmap_unvmap_max = jax.vmap(unvmap_max, out_axes=None)
+
+    _21 = jnp.array([2, 1])
+    _11 = jnp.array([1, 1])
+
+    assert jnp.array_equal(unvmap_max(_21), jnp.array(2))
+    assert jnp.array_equal(unvmap_max(_11), jnp.array(1))
+
+    assert jnp.array_equal(jit_unvmap_max(_21), jnp.array(2))
+    assert jnp.array_equal(jit_unvmap_max(_11), jnp.array(1))
+
+    assert jnp.array_equal(vmap_unvmap_max(_21), jnp.array(2))
+    assert jnp.array_equal(vmap_unvmap_max(_11), jnp.array(1))
+
+
+def test_nondifferentiable_input():
+    ndi = lambda x: diffrax.misc.nondifferentiable_input(x, "name")
+    ndi(
+        jnp.array(
+            2,
+        )
+    )  # no error
+    with pytest.raises(ValueError):
+        jax.jvp(ndi, (jnp.array(2.0),), (jnp.array(1.0),))
+    with pytest.raises(ValueError):
+        jax.grad(ndi)(jnp.array(2.0))
+
+
+def test_nondifferentiable_output():
+    ndo = diffrax.misc.nondifferentiable_output
+    ndo(jnp.array(2.0))  # no error
+    jax.jvp(ndo, (jnp.array(2.0),), (jnp.array(1.0),))  # no error
+    with pytest.raises(RuntimeError):
+        jax.grad(ndo)(jnp.array(2.0))
