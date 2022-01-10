@@ -176,7 +176,7 @@ class AbstractRungeKutta(AbstractSolver):
         # implementation (e.g. what you see in torchdiffeq or in the reference texts).
         # This is because of our vector-field-control approach.
         lentime = (len(self.tableau.c) + 1,)
-        k = jax.tree_map(lambda y: jnp.empty(lentime + y.shape), y0)
+        k = jax.tree_map(lambda y: jnp.empty(lentime + jnp.shape(y)), y0)
         k = (k ** ω).at[0].set(k0 ** ω).ω
 
         for i, (a_i, c_i) in enumerate(zip(self.tableau.a_lower, self.tableau.c)):

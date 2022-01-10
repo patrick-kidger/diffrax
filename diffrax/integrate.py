@@ -30,7 +30,7 @@ from .step_size_controller import (
     AbstractStepSizeController,
     ConstantStepSize,
 )
-from .term import AbstractTerm, ControlTerm
+from .term import AbstractTerm, ControlTerm, WrapTerm
 
 
 class _State(eqx.Module):
@@ -563,13 +563,16 @@ def diffeqsolve(
         dt0 = jnp.asarray(dt0, dtype=dtype)
     if saveat.ts is not None:
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
-    del timelikes, dtype
+    # Time will affect state, so need to promote the state dtype as well if necessary.
+    dtype2 = jnp.result_type(y0, *timelikes)
+    y0 = jax.tree_map(lambda yi: jnp.asarray(yi, dtype=dtype2), y0)  # noqa: F821
+    del timelikes, dtype, dtype2
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
     stepsize_controller = stepsize_controller.wrap(direction)
     terms = jax.tree_map(
-        lambda t: t.wrap(direction),
+        lambda t: WrapTerm(t, direction),
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm),
     )

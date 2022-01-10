@@ -85,12 +85,12 @@ class Kvaerno4(AbstractESDIRK):
     r"""Kvaerno's 4/3 method.
 
     A-L stable stiffly accurate 4th order ESDIRK method. Has an embedded 3rd order
-    method. Uses 5 stages.
+    method for adaptive step sizing. Uses 5 stages.
 
     When solving an ODE over the interval $[t_0, t_1]$, note that this method will make
     some evaluations slightly past $t_1$.
 
-    ??? Reference
+    ??? cite "Reference"
 
         ```bibtex
         @article{kvaerno2004singly,

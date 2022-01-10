@@ -11,3 +11,4 @@
             - dense
             - solver_state
             - controller_state
+            - made_jump

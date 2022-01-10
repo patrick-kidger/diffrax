@@ -22,7 +22,8 @@ class _Fehlberg2Interpolation(FourthOrderPolynomialInterpolation):
 class Fehlberg2(AbstractERK):
     """Fehlberg's method.
 
-    Explicit 2nd order Runge--Kutta method. Has an embedded Euler method.
+    2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
+    step sizing.
     """
 
     tableau = _fehlberg2_tableau

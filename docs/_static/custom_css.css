@@ -112,3 +112,12 @@ html {
 .md-typeset details .mkdocstrings > h5 {
     display: none;
 }
+
+/* Change default colours for <a> tags */
+
+[data-md-color-scheme="default"] {
+    --md-typeset-a-color: rgb(0, 189, 164) !important;
+}
+[data-md-color-scheme="slate"] {
+    --md-typeset-a-color: rgb(0, 189, 164) !important;
+}

@@ -17,7 +17,7 @@ _SolverState = None
 class Euler(AbstractSolver):
     """Euler's method.
 
-    Explicit 1st order RK method. Does not support adaptive timestepping.
+    1st order explicit Runge--Kutta method. Does not support adaptive step sizing.
     """
 
     term_structure = jax.tree_structure(0)

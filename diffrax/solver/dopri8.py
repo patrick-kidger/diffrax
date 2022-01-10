@@ -298,9 +298,10 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
 class Dopri8(AbstractERK):
     """Dormand--Prince's 8/7 method.
 
-    8th order Runge--Kutta method. Has an embedded 7th order method.
+    8th order Runge--Kutta method. Has an embedded 7th order method for adaptive step
+    sizing.
 
-    ??? References
+    ??? cite "References"
 
         Coefficients from:
         ```bibtex

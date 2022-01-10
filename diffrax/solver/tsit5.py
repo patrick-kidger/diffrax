@@ -144,9 +144,10 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
 class Tsit5(AbstractERK):
     r"""Tsitouras' 5/4 method.
 
-    5th order Runge--Kutta method. Has an embedded 4th order method.
+    5th order explicit Runge--Kutta method. Has an embedded 4th order method for
+    adaptive step sizing.
 
-    ??? Reference
+    ??? cite "Reference"
 
         ```bibtex
         @article{tsitouras2011runge,

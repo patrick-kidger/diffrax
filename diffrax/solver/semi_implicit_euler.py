@@ -15,6 +15,10 @@ _SolverState = None
 
 
 class SemiImplicitEuler(AbstractSolver):
+    """Semi-implicit Euler's method.
+
+    Symplectic method. Does not support adaptive step sizing.
+    """
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation

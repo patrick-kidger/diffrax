@@ -470,7 +470,7 @@ def rectilinear_interpolation(
     It is strongly recommended to have a read of the reference below if you are
     unfamiliar.
 
-    ??? "Reference"
+    ??? cite "Reference"
 
         ```bibtex
         @article{morrill2021cdeonline,
@@ -660,7 +660,7 @@ def backward_hermite_coefficients(
     This is most useful prior to using [`diffrax.CubicInterpolation`][] to create a
     smooth path from discrete observations.
 
-    ??? "Reference"
+    ??? cite "Reference"
 
         Hermite cubic splines with backward differences were introduced in this paper:
 

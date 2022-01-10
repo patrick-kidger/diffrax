@@ -22,7 +22,8 @@ class _HeunInterpolation(FourthOrderPolynomialInterpolation):
 class Heun(AbstractERK):
     """Heun's method.
 
-    Explicit 2nd order Runge--Kutta method. Has an embedded Euler method.
+    2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
+    step sizing.
 
     Also sometimes known as either the "improved Euler method", "modified Euler method"
     or "explicit trapezoidal rule".

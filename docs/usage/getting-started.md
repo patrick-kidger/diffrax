@@ -7,8 +7,8 @@
     After that:
 
     - Have a look through the "Examples" on the sidebar for in-depth examples including things like training loops for neural ODEs, etc.
-    - The "Basic API" on the sidebar is the complete reference for everything you need to know to solve ODEs.
-    - The "Advanced API" on the sidebar is the extended reference to include everything needed to solve SDEs and CDEs.
+    - The "Basic API" on the sidebar is the main reference for everything you need to know to solve ODEs.
+    - The "Advanced API" on the sidebar is the extended reference, in particular including everything needed to solve SDEs and CDEs.
 
 The main function in Diffrax is [`diffrax.diffeqsolve`][]. This solves the initial value problem corresponding to an ordinary/stochastic/controlled differential equation.
 
@@ -21,21 +21,22 @@ $y(0) = 1 \qquad \frac{\mathrm{d}y}{\mathrm{d}t}(t) = -y(t)$
 over the interval $[0, 3]$.
 
 ```python
-from diffrax import diffeqsolve, dopri5, SaveAt, IController
+from diffrax import diffeqsolve, Dopri5, ODETerm, SaveAt, IController
 
 vector_field = lambda t, y, args: -y
-solver = dopri5(vector_field)
+term = ODETerm(vector_field)
+solver = Dopri5()
 saveat = SaveAt(ts=[0., 1., 2., 3.])
 stepsize_controller = IController(rtol=1e-5, atol=1e-5)
 
-sol = diffeqsolve(solver, t0=0, t1=3, y0=1, dt0=0.1, saveat=saveat,
+sol = diffeqsolve(term, t0=0, t1=3, y0=1, dt0=0.1, solver=solver, saveat=saveat,
                   stepsize_controller=stepsize_controller)
 
 print(sol.ts)  # DeviceArray([0.   , 1.   , 2.   , 3.    ])
 print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
 ```
 
-- The numerical solver used is `dopri5`. [Dormand--Prince 5(4), an explicit Runge--Kutta method.]
+- The numerical solver used is `Dopri5`. [Dormand--Prince 5(4), an explicit Runge--Kutta method.]
 - The solution is saved at the times `0`, `1`, `2`, `3`.
 - The initial step is of size `0.1`.
 - For all later steps, an I-controller is used to dynamically adapt step sizes to match a desired error tolerance.
@@ -46,7 +47,7 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
 
     This example demonstrates pretty much everything you'll need to get started solving ODEs with Diffrax, just by switching things out in the obvious way.
 
-    - The numerical solver (here `dopri5`) can be switched out.
+    - The numerical solver (here `Dopri5`) can be switched out.
         - See the guide on [How to choose a solver](./how-to-choose-a-solver.md).
         - See the [Solvers](../api/solver.md) page for the full list of solvers.
     - Where to save the result (e.g. to obtain dense output) can be adjusted by changing [`diffrax.SaveAt`][].
@@ -69,19 +70,25 @@ over the interval $[0, 3]$.
 
 ```python
 import jax.random as jrandom
-from diffrax import diffeqsolve, euler_maruyama, SaveAt, UnsafeBrownianPath
+from diffrax import diffeqsolve, ControlTerm, Euler, MultiTerm, ODETerm, SaveAt, UnsafeBrownianPath
 
 drift = lambda t, y, args: -y
 diffusion = lambda t, y, args: 0.1 * t
 brownian_motion = UnsafeBrownianPath(shape=(), key=jrandom.PRNGKey(0))
-solver = euler_maruyama(drift, diffusion, brownian_motion)
+terms = MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))
+solver = Euler()
 saveat = SaveAt(dense=True)
 
-sol = diffeqsolve(solver, t0=0, t1=3, y0=1, dt0=0.05, saveat=saveat)
+sol = diffeqsolve(terms, t0=0, t1=3, y0=1, dt0=0.05, solver=solver, saveat=saveat)
 print(sol.evaluate(0.1))  # DeviceArray(0.9026031)
 ```
 
-- The numerical solver used is `euler_maruyama`. That is to say just Euler's method, applied to an SDE.
+- On terms:
+    - We use `ODETerm` to describe the $-y(t)\mathrm{d}t$ term.
+    - We use `ControlTerm` to describe the $\frac{t}{10}\mathrm{d}w(t)$ term.
+    - We use `MultiTerm` to bundle both of these terms together.
+- The numerical solver used is `Euler()`. (Also known as Euler--Maruyama when applied to SDEs.)
+    - There's no clever hackery behind the scenes: `Euler()` for an SDE simply works in exactly the same way as `Euler()` for an ODE -- we just need to specify the extra diffusion term.
     - This converges to an Itô SDE because of the choice of solver. (Whether an SDE solver converges to Itô or Stratonovich SDE is a property of the solver.)
 - The solution is saved densely -- a continuous path is the output. We can then evaluate it at any point in the interval; in this case `0.1`.
 - No step size controller is specified so by default a constant step size is used.
@@ -125,29 +132,18 @@ class QuadraticPath(AbstractPath):
             return self.evaluate(t1) - self.evaluate(t0)
         return t0 ** 2
 
-    def derivative(self, t, left=True):
-        del left
-        return 2 * t
-
 
 vector_field = lambda t, y, args: -y
 control = QuadraticPath()
 term = ControlTerm(vector_field, control).to_ode()
-solver = Dopri5(term)
+solver = Dopri5()
+sol = diffeqsolve(term, t0=0, t1=3, y0=1, dt0=0.05, solver=solver)
 
-sol = diffeqsolve(solver, t0=0, t1=3, y0=1, dt0=0.05)
 print(sol.ts)  # DeviceArray([3.])
 print(sol.ys)  # DeviceArray([0.00012341])
 ```
 
 - We specify a control by inheriting from [`diffrax.AbstractPath`][].
-    - It's very common to create a control by interpolating data instead: Diffrax provides [Interpolations](../api/interpolation.md) for this.
-- Note the use of [Terms](../api/terms.md), to describe both vector field and control together.
-    - Likewise note the use of [`diffrax.Dopri5`][] rather than [`diffrax.dopri5`][].
-
-!!! tip
-
-    [`diffrax.dopri5`][] is just a convenience wrapper for `diffrax.Dopri5(diffrax.ODETerm(...))`. As stated earlier: all ODEs and SDEs are treated by reducing them to CDEs.
-
-- The solution is saved at just the final time point `t1`. (This is the default value of the `diffeqsolve(..., saveat=...)` argument.)
+    - It's very common to create a control by interpolating data: Diffrax provides some [interpolation routines](../api/interpolation.md) for this.
+- No `diffeqsolve(..., saveat=...) argument is passed, so the default is used: saving at just the final time point `t1`.
 - No step size controller is specified so by default a constant step size is used.

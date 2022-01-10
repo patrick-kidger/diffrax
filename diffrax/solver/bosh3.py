@@ -26,7 +26,8 @@ class _Bosh3Interpolation(FourthOrderPolynomialInterpolation):
 class Bosh3(AbstractERK):
     """Bogacki--Shampine's 3/2 method.
 
-    3rd order explicit Runge--Kutta method. Has an embedded 2nd order method.
+    3rd order explicit Runge--Kutta method. Has an embedded 2nd order method for
+    adaptive step sizing.
     """
 
     tableau = _bosh3_tableau

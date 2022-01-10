@@ -3,7 +3,7 @@
 The list of step size controllers is as follows.
 
 
-??? "`diffrax.AbstractStepSizeController`"
+??? abstract "`diffrax.AbstractStepSizeController`"
 
     All of the classes implement the following interface specified by [`diffrax.AbstractStepSizeController`][].
 
@@ -13,6 +13,7 @@ The list of step size controllers is as follows.
         selection:
             members:
                 - wrap
+                - wrap_solver
                 - init
                 - adapt_step_size
 

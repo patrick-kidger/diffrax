@@ -9,6 +9,7 @@ import jax.numpy as jnp
 
 from .misc import nondifferentiable_output, ω
 from .saveat import SaveAt
+from .term import AdjointTerm
 
 
 class AbstractAdjoint(eqx.Module):
@@ -200,7 +201,7 @@ def _loop_backsolve_bwd(
     grad_final_state,
 ):
     t0, terms, args, ts, ys = context
-    terms = jax.tree_map(lambda a: a.adjoint(), terms)
+    terms = jax.tree_map(AdjointTerm, terms)
     kwargs = dict(
         terms=terms,
         dt0=dt0,

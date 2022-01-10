@@ -27,7 +27,7 @@ def _implicit_relation(z1, nonlinear_solve_args):
 class ImplicitEuler(AbstractImplicitSolver):
     r"""Implicit Euler method.
 
-    A-B-L stable 1st order SDIRK method. Does not support adaptive timestepping.
+    A-B-L stable 1st order SDIRK method. Does not support adaptive step sizing.
     """
 
     term_structure = jax.tree_structure(0)

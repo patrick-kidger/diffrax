@@ -34,10 +34,20 @@ class Solution(AbstractPath):
         value of `0` corresponds to a successful solve. Any other value is a failure.
         A human-readable message can be obtained by looking up messages via
         `diffrax.RESULTS[<integer>]`.
-    - `solver_state`: If saved, is the final internal state of the numerical solver.
-    - `controller_state`: If saved, is the final internal state for the step size
+    - `solver_state`: If saved, the final internal state of the numerical solver.
+    - `controller_state`: If saved, the final internal state for the step size
         controller.
     - `made_jump`: If saved, the final internal state for the jump tracker.
+
+    !!! note
+
+        If `diffeqsolve(..., saveat=SaveAt(steps=True))` is set, then the `ts` and `ys`
+        in the solution object will be padded with `NaN`s, out to the value of
+        `max_steps` passed to [`diffrax.diffeqsolve`][].
+
+        This is because JAX demands that shapes be known statically ahead-of-time. As
+        we do not know how many steps we will take until the solve is performed, we
+        must allocate enough space for the maximum possible number of steps.
     """
 
     t0: Scalar = field(init=True)
@@ -98,15 +108,15 @@ class Solution(AbstractPath):
             The value returned here is the derivative of that spline.
 
             This spline will be close to the true solution of the differential
-            equation, but this does not mean that the derivative will be.
+            equation, but this does not mean that their derivatives will be close.
 
-            Thus, precisely, this `derivative` method returns the *derivative of the
+            Put precisely: this `derivative` method returns the *derivative of the
             numerical solution*, and *not* an approximation to the derivative of the
             true solution.
 
             If solving an ODE and wanting the derivative to the true solution, then
-            evaluating the vector field on `self.evaluate(t)` will typically be much
-            more accurate.
+            taking `self.evaluate(t)`, and evaluating the vector field on it, will
+            typically be much more accurate.
 
         **Arguments:**
 

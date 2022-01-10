@@ -36,7 +36,17 @@ class AbstractStepSizeController(eqx.Module):
     def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
         """Remakes the solver, adding additional information.
 
-        Some step size controllers need to modify the solver slightly.
+        Some step size controllers need to modify the solver slightly. For example,
+        adaptive step size controllers can automatically set the tolerances used in
+        implicit solvers.
+
+        **Arguments:**
+
+        - `solver`: The solver to modify.
+
+        **Returns:**
+
+        The modified solver.
         """
         return solver
 
@@ -54,18 +64,16 @@ class AbstractStepSizeController(eqx.Module):
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
 
-        **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
-        flattened one-dimensional JAX array. (Obtained via
-        `jax.flatten_util.ravel_pytree` if `y0` was originally a PyTree.)
+        **Arguments:** As `diffeqsolve`.
 
         **Returns:**
 
         A 2-tuple of:
 
         - The endpoint $\tau$ for the initial first step: the first step will be made
-            over the interval $[t_0, \tau]$. If `dt0` is not `None` then this is
-            typically `t0 + dt0`. (Although the step size controller doesn't have to
-            respect this if it really doesn't want to.)
+            over the interval $[t_0, \tau]$. If `dt0` is specified (not `None`) then
+            this is typically `t0 + dt0`. (Although in principle the step size
+            controller doesn't have to respect this if it doesn't want to.)
         - The initial hidden state for the step size controller, which is used the
             first time `adapt_step_size` is called.
         """
@@ -118,13 +126,4 @@ class AbstractStepSizeController(eqx.Module):
         - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
             happened successfully, or if it failed for some reason. (e.g. hitting a
             minimum allowed step size in the solver.)
-
-        !!! warning
-
-            Note that it is up to the step size controller to produce an output that
-            is consistent with the accept/reject step decision. (The output of the
-            step size controller is *not* further post-processed to ensure that e.g.
-            the controller state is reset in some appropriate way if a step is
-            rejected -- often step size controllers want to maintain state across
-            step rejections, which would make this impossible.)
         """

@@ -17,14 +17,17 @@ _SolverState = Tuple[PyTree, PyTree]
 class ReversibleHeun(AbstractSolver):
     """Reversible Heun method.
 
-    Algebraically reversible 2nd order method. Has an embedded 1st order method.
+    Algebraically reversible 2nd order method. Has an embedded 1st order method for
+    adaptive step sizing.
 
-    @article{kidger2021efficient,
-        author={Kidger, Patrick and Foster, James and Li, Xuechen and Lyons, Terry},
-        title={Efficient and Accurate Gradients for Neural {SDE}s},
-        year={2021},
-        journal={Advances in Neural Information Processing Systems}
-    }
+    ??? cite "Reference"
+
+        @article{kidger2021efficient,
+            author={Kidger, Patrick and Foster, James and Li, Xuechen and Lyons, Terry},
+            title={Efficient and Accurate Gradients for Neural {SDE}s},
+            year={2021},
+            journal={Advances in Neural Information Processing Systems}
+        }
     """
 
     term_structure = jax.tree_structure(0)

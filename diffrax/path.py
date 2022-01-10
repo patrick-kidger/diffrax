@@ -3,6 +3,8 @@ from dataclasses import field
 from typing import Optional
 
 import equinox as eqx
+import jax
+import jax.numpy as jnp
 
 from .custom_types import PyTree, Scalar
 
@@ -31,17 +33,7 @@ class AbstractPath(eqx.Module):
                 if t1 is not None:
                     return self.evaluate(t1) - self.evaluate(t0)
                 return t0 ** 2
-
-            def derivative(self, t, left=True):
-                del left
-                return 2 * t
         ```
-
-    !!! note
-
-        In principle it is possible to calculate `derivative` as a `jax.jvp` of
-        `evaluate`. A separate API is provided in case some kind of custom behaviour
-        (e.g. more efficient in special cases) is required.
     """
 
     t0: Scalar = field(init=False)
@@ -83,7 +75,8 @@ class AbstractPath(eqx.Module):
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         r"""Evaluate the derivative of the path. Essentially equivalent
-        to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
+        to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))` (and indeed this is its
+        default implementation if no other is specified).
 
 
         **Arguments:**
@@ -97,6 +90,7 @@ class AbstractPath(eqx.Module):
         The derivative of the path.
         """
 
-        raise NotImplementedError(
-            f"Derivative does not exist for path of type {type(self)}."
+        _, deriv = jax.jvp(
+            lambda _t: self.evaluate(_t, left=left), (t,), (jnp.ones_like(t),)
         )
+        return deriv

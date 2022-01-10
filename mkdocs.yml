@@ -6,17 +6,17 @@ theme:
         - header.autohide  # header disappears as you scroll
     palette:
         # Light mode / dark mode
+        # We deliberately don't automatically use `media` to check a user's preferences. We default to light mode as
+        # (a) it looks more professional, and (b) is more obvious about the fact that it offers a (dark mode) toggle.
         - scheme: default
           primary: white
-          accent: indigo
-          media: "(prefers-color-scheme: light)"
+          accent: amber
           toggle:
              icon: material/weather-night
              name: Switch to dark mode
         - scheme: slate
           primary: black
           accent: amber
-          media: "(prefers-color-scheme: dark)"
           toggle:
              icon: material/weather-sunny
              name: Switch to light mode
@@ -81,7 +81,7 @@ plugins:
                     show_root_heading: true  # actually display anything at all...
                     show_root_full_path: true  # display "diffrax.asdf" not just "asdf"
                     show_if_no_docstring: true
-                    show_signature_annotations: true  # do _not_ show type annotations in the signature. These are detailed in a table below instead.
+                    show_signature_annotations: true
                     show_source: false  # don't include source code
                     members_order: source  # order methods according to their order of definition in the source code, not alphabetical order
                     heading_level: 4
@@ -90,7 +90,7 @@ nav:
     - 'index.md'
     - 'further_details/citation.md'
     - Usage:
-        - 'usage/overview.md'
+        - 'usage/getting-started.md'
         - 'usage/how-to-choose-a-solver.md'
         - 'usage/manual-stepping.md'
         - 'usage/extending.md'
@@ -117,9 +117,8 @@ nav:
         - 'api/interpolation.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
-    - Developer Documentation:
-        - 'devdocs/predictor_dirk.md'
-        - 'devdocs/omega.md'
     - Further details:
-        - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'
+        - Developer Documentation:
+            - 'devdocs/predictor_dirk.md'
+            - 'devdocs/omega.md'

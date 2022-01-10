@@ -8,7 +8,7 @@ The following interpolation routines may be used to perform this interpolation.
 
     Missing data, represented as `NaN`, can be handled here as well. (And if you are familiar with the problem of informative missingness, note that this can be handled as well: [see Sections 3.5 and 3.6 of this paper](https://arxiv.org/abs/2005.08926).)
 
-??? "References"
+??? cite "References"
 
     The main two references for using interpolation with controlled differential equations are as follows.
 
@@ -33,7 +33,7 @@ The following interpolation routines may be used to perform this interpolation.
     ```
 
 
-??? "How to pick an interpolation scheme"
+??? info "How to pick an interpolation scheme"
 
     There are a few main types of interpolation provided here. For 99% of applications you will want either rectilinear or cubic interpolation, as follows.
 

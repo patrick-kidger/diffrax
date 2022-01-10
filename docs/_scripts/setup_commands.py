@@ -51,7 +51,9 @@ def _find_public_bases(bases, cache):
             base_obj = _str_to_obj(base)
             if base_obj is not None:
                 base_bases = [_obj_to_str(b) for b in base_obj.__bases__]
-                out.extend(_find_public_bases(base_bases, cache))
+                for _base in _find_public_bases(base_bases, cache):
+                    if _base not in out:
+                        out.append(_base)
     return out
 
 

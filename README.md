@@ -34,15 +34,20 @@ Requires Python 3.8+ and JAX 0.2.20+
 - [`stochastic_gradient_descent.ipynb`](./examples/stochastic_gradient_descent.ipynb) trains a simple neural network via SGD, using an ODE solver. (SGD is just Euler's method for solving an ODE.)
 
 Quick example:
+
 ```python
-from diffrax import diffeqsolve, dopri5
+from diffrax import diffeqsolve, ODETerm, Dopri5
 import jax.numpy as jnp
 
 def f(t, y, args):
     return -y
 
-solver = dopri5(f)
-solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
+term = ODETerm(f)
+t0, t1 = 0, 1
+y0 = jnp.array([2., 3.])
+dt0 = 0.1
+solver = Dopri5()
+solution = diffeqsolve(term, t0, t1, y0, dt0, solver)
 ```
 
 ## Documentation

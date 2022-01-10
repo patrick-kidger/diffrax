@@ -2,8 +2,6 @@
 
 The full list of solvers is available on the [Solvers](../api/solver.md) page.
 
-Note that many of the following solvers have convenience wrappers (e.g. [`diffrax.tsit5`][] for [`diffrax.Tsit5`][]) as a shortcut for writing out the [Terms](../api/terms/md) explicitly.
-
 ## Ordinary differential equations
 
 ### Non-stiff problems
@@ -16,13 +14,13 @@ For non-stiff problems then [`diffrax.Tsit5`][] is a good general-purpose solver
 
 If you need accurate solutions at high tolerances then try [`diffrax.Dopri8`][].
 
-If you are solving a neural differential equation, *and training via discretise-then-optimise*, then often very accurate solutions are not needed and a low-order solver will be most efficient. For example something like [`diffrax.Heun`][].
+If you are solving a neural differential equation, and training via discretise-then-optimise (which is the default `diffeqsolve(..., adjoint=RecursiveCheckpointAdjoint())`), then accurate solutions are often not needed and a low-order solver will be most efficient. For example something like [`diffrax.Heun`][].
 
 ### Stiff problems
 
 For stiff problems then try the [`diffrax.Kvaerno3`][], [`diffrax.Kvaerno4`][], [`diffrax.Kvaerno5`][] family of solvers.
 
-In each case note that they take a [Nonlinear Solver](../api/nonlinear_solver.md) as an argument, which you should set appropriately; see also the [Stiff ODE example](../examples/stiff_ode.ipynb).
+See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
 
 ## Stochastic differential equations
 

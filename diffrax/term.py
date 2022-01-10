@@ -70,8 +70,8 @@ class AbstractTerm(eqx.Module):
         r"""Determines the interaction between vector field and control.
 
         With a solution $y$ to a differential equation with vector field $f$ and
-        control $x$, this computes $f(t, y(t), args) \Delta x(t)$ given $f(t, y(t))$
-        and $\Delta x(t)$.
+        control $x$, this computes $f(t, y(t), args) \Delta x(t)$ given
+        $f(t, y(t), args)$ and $\Delta x(t)$.
 
         **Arguments:**
 
@@ -116,7 +116,7 @@ class AbstractTerm(eqx.Module):
         !!! example
 
             This is used extensively for efficiency when backpropagating via
-            [`diffrax.BacksolveAdjoint`][]..
+            [`diffrax.BacksolveAdjoint`][].
 
         **Arguments:**
 
@@ -148,6 +148,8 @@ class AbstractTerm(eqx.Module):
 
         This case is used when selecting the initial step size of an ODE solve
         automatically.
+
+        See [`diffrax.AbstractSolver.func_for_init`][].
         """
 
         raise ValueError(
@@ -155,12 +157,6 @@ class AbstractTerm(eqx.Module):
             "scenario for this error to occur is when trying to use adaptive step "
             "size solvers with SDEs. Please specify an initial `dt0` instead."
         )
-
-    def wrap(self, direction: Scalar) -> "WrapTerm":
-        return WrapTerm(self, direction)
-
-    def adjoint(self) -> "AdjointTerm":
-        return AdjointTerm(self)
 
 
 class ODETerm(AbstractTerm):
@@ -172,7 +168,7 @@ class ODETerm(AbstractTerm):
         ```python
         vector_field = lambda t, y, args: -y
         ode_term = ODETerm(vector_field)
-        solver = Euler(ode_term)
+        diffeqsolve(ode_term, ...)
         ```
     """
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
@@ -216,7 +212,7 @@ class ControlTerm(AbstractTerm):
         control = UnsafeBrownianPath(shape=(2,), key=...)
         vector_field = lambda t, y, args: jnp.stack([y, y], axis=-1)
         diffusion_term = ControlTerm(vector_field, control)
-        solver = Euler(diffusion_term)
+        diffeqsolve(diffusion_term, ...)
         ```
 
     !!! example
@@ -230,7 +226,7 @@ class ControlTerm(AbstractTerm):
         control = LinearInterpolation(ts, data)
         vector_field = lambda t, y, args: jnp.stack([y, y], axis=-1)
         cde_term = ControlTerm(vector_field, control)
-        solver = Euler(cde_term)
+        diffeqsolve(cde_term, ...)
         ```
     """
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
@@ -296,7 +292,7 @@ class MultiTerm(AbstractTerm):
 
     $\mathrm{d}y(t) = [f(t, y(t)), g(t, y(t))] \cdot [\mathrm{d}t, \mathrm{d}w(t)]$
 
-    whose vector field - control interaction is a dot product.
+    whose vector field -- control interaction is a dot product.
 
     `MultiTerm` performs this transform. For simplicitly most differential equation
     solvers (at least those built-in to Diffrax) accept just a single term, so this
@@ -341,7 +337,7 @@ class WrapTerm(AbstractTerm):
         t0, t1 = jnp.where(self.direction == 1, t0, -t1), jnp.where(
             self.direction == 1, t1, -t0
         )
-        return self.term.contr(t0, t1) * self.direction
+        return (self.direction * self.term.contr(t0, t1) ** ω).ω
 
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         return self.term.prod(vf, control)

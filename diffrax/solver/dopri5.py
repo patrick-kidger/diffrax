@@ -46,9 +46,10 @@ class _Dopri5Interpolation(FourthOrderPolynomialInterpolation):
 class Dopri5(AbstractERK):
     r"""Dormand-Prince's 5/4 method.
 
-    5th order Runge--Kutta method. Has an embedded 4th order method.
+    5th order Runge--Kutta method. Has an embedded 4th order method for adaptive step
+    sizing.
 
-    ??? Reference
+    ??? cite "Reference"
 
         ```bibtex
         @article{dormand1980family,

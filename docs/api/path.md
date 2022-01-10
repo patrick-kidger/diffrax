@@ -6,7 +6,7 @@ Diffrax represents this general notion via the [`diffrax.AbstractPath`][] class.
 
 If you need to create your own path (e.g. to drive a CDE) then you can do so by subclassing [`diffrax.AbstractPath`][].
 
-??? "`diffrax.AbstractPath`"
+??? abstract "`diffrax.AbstractPath`"
 
     ::: diffrax.AbstractPath
         selection:

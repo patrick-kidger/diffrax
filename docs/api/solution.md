@@ -9,6 +9,7 @@
             - ys
             - solver_state
             - controller_state
+            - made_jump
             - stats
             - result
             - message

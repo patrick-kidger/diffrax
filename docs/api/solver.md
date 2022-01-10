@@ -4,10 +4,32 @@
 
 The complete list of solvers, categorised by type, is as follows.
 
-Unless otherwise specified, their `__init__` method always takes a single [`diffrax.AbstractTerm`][].
+!!! note
+
+    The type of solver chosen determines how the `terms` field of `diffeqsolve` should be laid out. Most of them demand that it should be a single `AbstractTerm`. But for example [`diffrax.SemiImplicitEuler`][] demands that it by a 2-tuple `(AbstractTerm, AbstractTerm)`, to represent the two vector fields that solver uses.
+
+    If it is different from this default, then you can find the appropriate structure under `<solver>.term_structure`.
+
+??? info "Stochastic differential equations"
+
+    No distinction is made between solvers for different kinds of differential equation, like between ODEs and SDEs. Diffrax's term system allows for treating them all in a unified way.
+
+    For the common case of an SDE with drift and Brownian-motion-driven diffusion, they can be used as
+
+    ```python
+    drift = lambda t, y, args: -y
+    diffusion = lambda t, y, args: y[..., None]
+    bm = UnsafeBrownianPath(shape=(1,), key=...)
+    terms = MultiTerm(ODETerm(drift), ControlTerm(diffusion, bm))
+    diffeqsolve(terms, ..., solver=Euler())
+    ```
+
+    In which the various terms are combined together into a single term, via [`diffrax.MultiTerm`][].
+
+    As a general rule, any first or second order ODE solver may be used to solve an SDE. (Higher solvers will work perfectly fine, but won't produce more accurate results, so their extra computational work is unnecessary.)
 
 
-??? "`diffrax.AbstractSolver`"
+??? abstract "`diffrax.AbstractSolver`"
 
     All of the classes implement the following interface specified by [`diffrax.AbstractSolver`][].
 
@@ -17,7 +39,7 @@ Unless otherwise specified, their `__init__` method always takes a single [`diff
         selection:
             members:
                 - order
-                - wrap
+                - term_structure
                 - init
                 - step
                 - func_for_init
@@ -76,81 +98,24 @@ Unless otherwise specified, their `__init__` method always takes a single [`diff
 
 ---
 
-## Convenience wrappers
+### Symplectic methods
 
-The following are convenience wrappers for the above solvers, for the common case of solving single-term ODEs and SDEs.
-
----
-
-### Ordinary differential equations
-
-!!! example
-    All of the following are used as:
-    ```python
-    vector_field = lambda t, y, args: -y
-    solver = euler(vector_field)
-    ```
-
-    This is equivalent to:
-    ```python
-    vector_field = lambda t, y, args: -y
-    ode_term = ODETerm(vector_field)
-    solver = Euler(ode_term)
-    ```
-
-::: diffrax.euler
-
-::: diffrax.implicit_euler
-
-::: diffrax.heun
-
-::: diffrax.fehlberg2
-
-::: diffrax.bosh3
-
-::: diffrax.kvaerno3
-
-::: diffrax.kvaerno4
-
-::: diffrax.kvaerno5
-
-::: diffrax.tsit5
-
-::: diffrax.dopri5
-
-::: diffrax.dopri8
+::: diffrax.SemiImplicitEuler
+    selection:
+        members: false
 
 ---
 
-### Stochastic differential equations
+### Reversible methods
 
-!!! note
-    Generally speaking any first or second order ODE solver can be used as an SDE
-    solver. Sometimes they then go by slightly different names -- for example Euler
-    becomes Euler--Maruyama.
+::: diffrax.ReversibleHeun
+    selection:
+        members: false
 
-!!! example
-    All of the following are used as:
-    ```python
-    drift = lambda t, y, args: -y
-    diffusion = lambda t, y, args: y[..., None]  # 1-dimensional Brownian motion
-    bm = UnsafeBrownianPath(shape=(1,), key=...)
-    solver = euler_maruyama(drift, diffusion, bm)
-    ```
+---
 
-    This is equivalent to:
-    ```python
-    drift = lambda t, y, args: -y
-    diffusion = lambda t, y, args: y[..., None]
-    bm = UnsafeBrownianPath(shape=(1,), key=...)
-    drift_term = ODETerm(drift)
-    diffusion_term = ControlTerm(diffusion, bm)
-    multi_term = MultiTerm((drift_term, diffusion_term))
-    solver = Euler(multi_term)
-    ```
+### Linear multistep methods
 
-::: diffrax.euler_maruyama
-
-::: diffrax.implicit_euler_maruyama
-
-::: diffrax.heun
+::: diffrax.LeapfrogMidpoint
+    selection:
+        members: false

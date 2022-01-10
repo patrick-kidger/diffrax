@@ -47,9 +47,7 @@ class AbstractSolver(eqx.Module):
     ) -> _SolverState:
         """Initialises any hidden state for the solver.
 
-        **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
-        flattened one-dimensional JAX array. (Obtained via
-        `jax.flatten_util.ravel_pytree` if `y0` was originally a PyTree.)
+        **Arguments** as [`diffrax.diffeqsolve`][].
 
         **Returns:**
 
@@ -70,19 +68,20 @@ class AbstractSolver(eqx.Module):
     ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
-        A step is made over some interval $[t_0, t_1]$.
+        Each step is made over the specified interval $[t_0, t_1]$.
 
         **Arguments:**
 
+        - `terms`: The PyTree of terms representing the vector fields and controls.
         - `t0`: The start of the interval that the step is made over.
-        - `t1`: The end of the interval that the step is amde over.
+        - `t1`: The end of the interval that the step is made over.
         - `y0`: The current value of the solution at `t0`.
         - `args`: Any extra arguments passed to the vector field.
         - `solver_state`: Any evolving state for the solver itself, at `t0`.
         - `made_jump`: Whether there was a discontinuity in the vector field at `t0`.
             Some solvers (notably FSAL Runge--Kutta solvers) usually assume that there
-            are no jumps and for efficiency re-use information between steps, which is
-            kept in their `solver_state`.
+            are no jumps and for efficiency re-use information between steps; this
+            indicates that a jump has just occurred and this assumption is not true.
 
         **Returns:**
 
@@ -97,8 +96,7 @@ class AbstractSolver(eqx.Module):
             `SaveAt(dense=...)`.)
         - The value of the solver state at `t1`.
         - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
-            happened successfully, or if it failed for some reason. (e.g. no solution
-            could be found to the nonlinear problem in an implicit solver.)
+            happened successfully, or if (unusually) it failed for some reason.
         """
 
     def func_for_init(
@@ -106,23 +104,18 @@ class AbstractSolver(eqx.Module):
     ) -> PyTree:
         """Provides vector field evaluations to select the initial step size.
 
-        Note that `step` operates over an interval, rather than acting at
-        a point $t$. (This is important for handling SDEs and CDEs.)
+        This is used to make a point evaluation. This is unlike
+        [`diffrax.AbstractSolver.step`][], which operates over an interval.
 
-        However, ODEs have one trick up their sleeve that require point evaluations:
-        selecting the initial step size automatically.
+        In general differential equation solvers are interval-based. There is precisely
+        one place where point evaluations are needed: selecting the initial step size
+        automatically in an ODE solve. And that is what this function is for.
 
-        This function is used for that one purpose.
-
-        **Arguments:**
-
-        - `t0`: The initial point of the overall region of integration.
-        - `y0`: The (ravelled) initial value for the ODE at `t0`.
-        - `args`: Any extra arguments to pass to the vector field.
+        **Arguments:** As [`diffrax.diffeqsolve`][]
 
         **Returns:**
 
-        The (ravelled) evaluation of the vector field at `t0`.
+        The evaluation of the vector field at `t0`.
         """
 
         raise ValueError(
