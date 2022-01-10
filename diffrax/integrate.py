@@ -77,7 +77,7 @@ def _save(state: _State, t: Scalar) -> _State:
     )
 
 
-def _loop(
+def loop(
     solver,
     stepsize_controller,
     saveat,
@@ -676,7 +676,6 @@ def diffeqsolve(
     #
 
     final_state = adjoint.loop(
-        _loop,
         solver,
         stepsize_controller,
         saveat,

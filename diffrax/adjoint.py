@@ -7,7 +7,6 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from .integrate import diffeqsolve
 from .misc import nondifferentiable_output, ω
 from .saveat import SaveAt
 
@@ -18,7 +17,6 @@ class AbstractAdjoint(eqx.Module):
     @abc.abstractmethod
     def loop(
         self,
-        loop_fn,
         solver,
         stepsize_controller,
         saveat,
@@ -35,6 +33,28 @@ class AbstractAdjoint(eqx.Module):
         [`diffrax.BacksolveAdjoint`][].
         """
 
+    # Eurgh, delayed imports to handle circular dependencies.
+    #
+    # `integrate.py` defines the forward pass. `adjoint.py` defines the backward pass.
+    # These pretty much necessarily depend up on each other:
+    # - diffeqsolve needs to know about AbstractAdjoint, since it's one its arguments.
+    # - BacksolveAdjoint needs to know about how to integrate a differential equation,
+    #   since that's what it does.
+    # As such we get a circular dependency. We resolve it by lazily importing from
+    # `integrate.py`. For convenience we make them available as properties here so all
+    # adjoint methods can access these.
+    @property
+    def _loop_fn(self):
+        from .integrate import loop
+
+        return loop
+
+    @property
+    def _diffeqsolve(self):
+        from .integrate import diffeqsolve
+
+        return diffeqsolve
+
 
 class RecursiveCheckpointAdjoint(AbstractAdjoint):
     """Backpropagate through [`diffrax.diffeqsolve`][] by differentiating the numerical
@@ -49,7 +69,6 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
 
     def loop(
         self,
-        loop_fn,
         solver,
         stepsize_controller,
         saveat,
@@ -61,7 +80,7 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         args,
         init_state,
     ):
-        return loop_fn(
+        return self._loop_fn(
             solver,
             stepsize_controller,
             saveat,
@@ -85,7 +104,6 @@ class NoAdjoint(AbstractAdjoint):
 
     def loop(
         self,
-        loop_fn,
         solver,
         stepsize_controller,
         saveat,
@@ -97,7 +115,7 @@ class NoAdjoint(AbstractAdjoint):
         args,
         init_state,
     ):
-        return loop_fn(
+        return self._loop_fn(
             solver,
             stepsize_controller,
             saveat,
@@ -113,7 +131,6 @@ class NoAdjoint(AbstractAdjoint):
 @ft.partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 4, 5, 6, 7, 8))
 def _loop_backsolve(
     self,
-    loop_fn,
     solver,
     stepsize_controller,
     saveat,
@@ -125,7 +142,7 @@ def _loop_backsolve(
     args,
     init_state,
 ):
-    return loop_fn(
+    return self._loop_fn(
         solver,
         stepsize_controller,
         saveat,
@@ -140,7 +157,6 @@ def _loop_backsolve(
 
 def _loop_backsolve_fwd(
     self,
-    loop_fn,
     solver,
     stepsize_controller,
     saveat,
@@ -152,7 +168,7 @@ def _loop_backsolve_fwd(
     args,
     init_state,
 ):
-    final_state = loop_fn(
+    final_state = self._loop_fn(
         solver,
         stepsize_controller,
         saveat,
@@ -173,7 +189,6 @@ def _loop_backsolve_fwd(
 # TODO: implement this as a single diffeqsolve with events, once events are supported.
 def _loop_backsolve_bwd(
     self,
-    _loop_fn,
     solver,
     stepsize_controller,
     saveat,
@@ -199,9 +214,9 @@ def _loop_backsolve_bwd(
     kwargs.update(self.kwargs)
     grad_ys = grad_final_state.ys
     had_t0 = saveat.t0
+    diffeqsolve = self._diffeqsolve
     del (
         self,
-        _loop_fn,
         solver,
         stepsize_controller,
         saveat,
@@ -328,7 +343,6 @@ class BacksolveAdjoint(AbstractAdjoint):
 
     def loop(
         self,
-        loop_fn,
         solver,
         stepsize_controller,
         saveat,
@@ -347,7 +361,6 @@ class BacksolveAdjoint(AbstractAdjoint):
             )
         final_state = _loop_backsolve(
             self,
-            loop_fn,
             solver,
             stepsize_controller,
             saveat,
