@@ -68,12 +68,9 @@ plugins:
             - diffrax
         handlers:
             python:
-                # Monkey-patches mkdocstrings/pytkdocs to get custom behaviuor
                 setup_commands:
-                    - import sys
-                    - sys.path.append("docs/_scripts")
-                    - import setup_commands
-                    - setup_commands.main()
+                    - import pytkdocs_tweaks
+                    - pytkdocs_tweaks.main()
 
                 selection:
                     inherited_members: true  # Allow looking up inherited methods
