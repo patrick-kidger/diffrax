@@ -392,7 +392,7 @@ class AdjointTerm(AbstractTerm):
             vf_prod_tree = jax.tree_structure(_out)
             return _out
 
-        jac = make_jac(_fn, control)
+        jac = make_jac(_fn)(control)
         if jax.tree_structure(None) in (vf_prod_tree, control_tree):
             # Very much a faffy, and highly unusual/not-useful edge case to handle.
             raise NotImplementedError(
@@ -432,7 +432,7 @@ class AdjointTerm(AbstractTerm):
 
         def _contract(_, vf_piece):
             assert jax.tree_structure(vf_piece) == control_tree
-            _contracted = jax.tree_map(_prod, vf_piece, control_tree)
+            _contracted = jax.tree_map(_prod, vf_piece, control)
             return sum(jax.tree_leaves(_contracted), 0)
 
         return jax.tree_map(_contract, example_vf_prod, vf)
@@ -440,9 +440,15 @@ class AdjointTerm(AbstractTerm):
     def vf_prod(
         self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree], args: PyTree, control: PyTree
     ) -> Tuple[PyTree, PyTree, PyTree]:
-        y, a_y, a_args = y
-        dy, vjp = jax.vjp(
-            lambda _y, _args: self.term.vf_prod(t, _y, _args, control), y, args
-        )
-        da_y, da_args = vjp(a_y)
-        return dy, da_y, da_args
+        # Note the inclusion of "implicit" parameters (as `term` might be a callable
+        # PyTree a la Equinox) and "explicit" parameters (`args`)
+        y, a_y, _, _ = y
+        diff_term, nondiff_term = eqx.partition(self.term, eqx.is_inexact_array)
+
+        def _to_vjp(_y, _args, _diff_term):
+            _term = eqx.combine(_diff_term, nondiff_term)
+            return _term.vf_prod(t, _y, _args, control)
+
+        dy, vjp = jax.vjp(_to_vjp, y, args, diff_term)
+        da_y, da_args, da_diff_term = vjp(a_y)
+        return dy, da_y, da_args, da_diff_term

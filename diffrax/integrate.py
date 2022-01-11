@@ -78,6 +78,7 @@ def _save(state: _State, t: Scalar) -> _State:
 
 
 def loop(
+    *,
     solver,
     stepsize_controller,
     saveat,
@@ -346,7 +347,7 @@ def loop(
             return cond_fun(state) & (state.step < max_steps)
 
         def _body_fun(state):
-            return _body_fun(state, lambda x: x)
+            return body_fun(state, lambda x: x)
 
         final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
 
@@ -563,10 +564,14 @@ def diffeqsolve(
         dt0 = jnp.asarray(dt0, dtype=dtype)
     if saveat.ts is not None:
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
+
     # Time will affect state, so need to promote the state dtype as well if necessary.
-    dtype2 = jnp.result_type(y0, *timelikes)
-    y0 = jax.tree_map(lambda yi: jnp.asarray(yi, dtype=dtype2), y0)  # noqa: F821
-    del timelikes, dtype, dtype2
+    def _promote(yi):
+        _dtype = jnp.result_type(yi, *timelikes)  # noqa: F821
+        return jnp.asarray(yi, dtype=_dtype)
+
+    y0 = jax.tree_map(_promote, y0)
+    del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
@@ -679,16 +684,16 @@ def diffeqsolve(
     #
 
     final_state = adjoint.loop(
-        solver,
-        stepsize_controller,
-        saveat,
-        dt0,
-        t1,
-        max_steps,
-        throw,
-        terms,
-        args,
-        init_state,
+        args=args,
+        terms=terms,
+        solver=solver,
+        stepsize_controller=stepsize_controller,
+        saveat=saveat,
+        dt0=dt0,
+        t1=t1,
+        max_steps=max_steps,
+        throw=throw,
+        init_state=init_state,
     )
 
     #

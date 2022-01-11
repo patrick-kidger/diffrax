@@ -1,5 +1,4 @@
 import abc
-import functools as ft
 from typing import Any, Dict
 
 import equinox as eqx
@@ -9,7 +8,7 @@ import jax.numpy as jnp
 
 from .misc import nondifferentiable_output, ω
 from .saveat import SaveAt
-from .term import AdjointTerm
+from .term import AbstractTerm, AdjointTerm
 
 
 class AbstractAdjoint(eqx.Module):
@@ -18,6 +17,9 @@ class AbstractAdjoint(eqx.Module):
     @abc.abstractmethod
     def loop(
         self,
+        *,
+        args,
+        terms,
         solver,
         stepsize_controller,
         saveat,
@@ -25,8 +27,6 @@ class AbstractAdjoint(eqx.Module):
         t1,
         max_steps,
         throw,
-        terms,
-        args,
         init_state,
     ):
         """Runs the main solve loop. Subclasses can override this to provide custom
@@ -37,10 +37,12 @@ class AbstractAdjoint(eqx.Module):
     # Eurgh, delayed imports to handle circular dependencies.
     #
     # `integrate.py` defines the forward pass. `adjoint.py` defines the backward pass.
-    # These pretty much necessarily depend up on each other:
+    # These pretty much necessarily depend on each other:
+    #
     # - diffeqsolve needs to know about AbstractAdjoint, since it's one its arguments.
     # - BacksolveAdjoint needs to know about how to integrate a differential equation,
     #   since that's what it does.
+    #
     # As such we get a circular dependency. We resolve it by lazily importing from
     # `integrate.py`. For convenience we make them available as properties here so all
     # adjoint methods can access these.
@@ -68,30 +70,9 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
     A binomial checkpointing scheme is used so that memory usage is low.
     """
 
-    def loop(
-        self,
-        solver,
-        stepsize_controller,
-        saveat,
-        _dt0,
-        t1,
-        max_steps,
-        _throw,
-        terms,
-        args,
-        init_state,
-    ):
-        return self._loop_fn(
-            solver,
-            stepsize_controller,
-            saveat,
-            t1,
-            max_steps,
-            terms,
-            args,
-            init_state,
-            is_bounded=True,
-        )
+    def loop(self, *, dt0, throw, **kwargs):
+        del dt0, throw
+        return self._loop_fn(**kwargs, is_bounded=True)
 
 
 class NoAdjoint(AbstractAdjoint):
@@ -103,188 +84,187 @@ class NoAdjoint(AbstractAdjoint):
     this may sometimes improve the speed at which the differential equation is solved.
     """
 
-    def loop(
-        self,
-        solver,
-        stepsize_controller,
-        saveat,
-        _dt0,
-        t1,
-        max_steps,
-        _throw,
-        terms,
-        args,
-        init_state,
-    ):
-        return self._loop_fn(
-            solver,
-            stepsize_controller,
-            saveat,
-            t1,
-            max_steps,
-            terms,
-            args,
-            init_state,
-            is_bounded=False,
-        )
+    def loop(self, *, dt0, throw, **kwargs):
+        del dt0, throw
+        return self._loop_fn(**kwargs, is_bounded=False)
 
 
-@ft.partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 4, 5, 6, 7, 8))
-def _loop_backsolve(
-    self,
-    solver,
-    stepsize_controller,
-    saveat,
-    _dt0,
-    t1,
-    max_steps,
-    _throw,
-    terms,
-    args,
-    init_state,
-):
+# Compute derivatives with respect to the first argument:
+# - y, corresponding to the initial state;
+# - args, corresponding to explicit parameters;
+# - terms, corresponding to implicit parameters as part of the vector field.
+@eqx.filter_custom_vjp
+def _loop_backsolve(y__args__terms, *, self, dt0, throw, init_state, **kwargs):
+    del dt0, throw
+    y, args, terms = y__args__terms
+    init_state = eqx.tree_at(
+        lambda s: jax.tree_leaves(s.y), init_state, jax.tree_leaves(y)
+    )
+    del y
     return self._loop_fn(
-        solver,
-        stepsize_controller,
-        saveat,
-        t1,
-        max_steps,
-        terms,
-        args,
-        init_state,
-        is_bounded=False,
+        args=args, terms=terms, init_state=init_state, **kwargs, is_bounded=False
     )
 
 
-def _loop_backsolve_fwd(
-    self,
-    solver,
-    stepsize_controller,
-    saveat,
-    _dt0,
-    t1,
-    max_steps,
-    _throw,
-    terms,
-    args,
-    init_state,
-):
-    final_state = self._loop_fn(
-        solver,
-        stepsize_controller,
-        saveat,
-        t1,
-        max_steps,
-        terms,
-        args,
-        init_state,
-        is_bounded=False,
-    )
-    t0 = init_state.tprev
+def _loop_backsolve_fwd(y__args__terms, **kwargs):
+    final_state = _loop_backsolve(y__args__terms, **kwargs)
     ts = final_state.ts
     ys = final_state.ys
-    context = (t0, terms, args, ts, ys)
-    return final_state, context
+    return final_state, (ts, ys)
 
 
 # TODO: implement this as a single diffeqsolve with events, once events are supported.
 def _loop_backsolve_bwd(
+    residuals,
+    grad_final_state,
+    y__args__terms,
+    *,
     self,
     solver,
     stepsize_controller,
     saveat,
     dt0,
-    _t1,
+    t1,
     max_steps,
     throw,
-    context,
-    grad_final_state,
+    init_state,
 ):
-    t0, terms, args, ts, ys = context
-    terms = jax.tree_map(AdjointTerm, terms)
+
+    #
+    # Unpack our various arguments. Delete a lot of things just to make sure we're not
+    # using them later.
+    #
+
+    # TODO: handle non-inexact parts of y; args
+    # TODO: currently non-inexact parts of terms cause crashes when a None gradient is returned for them as part of a pytree. (Such as `direction` in WrapTerm).  # noqa: E501
+
+    del t1
+    ts, ys = residuals
+    del residuals
+    grad_ys = grad_final_state.ys
+    del grad_final_state
+    y, args, terms = y__args__terms
+    del y__args__terms
+    diff_terms = eqx.filter(terms, eqx.is_inexact_array)
+    zeros_like_y = jax.tree_map(jnp.zeros_like, y)
+    del y
+    zeros_like_args = jax.tree_map(jnp.zeros_like, args)
+    zeros_like_diff_terms = jax.tree_map(jnp.zeros_like, diff_terms)
+    del diff_terms
+    adjoint_terms = jax.tree_map(
+        AdjointTerm, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
+    )
+    del terms
+    diffeqsolve = self._diffeqsolve
     kwargs = dict(
-        terms=terms,
-        dt0=dt0,
-        solver=solver,
         args=args,
-        stepsize_controller=stepsize_controller,
         adjoint=self,
+        solver=solver,
+        stepsize_controller=stepsize_controller,
+        terms=adjoint_terms,
+        dt0=dt0,
         max_steps=max_steps,
         throw=throw,
     )
     kwargs.update(self.kwargs)
-    grad_ys = grad_final_state.ys
-    had_t0 = saveat.t0
-    diffeqsolve = self._diffeqsolve
-    del (
-        self,
-        solver,
-        stepsize_controller,
-        saveat,
-        dt0,
-        _t1,
-        max_steps,
-        throw,
-        context,
-        terms,
-        grad_final_state,
-    )
+    del args, self, solver, stepsize_controller, adjoint_terms, dt0, max_steps, throw
+    saveat_t0 = saveat.t0
+    del saveat
+    t0 = init_state.tprev
+    del init_state
 
-    saveat = SaveAt(t1=True, solver_state=True, controller_state=True)
+    #
+    # Now run a scan backwards in time, diffeqsolve'ing between each pair of adjacent
+    # timestamps.
+    #
 
     def _scan_fun(_state, _vals, first=False):
         _t1, _t0, _y0, _grad_y0 = _vals
-        _y_aug0, _solver_state, _controller_state = _state
-        _a_y0, _a_args0 = _y_aug0
+        _a0, _solver_state, _controller_state = _state
+        _a_y0, _a_args0, _a_term0 = _a0
         _a_y0 = (_a_y0 ** ω + _grad_y0 ** ω).ω
-        _y_aug0 = (_y0, _a_y0, _a_args0)
+        _aug0 = (_y0, _a_y0, _a_args0, _a_term0)
+
         _sol = diffeqsolve(
             t0=_t0,
             t1=_t1,
-            y0=_y_aug0,
+            y0=_aug0,
             solver_state=_solver_state,
             controller_state=_controller_state,
-            made_jump=not first,
-            saveat=saveat,
+            made_jump=not first,  # Adding _grad_y0, above, is a jump.
+            saveat=SaveAt(t1=True, solver_state=True, controller_state=True),
             **kwargs,
         )
 
-        def __get(__y):
-            assert __y.shape[0] == 1
-            return __y[0]
+        def __get(__aug):
+            assert __aug.shape[0] == 1
+            return __aug[0]
 
-        _y1 = ω(_sol.ys).call(__get).ω
-        _, _a_y1, _a_args1 = _y1
-        _y1 = (_a_y1, _a_args1)
+        _aug1 = ω(_sol.ys).call(__get).ω
+        _, _a_y1, _a_args1, _a_term1 = _aug1
+        _a1 = (_a_y1, _a_args1, _a_term1)
         _solver_state = _sol.solver_state
         _controller_state = _sol.controller_state
 
-        return (_y1, _solver_state, _controller_state), None
+        return (_a1, _solver_state, _controller_state), None
 
-    a_y0 = ω(grad_ys)[-1].ω
-    a_args0 = ω(args).call(jnp.zeros_like).ω
-    y_aug0 = (a_y0, a_args0)
-    scan_init = (y_aug0, None, None)
-    # Run once outside the loop to get access to solver_state etc. of the correct
-    # structure.
-    val0 = (ts[-2], ts[-1], ω(ys)[-1].ω, ω(grad_ys)[-1].ω)
-    if had_t0:
-        vals = (ts[:-2], ts[1:-1], ω(ys)[1:-1].ω, ω(grad_ys)[1:-1].ω)
+    state = ((zeros_like_y, zeros_like_args, zeros_like_diff_terms), None, None)
+    del zeros_like_y, zeros_like_args, zeros_like_diff_terms
+
+    # We always start backpropagating from `ts[-1]`.
+    # We always finish backpropagating at `t0`.
+    #
+    # We may or may not have included `t0` in `ts`. (Depending on the avlue of
+    # SaveaAt(t0=...) on the forward pass.)
+    #
+    # For some of these options, we run _scan_fun once outside the loop to get access
+    # to solver_state etc. of the correct PyTree structure.
+    if saveat_t0:
+        if len(ts) > 2:
+            val0 = (ts[-2], ts[-1], ω(ys)[-1].ω, ω(grad_ys)[-1].ω)
+            state = _scan_fun(state, val0, first=True)
+            vals = (
+                ts[:-2],
+                ts[1:-1],
+                ω(ys)[1:-1].ω,
+                ω(grad_ys)[1:-1].ω,
+            )
+            state, _ = lax.scan(_scan_fun, state, vals, reverse=True)
+
+        elif len(ts) == 1:
+            # nothing to do, diffeqsolve is the identity when merely SaveAt(t0=True).
+            pass
+
+        else:
+            assert len(ts) == 2
+            val = (ts[0], ts[1], ω(ys)[1].ω, ω(grad_ys)[1].ω)
+            state, _ = _scan_fun(state, val, first=True)
+
+        y_aug1, _, _ = state
+        a_y1, a_args1, a_diff_terms1 = y_aug1
+        a_y1 = (ω(a_y1) + ω(grad_ys)[0]).ω
+
     else:
-        vals = (
-            jnp.concatenate([t0[None], ts[:-2]]),
-            ts[:-1],
-            ω(ys)[:-1].ω,
-            ω(grad_ys)[:-1].ω,
-        )
-    scan_init = _scan_fun(scan_init, val0, first=True)
-    scan_out, _ = lax.scan(_scan_fun, scan_init, vals, reverse=True)
-    y_augm1, _, _, _ = scan_out
-    a_ym1, a_argsm1 = y_augm1
-    if had_t0:
-        a_ym1 = (ω(a_ym1) + ω(grad_ys)[0]).ω
+        if len(ts) > 1:
+            val0 = (ts[-2], ts[-1], ω(ys)[-1].ω, ω(grad_ys)[-1].ω)
+            state = _scan_fun(state, val0, first=True)
+            vals = (
+                jnp.concatenate([t0[None], ts[:-2]]),
+                ts[:-1],
+                ω(ys)[:-1].ω,
+                ω(grad_ys)[:-1].ω,
+            )
+            state, _ = lax.scan(_scan_fun, state, vals, reverse=True)
 
-    # TODO: returns
+        else:
+            assert len(ts) == 1
+            val = (t0, ts[0], ω(ys)[0].ω, ω(grad_ys)[0].ω)
+            state, _ = _scan_fun(state, val, first=True)
+
+        y_aug1, _, _ = state
+        a_y1, a_args1, a_diff_terms1 = y_aug1
+
+    return a_y1, a_args1, a_diff_terms1
 
 
 _loop_backsolve.defvjp(_loop_backsolve_fwd, _loop_backsolve_bwd)
@@ -342,47 +322,29 @@ class BacksolveAdjoint(AbstractAdjoint):
             )
         self.kwargs = kwargs
 
-    def loop(
-        self,
-        solver,
-        stepsize_controller,
-        saveat,
-        dt0,
-        t1,
-        max_steps,
-        throw,
-        terms,
-        args,
-        init_state,
-    ):
+    def loop(self, *, args, terms, saveat, init_state, **kwargs):
         if saveat.steps or saveat.dense:
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
                 "`saveat=Steps(steps=True)` or `saveat=Steps(dense=True)`."
             )
-        final_state = _loop_backsolve(
-            self,
-            solver,
-            stepsize_controller,
-            saveat,
-            dt0,
-            t1,
-            max_steps,
-            throw,
-            terms,
-            args,
-            init_state,
+
+        y = init_state.y
+        sentinel = object()
+        init_state = eqx.tree_at(
+            lambda s: jax.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
         )
+
+        final_state = _loop_backsolve(
+            (y, args, terms), self=self, saveat=saveat, init_state=init_state, **kwargs
+        )
+        return final_state
 
         # We only allow backpropagation through `ys`; in particular not through
         # `solver_state` etc.
-        sentinel = object()
-        final_state_no_ys = eqx.tree_at(lambda s: s.ys, final_state, sentinel)
-        leaves, treedef = jax.tree_flatten(final_state_no_ys)
-        leaves = [
-            final_state.ys if x is sentinel else nondifferentiable_output(x)
-            for x in leaves
-        ]
-        final_state = jax.tree_unflatten(treedef, leaves)
+        ys_leaves = jax.tree_leaves(final_state.ys)
+        final_state = jax.tree_map(
+            lambda s: s if s in ys_leaves else nondifferentiable_output(s), final_state
+        )
 
         return final_state

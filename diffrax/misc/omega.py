@@ -75,7 +75,7 @@ def _equal_code(fn1: Optional[callable], fn2: Optional[callable]):
     return type(code1) == type(code2) and code1 == code2
 
 
-def _set_op_main(base, name: str, op: callable) -> callable:
+def _set_binary(base, name: str, op: callable) -> callable:
     def fn(self, other):
         if isinstance(other, ω):
             if jax.tree_structure(self.ω) != jax.tree_structure(other.ω):
@@ -92,6 +92,7 @@ def _set_op_main(base, name: str, op: callable) -> callable:
                 is_leaf=self.is_leaf,
             )
         else:
+            breakpoint()
             raise RuntimeError("Type of `other` not understood.")
 
     fn.__name__ = name
@@ -99,23 +100,66 @@ def _set_op_main(base, name: str, op: callable) -> callable:
     setattr(base, name, fn)
 
 
+def _set_unary(base, name: str, op: callable) -> callable:
+    def fn(self):
+        return ω(jax.tree_map(op, self.ω, is_leaf=self.is_leaf), is_leaf=self.is_leaf)
+
+    fn.__name__ = name
+    fn.__qualname__ = base.__qualname__ + "." + name
+    setattr(base, name, fn)
+
+
+def _rev(op):
+    def __rev(x, y):
+        return op(y, x)
+
+    return __rev
+
+
 for (name, op) in [
     ("__add__", operator.add),
-    ("__radd__", lambda x, y: y + x),
     ("__sub__", operator.sub),
-    ("__rsub__", lambda x, y: y - x),
     ("__mul__", operator.mul),
-    ("__rmul__", lambda x, y: y * x),
-    ("__truediv__", operator.truediv),
-    ("__rtruediv__", lambda x, y: y / x),
-    ("__floordiv__", operator.floordiv),
-    ("__rfloordiv__", lambda x, y: y // x),
     ("__matmul__", operator.matmul),
-    ("__rmatmul__", lambda x, y: y @ x),
+    ("__truediv__", operator.truediv),
+    ("__floordiv__", operator.floordiv),
+    ("__mod__", operator.mod),
+    ("__pow__", operator.pow),
+    ("__lshift__", operator.lshift),
+    ("__rshift__", operator.rshift),
+    ("__and__", operator.and_),
+    ("__xor__", operator.xor),
+    ("__or__", operator.or_),
+    ("__radd__", _rev(operator.add)),
+    ("__rsub__", _rev(operator.sub)),
+    ("__rmul__", _rev(operator.mul)),
+    ("__rmatmul__", _rev(operator.matmul)),
+    ("__rtruediv__", _rev(operator.truediv)),
+    ("__rfloordiv__", _rev(operator.floordiv)),
+    ("__rmod__", _rev(operator.mod)),
+    ("__rpow__", _rev(operator.pow)),
+    ("__rlshift__", _rev(operator.lshift)),
+    ("__rrshift__", _rev(operator.rshift)),
+    ("__rand__", _rev(operator.and_)),
+    ("__rxor__", _rev(operator.xor)),
+    ("__ror__", _rev(operator.or_)),
+    ("__lt__", operator.lt),
+    ("__le__", operator.le),
     ("__eq__", operator.eq),
     ("__ne__", operator.ne),
+    ("__gt__", operator.gt),
+    ("__ge__", operator.ge),
 ]:
-    _set_op_main(ω, name, op)
+    _set_binary(ω, name, op)
+
+
+for (name, op) in [
+    ("__neg__", operator.neg),
+    ("__pos__", operator.pos),
+    ("__abs__", operator.abs),
+    ("__invert__", operator.invert),
+]:
+    _set_unary(ω, name, op)
 
 
 class _ωUpdateHelper:
@@ -138,7 +182,7 @@ class _ωUpdateRef:
         return value.at[item].get(**kwargs)
 
 
-def _set_op_at(base, name: str, op: callable) -> callable:
+def _set_binary_at(base, name: str, op: callable) -> callable:
     def fn(self, other):
         if isinstance(other, ω):
             if jax.tree_structure(self.value) != jax.tree_structure(other.ω):
@@ -178,4 +222,4 @@ for (name, op) in [
     ("min", lambda x, y, z, **kwargs: x.at[y].min(z, **kwargs)),
     ("max", lambda x, y, z, **kwargs: x.at[y].max(z, **kwargs)),
 ]:
-    _set_op_at(_ωUpdateRef, name, op)
+    _set_binary_at(_ωUpdateRef, name, op)

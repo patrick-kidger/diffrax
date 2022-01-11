@@ -96,6 +96,7 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
                     lambda s: (s.nonlinear_solver.rtol, s.nonlinear_solver.atol),
                     solver,
                     (self.rtol, self.atol),
+                    is_leaf=lambda x: x is None,
                 )
         return solver
 
