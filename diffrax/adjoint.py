@@ -135,9 +135,6 @@ def _loop_backsolve_bwd(
     # using them later.
     #
 
-    # TODO: handle non-inexact parts of y; args
-    # TODO: currently non-inexact parts of terms cause crashes when a None gradient is returned for them as part of a pytree. (Such as `direction` in WrapTerm).  # noqa: E501
-
     del t1
     ts, ys = residuals
     del residuals
@@ -145,16 +142,15 @@ def _loop_backsolve_bwd(
     del grad_final_state
     y, args, terms = y__args__terms
     del y__args__terms
+    diff_args = eqx.filter(args, eqx.is_inexact_array)
     diff_terms = eqx.filter(terms, eqx.is_inexact_array)
     zeros_like_y = jax.tree_map(jnp.zeros_like, y)
-    del y
-    zeros_like_args = jax.tree_map(jnp.zeros_like, args)
+    zeros_like_diff_args = jax.tree_map(jnp.zeros_like, diff_args)
     zeros_like_diff_terms = jax.tree_map(jnp.zeros_like, diff_terms)
-    del diff_terms
+    del diff_args, diff_terms
     adjoint_terms = jax.tree_map(
         AdjointTerm, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
-    del terms
     diffeqsolve = self._diffeqsolve
     kwargs = dict(
         args=args,
@@ -162,12 +158,13 @@ def _loop_backsolve_bwd(
         solver=solver,
         stepsize_controller=stepsize_controller,
         terms=adjoint_terms,
-        dt0=dt0,
+        dt0=None if dt0 is None else -dt0,
         max_steps=max_steps,
         throw=throw,
     )
     kwargs.update(self.kwargs)
-    del args, self, solver, stepsize_controller, adjoint_terms, dt0, max_steps, throw
+    del self, solver, stepsize_controller, adjoint_terms, dt0, max_steps, throw
+    del y, args, terms
     saveat_t0 = saveat.t0
     del saveat
     t0 = init_state.tprev
@@ -181,9 +178,9 @@ def _loop_backsolve_bwd(
     def _scan_fun(_state, _vals, first=False):
         _t1, _t0, _y0, _grad_y0 = _vals
         _a0, _solver_state, _controller_state = _state
-        _a_y0, _a_args0, _a_term0 = _a0
+        _a_y0, _a_diff_args0, _a_diff_term0 = _a0
         _a_y0 = (_a_y0 ** ω + _grad_y0 ** ω).ω
-        _aug0 = (_y0, _a_y0, _a_args0, _a_term0)
+        _aug0 = (_y0, _a_y0, _a_diff_args0, _a_diff_term0)
 
         _sol = diffeqsolve(
             t0=_t0,
@@ -201,15 +198,15 @@ def _loop_backsolve_bwd(
             return __aug[0]
 
         _aug1 = ω(_sol.ys).call(__get).ω
-        _, _a_y1, _a_args1, _a_term1 = _aug1
-        _a1 = (_a_y1, _a_args1, _a_term1)
+        _, _a_y1, _a_diff_args1, _a_diff_term1 = _aug1
+        _a1 = (_a_y1, _a_diff_args1, _a_diff_term1)
         _solver_state = _sol.solver_state
         _controller_state = _sol.controller_state
 
         return (_a1, _solver_state, _controller_state), None
 
-    state = ((zeros_like_y, zeros_like_args, zeros_like_diff_terms), None, None)
-    del zeros_like_y, zeros_like_args, zeros_like_diff_terms
+    state = ((zeros_like_y, zeros_like_diff_args, zeros_like_diff_terms), None, None)
+    del zeros_like_y, zeros_like_diff_args, zeros_like_diff_terms
 
     # We always start backpropagating from `ts[-1]`.
     # We always finish backpropagating at `t0`.
@@ -241,7 +238,7 @@ def _loop_backsolve_bwd(
             state, _ = _scan_fun(state, val, first=True)
 
         y_aug1, _, _ = state
-        a_y1, a_args1, a_diff_terms1 = y_aug1
+        a_y1, a_diff_args1, a_diff_terms1 = y_aug1
         a_y1 = (ω(a_y1) + ω(grad_ys)[0]).ω
 
     else:
@@ -262,9 +259,9 @@ def _loop_backsolve_bwd(
             state, _ = _scan_fun(state, val, first=True)
 
         y_aug1, _, _ = state
-        a_y1, a_args1, a_diff_terms1 = y_aug1
+        a_y1, a_diff_args1, a_diff_terms1 = y_aug1
 
-    return a_y1, a_args1, a_diff_terms1
+    return a_y1, a_diff_args1, a_diff_terms1
 
 
 _loop_backsolve.defvjp(_loop_backsolve_fwd, _loop_backsolve_bwd)

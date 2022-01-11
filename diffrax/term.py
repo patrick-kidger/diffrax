@@ -443,12 +443,14 @@ class AdjointTerm(AbstractTerm):
         # Note the inclusion of "implicit" parameters (as `term` might be a callable
         # PyTree a la Equinox) and "explicit" parameters (`args`)
         y, a_y, _, _ = y
+        diff_args, nondiff_args = eqx.partition(args, eqx.is_inexact_array)
         diff_term, nondiff_term = eqx.partition(self.term, eqx.is_inexact_array)
 
-        def _to_vjp(_y, _args, _diff_term):
+        def _to_vjp(_y, _diff_args, _diff_term):
+            _args = eqx.combine(_diff_args, nondiff_args)
             _term = eqx.combine(_diff_term, nondiff_term)
             return _term.vf_prod(t, _y, _args, control)
 
-        dy, vjp = jax.vjp(_to_vjp, y, args, diff_term)
-        da_y, da_args, da_diff_term = vjp(a_y)
-        return dy, da_y, da_args, da_diff_term
+        dy, vjp = jax.vjp(_to_vjp, y, diff_args, diff_term)
+        da_y, da_diff_args, da_diff_term = vjp(a_y)
+        return dy, da_y, da_diff_args, da_diff_term
