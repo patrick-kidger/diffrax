@@ -3,7 +3,6 @@ from typing import Optional
 
 import equinox as eqx
 import jax
-import jax.lax as lax
 import jax.numpy as jnp
 
 from .adjoint import (
@@ -343,13 +342,16 @@ def loop(
         final_state = bounded_while_loop(cond_fun, body_fun, init_state, max_steps)
     else:
 
-        def _cond_fun(state):
-            return cond_fun(state) & (state.step < max_steps)
+        if max_steps is None:
+            _cond_fun = cond_fun
+        else:
 
-        def _body_fun(state):
-            return body_fun(state, lambda x: x)
+            def _cond_fun(state):
+                return cond_fun(state) & (state.step < max_steps)
 
-        final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
+        final_state = bounded_while_loop(
+            _cond_fun, body_fun, init_state, max_steps=None
+        )
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.
@@ -395,7 +397,7 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
-    max_steps: Optional[Scalar] = 16 ** 4,
+    max_steps: Optional[int] = 16 ** 4,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
@@ -608,8 +610,10 @@ def diffeqsolve(
             terms, t0, t1, y0, dt0, args, solver
         )
     else:
-        error_if(dt0 is None, "Must provide `dt0` if providing `controller_state`.")
-        tnext = t0 + dt0
+        if dt0 is None:
+            (tnext, _) = stepsize_controller.init(terms, t0, t1, y0, dt0, args, solver)
+        else:
+            tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
     if solver_state is None:
         solver_state = solver.init(terms, t0, tnext, y0, args)
@@ -640,6 +644,10 @@ def diffeqsolve(
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         error_if(t0 == t1, "Cannot save dense output if t0 == t1")
+        error_if(
+            max_steps is None,
+            "`max_steps=None` is incompatible with `saveat.dense=True`",
+        )
         (
             _,
             _,
@@ -648,10 +656,6 @@ def diffeqsolve(
             _,
         ) = solver.step(terms, tprev, tnext, y0, args, solver_state, made_jump)
         dense_ts = jnp.full(max_steps + 1, jnp.nan)
-        error_if(
-            max_steps is None,
-            "`max_steps=None` is incompatible with `saveat.dense=True`",
-        )
         _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.nan)
         dense_infos = jax.tree_map(_make_full, dense_info)
         dense_save_index = 0

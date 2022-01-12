@@ -1,6 +1,5 @@
 from typing import Sequence, Type, Union
 
-import jax
 import jax.experimental.host_callback as hcb
 import jax.numpy as jnp
 
@@ -36,10 +35,10 @@ def branched_error_if(
                 _index = _index.item()
             raise error_cls(msgs[_index])
 
-    pred = unvmap_any(pred)
-    if isinstance(pred, jax.core.Tracer):
-        # Under JIT
+    if isinstance(pred, jnp.ndarray):
+        pred = unvmap_any(pred)
         hcb.call(raises, (pred, index))
-    else:
-        # Not under JIT
+    elif isinstance(pred, bool):
         raises((pred, index))
+    else:
+        assert False, "`pred` must either be a `bool` or a JAX array."

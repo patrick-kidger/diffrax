@@ -28,7 +28,6 @@ Every term implements the following interface:
                 - contr
                 - prod
                 - vf_prod
-                - func_for_init
 
 ---
 

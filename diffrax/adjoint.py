@@ -86,7 +86,9 @@ class NoAdjoint(AbstractAdjoint):
 
     def loop(self, *, dt0, throw, **kwargs):
         del dt0, throw
-        return self._loop_fn(**kwargs, is_bounded=False)
+        out = self._loop_fn(**kwargs, is_bounded=False)
+        out = jax.tree_map(nondifferentiable_output, out)
+        return out
 
 
 # Compute derivatives with respect to the first argument:
@@ -211,7 +213,7 @@ def _loop_backsolve_bwd(
     # We always start backpropagating from `ts[-1]`.
     # We always finish backpropagating at `t0`.
     #
-    # We may or may not have included `t0` in `ts`. (Depending on the avlue of
+    # We may or may not have included `t0` in `ts`. (Depending on the value of
     # SaveaAt(t0=...) on the forward pass.)
     #
     # For some of these options, we run _scan_fun once outside the loop to get access
@@ -219,7 +221,7 @@ def _loop_backsolve_bwd(
     if saveat_t0:
         if len(ts) > 2:
             val0 = (ts[-2], ts[-1], ω(ys)[-1].ω, ω(grad_ys)[-1].ω)
-            state = _scan_fun(state, val0, first=True)
+            state, _ = _scan_fun(state, val0, first=True)
             vals = (
                 ts[:-2],
                 ts[1:-1],
@@ -237,14 +239,14 @@ def _loop_backsolve_bwd(
             val = (ts[0], ts[1], ω(ys)[1].ω, ω(grad_ys)[1].ω)
             state, _ = _scan_fun(state, val, first=True)
 
-        y_aug1, _, _ = state
-        a_y1, a_diff_args1, a_diff_terms1 = y_aug1
+        aug1, _, _ = state
+        a_y1, a_diff_args1, a_diff_terms1 = aug1
         a_y1 = (ω(a_y1) + ω(grad_ys)[0]).ω
 
     else:
         if len(ts) > 1:
             val0 = (ts[-2], ts[-1], ω(ys)[-1].ω, ω(grad_ys)[-1].ω)
-            state = _scan_fun(state, val0, first=True)
+            state, _ = _scan_fun(state, val0, first=True)
             vals = (
                 jnp.concatenate([t0[None], ts[:-2]]),
                 ts[:-1],
@@ -258,8 +260,8 @@ def _loop_backsolve_bwd(
             val = (t0, ts[0], ω(ys)[0].ω, ω(grad_ys)[0].ω)
             state, _ = _scan_fun(state, val, first=True)
 
-        y_aug1, _, _ = state
-        a_y1, a_diff_args1, a_diff_terms1 = y_aug1
+        aug1, _, _ = state
+        a_y1, a_diff_args1, a_diff_terms1 = aug1
 
     return a_y1, a_diff_args1, a_diff_terms1
 
@@ -335,13 +337,13 @@ class BacksolveAdjoint(AbstractAdjoint):
         final_state = _loop_backsolve(
             (y, args, terms), self=self, saveat=saveat, init_state=init_state, **kwargs
         )
-        return final_state
 
         # We only allow backpropagation through `ys`; in particular not through
         # `solver_state` etc.
-        ys_leaves = jax.tree_leaves(final_state.ys)
-        final_state = jax.tree_map(
-            lambda s: s if s in ys_leaves else nondifferentiable_output(s), final_state
+        ys = final_state.ys
+        final_state = jax.tree_map(nondifferentiable_output, final_state)
+        final_state = eqx.tree_at(
+            lambda s: jax.tree_leaves(s.ys), final_state, jax.tree_leaves(ys)
         )
 
         return final_state

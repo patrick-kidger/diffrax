@@ -39,10 +39,10 @@ def _nondifferentiable_output_jvp(primals, tangents):
 
 def _nondifferentiable_output_transpose(cts_in, _):
     if isinstance(cts_in, ad.Zero):
-        return cts_in
+        return ad.Zero  # the class, not an instance
     else:
         raise RuntimeError(
-            "Attempted to backpropagate through a value for which this is invalid."
+            "Reverse-mode autodifferentiation is disabled for this operation."
         )
 
 

@@ -152,11 +152,20 @@ class AbstractTerm(eqx.Module):
         See [`diffrax.AbstractSolver.func_for_init`][].
         """
 
-        raise ValueError(
-            "An initial step size cannot be selected automatically. The most common "
-            "scenario for this error to occur is when trying to use adaptive step "
-            "size solvers with SDEs. Please specify an initial `dt0` instead."
-        )
+        vf = self.vf(t, y, args)
+        flat_vf, tree_vf = jax.tree_flatten(vf)
+        flat_y, tree_y = jax.tree_flatten(y)
+        if tree_vf != tree_y or any(
+            jnp.shape(x) != jnp.shape(y) for x, y in zip(flat_vf, flat_y)
+        ):
+            raise ValueError(
+                "An initial step size cannot be selected automatically. The most "
+                "common scenario for this error to occur is when trying to use "
+                "adaptive step size solvers with SDEs, or with CDEs without "
+                "`ControlTerm(...).to_ode()`. Please specify an initial `dt0` instead."
+            )
+        else:
+            return vf
 
 
 class ODETerm(AbstractTerm):
@@ -183,8 +192,6 @@ class ODETerm(AbstractTerm):
     @staticmethod
     def prod(vf: PyTree, control: Scalar) -> PyTree:
         return jax.tree_map(lambda v: control * v, vf)
-
-    func_for_init = vf
 
 
 ODETerm.__init__.__doc__ = """**Arguments:**
@@ -253,8 +260,6 @@ class ControlTerm(AbstractTerm):
         vector_field = _ControlToODE(self)
         return ODETerm(vector_field=vector_field)
 
-    # func_for_init deliberately not set.
-
 
 ControlTerm.__init__.__doc__ = """**Arguments:**
 
@@ -321,9 +326,6 @@ class MultiTerm(AbstractTerm):
         ]
         return jax.tree_map(_sum, *out)
 
-    def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> Tuple[PyTree, ...]:
-        return tuple(term.func_for_init(t, y, args) for term in self.terms)
-
 
 class WrapTerm(AbstractTerm):
     term: AbstractTerm
@@ -342,17 +344,13 @@ class WrapTerm(AbstractTerm):
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         return self.term.prod(vf, control)
 
-    def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        t = t * self.direction
-        return self.term.func_for_init(t, y, args)
-
 
 class AdjointTerm(AbstractTerm):
     term: AbstractTerm
 
     def vf(
-        self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree], args: PyTree
-    ) -> Tuple[PyTree, PyTree, PyTree]:
+        self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree, PyTree], args: PyTree
+    ) -> PyTree:
         # We compute the vector field via `self.vf_prod`. We could also do it manually,
         # but this is relatively painless.#
         #
@@ -394,19 +392,19 @@ class AdjointTerm(AbstractTerm):
 
         jac = make_jac(_fn)(control)
         if jax.tree_structure(None) in (vf_prod_tree, control_tree):
-            # Very much a faffy, and highly unusual/not-useful edge case to handle.
+            # An rnusual/not-useful edge case to handle.
             raise NotImplementedError(
                 "`AdjointTerm` not implemented for `None` controls or states."
             )
         return jax.tree_transpose(vf_prod_tree, control_tree, jac)
 
     def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
-        return (-self.term.contr(t0, t1) ** ω).ω
+        return self.term.contr(t0, t1)
 
     def prod(
-        self, vf: Tuple[PyTree, PyTree, PyTree], control: PyTree
-    ) -> Tuple[PyTree, PyTree, PyTree]:
-        # As per what is returnd from `self.vf`, then `vf` has a PyTree structure of
+        self, vf: PyTree, control: PyTree
+    ) -> Tuple[PyTree, PyTree, PyTree, PyTree]:
+        # As per what is returned from `self.vf`, then `vf` has a PyTree structure of
         # (control_tree, vf_prod_tree)
 
         # Calculate vf_prod_tree by smuggling it out.
@@ -438,8 +436,12 @@ class AdjointTerm(AbstractTerm):
         return jax.tree_map(_contract, example_vf_prod, vf)
 
     def vf_prod(
-        self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree], args: PyTree, control: PyTree
-    ) -> Tuple[PyTree, PyTree, PyTree]:
+        self,
+        t: Scalar,
+        y: Tuple[PyTree, PyTree, PyTree, PyTree],
+        args: PyTree,
+        control: PyTree,
+    ) -> Tuple[PyTree, PyTree, PyTree, PyTree]:
         # Note the inclusion of "implicit" parameters (as `term` might be a callable
         # PyTree a la Equinox) and "explicit" parameters (`args`)
         y, a_y, _, _ = y
@@ -452,5 +454,5 @@ class AdjointTerm(AbstractTerm):
             return _term.vf_prod(t, _y, _args, control)
 
         dy, vjp = jax.vjp(_to_vjp, y, diff_args, diff_term)
-        da_y, da_diff_args, da_diff_term = vjp(a_y)
+        da_y, da_diff_args, da_diff_term = vjp((-(a_y ** ω)).ω)
         return dy, da_y, da_diff_args, da_diff_term

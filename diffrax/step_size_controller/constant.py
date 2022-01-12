@@ -27,11 +27,11 @@ class ConstantStepSize(AbstractStepSizeController):
         solver: AbstractSolver,
     ) -> Tuple[Scalar, Scalar]:
         del t1, y0, args, solver
-        error_if(
-            dt0 is None,
-            "Constant step size solvers cannot select step size automatically; "
-            "please pass a value for `dt0`.",
-        )
+        if dt0 is None:
+            raise ValueError(
+                "Constant step size solvers cannot select step size automatically; "
+                "please pass a value for `dt0`."
+            )
         return t0 + dt0, dt0
 
     def adapt_step_size(
