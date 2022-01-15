@@ -46,8 +46,6 @@ extra_javascript:
 
 extra_css:
     - _static/custom_css.css
-    # Awful hack to get the favicon to load.  # TODO: find a proper way to include extra static files.
-    - _static/favicon.png
 
 markdown_extensions:
     - pymdownx.arithmatex  # Render LaTeX via MathJax
@@ -58,14 +56,17 @@ markdown_extensions:
     - admonition
     - toc:
         permalink: "¤"  # Adds a clickable permalink to each section heading
+        toc_depth: 4  # Prevents h5, h6 (i.e. methods) from showing up in the TOC.
 
 plugins:
     - search  # default search plugin; needs manually re-enabling when using any other plugins
     - autorefs  # Cross-links to headings
+    - include_exclude_files:
+        include:
+        exclude:
+            - "_overrides"
     - mknotebooks  # Jupyter notebooks
     - mkdocstrings:
-        watch:
-            - diffrax
         handlers:
             python:
                 setup_commands:
@@ -81,7 +82,7 @@ plugins:
                     show_signature_annotations: true
                     show_source: false  # don't include source code
                     members_order: source  # order methods according to their order of definition in the source code, not alphabetical order
-                    heading_level: 4
+                    heading_level: 4  # Makes everything top-level be <h4>. Child entries will be <h5> etc., but because of toc_depth, above, (deliberately) won't appear in the TOC.
 
 nav:
     - 'index.md'
