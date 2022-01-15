@@ -127,3 +127,11 @@ class AbstractSolver(eqx.Module):
 
 class AbstractImplicitSolver(AbstractSolver):
     nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
+
+
+class AbstractItoSolver(AbstractSolver):
+    pass
+
+
+class AbstractStratonovichSolver(AbstractSolver):
+    pass

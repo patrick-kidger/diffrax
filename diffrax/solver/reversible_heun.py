@@ -8,13 +8,13 @@ from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver
+from .base import AbstractSolver, AbstractStratonovichSolver
 
 
 _SolverState = Tuple[PyTree, PyTree]
 
 
-class ReversibleHeun(AbstractSolver):
+class ReversibleHeun(AbstractStratonovichSolver, AbstractSolver):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for

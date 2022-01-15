@@ -1,4 +1,9 @@
-from .base import AbstractImplicitSolver, AbstractSolver
+from .base import (
+    AbstractImplicitSolver,
+    AbstractItoSolver,
+    AbstractSolver,
+    AbstractStratonovichSolver,
+)
 from .bosh3 import Bosh3
 from .dopri5 import Dopri5
 from .dopri8 import Dopri8

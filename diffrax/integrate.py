@@ -1,4 +1,5 @@
 import functools as ft
+import warnings
 from typing import Optional
 
 import equinox as eqx
@@ -23,13 +24,13 @@ from .misc import (
 )
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
-from .solver import AbstractSolver, Euler
+from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
     ConstantStepSize,
 )
-from .term import AbstractTerm, ControlTerm, WrapTerm
+from .term import AbstractTerm, WrapTerm
 
 
 class _State(eqx.Module):
@@ -363,21 +364,15 @@ def loop(
 
 
 def _is_sde(terms: PyTree[AbstractTerm]) -> bool:
-    for term in jax.tree_flatten(terms):
-        if isinstance(term, ControlTerm) and isinstance(
-            term.control, AbstractBrownianPath
-        ):
-            return True
-    return False
+    is_brownian = lambda x: isinstance(x, AbstractBrownianPath)
+    leaves, _ = jax.tree_flatten(terms, is_leaf=is_brownian)
+    return any(is_brownian(leaf) for leaf in leaves)
 
 
 def _is_unsafe_sde(terms: PyTree[AbstractTerm]) -> bool:
-    for term in jax.tree_flatten(terms):
-        if isinstance(term, ControlTerm) and isinstance(
-            term.control, UnsafeBrownianPath
-        ):
-            return True
-    return False
+    is_brownian = lambda x: isinstance(x, UnsafeBrownianPath)
+    leaves, _ = jax.tree_flatten(terms, is_leaf=is_brownian)
+    return any(is_brownian(leaf) for leaf in leaves)
 
 
 # TODO: when t0, t1, dt0 are not tracers, and stepsize_controller is Constant, then
@@ -532,12 +527,18 @@ def diffeqsolve(
     # TODO: this error checking is pretty ad-hoc: it only really works for built-in
     # types, and not user-provided ones.
     if _is_sde(terms):
-        if isinstance(adjoint, BacksolveAdjoint) and isinstance(solver, Euler):
-            raise NotImplementedError(
-                "Solving an SDE with Euler's method will converge to the Itô "
-                "solution. However BacksolveAdjoint currently only supports "
-                "Stratonovich SDEs."
-            )
+        if isinstance(adjoint, BacksolveAdjoint):
+            if isinstance(solver, AbstractItoSolver):
+                raise NotImplementedError(
+                    f"{solver.__name__} converges to the Itô solution. However "
+                    "BacksolveAdjoint currently only supports Stratonovich SDEs."
+                )
+            elif not isinstance(solver, AbstractStratonovichSolver):
+                warnings.warn(
+                    f"{solver.__name__} is not marked as converging to either the Itô "
+                    "or the Stratonovich solution. Note that BacksolveAdjoint will "
+                    "only produce the correct solution for Stratonovich SDEs."
+                )
         if isinstance(
             stepsize_controller, AbstractAdaptiveStepSizeController
         ) and isinstance(solver, Euler):
