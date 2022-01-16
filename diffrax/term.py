@@ -172,6 +172,9 @@ class ODETerm(AbstractTerm):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
 
+    `vector_field` should return some PyTree, with the same structure as the initial
+    state `y0`, and with every leaf broadcastable to the equivalent leaf in `y0`.
+
     !!! example
 
         ```python
@@ -206,12 +209,22 @@ ODETerm.__init__.__doc__ = """**Arguments:**
 def _prod(
     vf: Array["state":..., "control":...], control: Array["control":...]  # noqa: F821
 ) -> Array["state":...]:  # noqa: F821
-    return jnp.tensordot(vf, control, axes=jnp.asarray(control).ndim)
+    return jnp.tensordot(vf, control, axes=jnp.ndim(control))
 
 
 class ControlTerm(AbstractTerm):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product.
+
+    `vector_field` and `control` should both return PyTrees, both with the same
+    structure as the initial state `y0`. Every dimension of `control` is then
+    contracted against the last dimensions of `vector_field`; that is to say if each
+    leaf of `y0` has shape `(y1, ..., yN)`, and the corresponding leaf of `control`
+    has shape `(c1, ..., cM)`, then the corresponding leaf of `vector_field` should
+    have shape `(y1, ..., yN, c1, ..., cM)`.
+
+    A common special case is when `y0` and `control` are vector-valued, and
+    `vector_field` is matrix-valued.
 
     !!! example
 
@@ -336,10 +349,9 @@ class WrapTerm(AbstractTerm):
         return self.term.vf(t, y, args)
 
     def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
-        t0, t1 = jnp.where(self.direction == 1, t0, -t1), jnp.where(
-            self.direction == 1, t1, -t0
-        )
-        return (self.direction * self.term.contr(t0, t1) ** ω).ω
+        _t0 = jnp.where(self.direction == 1, t0, -t1)
+        _t1 = jnp.where(self.direction == 1, t1, -t0)
+        return (self.direction * self.term.contr(_t0, _t1) ** ω).ω
 
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         return self.term.prod(vf, control)
@@ -381,18 +393,23 @@ class AdjointTerm(AbstractTerm):
 
         # Find the tree structure of vf_prod by smuggling it out as an additional
         # result from the Jacobian calculation.
-        vf_prod_tree = None
+        sentinel = vf_prod_tree = object()
         control_tree = jax.tree_structure(control)
 
         def _fn(_control):
             _out = self.vf_prod(t, y, args, _control)
             nonlocal vf_prod_tree
-            vf_prod_tree = jax.tree_structure(_out)
+            structure = jax.tree_structure(_out)
+            if vf_prod_tree is sentinel:
+                vf_prod_tree = structure
+            else:
+                assert vf_prod_tree == structure
             return _out
 
         jac = make_jac(_fn)(control)
+        assert vf_prod_tree is not sentinel
         if jax.tree_structure(None) in (vf_prod_tree, control_tree):
-            # An rnusual/not-useful edge case to handle.
+            # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
                 "`AdjointTerm` not implemented for `None` controls or states."
             )
