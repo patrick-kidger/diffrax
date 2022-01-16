@@ -12,7 +12,7 @@ from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractImplicitSolver, AbstractSolver, vector_tree_dot
+from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
 
 
 # Entries must be np.arrays, and not jnp.arrays, so that we can index into them during
@@ -106,7 +106,7 @@ def _implicit_relation(ki, nonlinear_solve_args):
     return diff
 
 
-class AbstractRungeKutta(AbstractSolver):
+class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     term_structure = jax.tree_structure(0)
 

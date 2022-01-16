@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import pytest
 import scipy.integrate as integrate
 
-from helpers import all_ode_solvers, fixed_ode_solvers, shaped_allclose
+from helpers import all_ode_solvers, shaped_allclose
 
 
 #
@@ -394,7 +394,7 @@ def _test(solver_ctr, problems, higher):
             # Too difficult to get accurate solutions with a low-order solver
             return
         max_steps = 16 ** 4
-        if solver_ctr in fixed_ode_solvers:
+        if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver):
             dt0 = 0.01
             if solver_ctr is diffrax.LeapfrogMidpoint:
                 # This is an *awful* long-time-horizon solver.

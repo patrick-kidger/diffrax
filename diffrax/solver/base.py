@@ -135,3 +135,7 @@ class AbstractItoSolver(AbstractSolver):
 
 class AbstractStratonovichSolver(AbstractSolver):
     pass
+
+
+class AbstractAdaptiveSolver(AbstractSolver):
+    pass

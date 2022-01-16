@@ -9,14 +9,13 @@ import jax.numpy as jnp
 import jax.random as jrandom
 
 
-# TODO: test semi_implicit_euler
-
-
 all_ode_solvers = (
     diffrax.Bosh3,
     diffrax.Dopri5,
     diffrax.Dopri8,
     diffrax.Euler,
+    diffrax.Ralston,
+    diffrax.Midpoint,
     diffrax.Fehlberg2,
     diffrax.Heun,
     diffrax.LeapfrogMidpoint,
@@ -26,14 +25,6 @@ all_ode_solvers = (
     diffrax.Kvaerno3,
     diffrax.Kvaerno4,
     diffrax.Kvaerno5,
-)
-
-
-# TODO: encode this into the types somehow, whether via inheritance, traits, ...
-fixed_ode_solvers = (
-    diffrax.Euler,
-    diffrax.LeapfrogMidpoint,
-    diffrax.ImplicitEuler,
 )
 
 

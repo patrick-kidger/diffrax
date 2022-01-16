@@ -8,13 +8,7 @@ import jax.random as jrandom
 import pytest
 import scipy.stats
 
-from helpers import (
-    all_ode_solvers,
-    fixed_ode_solvers,
-    random_pytree,
-    shaped_allclose,
-    treedefs,
-)
+from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -24,7 +18,7 @@ from helpers import (
     "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
 )
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
-    if solver_ctr in fixed_ode_solvers and isinstance(
+    if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver) and isinstance(
         stepsize_controller, diffrax.IController
     ):
         return

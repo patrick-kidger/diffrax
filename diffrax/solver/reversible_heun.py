@@ -8,17 +8,19 @@ from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver, AbstractStratonovichSolver
+from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 
 
 _SolverState = Tuple[PyTree, PyTree]
 
 
-class ReversibleHeun(AbstractStratonovichSolver, AbstractSolver):
+class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for
     adaptive step sizing.
+
+    When used to solve SDEs, converges to the Stratonovich solution.
 
     ??? cite "Reference"
 
