@@ -1,5 +1,5 @@
 from dataclasses import field
-from typing import Tuple
+from typing import Optional, Tuple
 
 import equinox as eqx
 import jax
@@ -36,7 +36,7 @@ class _State(eqx.Module):
 
 class VirtualBrownianTree(AbstractBrownianPath):
     """Brownian simulation that discretises the interval `[t0, t1]` to tolerance `tol`,
-    and is piecewise linear at that discretisation.
+    and is piecewise quadratic at that discretisation.
 
     ??? cite "Reference"
 
@@ -49,6 +49,10 @@ class VirtualBrownianTree(AbstractBrownianPath):
           year={2020}
         }
         ```
+
+        (The implementation here is a slight improvement on the reference
+        implementation, by being piecwise quadratic rather than piecewise linear. This
+        corrects a small bias in the generated samples.)
     """
 
     t0: Scalar = field(init=True)
@@ -58,9 +62,14 @@ class VirtualBrownianTree(AbstractBrownianPath):
     key: "jax.random.PRNGKey"  # noqa: F821
 
     @eqx.filter_jit
-    def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> Array:
+    def evaluate(
+        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+    ) -> Array:
         del left
-        return self._evaluate(t1) - self._evaluate(t0)
+        if t1 is None:
+            return self._evaluate(t0)
+        else:
+            return self._evaluate(t1) - self._evaluate(t0)
 
     def _brownian_bridge(self, s, t, u, w_s, w_u, key):
         mean = w_s + (w_u - w_s) * ((t - s) / (u - s))
@@ -98,7 +107,13 @@ class VirtualBrownianTree(AbstractBrownianPath):
         )
 
         def _cond_fun(_state):
-            return jnp.abs(τ - _state.t) > self.tol
+            # Slight adaptation on the version of the algorithm given in the
+            # above-referenced thesis. There the returned value is snapped to one of
+            # the dyadic grid points, so they just stop once
+            # jnp.abs(τ - state.s) > self.tol
+            # Here, because we use quadratic splines to get better samples, we always
+            # iterate down to the level of the spline.
+            return (_state.u - _state.s) > self.tol
 
         def _body_fun(_state):
             _key1, _key2 = jrandom.split(_state.key, 2)
@@ -113,12 +128,32 @@ class VirtualBrownianTree(AbstractBrownianPath):
             return _State(s=_s, t=_t, u=_u, w_s=_w_s, w_t=_w_t, w_u=_w_u, key=_key)
 
         final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
-        cond = τ > final_state.t
-        s = jnp.where(cond, final_state.t, final_state.s)
-        u = jnp.where(cond, final_state.u, final_state.t)
-        w_s = jnp.where(cond, final_state.w_t, final_state.w_s)
-        w_u = jnp.where(cond, final_state.w_u, final_state.w_t)
-        return w_s + (w_u - w_s) * ((τ - s) / (u - s))
+        # Quadratic interpolation.
+        # We have w_s, w_t, w_u available to us, and interpolate with the unique
+        # parabola passing through them.
+        # Why quadratic and not just "linear from w_s to w_t to w_u"? Because linear
+        # only gets the conditional mean correct at every point, but not the
+        # conditional variance. This means that the Virtual Brownian Tree will pass
+        # statistical tests comparing w(t)|(w(s),w(u)) against the true Brownian
+        # bridge. (Provided s, t, u are greater than the discretisation level `tol`.)
+        # (If you just do linear then you find that the variance is *every so slightly*
+        # too small.)
+        s = final_state.s
+        u = final_state.u
+        w_s = final_state.w_s
+        w_t = final_state.w_t
+        w_u = final_state.w_u
+        rescaled_τ = (τ - s) / (u - s)
+        # Fit polynomial as usual.
+        # The polynomial ax^2 + bx + c is found by solving
+        # [s^2 s 1][a]   [w_s]
+        # [t^2 t 1][b] = [w_t]
+        # [u^2 u 1][c]   [w_u]
+        #
+        # `A` is inverse of the above matrix, rescaled to s=0, t=0.5, u=1.
+        A = jnp.array([[2, -4, 2], [-3, 4, -1], [1, 0, 0]])
+        coeffs = A @ jnp.stack([w_s, w_t, w_u])
+        return jnp.polyval(coeffs, rescaled_τ)
 
 
 VirtualBrownianTree.__init__.__doc__ = """
@@ -129,4 +164,13 @@ VirtualBrownianTree.__init__.__doc__ = """
 - `tol`: The discretisation that `[t0, t1]` is discretised to.
 - `shape`: What shape each individual Brownian sample should be.
 - `key`: A random key.
+
+!!! info
+
+    If using this as part of an SDE solver, and you know (or have an estimate of) the
+    step sizes made in the solver, then you can optimise the computational efficiency
+    of the Virtual Brownian Tree by setting `tol` to be just slightly smaller than the
+    step size of the solver.
+
+The Brownian motion is defined to equal 0 at `t0`.
 """

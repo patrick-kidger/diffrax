@@ -28,7 +28,7 @@ def test_shape(ctr, getkey):
             assert path.t0 is None
             assert path.t1 is None
         elif ctr is diffrax.VirtualBrownianTree:
-            tol = 2 ** -12
+            tol = 2 ** -5
             path = ctr(t0, t1, tol, shape, getkey())
             assert path.t0 == 0
             assert path.t1 == 2
@@ -54,7 +54,7 @@ def test_statistics(ctr):
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape=(), key=key)
         elif ctr is diffrax.VirtualBrownianTree:
-            path = ctr(t0=0, t1=5, tol=2 ** -12, shape=(), key=key)
+            path = ctr(t0=0, t1=5, tol=2 ** -5, shape=(), key=key)
         else:
             assert False
         return path.evaluate(0, 5)
@@ -67,24 +67,41 @@ def test_statistics(ctr):
 
 
 def test_conditional_statistics():
+    key = jrandom.PRNGKey(5678)
+    bm_key, sample_key, permute_key = jrandom.split(key, 3)
+
+    # Get >80 randomly selected points; not too close to avoid discretisation error.
     t0 = 0.3
     t1 = 8.7
-    key = jrandom.PRNGKey(5678)
-    bm_key, sample_key = jrandom.split(key, 2)
+    ts = jrandom.uniform(sample_key, shape=(100,), minval=t0, maxval=t1)
+    sorted_ts = jnp.sort(ts)
+    ts = []
+    prev_ti = sorted_ts[0]
+    for ti in sorted_ts[1:]:
+        if ti < prev_ti + 2 ** -10:
+            continue
+        prev_ti = ti
+        ts.append(ti)
+    ts = jnp.stack(ts)
+    assert len(ts) > 80
+    ts = jrandom.permutation(permute_key, ts)
+
+    # Get some random paths
     bm_keys = jrandom.split(bm_key, 100000)
     path = jax.vmap(
         lambda k: diffrax.VirtualBrownianTree(
             t0=t0, t1=t1, shape=(), tol=2 ** -12, key=k
         )
     )(bm_keys)
+
+    # Sample some points
     out = []
-    for _ in range(100):
-        ti = jrandom.uniform(sample_key, minval=t0, maxval=t1)
-        (sample_key,) = jrandom.split(sample_key, 1)
+    for ti in ts:
         vals = jax.vmap(lambda p: p.evaluate(t0, ti))(path)
         out.append((ti, vals))
     out = sorted(out, key=lambda x: x[0])
 
+    # Test their conditional statistics
     for i in range(1, 98):
         prev_t, prev_vals = out[i - 1]
         this_t, this_vals = out[i]
@@ -96,4 +113,7 @@ def test_conditional_statistics():
         std = math.sqrt(var)
         normalised_vals = (this_vals - mean) / std
         _, pval = stats.kstest(normalised_vals, stats.norm.cdf)
-        assert pval > 0.1
+
+        # Raise if the failure is tatistically significant at 10%, subject to
+        # multiple-testing correction.
+        assert pval > 0.001

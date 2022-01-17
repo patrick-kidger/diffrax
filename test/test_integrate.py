@@ -9,13 +9,7 @@ import jax.random as jrandom
 import pytest
 import scipy.stats
 
-from helpers import (
-    all_ode_solvers,
-    all_sde_solvers,
-    random_pytree,
-    shaped_allclose,
-    treedefs,
-)
+from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -105,23 +99,62 @@ def test_ode_order(solver_ctr):
     assert -0.9 < order - solver_ctr.order < 0.9
 
 
-@pytest.mark.parametrize("solver_ctr", all_sde_solvers)
-def test_sde_strong_order(solver_ctr):
+def _squareplus(x):
+    return 0.5 * (x + jnp.sqrt(x ** 2 + 4))
+
+
+def _solvers():
+    # solver, commutative, order
+    yield diffrax.Euler, False, 0.5
+    yield diffrax.EulerHeun, False, 0.5
+    yield diffrax.Heun, False, 0.5
+    yield diffrax.ItoMilstein, False, 0.5
+    yield diffrax.Midpoint, False, 0.5
+    yield diffrax.ReversibleHeun, False, 0.5
+    yield diffrax.StratonovichMilstein, False, 0.5
+    yield diffrax.ReversibleHeun, True, 1
+    yield diffrax.StratonovichMilstein, True, 1
+
+
+@pytest.mark.parametrize("solver_ctr,commutative,theoretical_order", _solvers())
+def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     key = jrandom.PRNGKey(5678)
-    driftkey, diffkey, ykey, bmkey = jrandom.split(key, 4)
+    driftkey, diffusionkey, ykey, bmkey = jrandom.split(key, 4)
+
+    if commutative:
+        noise_dim = 1
+    else:
+        noise_dim = 5
 
     def drift(t, y, args):
-        mlp = eqx.nn.MLP(in_size=3, out_size=3, width_size=3, depth=1, key=driftkey)
-        return mlp(y)
+        mlp = eqx.nn.MLP(
+            in_size=3,
+            out_size=3,
+            width_size=8,
+            depth=1,
+            activation=_squareplus,
+            key=driftkey,
+        )
+        return 0.5 * mlp(y)
 
     def diffusion(t, y, args):
-        mlp = eqx.nn.MLP(in_size=3, out_size=6, width_size=3, depth=1, key=diffkey)
-        return mlp(y).reshape(3, 2)
+        mlp = eqx.nn.MLP(
+            in_size=3,
+            out_size=3 * noise_dim,
+            width_size=8,
+            depth=1,
+            activation=_squareplus,
+            final_activation=jnp.tanh,
+            key=diffusionkey,
+        )
+        return 0.25 * mlp(y).reshape(3, noise_dim)
 
     t0 = 0
-    t1 = 4
-    y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
-    bm = diffrax.VirtualBrownianTree(t0=t0, t1=t1, shape=(2,), tol=2 ** -12, key=bmkey)
+    t1 = 2
+    y0 = jrandom.normal(ykey, (3,), dtype=jnp.float64)
+    bm = diffrax.VirtualBrownianTree(
+        t0=t0, t1=t1, shape=(noise_dim,), tol=2 ** -15, key=bmkey
+    )
     if solver_ctr.term_structure == jax.tree_structure(0):
         terms = diffrax.MultiTerm(
             diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
@@ -141,13 +174,13 @@ def test_sde_strong_order(solver_ctr):
         diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
     )
     true_sol = diffrax.diffeqsolve(
-        ref_terms, t0, t1, y0, dt0=2 ** -12, solver=ref_solver
+        ref_terms, t0, t1, y0, dt0=2 ** -14, solver=ref_solver
     )
     true_yT = true_sol.ys[-1]
 
     exponents = []
     errors = []
-    for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
+    for exponent in [-3, -4, -5, -6, -7, -8, -9, -10]:
         dt0 = 2 ** exponent
         sol = diffrax.diffeqsolve(terms, t0, t1, y0, dt0, solver_ctr())
         yT = sol.ys[-1]
@@ -158,7 +191,7 @@ def test_sde_strong_order(solver_ctr):
         errors.append(jnp.log2(error))
 
     order = scipy.stats.linregress(exponents, errors).slope
-    assert -0.2 < order - solver_ctr.order < 0.2
+    assert -0.2 < order - theoretical_order < 0.2
 
 
 # Step size deliberately chosen not to divide the time interval

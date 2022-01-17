@@ -215,7 +215,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             # TODO: introduce a special no-error-estimate flag?
             assert y_error is None
             y_error = 0
-        return y1, y_error, dense_info, (k1, dt), result
+        if self.tableau.fsal:
+            solver_state = (k1, dt)
+        else:
+            solver_state = None
+        return y1, y_error, dense_info, solver_state, result
 
     def func_for_init(
         self,
