@@ -29,21 +29,22 @@ def test_cde_adjoint_term(getkey):
         mlp: eqx.nn.MLP
 
         def __call__(self, t, y, args):
+            (y,) = y
             in_ = jnp.concatenate([t[None], y, *args])
             out = self.mlp(in_)
-            return out.reshape(2, 3)
+            return (out.reshape(2, 3),)
 
     mlp = eqx.nn.MLP(in_size=5, out_size=6, width_size=3, depth=1, key=getkey())
     vector_field = VF(mlp)
     control = types.SimpleNamespace(
-        evaluate=lambda t0, t1: jrandom.normal(getkey(), (3,))
+        evaluate=lambda t0, t1: (jrandom.normal(getkey(), (3,)),)
     )
     term = diffrax.ControlTerm(vector_field, control)
     adjoint_term = diffrax.term.AdjointTerm(term)
     t = jrandom.normal(getkey(), ())
-    y = jrandom.normal(getkey(), (2,))
+    y = (jrandom.normal(getkey(), (2,)),)
     args = (jrandom.normal(getkey(), (1,)), jrandom.normal(getkey(), (1,)))
-    a_y = jrandom.normal(getkey(), (2,))
+    a_y = (jrandom.normal(getkey(), (2,)),)
     a_args = (jrandom.normal(getkey(), (1,)), jrandom.normal(getkey(), (1,)))
     randlike = lambda a: jrandom.normal(getkey(), a.shape)
     a_term = jax.tree_map(randlike, eqx.filter(term, eqx.is_array))

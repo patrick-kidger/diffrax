@@ -28,6 +28,17 @@ all_ode_solvers = (
 )
 
 
+all_sde_solvers = (
+    diffrax.Euler,
+    diffrax.EulerHeun,
+    diffrax.Heun,
+    diffrax.ItoMilstein,
+    diffrax.Midpoint,
+    diffrax.ReversibleHeun,
+    diffrax.StratonovichMilstein,
+)
+
+
 def random_pytree(key, treedef):
     keys = jrandom.split(key, treedef.num_leaves)
     leaves = []

@@ -82,7 +82,7 @@ class ButcherTableau:
         )
 
 
-_SolverState = Tuple[Optional[PyTree], Scalar]  # noqa: F821
+_SolverState = Optional[Tuple[Optional[PyTree], Scalar]]
 
 
 # TODO: examine termination criterion for Newton iteration
@@ -127,13 +127,13 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
-        control = terms.contr(t0, t1)
         if self.tableau.fsal:
+            control = terms.contr(t0, t1)
             k0 = terms.vf_prod(t0, y0, args, control)
+            dt = t1 - t0
+            return k0, dt
         else:
-            k0 = None
-        dt = t1 - t0
-        return k0, dt
+            return None
 
     def step(
         self,
@@ -148,9 +148,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         control = terms.contr(t0, t1)
         dt = t1 - t0
-        k0, prev_dt = solver_state
 
         if self.tableau.fsal:
+            k0, prev_dt = solver_state
             k0 = lax.cond(
                 made_jump,
                 lambda _: terms.vf_prod(t0, y0, args, control),

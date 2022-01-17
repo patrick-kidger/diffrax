@@ -2,13 +2,20 @@ import math
 import operator
 
 import diffrax
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import pytest
 import scipy.stats
 
-from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
+from helpers import (
+    all_ode_solvers,
+    all_sde_solvers,
+    random_pytree,
+    shaped_allclose,
+    treedefs,
+)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -67,7 +74,7 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_order(solver_ctr):
+def test_ode_order(solver_ctr):
     key = jrandom.PRNGKey(5678)
     akey, ykey = jrandom.split(key, 2)
 
@@ -96,6 +103,62 @@ def test_order(solver_ctr):
     order = scipy.stats.linregress(exponents, errors).slope
     # We accept quite a wide range. Improving this test would be nice.
     assert -0.9 < order - solver_ctr.order < 0.9
+
+
+@pytest.mark.parametrize("solver_ctr", all_sde_solvers)
+def test_sde_strong_order(solver_ctr):
+    key = jrandom.PRNGKey(5678)
+    driftkey, diffkey, ykey, bmkey = jrandom.split(key, 4)
+
+    def drift(t, y, args):
+        mlp = eqx.nn.MLP(in_size=3, out_size=3, width_size=3, depth=1, key=driftkey)
+        return mlp(y)
+
+    def diffusion(t, y, args):
+        mlp = eqx.nn.MLP(in_size=3, out_size=6, width_size=3, depth=1, key=diffkey)
+        return mlp(y).reshape(3, 2)
+
+    t0 = 0
+    t1 = 4
+    y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
+    bm = diffrax.VirtualBrownianTree(t0=t0, t1=t1, shape=(2,), tol=2 ** -12, key=bmkey)
+    if solver_ctr.term_structure == jax.tree_structure(0):
+        terms = diffrax.MultiTerm(
+            diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
+        )
+    else:
+        terms = (diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm))
+
+    # Reference solver is always an ODE-viable solver, so its implementation has been
+    # verified by the ODE tests like test_ode_order.
+    if issubclass(solver_ctr, diffrax.AbstractItoSolver):
+        ref_solver = diffrax.Euler()
+    elif issubclass(solver_ctr, diffrax.AbstractStratonovichSolver):
+        ref_solver = diffrax.Heun()
+    else:
+        assert False
+    ref_terms = diffrax.MultiTerm(
+        diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
+    )
+    true_sol = diffrax.diffeqsolve(
+        ref_terms, t0, t1, y0, dt0=2 ** -12, solver=ref_solver
+    )
+    true_yT = true_sol.ys[-1]
+
+    exponents = []
+    errors = []
+    for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
+        dt0 = 2 ** exponent
+        sol = diffrax.diffeqsolve(terms, t0, t1, y0, dt0, solver_ctr())
+        yT = sol.ys[-1]
+        error = jnp.sum(jnp.abs(yT - true_yT))
+        if error < 2 ** -28:
+            break
+        exponents.append(exponent)
+        errors.append(jnp.log2(error))
+
+    order = scipy.stats.linregress(exponents, errors).slope
+    assert -0.2 < order - solver_ctr.order < 0.2
 
 
 # Step size deliberately chosen not to divide the time interval

@@ -42,6 +42,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def t1(self):
         return None
 
+    @eqx.filter_jit
     def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> Array:
         del left
         nondifferentiable_input(t0, "t0")

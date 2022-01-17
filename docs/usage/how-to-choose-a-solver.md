@@ -4,17 +4,21 @@ The full list of solvers is available on the [Solvers](../api/solver.md) page.
 
 ## Ordinary differential equations
 
+!!! info
+
+    ODE problems are informally divided into "stiff" and "non-stiff" problems. Non-stiff problems are quite common, and generally solved using straightforawrd techniques like explicit Runge--Kutta methods. "Stiff" problems are simply (and informally) defined as those problems for which explicit Runge--Kutta methods don't work.
+
 ### Non-stiff problems
 
 For non-stiff problems then [`diffrax.Tsit5`][] is a good general-purpose solver.
 
 !!! note
     
-    For a long time the recommend default solver for many problems was [`diffrax.Dopri5`][]. This is the default solver used in [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq/), and is the solver used in MATLAB's `ode45`. However `Tsit5` is now reckoned on being slightly more efficient overall.
+    For a long time the recommend default solver for many problems was [`diffrax.Dopri5`][]. This is the default solver used in [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq/), and is the solver used in MATLAB's `ode45`. However `Tsit5` is now reckoned on being slightly more efficient overall. (Try both if you wish.)
 
 If you need accurate solutions at high tolerances then try [`diffrax.Dopri8`][].
 
-If you are solving a neural differential equation, and training via discretise-then-optimise (which is the default `diffeqsolve(..., adjoint=RecursiveCheckpointAdjoint())`), then accurate solutions are often not needed and a low-order solver will be most efficient. For example something like [`diffrax.Heun`][].
+If you are solving a neural differential equation, and training via discretise-then-optimise (corresponding to `diffeqsolve(..., adjoint=RecursiveCheckpointAdjoint())`, which is the default), then accurate solutions are often not needed and a low-order solver will be most efficient. For example something like [`diffrax.Heun`][].
 
 ### Stiff problems
 
@@ -24,13 +28,56 @@ See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
 
 ## Stochastic differential equations
 
+!!! info
+
+    SDE solvers are relatively specialised depending on the type of problem. Each solver will converge to either the Itô solution or the Stratonovich solution. In addition some solvers require "commutative noise".
+
+??? info "Commutative noise"
+
+    Consider the SDE
+
+    $\mathrm{d}y(t) = μ(t, y(t))\mathrm{d}t + σ(t, y(t))\mathrm{d}w(t)$
+
+    then the diffusion matrix $σ$ is said to satisfy the commutativity condition if
+
+    $\sum_{i=1}^d σ_{i, j} \frac{\partial σ_{k, l}}{\partial y_i} = \sum_{i=1}^d σ_{i, l} \frac{\partial σ_{k, j}}{\partial y_i}$
+
+    Some common special cases in which this condition is satisfied are:
+
+    - the diffusion is additive ($σ$ is independent of $y$);
+    - the noise is scalar ($w$ is scalar-valued);
+    - the diffusion is diagonal ($σ$ is a diagonal matrix and such that the i-th
+        diagonal entry depends only on $y_i$; *not* to be confused with the simpler
+        but insufficient condition that $σ$ is only a diagonal matrix)
+
 ### Itô
 
-For Ito SDEs then [`diffrax.Euler`][] is a typical choice.
+For Itô SDEs:
+
+- If the noise is commutative then [`diffrax.ItoMilstein`][] is a typical choice;
+- If the noise is noncommutative then [`diffrax.Euler`][] is a typical choice.
 
 ### Stratonovich
 
-For Stratonovich SDEs then [`diffrax.Heun`][] is a typical choice.
+For Stratonovich SDEs:
+
+- If higher-order weak convergence is desired then [`diffrax.Heun`][] is a good choice. (It gets second-order weak convergence.)
+- If cheap low-accuracy solves are desired then [`diffrax.EulerHeun`][] is a good choice.
+- Otherwise, and if the noise is commutative, then [`diffrax.StratonovichMilstein`][] is a typical choice.
+- Othewrise, and if the noise is noncommutative, then [`diffrax.Heun`][] is a typical choice.
+
+### Additive noise
+
+Consider the SDE
+
+$\mathrm{d}y(t) = μ(t, y(t))\mathrm{d}t + σ(t, y(t))\mathrm{d}w(t)$
+
+Then the diffusion matrix $σ$ is said to be additive if $σ(t, y) = σ(t)$. That is to say if the diffusion is independent of $y$.
+
+In this case then the Itô solution and the Stratonovich solution coincide, and mathematically speaking the choice of Itô vs Stratonovich is unimportant. (In addition, additive noise is commutative niose.)
+
+- The cheapest (but least accurate) solver is [`diffrax.Euler`][].
+- Other than that, see the guidance for Stratonovich solvers. (They are typically computationally cheaper than their Itô counterparts.)
 
 ## Controlled differential equations
 

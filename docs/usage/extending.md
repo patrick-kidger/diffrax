@@ -5,15 +5,18 @@ It's completely possible to extend Diffrax with your own custom solvers, step si
 The main points of extension are as follows:
 
 - **Custom solvers** should inherit from [`diffrax.AbstractSolver`][].
-    - If you are making a new Runge--Kutta method then this is particularly easy; you can use the existing base classes Diffrax already uses for its own Runge--Kutta methods.
-    - For explicit-Runge--Kutta methods (ERK) then inherit from `diffrax.AbstractERK`.
-    - For general diagonal-implicit-Runge--Kutta methods (DIRK) then inherit from `diffrax.AbstractDIRK`.
-    - For singly-diagonal-implicit-Runge--Kutta methods (SDIRK) then inherit from `diffrax.AbstractSDIRK`.
-    - For explicit-singly-diagonal-implicit-Runge--Kutta methods (ESDIRK) then inherit from `diffrax.AbstractESDIRK`.
-    - (Fully-implicit-Runge--Kutta methods (FIRK) don't have a convenient base class yet.)
-    - In each case it is then enough to simply set the right tableau, interpolation scheme and so on. Look up the code for the existing solvers and copy what they do.
+    - If you are making a new Runge--Kutta method then this is particularly easy; you can use the existing base classes Diffrax already uses for its own Runge--Kutta methods, and supply them with an appropriate `diffrax.ButcherTableau`.
+        - For explicit-Runge--Kutta methods (ERK) then inherit from `diffrax.AbstractERK`.
+        - For general diagonal-implicit-Runge--Kutta methods (DIRK) then inherit from `diffrax.AbstractDIRK`.
+        - For singly-diagonal-implicit-Runge--Kutta methods (SDIRK) then inherit from `diffrax.AbstractSDIRK`.
+        - For explicit-singly-diagonal-implicit-Runge--Kutta methods (ESDIRK) then inherit from `diffrax.AbstractESDIRK`.
+    - Several abstract base classes are available to specify the behaviour of the solver:
+        - `diffrax.AbstractAdaptiveSolver` are those solvers capable of providing error estimates (and thus can be used with adaptive step size controllers).
+        - `diffrax.AbstractImplicitSolver` are those solvers that solve implicit problems (and therefore take a `nonlinear_solver` argument).
+        - `diffrax.AbstractItoSolver` and `diffrax.AbstractStratonovichSolver` are used to specify which SDE solution a particular solver is known to converge to.
 
 - **Custom step size controllers** should inherit from [`diffrax.AbstractStepSizeController`][].
+    - The abstract base class `diffrax.AbstractAdaptiveStepSizeController` can be used to specify that this controller uses error estimates to adapt step sizes.
 
 - **Custom Brownian motion simulations** should inherit from [`diffrax.AbstractBrownianPath`][].
 

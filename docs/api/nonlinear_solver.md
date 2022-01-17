@@ -10,6 +10,8 @@ Some differential equation solvers -- in particular implicit solvers -- have to 
                 - __call__
                 - jac
 
+---
+
 ::: diffrax.NewtonNonlinearSolver
     selection:
         members:

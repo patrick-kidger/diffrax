@@ -8,13 +8,13 @@ The complete list of solvers, categorised by type, is as follows.
 
     The type of solver chosen determines how the `terms` field of `diffeqsolve` should be laid out. Most of them demand that it should be a single `AbstractTerm`. But for example [`diffrax.SemiImplicitEuler`][] demands that it by a 2-tuple `(AbstractTerm, AbstractTerm)`, to represent the two vector fields that solver uses.
 
-    If it is different from this default, then you can find the appropriate structure under `<solver>.term_structure`.
+    If it is different from this default, then you can find the appropriate structure documented below, and available programmatically under `<solver>.term_structure`.
 
 ??? info "Stochastic differential equations"
 
-    No distinction is made between solvers for different kinds of differential equation, like between ODEs and SDEs. Diffrax's term system allows for treating them all in a unified way.
+    For the most part, no distinction is made between solvers for different kinds of differential equation, like between ODEs and SDEs. Diffrax's term system allows for treating them all in a unified way.
 
-    For the common case of an SDE with drift and Brownian-motion-driven diffusion, they can be used as
+    Those ODE solvers that make sense as SDE solvers are documented as such. For the common case of an SDE with drift and Brownian-motion-driven diffusion, they can be used by combining drift and diffusion into a single term:
 
     ```python
     drift = lambda t, y, args: -y
@@ -24,9 +24,7 @@ The complete list of solvers, categorised by type, is as follows.
     diffeqsolve(terms, ..., solver=Euler())
     ```
 
-    In which the various terms are combined together into a single term, via [`diffrax.MultiTerm`][].
-
-    As a general rule, any first or second order ODE solver may be used to solve an SDE. (Higher solvers will work perfectly fine, but won't produce more accurate results, so their extra computational work is unnecessary.)
+    In addition there are some [SDE-specific solvers](#sde-only-solvers).
 
 
 ??? abstract "`diffrax.AbstractSolver`"
@@ -53,6 +51,14 @@ The complete list of solvers, categorised by type, is as follows.
         members: false
 
 ::: diffrax.Heun
+    selection:
+        members: false
+
+::: diffrax.Midpoint
+    selection:
+        members: false
+
+::: diffrax.Ralston
     selection:
         members: false
 
@@ -100,6 +106,13 @@ The complete list of solvers, categorised by type, is as follows.
 
 ### Symplectic methods
 
+??? info "Term and state structure"
+
+    The state of the system (the initial value of which is given by `y0` to [`diffrax.diffeqsolve`][]) must be a 2-tuple (of PyTrees). The terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple of `AbstractTerms`.
+    
+    Letting `v, w = y0` and `f, g = terms`, then `v` is updated according to
+    `f(t, w, args) * dt` and `w` is updated according to `g(t, v, args) * dt`.
+
 ::: diffrax.SemiImplicitEuler
     selection:
         members: false
@@ -117,5 +130,29 @@ The complete list of solvers, categorised by type, is as follows.
 ### Linear multistep methods
 
 ::: diffrax.LeapfrogMidpoint
+    selection:
+        members: false
+
+---
+
+### SDE-only solvers
+
+!!! tip
+
+    Don't forget that many low-order ODE solvers can also be used as SDE solvers; they are documented as such above.
+
+??? info "Term structure"
+
+    For these SDE-specific solvers, the terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple `(AbstractTerm, AbstractTerm)`, representing the drift and diffusion respectively. Typically that means `(ODETerm(...), ControlTerm(..., ...))`.
+
+::: diffrax.EulerHeun
+    selection:
+        members: false
+
+::: diffrax.ItoMilstein
+    selection:
+        members: false
+
+::: diffrax.StratonovichMilstein
     selection:
         members: false

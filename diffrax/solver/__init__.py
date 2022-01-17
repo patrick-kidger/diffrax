@@ -18,6 +18,7 @@ from .kvaerno4 import Kvaerno4
 from .kvaerno5 import Kvaerno5
 from .leapfrog_midpoint import LeapfrogMidpoint
 from .midpoint import Midpoint
+from .milstein import ItoMilstein, StratonovichMilstein
 from .ralston import Ralston
 from .reversible_heun import ReversibleHeun
 from .runge_kutta import (

@@ -4,7 +4,7 @@ from .adjoint import (
     NoAdjoint,
     RecursiveCheckpointAdjoint,
 )
-from .brownian import AbstractBrownianPath, UnsafeBrownianPath
+from .brownian import AbstractBrownianPath, UnsafeBrownianPath, VirtualBrownianTree
 from .global_interpolation import (
     AbstractGlobalInterpolation,
     backward_hermite_coefficients,
@@ -30,6 +30,7 @@ from .solver import (
     AbstractDIRK,
     AbstractERK,
     AbstractESDIRK,
+    AbstractImplicitSolver,
     AbstractItoSolver,
     AbstractRungeKutta,
     AbstractSDIRK,
@@ -44,6 +45,7 @@ from .solver import (
     Fehlberg2,
     Heun,
     ImplicitEuler,
+    ItoMilstein,
     Kvaerno3,
     Kvaerno4,
     Kvaerno5,
@@ -52,6 +54,7 @@ from .solver import (
     Ralston,
     ReversibleHeun,
     SemiImplicitEuler,
+    StratonovichMilstein,
     Tsit5,
 )
 from .step_size_controller import (

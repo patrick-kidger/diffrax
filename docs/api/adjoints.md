@@ -21,6 +21,8 @@ There are multiple ways to backpropagate through a differential equation (to com
             members:
                 - loop
 
+---
+
 ::: diffrax.RecursiveCheckpointAdjoint
     selection:
         members: false
