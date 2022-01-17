@@ -95,6 +95,16 @@ print(sol.evaluate(0.1))  # DeviceArray(0.9026031)
 
 As you can see, basically nothing has changed compared to the ODE example; all the same APIs are used. The only difference is that we created an SDE solver rather than an ODE solver.
 
+
+!!! info
+
+    If using some SDE-specific solvers, for example [`diffrax.ItoMilstein`][], then the solver makes a distinction between drift and diffusion. (In the previous example, the solver [`diffrax.Euler`][] is completely oblivious to this distinction. In this case the drift and diffusion should be passed separately as a 2-tuple of terms, rather than wrapped into a single [`diffrax.MultiTerm`][]. This would involve changing the above example with:
+
+    ```python
+    terms = (ODETerm(drift), ControlTerm(diffusion, brownian_motion))
+    solver = ItoMilstein()
+    ```
+
 ---
 
 ## Controlled differential equations (CDEs)
