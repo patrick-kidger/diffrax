@@ -1,4 +1,5 @@
 import abc
+import operator
 from typing import Callable, Tuple
 
 import equinox as eqx
@@ -212,7 +213,42 @@ def _prod(
     return jnp.tensordot(vf, control, axes=jnp.ndim(control))
 
 
-class ControlTerm(AbstractTerm):
+class _ControlTerm(AbstractTerm):
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
+    control: AbstractPath
+
+    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
+        return self.vector_field(t, y, args)
+
+    def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
+        return self.control.evaluate(t0, t1)
+
+    def to_ode(self) -> ODETerm:
+        r"""If the control is differentiable then $f(t, y(t), args) \mathrm{d}x(t)$
+        may be thought of as an ODE as
+
+        $f(t, y(t), args) \frac{\mathrm{d}x}{\mathrm{d}t}\mathrm{d}t$.
+
+        This method converts this `ControlTerm` into the corresponding
+        [`diffrax.ODETerm`][] in this way.
+        """
+        vector_field = _ControlToODE(self)
+        return ODETerm(vector_field=vector_field)
+
+
+_ControlTerm.__init__.__doc__ = """**Arguments:**
+
+- `vector_field`: A callable representing the vector field. This callable takes three
+    arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
+    the evolving state of the system. `args` are any static arguments as passed to
+    [`diffrax.diffeqsolve`][].
+- `control`: A callable representing the control. Should have an `evaluate(t0, t1)`
+    method. If using [`diffrax.ControlTerm.to_ode`][] then it should have a
+    `derivative(t)` method.
+"""
+
+
+class ControlTerm(_ControlTerm):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product.
 
@@ -249,41 +285,37 @@ class ControlTerm(AbstractTerm):
         diffeqsolve(cde_term, ...)
         ```
     """
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
-    control: AbstractPath
-
-    def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        return self.vector_field(t, y, args)
-
-    def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
-        return self.control.evaluate(t0, t1)
 
     @staticmethod
     def prod(vf: PyTree, control: PyTree) -> PyTree:
         return jax.tree_map(_prod, vf, control)
 
-    def to_ode(self):
-        r"""If the control is differentiable then $f(t, y(t), args) \mathrm{d}x(t)$
-        may be thought of as an ODE as
-        $f(t, y(t), args) \frac{\mathrm{d}x}{\mathrm{d}t}\mathrm{d}t$.
 
-        This method converts this `ControlTerm` into the corresponding
-        [`diffrax.ODETerm`][] in this way.
-        """
-        vector_field = _ControlToODE(self)
-        return ODETerm(vector_field=vector_field)
+class WeaklyDiagonalControlTerm(_ControlTerm):
+    r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
+    which the vector field - control interaction is a matrix-vector product, and the
+    matrix is square and diagonal. In this case we may represent the matrix as a vector
+    of just its diagonal elements. The matrix-vector product may be calculated by
+    pointwise multiplying this vector with the control; this is more computationally
+    efficient than writing out the full matrix and then doing a full matrix-vector
+    product.
 
+    Correspondingly, `vector_field` and `control` should both return PyTrees, and both
+    should have the same structure and leaf shape as the initial state `y0`. These are
+    multiplied together pointwise.
 
-ControlTerm.__init__.__doc__ = """**Arguments:**
+    !!! info
 
-- `vector_field`: A callable representing the vector field. This callable takes three
-    arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
-    the evolving state of the system. `args` are any static arguments as passed to
-    [`diffrax.diffeqsolve`][].
-- `control`: A callable representing the control. Should have an `evaluate(t0, t1)`
-    method. If using [`diffrax.ControlTerm.to_ode`][] then it should have a
-    `derivative(t)` method.
-"""
+        Why "weakly" diagonal? Consider the matrix representation of the vector field,
+        as a square diagonal matrix. In general, the (i,i)-th element may depending
+        upon any of the values of `y`. It is only if the (i,i)-th element only depends
+        upon the i-th element of `y` that the vector field is said to be "diagonal",
+        without the "weak". (This stronger property is useful in some SDE solvers.)
+    """
+
+    @staticmethod
+    def prod(vf: PyTree, control: PyTree) -> PyTree:
+        return jax.tree_map(operator.mul, vf, control)
 
 
 class _ControlToODE(eqx.Module):

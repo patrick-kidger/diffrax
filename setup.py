@@ -48,7 +48,7 @@ python_requires = "~=3.8"
 
 install_requires = [
     "jax>=0.2.26",
-    "equinox>=0.1.4",
+    "equinox>=0.1.5",
 ]
 
 setuptools.setup(

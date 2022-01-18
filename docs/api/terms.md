@@ -39,7 +39,7 @@ The very first argument to [`diffrax.diffeqsolve`][] should be some PyTree of te
 ---
 
 !!! note
-    You can create your own terms if appropriate: e.g. if a diffusion matrix has some particular structure, and you want to use a specialised more efficient matrix-vector product algorithm in `prod`.
+    You can create your own terms if appropriate: e.g. if a diffusion matrix has some particular structure, and you want to use a specialised more efficient matrix-vector product algorithm in `prod`. For example this is what [`diffrax.WeaklyDiagonalControlTerm`][] does, as compared to just [`diffrax.ControlTerm`][].
 
 ::: diffrax.ODETerm
     selection:
@@ -47,6 +47,12 @@ The very first argument to [`diffrax.diffeqsolve`][] should be some PyTree of te
             - __init__
 
 ::: diffrax.ControlTerm
+    selection:
+        members:
+            - __init__
+            - to_ode
+
+::: diffrax.WeaklyDiagonalControlTerm
     selection:
         members:
             - __init__
