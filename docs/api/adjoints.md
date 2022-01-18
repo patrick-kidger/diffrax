@@ -27,11 +27,21 @@ There are multiple ways to backpropagate through a differential equation (to com
     selection:
         members: false
 
+::: diffrax.NoAdjoint
+    selection:
+        members: false
+
 ::: diffrax.BacksolveAdjoint
     selection:
         members:
             - __init__
 
-::: diffrax.NoAdjoint
-    selection:
-        members: false
+!!! tip
+
+    To use adjoint seminorms as described in ["Hey, that's not an ODE": Faster ODE Adjoints via Seminorms](https://arxiv.org/abs/2009.09457), then this can be accomplished by simply passing the appropriate norm for the reverse pass:
+    ```python
+    adjoint_stepsize_controller = diffrax.IController(norm=diffrax.adjoint_rms_seminorm)
+    adjoint = diffrax.BacksolveAdjoint(stepsize_controller=adjoint_stepsize_controller)
+    diffrax.diffeqsolve(..., adjoint=adjoint)
+    ```
+    Note that this will mean that any `stepsize_controller` specified for the forward pass will not be automatically used for the backward pass (as `adjoint_stepsize_controller` overrides it), so you should specify any custom `rtol`, `atol` for the backward pass as well.

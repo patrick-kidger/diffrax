@@ -115,3 +115,26 @@ def test_backsolve(getkey):
                 )
                 backsolve_grads = _run_grad(diff, saveat, diffrax.BacksolveAdjoint())
                 assert shaped_allclose(true_grads, backsolve_grads)
+
+
+def test_adjoint_seminorm():
+    vector_field = lambda t, y, args: -y
+    term = diffrax.ODETerm(vector_field)
+
+    def solve(y0):
+        adjoint = diffrax.BacksolveAdjoint(
+            stepsize_controller=diffrax.IController(norm=diffrax.adjoint_rms_seminorm)
+        )
+        sol = diffrax.diffeqsolve(
+            term,
+            0,
+            1,
+            y0,
+            None,
+            diffrax.Tsit5(),
+            stepsize_controller=diffrax.IController(),
+            adjoint=adjoint,
+        )
+        return jnp.sum(sol.ys)
+
+    jax.grad(solve)(2.0)

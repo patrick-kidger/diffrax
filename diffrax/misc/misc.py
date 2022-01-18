@@ -126,6 +126,14 @@ def rms_norm(x: PyTree) -> Scalar:
     return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
 
 
+def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> Scalar:
+    assert isinstance(x, tuple)
+    assert len(x) == 4
+    y, a_y, a_args, a_terms = x
+    del a_args, a_terms  # whole point
+    return rms_norm((y, a_y))
+
+
 def left_broadcast_to(arr, shape):
     """As `jax.numpy.broadcast_to`, except that `arr` is lined up with the left-hand
     edge of `shape`, rather than the right-hand edge.
