@@ -64,7 +64,13 @@ from .step_size_controller import (
     IController,
     StepTo,
 )
-from .term import AbstractTerm, ControlTerm, MultiTerm, ODETerm
+from .term import (
+    AbstractTerm,
+    ControlTerm,
+    MultiTerm,
+    ODETerm,
+    WeaklyDiagonalControlTerm,
+)
 
 
 __version__ = "0.0.1"
