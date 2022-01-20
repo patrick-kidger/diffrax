@@ -114,6 +114,6 @@ def test_conditional_statistics():
         normalised_vals = (this_vals - mean) / std
         _, pval = stats.kstest(normalised_vals, stats.norm.cdf)
 
-        # Raise if the failure is tatistically significant at 10%, subject to
+        # Raise if the failure is statistically significant at 10%, subject to
         # multiple-testing correction.
         assert pval > 0.001

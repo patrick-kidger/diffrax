@@ -592,6 +592,8 @@ def diffeqsolve(
         saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
 
     # Stepsize controller gets an opportunity to modify the solver.
+    # Note that at this point the solver could be anything so we must check any
+    # abstract base classes of the solver before this.
     solver = stepsize_controller.wrap_solver(solver)
 
     # Error checking

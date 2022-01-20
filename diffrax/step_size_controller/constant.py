@@ -26,7 +26,7 @@ class ConstantStepSize(AbstractStepSizeController):
         args: PyTree,
         solver: AbstractSolver,
     ) -> Tuple[Scalar, Scalar]:
-        del t1, y0, args, solver
+        del terms, t1, y0, args, solver
         if dt0 is None:
             raise ValueError(
                 "Constant step size solvers cannot select step size automatically; "
@@ -85,11 +85,11 @@ class StepTo(AbstractStepSizeController):
         solver: AbstractSolver,
     ) -> Tuple[Scalar, int]:
         del y0, args, solver
-        error_if(
-            dt0 is not None,
-            "`dt0` should be `None`; step location is determined"
-            f"by {type(self).__name__}(ts=...).",
-        )
+        if dt0 is not None:
+            raise ValueError(
+                "`dt0` should be `None`. Step location is already determined "
+                f"by {type(self).__name__}(ts=...).",
+            )
         error_if(
             (t0 != self.ts[0]) | (t1 != self.ts[-1]),
             "Must have `t0==ts[0]` and `t1==ts[-1]`.",
