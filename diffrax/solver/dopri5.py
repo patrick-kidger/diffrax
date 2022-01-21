@@ -43,6 +43,10 @@ class _Dopri5Interpolation(FourthOrderPolynomialInterpolation):
     )
 
 
+# I've not tried implementing the version in
+# https://www.sciencedirect.com/science/article/pii/0898122196001411
+# ("An Efficient Runge--Kutta (4, 5) pair", Bogacki and Shampine 1996)
+# Which they claim is slightly more efficient than the one we have here.
 class Dopri5(AbstractERK):
     r"""Dormand-Prince's 5/4 method.
 
@@ -50,6 +54,8 @@ class Dopri5(AbstractERK):
     sizing.
 
     ??? cite "Reference"
+
+        The original reference for Dormand--Prince's 5(4) method is:
 
         ```bibtex
         @article{dormand1980family,
@@ -59,6 +65,22 @@ class Dopri5(AbstractERK):
             year={1980},
             volume={6},
             pages={19--26}
+        }
+
+        However (despite the name), the Butcher tableau used here is actually due to
+        Shampine:
+
+        ```bibtex
+        @article{
+            author={Lawrence F. Shampine},
+            journal={Mathematics of Computation},
+            number={173},
+            pages={135--150},
+            publisher={American Mathematical Society},
+            title={Some Practical Runge-Kutta Formulas},
+            volume={46},
+            year={1986},
+            doi={https://doi.org/10.2307/2008219}
         }
         ```
     """
