@@ -207,14 +207,6 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             y_error,
         )
         dense_info = dict(y0=y0, y1=y1, k=k)
-        if y1 is None:
-            # Edge case: our state, passed in as diffeqsolve(y0=...) might a `None`
-            # PyTree. In this case `y_error` will also be `None`, which can cause
-            # incorrect downstream errors with adaptive step sizing. (As we use
-            # `y_error=None` to indicate that the solver does not support that.)
-            # TODO: introduce a special no-error-estimate flag?
-            assert y_error is None
-            y_error = 0
         if self.tableau.fsal:
             solver_state = (k1, dt)
         else:
@@ -255,14 +247,14 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     (diagonal, terms.vf_prod, ti, yi_partial, args, control),
                 )
             assert jac is not None
-            ki, result = self.nonlinear_solver(
+            nonlinear_sol = self.nonlinear_solver(
                 _implicit_relation,
                 ki_pred,
                 (diagonal, terms.vf_prod, ti, yi_partial, args, control),
                 jac,
             )
-            ki = unravel(ki)
-            return ki, jac, result
+            ki = unravel(nonlinear_sol.ki)
+            return ki, jac, nonlinear_sol.result
 
 
 class AbstractERK(AbstractRungeKutta):

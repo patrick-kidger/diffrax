@@ -51,13 +51,13 @@ class ImplicitEuler(AbstractImplicitSolver):
         jac = self.nonlinear_solver.jac(
             _implicit_relation, pred, (terms.vf_prod, t1, y0, args, control)
         )
-        z1, result = self.nonlinear_solver(
+        nonlinear_sol = self.nonlinear_solver(
             _implicit_relation, pred, (terms.vf_prod, t1, y0, args, control), jac
         )
-        z1 = unravel(z1)
+        z1 = unravel(nonlinear_sol.root)
         y1 = (y0 ** ω + z1 ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, result
+        return y1, None, dense_info, None, nonlinear_sol.result
 
     def func_for_init(
         self,

@@ -22,7 +22,7 @@ If you are solving a neural differential equation, and training via discretise-t
 
 ### Stiff problems
 
-For stiff problems then try the [`diffrax.Kvaerno3`][], [`diffrax.Kvaerno4`][], [`diffrax.Kvaerno5`][] family of solvers.
+For stiff problems then try the [`diffrax.Kvaerno3`][], [`diffrax.Kvaerno4`][], [`diffrax.Kvaerno5`][] family of solvers. In addition you should almost always use an adaptive step size controller (for example [`diffrax.IController`][]).
 
 See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
 

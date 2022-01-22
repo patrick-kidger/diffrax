@@ -10,7 +10,7 @@ import jax.scipy as jsp
 from ..custom_types import Bool, PyTree, Scalar
 from ..misc import rms_norm
 from ..solution import RESULTS
-from .base import AbstractNonlinearSolver, LU_Jacobian
+from .base import AbstractNonlinearSolver, LU_Jacobian, NonlinearSolution
 
 
 def _small(diffsize: Scalar) -> Bool:
@@ -76,8 +76,6 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     """
 
     max_steps: int = 10
-    rtol: Optional[Scalar] = None
-    atol: Optional[Scalar] = None
     kappa: Scalar = 1e-2
     norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
@@ -132,7 +130,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         val = body_fn(val)
         val = body_fn(val)
         val = lax.while_loop(cond_fn, body_fn, val)
-        flat, _, diffsize, diffsize_prev = val
+        flat, num_steps, diffsize, diffsize_prev = val
 
         if self.tolerate_nonconvergence:
             result = RESULTS.successful
@@ -147,7 +145,8 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             )
             result = jnp.where(diverged, RESULTS.implicit_divergence, result)
             result = jnp.where(small, RESULTS.successful, result)
-        return unflatten(flat), result
+        root = unflatten(flat)
+        return NonlinearSolution(root=root, num_steps=num_steps, result=result)
 
 
 NewtonNonlinearSolver.__init__.__doc__ = """

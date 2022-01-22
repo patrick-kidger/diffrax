@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .custom_types import Array, PyTree, Scalar
-from .misc import linear_rescale, ω
+from .misc import left_broadcast_to, linear_rescale, ω
 from .path import AbstractPath
 
 
@@ -71,11 +71,12 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
 
         return jax.tree_map(_eval, self.coeffs)
 
-    def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
+    def derivative(self, t: Scalar) -> PyTree:
         t = linear_rescale(self.t0, t, self.t1)
 
         def _deriv(coeffs):
-            coeffs = jnp.array([[4], [3], [2], [1]]) * coeffs[:4]
-            return jnp.polyval(coeffs, t) / (self.t1 - self.t0)
+            coeffs = coeffs[:4]
+            mult = left_broadcast_to(jnp.array([4, 3, 2, 1]), coeffs.shape)
+            return jnp.polyval(mult * coeffs, t) / (self.t1 - self.t0)
 
         return jax.tree_map(_deriv, self.coeffs)

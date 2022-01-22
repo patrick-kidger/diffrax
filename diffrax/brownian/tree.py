@@ -152,7 +152,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         #
         # `A` is inverse of the above matrix, rescaled to s=0, t=0.5, u=1.
         A = jnp.array([[2, -4, 2], [-3, 4, -1], [1, 0, 0]])
-        coeffs = A @ jnp.stack([w_s, w_t, w_u])
+        coeffs = jnp.tensordot(A, jnp.stack([w_s, w_t, w_u]), axes=1)
         return jnp.polyval(coeffs, rescaled_τ)
 
 

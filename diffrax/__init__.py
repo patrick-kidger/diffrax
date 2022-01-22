@@ -21,7 +21,11 @@ from .local_interpolation import (
     LocalLinearInterpolation,
 )
 from .misc import adjoint_rms_seminorm, sde_kl_divergence
-from .nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
+from .nonlinear_solver import (
+    AbstractNonlinearSolver,
+    NewtonNonlinearSolver,
+    NonlinearSolution,
+)
 from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import RESULTS, Solution

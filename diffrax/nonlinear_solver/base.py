@@ -1,5 +1,5 @@
 import abc
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
 import jax
@@ -7,12 +7,18 @@ import jax.flatten_util as fu
 import jax.numpy as jnp
 import jax.scipy as jsp
 
-from ..custom_types import PyTree
+from ..custom_types import Int, PyTree, Scalar
 from ..misc import is_perturbed
 from ..solution import RESULTS
 
 
-LU_Jacobian = "LU_Jacobian"
+LU_Jacobian = TypeVar("LU_Jacobian")
+
+
+class NonlinearSolution(eqx.Module):
+    root: PyTree
+    num_steps: Int
+    result: RESULTS
 
 
 class AbstractNonlinearSolver(eqx.Module):
@@ -20,6 +26,9 @@ class AbstractNonlinearSolver(eqx.Module):
 
     Subclasses will be differentiable via the implicit function theorem.
     """
+
+    rtol: Optional[Scalar] = None
+    atol: Optional[Scalar] = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -41,7 +50,7 @@ class AbstractNonlinearSolver(eqx.Module):
 
     def __call__(
         self, fn: Callable, x: PyTree, args: PyTree, jac: Optional[LU_Jacobian] = None
-    ) -> Tuple[PyTree, RESULTS]:
+    ) -> NonlinearSolution:
         """Find `z` such that `fn(z, args) = 0`.
 
         Gradients will be computed with respect to `args`. (And in particular not with
@@ -119,7 +128,8 @@ def _root_solve_jvp(
 
     (diff_args,) = diff_args
     (tang_diff_args,) = tang_diff_args
-    root, result = self._solve(self, fn, x, jac, nondiff_args, diff_args)
+    solution = self._solve(self, fn, x, jac, nondiff_args, diff_args)
+    root = solution.root
 
     flat_root, unflatten_root = fu.ravel_pytree(root)
     args = eqx.combine(nondiff_args, diff_args)
@@ -146,4 +156,4 @@ def _root_solve_jvp(
 
     tang_root = -jnp.linalg.solve(jac_flat_root, jvp_flat_diff_args)
     tang_root = unflatten_root(tang_root)
-    return (root, result), (tang_root, 0)
+    return solution, (tang_root, 0)

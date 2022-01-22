@@ -18,7 +18,7 @@ _From a technical point of view, the internal structure of the library is pretty
 
 TODO
 
-Requires Python >=3.8 and JAX >=0.2.20.
+Requires Python >=3.8 and JAX >=0.2.27.
 
 ## Quick example
 

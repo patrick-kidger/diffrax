@@ -326,29 +326,23 @@ def _test_dense_interpolation(solver_ctr, getkey, t1):
     vals = jax.vmap(sol.evaluate)(points)
     true_vals = jnp.exp(-points) * y0
 
-    # Tsit5 derivative is not yet implemented.
-    if solver_ctr is diffrax.Tsit5:
-        derivs = None
-        true_derivs = None
-    else:
-        derivs = jax.vmap(sol.derivative)(points)
-        true_derivs = -true_vals
+    derivs = jax.vmap(sol.derivative)(points)
+    true_derivs = -true_vals
 
-    # TODO: apply more stringent tolerances where possible.
-    # Need to upgrade away from some of the simplistic interpolation routines used at
-    # the moment though.
-    tol = 1e-1
-    return vals, true_vals, derivs, true_derivs, tol
+    return vals, true_vals, derivs, true_derivs
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_dense_interpolation(solver_ctr, getkey):
-    vals, true_vals, derivs, true_derivs, tol = _test_dense_interpolation(
+    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(
         solver_ctr, getkey, 1
     )
-    assert shaped_allclose(vals, true_vals, atol=tol, rtol=tol)
+    assert shaped_allclose(vals, true_vals, atol=1e-5, rtol=1e-5)
     if derivs is not None:
-        assert shaped_allclose(derivs, true_derivs, atol=tol, rtol=tol)
+        # TODO: apply more stringent tolerances where possible.
+        # Need to upgrade away from some of the simplistic interpolation routines used
+        # at the moment though.
+        assert shaped_allclose(derivs, true_derivs, atol=0.1, rtol=0.1)
 
 
 # When vmap'ing then it can happen that some batch elements take more steps to solve

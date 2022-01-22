@@ -8,7 +8,6 @@ import jax.numpy as jnp
 
 from ..custom_types import Array, Bool, PyTree, Scalar
 from ..misc import nextafter, nextbefore, rms_norm, ω
-from ..nonlinear_solver import NewtonNonlinearSolver
 from ..solution import RESULTS
 from ..solver import AbstractImplicitSolver, AbstractSolver
 from ..term import AbstractTerm
@@ -88,11 +87,18 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
         # Poor man's multiple dispatch
         if isinstance(solver, AbstractImplicitSolver):
-            if isinstance(solver.nonlinear_solver, NewtonNonlinearSolver):
+            if solver.nonlinear_solver.rtol is None:
                 solver = eqx.tree_at(
-                    lambda s: (s.nonlinear_solver.rtol, s.nonlinear_solver.atol),
+                    lambda s: s.nonlinear_solver.rtol,
                     solver,
-                    (self.rtol, self.atol),
+                    self.rtol,
+                    is_leaf=lambda x: x is None,
+                )
+            if solver.nonlinear_solver.atol is None:
+                solver = eqx.tree_at(
+                    lambda s: s.nonlinear_solver.atol,
+                    solver,
+                    self.atol,
                     is_leaf=lambda x: x is None,
                 )
         return solver
@@ -215,7 +221,11 @@ class IController(AbstractAdaptiveStepSizeController):
         controller_state: _IControllerState,
     ) -> Tuple[Bool, Scalar, Scalar, Bool, _IControllerState, RESULTS]:
         del args
-        if y_error is None:
+        if y_error is None and y0 is not None:
+            # y0 is not None check is included to handle the edge case that the state
+            # is just a trivial `None` PyTree. In this case `y_error` has the same
+            # PyTree structure and thus overlaps with our special usage of `None` to
+            # indicate a lack of error estimate.
             raise RuntimeError(
                 "Cannot use adaptive step sizes with a solver that does not provide "
                 "error estimates."
