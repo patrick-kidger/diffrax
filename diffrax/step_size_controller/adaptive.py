@@ -126,18 +126,13 @@ class IController(AbstractAdaptiveStepSizeController):
     safety: Scalar = 0.9
 
     def wrap(self, direction: Scalar):
-        return type(self)(
-            rtol=self.rtol,
-            atol=self.atol,
-            safety=self.safety,
-            ifactor=self.ifactor,
-            dfactor=self.dfactor,
-            norm=self.norm,
-            dtmin=self.dtmin,
-            dtmax=self.dtmax,
-            force_dtmin=self.force_dtmin,
-            step_ts=None if self.step_ts is None else self.step_ts * direction,
-            jump_ts=None if self.jump_ts is None else self.jump_ts * direction,
+        step_ts = None if self.step_ts is None else self.step_ts * direction
+        jump_ts = None if self.jump_ts is None else self.jump_ts * direction
+        return eqx.tree_at(
+            lambda s: (s.step_ts, s.jump_ts),
+            self,
+            (step_ts, jump_ts),
+            is_leaf=lambda x: x is None,
         )
 
     def init(

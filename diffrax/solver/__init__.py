@@ -1,9 +1,12 @@
 from .base import (
+    AbstractAdaptiveSDESolver,
     AbstractAdaptiveSolver,
     AbstractImplicitSolver,
     AbstractItoSolver,
     AbstractSolver,
     AbstractStratonovichSolver,
+    AbstractWrappedSolver,
+    HalfSolver,
 )
 from .bosh3 import Bosh3
 from .dopri5 import Dopri5

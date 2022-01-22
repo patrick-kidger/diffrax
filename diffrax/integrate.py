@@ -24,7 +24,13 @@ from .misc import (
 )
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
-from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
+from .solver import (
+    AbstractAdaptiveSDESolver,
+    AbstractItoSolver,
+    AbstractSolver,
+    AbstractStratonovichSolver,
+    Euler,
+)
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -524,14 +530,17 @@ def diffeqsolve(
         )
     del term_leaves, term_structure, raises
 
-    # TODO: this error checking is pretty ad-hoc: it only really works for built-in
-    # types, and not user-provided ones.
     if _is_sde(terms):
+        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
+            warnings.warn(
+                f"`{solver.__name__}` is not marked as converging to either the Itô "
+                "or the Stratonovich solution."
+            )
         if isinstance(adjoint, BacksolveAdjoint):
             if isinstance(solver, AbstractItoSolver):
                 raise NotImplementedError(
-                    f"{solver.__name__} converges to the Itô solution. However "
-                    "BacksolveAdjoint currently only supports Stratonovich SDEs."
+                    f"`{solver.__name__}` converges to the Itô solution. However "
+                    "`BacksolveAdjoint` currently only supports Stratonovich SDEs."
                 )
             elif not isinstance(solver, AbstractStratonovichSolver):
                 warnings.warn(
@@ -539,13 +548,18 @@ def diffeqsolve(
                     "or the Stratonovich solution. Note that BacksolveAdjoint will "
                     "only produce the correct solution for Stratonovich SDEs."
                 )
-        if isinstance(
-            stepsize_controller, AbstractAdaptiveStepSizeController
-        ) and isinstance(solver, Euler):
-            raise ValueError(
-                "An SDE should not be solved with adaptive step sizes with Euler's "
-                "method; it will not converge to the correct solution."
-            )
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            # Specific check to not work even if using HalfSolver(Euler())
+            if isinstance(solver, Euler):
+                raise ValueError(
+                    "An SDE should not be solved with adaptive step sizes with Euler's "
+                    "method; it will not converge to the correct solution."
+                )
+            if not isinstance(solver, AbstractAdaptiveSDESolver):
+                raise ValueError(
+                    "An adaptive step size controller is being used with a solver "
+                    "that does not provide error estimates suitable for SDEs."
+                )
     if _is_unsafe_sde(terms):
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             raise ValueError(

@@ -30,6 +30,7 @@ from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import (
+    AbstractAdaptiveSDESolver,
     AbstractAdaptiveSolver,
     AbstractDIRK,
     AbstractERK,
@@ -40,6 +41,7 @@ from .solver import (
     AbstractSDIRK,
     AbstractSolver,
     AbstractStratonovichSolver,
+    AbstractWrappedSolver,
     Bosh3,
     ButcherTableau,
     Dopri5,
@@ -47,6 +49,7 @@ from .solver import (
     Euler,
     EulerHeun,
     Fehlberg2,
+    HalfSolver,
     Heun,
     ImplicitEuler,
     ItoMilstein,

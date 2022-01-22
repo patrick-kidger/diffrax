@@ -11,9 +11,11 @@ The main points of extension are as follows:
         - For singly-diagonal-implicit-Runge--Kutta methods (SDIRK) then inherit from `diffrax.AbstractSDIRK`.
         - For explicit-singly-diagonal-implicit-Runge--Kutta methods (ESDIRK) then inherit from `diffrax.AbstractESDIRK`.
     - Several abstract base classes are available to specify the behaviour of the solver:
-        - `diffrax.AbstractAdaptiveSolver` are those solvers capable of providing error estimates (and thus can be used with adaptive step size controllers).
         - `diffrax.AbstractImplicitSolver` are those solvers that solve implicit problems (and therefore take a `nonlinear_solver` argument).
+        - `diffrax.AbstractAdaptiveSolver` are those solvers capable of providing error estimates (and thus can be used with adaptive step size controllers).
         - `diffrax.AbstractItoSolver` and `diffrax.AbstractStratonovichSolver` are used to specify which SDE solution a particular solver is known to converge to.
+        - `diffrax.AbstractAdaptiveSDESolver` are those solvers whose error estimates are suitable for SDEs. (That is, both the method and the embedded method both converge to the same choice of Itô/Stratonovich.)
+        - `diffrax.AbstractWrappedSolver` indicates that the solver is used to wrap another solver, and so e.g. it will be treated as an implicit solver/etc. if the wrapped solver is also an implicit solver/etc.
 
 - **Custom step size controllers** should inherit from [`diffrax.AbstractStepSizeController`][].
     - The abstract base class `diffrax.AbstractAdaptiveStepSizeController` can be used to specify that this controller uses error estimates to adapt step sizes.
@@ -25,14 +27,10 @@ The main points of extension are as follows:
 - **Custom nonlinear solvers** (used in implicit methods) should inherit from [`diffrax.AbstractNonlinearSolver`][].
 
 - **Custom terms** should inherit from [`diffrax.AbstractTerm`][].
-    - For example, if the vector field - control interaction is a matrix-vector product, but the matrix is known to have special structure, then you may wish to create a custom term that can calculate this interaction more efficiently than is given by a full matrix-vector product.
+    - For example, if the vector field - control interaction is a matrix-vector product, but the matrix is known to have special structure, then you may wish to create a custom term that can calculate this interaction more efficiently than is given by a full matrix-vector product. For example this is done with [`diffrax.WeaklyDiagonalControlTerm`][] as compared to [`diffrax.ControlTerm`][].
 
 In each case we recommend looking up existing solvers/etc. in Diffrax to understand how to implement them.
 
 !!! tip "Contributions"
 
     If you implement a technique that you'd like to see merged into the main Diffrax library then open a [pull request on GitHub](https://github.com/patrick-kidger/diffrax). We're very happy to take contributions.
-
-!!! warning
-
-    In practice the APIs provided by these abstract base classes are now pretty stable. In principle however they may still be subject to change.

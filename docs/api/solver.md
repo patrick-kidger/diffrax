@@ -31,7 +31,7 @@ The complete list of solvers, categorised by type, is as follows.
 
     All of the classes implement the following interface specified by [`diffrax.AbstractSolver`][].
 
-    The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface; otherwise this is all just internal to the library.
+    The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface or defining your own solvers; otherwise this is all just internal to the library.
 
     ::: diffrax.AbstractSolver
         selection:
@@ -137,9 +137,19 @@ The complete list of solvers, categorised by type, is as follows.
 
 ### SDE-only solvers
 
-!!! tip
+??? tip "Other SDE solvers"
 
-    Don't forget that many low-order ODE solvers can also be used as SDE solvers; they are documented as such above.
+    Don't forget that many low-order ODE solvers can also be used as SDE solvers:
+
+    **Itô:**
+
+    - [`diffrax.Euler`][]
+
+    **Stratonovich:**
+
+    - [`diffrax.Heun`][]
+    - [`diffrax.Midpoint`][]
+    - [`diffrax.ReversibleHeun`][]
 
 ??? info "Term structure"
 
@@ -154,5 +164,11 @@ The complete list of solvers, categorised by type, is as follows.
         members: false
 
 ::: diffrax.StratonovichMilstein
+    selection:
+        members: false
+
+## Wrapper solvers
+
+::: diffrax.HalfSolver
     selection:
         members: false

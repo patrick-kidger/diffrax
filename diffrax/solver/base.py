@@ -19,7 +19,14 @@ def vector_tree_dot(a, b):
     return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
 
 
-class AbstractSolver(eqx.Module):
+class _MetaAbstractSolver(type(eqx.Module)):
+    def __instancecheck__(cls, obj):
+        if super(_MetaAbstractSolver, AbstractWrappedSolver).__instancecheck__(obj):
+            obj = obj.solver
+        return super().__instancecheck__(obj)
+
+
+class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     """Abstract base class for all differential equation solvers."""
 
     @property
@@ -139,3 +146,92 @@ class AbstractStratonovichSolver(AbstractSolver):
 
 class AbstractAdaptiveSolver(AbstractSolver):
     pass
+
+
+class AbstractAdaptiveSDESolver(AbstractAdaptiveSolver):
+    pass
+
+
+class AbstractWrappedSolver(AbstractSolver):
+    solver: AbstractSolver
+
+
+class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
+    """Wraps another solver, trading cost in order to provide error estimates. (These
+    error estimates mean that the solver can be used with an adaptive step size
+    controller, like [`diffrax.IController`][].)
+
+    For every step of the wrapped solver, it does this by also making two half-steps,
+    and comparing the results. (Hence the name "HalfSolver".)
+
+    As such each step costs 3 times the computational cost of the wrapped solver.
+
+    !!! tip
+
+        Many solvers already provided error estimates, making `HalfSolver` primarily
+        useful when using a solver that doesn't provide error estimates -- e.g.
+        [`diffrax.Euler`][] -- in particular this is common when solving SDEs.
+    """
+
+    @property
+    def term_structure(self):
+        return self.solver.term_structure
+
+    @property
+    def interpolation_cls(self):
+        return self.solver.interpolation_cls
+
+    @property
+    def order(self):
+        return self.solver.order
+
+    def init(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ):
+        return self.solver.init(terms, t0, t1, y0, args)
+
+    def step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+        solver_state: _SolverState,
+        made_jump: Bool,
+    ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
+
+        original_solver_state = solver_state
+        thalf = t0 + 0.5 * (t1 - t0)
+
+        yhalf, _, _, solver_state, result1 = self.solver.step(
+            terms, t0, thalf, y0, args, solver_state, made_jump
+        )
+        y1, _, _, solver_state, result2 = self.solver.step(
+            terms, thalf, t1, yhalf, args, solver_state, made_jump=False
+        )
+
+        # TODO: use dense_info from the pair of half-steps instead
+        y1_alt, _, dense_info, _, result3 = self.solver.step(
+            terms, t0, t1, y0, args, original_solver_state, made_jump
+        )
+
+        y_error = jnp.abs(y1 - y1_alt)
+        result = jnp.maximum(result1, jnp.maximum(result2, result3))
+
+        return y1, y_error, dense_info, solver_state, result
+
+    def func_for_init(
+        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
+    ):
+        return self.solver.func_for_init(terms, t0, y0, args)
+
+
+HalfSolver.__init__.__doc__ = """**Arguments:**
+- `solver`: The solver to wrap.
+"""

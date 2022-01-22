@@ -1,2 +1,2 @@
-from .base import AbstractNonlinearSolver
+from .base import AbstractNonlinearSolver, NonlinearSolution
 from .newton import NewtonNonlinearSolver
