@@ -46,3 +46,7 @@ Here, `Dopri5` refers to the Dormand--Prince 5(4) numerical differential equatio
 ## Getting started
 
 If this page has caught your interest, then have a look at the [Getting Started](./usage/getting-started.md) page.
+
+!!! help
+
+    Both Diffrax and its documentation are very new! If anything is unclear, or if you have any suggestions, then please open an issue or pull request on [GitHub](https://github.com/patrick-kidger/diffrax).

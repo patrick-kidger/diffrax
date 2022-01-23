@@ -37,7 +37,12 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
-    order = 2
+
+    @property
+    def order(self):
+        raise ValueError("`StratonovichMilstein` should not used to solve ODEs.")
+
+    strong_order = 1  # assuming commutative noise
 
     def step(
         self,
@@ -80,7 +85,12 @@ class ItoMilstein(AbstractItoSolver):
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
-    order = 2
+
+    @property
+    def order(self):
+        raise ValueError("ItoMilstein should not used to solve ODEs.")
+
+    strong_order = 1  # assuming commutative noise
 
     def step(
         self,

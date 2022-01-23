@@ -40,9 +40,14 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         """How to interpolate the solution in between steps."""
 
     @property
-    @abc.abstractmethod
-    def order(self) -> int:
-        """Order of the solver."""
+    def order(self) -> Optional[int]:
+        """Order of the solver for solving ODEs."""
+        return None
+
+    @property
+    def strong_order(self) -> Optional[Scalar]:
+        """Strong order of the solver for solving SDEs."""
+        return None
 
     def init(
         self,
@@ -184,6 +189,10 @@ class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
     @property
     def order(self):
         return self.solver.order
+
+    @property
+    def strong_order(self):
+        return self.solver.strong_order
 
     def init(
         self,

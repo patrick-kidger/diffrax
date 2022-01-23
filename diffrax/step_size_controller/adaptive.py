@@ -22,12 +22,13 @@ def _select_initial_step(
     t0: Scalar,
     y0: PyTree,
     args: PyTree,
-    solver: AbstractSolver,
+    func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+    local_order: Scalar,
     rtol: Scalar,
     atol: Scalar,
-    norm: Callable[[Array], Scalar],
+    norm: Callable[[PyTree], Scalar],
 ) -> Scalar:
-    f0 = solver.func_for_init(terms, t0, y0, args)
+    f0 = func_for_init(terms, t0, y0, args)
     scale = (atol + ω(y0).call(jnp.abs) * rtol).ω
     d0 = norm((y0 ** ω / scale ** ω).ω)
     d1 = norm((f0 ** ω / scale ** ω).ω)
@@ -38,14 +39,14 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = (y0 ** ω + h0 * f0 ** ω).ω
-    f1 = solver.func_for_init(terms, t1, y1, args)
+    f1 = func_for_init(terms, t1, y1, args)
     d2 = norm(((f1 ** ω - f0 ** ω) / scale ** ω).ω) / h0
 
     max_d = jnp.maximum(d1, d2)
     h1 = jnp.where(
         max_d <= 1e-15,
         jnp.maximum(1e-6, h0 * 1e-3),
-        (0.01 / max_d) ** (1 / (solver.order + 1)),
+        (0.01 / max_d) ** (1 / local_order),
     )
 
     return jnp.minimum(100 * h0, h1)
@@ -133,6 +134,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
     # an attribute and a method.
     norm: Callable[[PyTree], Scalar] = _gendocs_norm() if _gendocs else rms_norm
     safety: Scalar = 0.9
+    local_order: Optional[Scalar] = None
 
     def wrap(self, direction: Scalar):
         step_ts = None if self.step_ts is None else self.step_ts * direction
@@ -152,16 +154,19 @@ class PIDController(AbstractAdaptiveStepSizeController):
         y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        solver: AbstractSolver,
+        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        local_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         del t1
         if dt0 is None:
+            local_order = self._get_local_order(local_order)
             dt0 = _select_initial_step(
                 terms,
                 t0,
                 y0,
                 args,
-                solver,
+                func_for_init,
+                local_order,
                 self.rtol,
                 self.atol,
                 self.norm,
@@ -236,6 +241,9 @@ class PIDController(AbstractAdaptiveStepSizeController):
             )
         prev_dt = t1 - t0
         made_jump, at_dtmin, prev_scaled_error = controller_state
+        # Attribute takes priority, if the user knows the correct local order better
+        # than our guess.
+        local_order = self._get_local_order(local_order)
 
         #
         # Figure out how things went on the last step: error, and whether to
@@ -312,6 +320,17 @@ class PIDController(AbstractAdaptiveStepSizeController):
         controller_state = (next_made_jump, at_dtmin, scaled_error)
         return keep_step, next_t0, next_t1, made_jump, controller_state, result
 
+    def _get_local_order(self, local_order: Optional[Scalar]) -> Scalar:
+        local_order = local_order if self.local_order is None else self.local_order
+        if local_order is None:
+            raise ValueError(
+                "The order of convergence for the solver has not been specified; pass "
+                "`PIDController(..., local_order=...)` manually instead. If solving "
+                "an ODE then this should be equal to the (global) order plus one. If "
+                "solving an SDE then should be equal to the (global) order plus 0.5."
+            )
+        return local_order
+
     def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
         if self.step_ts is None:
             return t1
@@ -370,7 +389,7 @@ PIDController.__init__.__doc__ = """**Arguments:**
 - `dtmax`: Maximum step size; the step size is clipped to this value.
 - `force_dtmin`: How to handle the step size hitting the minimum. If `True` then the
     step size is clipped to `dtmin`. If `False` then the step fails and the integration
-    errors. (Which will in turn either sets an error flag, or raises an exception,
+    errors. (Which will in turn either set an error flag, or raise an exception,
     depending on the `throw` value for `diffeqsolve(..., throw=...).)
 - `step_ts`: Denotes *extra* times that must be stepped to. This can be used to help
     deal with a vector field that has a known derivative discontinuity, by stepping
@@ -386,4 +405,7 @@ PIDController.__init__.__doc__ = """**Arguments:**
     sizes are chosen so that `norm(error / (atol + rtol * y))` is approximately
     one.
 - `safety`: Multiplicative safety factor.
+- `local_order`: Optional. The local order of convergence for the solver. Can be used
+    to override the local order determined automatically, if extra structure is known
+    about this particular problem. (Typically when solving SDEs with known structure.)
 """

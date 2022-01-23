@@ -25,6 +25,7 @@ class Euler(AbstractItoSolver, AbstractSolver):
     term_structure = jax.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
     order = 1
+    strong_order = 0.5
 
     def step(
         self,

@@ -125,12 +125,7 @@ def loop(
             state.made_jump,
         )
 
-        # TODO: offer a more generic way to determine order that isn't so hardcoded to
-        # specifically ODEs and SDEs
-        if _is_sde(terms):
-            local_order = 0.5 * (solver.order + 1)
-        else:
-            local_order = solver.order + 1  # Assumes ODE
+        local_order = _get_local_order(terms, solver)
         (
             keep_step,
             tprev,
@@ -375,6 +370,17 @@ def loop(
     return eqx.tree_at(lambda s: s.result, final_state, result)
 
 
+# Assumes that the SDE-ness is interpretable by finding AbstractBrownianPath.
+# In principle a user could re-create terms, controls, etc. without going via this,
+# though. So this is a bit imperfect.
+#
+# Fortunately, at time of writing this is used for two things:
+# - _get_local_order
+# - error checking
+# The former can be overriden by `PIDController(local_order=...)` and the latter is
+# really just to catch common errors.
+# That is, for the power user who implements enough to bypass this check -- probably
+# they know what they're doing and can handle both of these cases appropriately.
 def _is_sde(terms: PyTree[AbstractTerm]) -> bool:
     is_brownian = lambda x: isinstance(x, AbstractBrownianPath)
     leaves, _ = jax.tree_flatten(terms, is_leaf=is_brownian)
@@ -385,6 +391,17 @@ def _is_unsafe_sde(terms: PyTree[AbstractTerm]) -> bool:
     is_brownian = lambda x: isinstance(x, UnsafeBrownianPath)
     leaves, _ = jax.tree_flatten(terms, is_leaf=is_brownian)
     return any(is_brownian(leaf) for leaf in leaves)
+
+
+def _get_local_order(terms: PyTree[AbstractTerm], solver: AbstractSolver) -> Scalar:
+    """Guess the local order of convergence.
+
+    This is imperfect. See issue #47.
+    """
+    if _is_sde(terms):
+        return solver.strong_order + 0.5
+    else:
+        return solver.order + 1  # assumes ODE, not RDE etc.
 
 
 # TODO: when t0, t1, dt0 are not tracers, and stepsize_controller is Constant, then
@@ -629,8 +646,9 @@ def diffeqsolve(
     # Initialise states
     tprev = t0
     if controller_state is None:
+        local_order = _get_local_order(terms, solver)
         (tnext, controller_state) = stepsize_controller.init(
-            terms, t0, t1, y0, dt0, args, solver
+            terms, t0, t1, y0, dt0, args, solver.func_for_init, local_order
         )
     else:
         if dt0 is None:

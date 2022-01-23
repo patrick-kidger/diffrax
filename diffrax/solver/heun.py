@@ -38,3 +38,4 @@ class Heun(AbstractERK, AbstractStratonovichSolver):
     tableau = _heun_tableau
     interpolation_cls = _HeunInterpolation
     order = 2
+    strong_order = 0.5

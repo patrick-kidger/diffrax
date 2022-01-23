@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Tuple, TypeVar
+from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
 
@@ -59,12 +59,18 @@ class AbstractStepSizeController(eqx.Module):
         y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        solver: AbstractSolver,
+        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        local_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
 
         **Arguments:** As `diffeqsolve`.
+
+        - `func_for_init`: The value of `solver.func_for_init`.
+        - `local_order`: The local order of convergence. If solving an ODE this will
+            typically be `solver.order + 1`. If solving an SDE this will typically be
+            `solver.strong_order + 0.5`.
 
         **Returns:**
 

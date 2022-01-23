@@ -34,3 +34,4 @@ class Midpoint(AbstractERK, AbstractStratonovichSolver):
     tableau = _midpoint_tableau
     interpolation_cls = _MidpointInterpolation
     order = 2
+    strong_order = 0.5
