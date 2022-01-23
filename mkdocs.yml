@@ -120,3 +120,4 @@ nav:
         - Developer Documentation:
             - 'devdocs/predictor_dirk.md'
             - 'devdocs/omega.md'
+            - 'devdocs/adjoint_commutative_noise.md'

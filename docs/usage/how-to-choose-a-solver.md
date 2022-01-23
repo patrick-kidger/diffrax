@@ -61,7 +61,6 @@ For Itô SDEs:
 
 For Stratonovich SDEs:
 
-- If higher-order weak convergence is desired then [`diffrax.Heun`][] is a good choice. (It gets second-order weak convergence.)
 - If cheap low-accuracy solves are desired then [`diffrax.EulerHeun`][] is a good choice.
 - Otherwise, and if the noise is commutative, then [`diffrax.StratonovichMilstein`][] is a typical choice.
 - Otherwise, and if the noise is noncommutative, then [`diffrax.Heun`][] is a typical choice.
@@ -77,7 +76,7 @@ Then the diffusion matrix $σ$ is said to be additive if $σ(t, y) = σ(t)$. Tha
 In this case then the Itô solution and the Stratonovich solution coincide, and mathematically speaking the choice of Itô vs Stratonovich is unimportant. (In addition, additive noise is commutative niose.)
 
 - The cheapest (but least accurate) solver is [`diffrax.Euler`][].
-- Other than that, see the guidance for Stratonovich solvers. (They are typically computationally cheaper than their Itô counterparts.)
+- Otherwise [`diffrax.Heun`][] is a good choice. It gets first-order strong convergence and second-order weak convergence.
 
 ## Controlled differential equations
 
