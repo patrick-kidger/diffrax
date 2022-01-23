@@ -125,6 +125,12 @@ def loop(
             state.made_jump,
         )
 
+        # TODO: offer a more generic way to determine order that isn't so hardcoded to
+        # specifically ODEs and SDEs
+        if _is_sde(terms):
+            local_order = 0.5 * (solver.order + 1)
+        else:
+            local_order = solver.order + 1  # Assumes ODE
         (
             keep_step,
             tprev,
@@ -139,7 +145,7 @@ def loop(
             y,
             args,
             y_error,
-            solver.order,
+            local_order,
             state.controller_state,
         )
 

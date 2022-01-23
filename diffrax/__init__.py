@@ -68,7 +68,7 @@ from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
     ConstantStepSize,
-    IController,
+    PIDController,
     StepTo,
 )
 from .term import (

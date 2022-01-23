@@ -21,13 +21,13 @@ $y(0) = 1 \qquad \frac{\mathrm{d}y}{\mathrm{d}t}(t) = -y(t)$
 over the interval $[0, 3]$.
 
 ```python
-from diffrax import diffeqsolve, Dopri5, ODETerm, SaveAt, IController
+from diffrax import diffeqsolve, Dopri5, ODETerm, SaveAt, PIDController
 
 vector_field = lambda t, y, args: -y
 term = ODETerm(vector_field)
 solver = Dopri5()
 saveat = SaveAt(ts=[0., 1., 2., 3.])
-stepsize_controller = IController(rtol=1e-5, atol=1e-5)
+stepsize_controller = PIDController(rtol=1e-5, atol=1e-5)
 
 sol = diffeqsolve(term, t0=0, t1=3, y0=1, dt0=0.1, solver=solver, saveat=saveat,
                   stepsize_controller=stepsize_controller)
@@ -39,9 +39,9 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
 - The numerical solver used is `Dopri5`. [Dormand--Prince 5(4), an explicit Runge--Kutta method.]
 - The solution is saved at the times `0`, `1`, `2`, `3`.
 - The initial step is of size `0.1`.
-- For all later steps, an I-controller is used to dynamically adapt step sizes to match a desired error tolerance.
-    - This is the standard "textbook" way of adapting step sizes in numerical ODE solvers.
-    - Unlike some other differential equation solving libraries, Diffrax is more flexible by allowing you to specify the step size controller separately to the numerical update rule (the solver).
+- For all later steps, a PID controller is used to dynamically adapt step sizes to match a desired error tolerance.
+    - This is a more efficient variation on the "textbook" way to adapt step sizes (which is an I controller).
+    - The step size controller is specified separately to the solver.
 
 !!! note
 
@@ -53,7 +53,7 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
     - Where to save the result (e.g. to obtain dense output) can be adjusted by changing [`diffrax.SaveAt`][].
     - Step sizes and locations can be changed.
         - The initial step size can be selected adaptively by setting `dt0=None`.
-        - A constant step size can be used by setting `stepsize_controller = ConstantStepSize()`.
+        - A constant step size can be used by setting `stepsize_controller = ConstantStepSize()`. (This is also the default choice for `stepsize_controller` if you do not pass one at all.)
         - Things like solver tolerances, jumps in the vector field, etc. can be passed as arguments to the step size controller.
         - See the page on [Step size controllers](../api/stepsize_controller.md).
     - Any static arguments (that do not change during the integration) for the `vector_field` can be passed as `diffeqsolve(..., args=...)`.
@@ -87,6 +87,7 @@ print(sol.evaluate(0.1))  # DeviceArray(0.9026031)
     - We use `ODETerm` to describe the $-y(t)\mathrm{d}t$ term.
     - We use `ControlTerm` to describe the $\frac{t}{10}\mathrm{d}w(t)$ term.
     - We use `MultiTerm` to bundle both of these terms together.
+    - Find out more about terms on the [Terms](../api/terms.md) page.
 - The numerical solver used is `Euler()`. (Also known as Euler--Maruyama when applied to SDEs.)
     - There's no clever hackery behind the scenes: `Euler()` for an SDE simply works in exactly the same way as `Euler()` for an ODE -- we just need to specify the extra diffusion term.
     - This converges to an Itô SDE because of the choice of solver. (Whether an SDE solver converges to Itô or Stratonovich SDE is a property of the solver.)
@@ -104,6 +105,16 @@ As you can see, basically nothing has changed compared to the ODE example; all t
     terms = (ODETerm(drift), ControlTerm(diffusion, brownian_motion))
     solver = ItoMilstein()
     ```
+
+!!! info
+
+    To do adaptive stepping with an SDE, then the typical approach is to wrap the solver like so -- and to use the following default step size controller:
+    ```python
+    solver = ...  # Euler, Heun etc. as usual
+    solver = HalfSolver(solver)  # Computes error estimates using half-steps
+    stepsize_controller = PIDController(pcoeff=0.1, icoeff=0.3, rtol=..., atol=...)
+    ```
+    (The values of `pcoeff` and `icoeff` affect how rapidly the controller changes step sizes. The optimal values are not well-understood for SDEs. Do try several values and see what seems most efficient for your problem.)
 
 ---
 

@@ -42,10 +42,10 @@ class ConstantStepSize(AbstractStepSizeController):
         y1_candidate: PyTree,
         args: PyTree,
         y_error: PyTree,
-        solver_order: int,
+        local_order: Scalar,
         controller_state: Scalar,
     ) -> Tuple[bool, Scalar, Scalar, bool, Scalar, RESULTS]:
-        del t0, y0, y1_candidate, args, y_error, solver_order
+        del t0, y0, y1_candidate, args, y_error, local_order
         return (
             True,
             t1,
@@ -104,10 +104,10 @@ class StepTo(AbstractStepSizeController):
         y1_candidate: Array["state"],  # noqa: F821
         args: PyTree,
         y_error: Array["state"],  # noqa: F821
-        solver_order: int,
+        local_order: Scalar,
         controller_state: int,
     ) -> Tuple[bool, Scalar, Scalar, bool, Int, RESULTS]:
-        del t0, y0, y1_candidate, args, y_error, solver_order
+        del t0, y0, y1_candidate, args, y_error, local_order
         return (
             True,
             t1,

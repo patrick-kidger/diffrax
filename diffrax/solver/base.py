@@ -159,7 +159,7 @@ class AbstractWrappedSolver(AbstractSolver):
 class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
     """Wraps another solver, trading cost in order to provide error estimates. (These
     error estimates mean that the solver can be used with an adaptive step size
-    controller, like [`diffrax.IController`][].)
+    controller, like [`diffrax.PIDController`][].)
 
     For every step of the wrapped solver, it does this by also making two half-steps,
     and comparing the results. (Hence the name "HalfSolver".)
@@ -233,5 +233,6 @@ class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
 
 
 HalfSolver.__init__.__doc__ = """**Arguments:**
+
 - `solver`: The solver to wrap.
 """

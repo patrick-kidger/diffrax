@@ -46,17 +46,17 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
     !!! warning
 
-        If using `LinearInterpolation` as part of a
-        [`diffrax.ControlTerm`][], then the vector field will make a jump every time
-        one of the knots `ts` is passed. If using an adaptive step size controller such
-        as [`diffrax.IController`][], then this means the controller should be informed
-        about the jumps, so that it can handle them appropriately:
+        If using `LinearInterpolation` as part of a [`diffrax.ControlTerm`][], then the
+        vector field will make a jump every time one of the knots `ts` is passed. If
+        using an adaptive step size controller such as [`diffrax.PIDController`][],
+        then this means the controller should be informed about the jumps, so that it
+        can handle them appropriately:
 
         ```python
         ts = ...
         interp = LinearInterpolation(ts=ts, ...)
         term = ControlTerm(..., control=interp)
-        stepsize_controller = IController(..., jump_ts=ts)
+        stepsize_controller = PIDController(..., jump_ts=ts)
         ```
     """
 

@@ -60,9 +60,9 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
 
         If using this as part of a implicit ODE solver, then:
 
-        - An adaptive step size controller should be used (e.g. `diffrax.IController`).
-          This will allow smaller steps to be made if the nonlinear solver fails to
-          converge.
+        - An adaptive step size controller should be used (e.g.
+          `diffrax.PIDController`). This will allow smaller steps to be made if the
+          nonlinear solver fails to converge.
         - As a general rule, the values for `rtol` and `atol` should be set to the same
           values as used for the adaptive step size controller. (And this will happen
           automatically by default.)

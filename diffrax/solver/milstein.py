@@ -37,7 +37,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
-    order = 1
+    order = 2
 
     def step(
         self,
@@ -80,7 +80,7 @@ class ItoMilstein(AbstractItoSolver):
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
-    order = 1
+    order = 2
 
     def step(
         self,

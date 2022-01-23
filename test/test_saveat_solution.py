@@ -24,7 +24,7 @@ _y0 = jnp.array([2.1])
 
 def _integrate(saveat):
     term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
-    stepsize_controller = diffrax.IController(rtol=1e-8, atol=1e-8)
+    stepsize_controller = diffrax.PIDController(rtol=1e-8, atol=1e-8)
     return diffrax.diffeqsolve(
         term,
         t0=_t0,

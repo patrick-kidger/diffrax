@@ -424,7 +424,7 @@ def _test(solver_ctr, problems, higher):
             else:
                 rtol = 1e-8
                 atol = 1e-8
-            stepsize_controller = diffrax.IController(rtol=rtol, atol=atol)
+            stepsize_controller = diffrax.PIDController(rtol=rtol, atol=atol)
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(vector_field),
             t0=0.0,

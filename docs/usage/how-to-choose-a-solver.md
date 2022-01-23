@@ -22,7 +22,7 @@ If you are solving a neural differential equation, and training via discretise-t
 
 ### Stiff problems
 
-For stiff problems then try the [`diffrax.Kvaerno3`][], [`diffrax.Kvaerno4`][], [`diffrax.Kvaerno5`][] family of solvers. In addition you should almost always use an adaptive step size controller (for example [`diffrax.IController`][]).
+For stiff problems then try the [`diffrax.Kvaerno3`][], [`diffrax.Kvaerno4`][], [`diffrax.Kvaerno5`][] family of solvers. In addition you should almost always use an adaptive step size controller such as [`diffrax.PIDController`][].
 
 See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
 
@@ -64,7 +64,7 @@ For Stratonovich SDEs:
 - If higher-order weak convergence is desired then [`diffrax.Heun`][] is a good choice. (It gets second-order weak convergence.)
 - If cheap low-accuracy solves are desired then [`diffrax.EulerHeun`][] is a good choice.
 - Otherwise, and if the noise is commutative, then [`diffrax.StratonovichMilstein`][] is a typical choice.
-- Othewrise, and if the noise is noncommutative, then [`diffrax.Heun`][] is a typical choice.
+- Otherwise, and if the noise is noncommutative, then [`diffrax.Heun`][] is a typical choice.
 
 ### Additive noise
 

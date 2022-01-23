@@ -40,7 +40,7 @@ There are multiple ways to backpropagate through a differential equation (to com
 
     To use adjoint seminorms as described in ["Hey, that's not an ODE": Faster ODE Adjoints via Seminorms](https://arxiv.org/abs/2009.09457), then this can be accomplished by simply passing the appropriate norm for the reverse pass:
     ```python
-    adjoint_stepsize_controller = diffrax.IController(norm=diffrax.adjoint_rms_seminorm)
+    adjoint_stepsize_controller = diffrax.PIDController(norm=diffrax.adjoint_rms_seminorm)
     adjoint = diffrax.BacksolveAdjoint(stepsize_controller=adjoint_stepsize_controller)
     diffrax.diffeqsolve(..., adjoint=adjoint)
     ```

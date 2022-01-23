@@ -68,7 +68,7 @@ def _scale_error_estimate(
     return norm(scale)
 
 
-_IControllerState = Tuple[Bool, Bool]
+_ControllerState = Tuple[Bool, Bool, Scalar]
 
 
 _gendocs = getattr(typing, "GENERATING_DOCUMENTATION", False)
@@ -106,20 +106,29 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
 # are good notes on different step size control algorithms.
-class IController(AbstractAdaptiveStepSizeController):
+class PIDController(AbstractAdaptiveStepSizeController):
     """Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
 
-    Steps are adapted using an I-controller.
+    Steps are adapted using a PID controller.
+
+    !!! tip
+
+        This controller can be reduced to any special case (e.g. just a PI controller,
+        or just an I Controller) by setting `p_coeff`, `i_coeff` or `d_coeff` to zero
+        as appropriate.
     """
 
+    pcoeff: Scalar = 0.7
+    icoeff: Scalar = 0.4
+    dcoeff: Scalar = 0
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
     step_ts: Optional[Array["steps"]] = None  # noqa: F821
     jump_ts: Optional[Array["jumps"]] = None  # noqa: F821
-    dfactor: Scalar = 0.2
-    ifactor: Scalar = 10.0
+    factormin: Scalar = 0.2
+    factormax: Scalar = 10.0
     # The documentation treats callables as methods and displays `norm` twice: as both
     # an attribute and a method.
     norm: Callable[[PyTree], Scalar] = _gendocs_norm() if _gendocs else rms_norm
@@ -144,7 +153,7 @@ class IController(AbstractAdaptiveStepSizeController):
         dt0: Optional[Scalar],
         args: PyTree,
         solver: AbstractSolver,
-    ) -> Tuple[Scalar, _IControllerState]:
+    ) -> Tuple[Scalar, _ControllerState]:
         del t1
         if dt0 is None:
             dt0 = _select_initial_step(
@@ -202,7 +211,7 @@ class IController(AbstractAdaptiveStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin)
+        return t1, (jump_next_step, at_dtmin, jnp.nan)
 
     def adapt_step_size(
         self,
@@ -212,9 +221,9 @@ class IController(AbstractAdaptiveStepSizeController):
         y1_candidate: PyTree,
         args: PyTree,
         y_error: Optional[PyTree],
-        solver_order: int,
-        controller_state: _IControllerState,
-    ) -> Tuple[Bool, Scalar, Scalar, Bool, _IControllerState, RESULTS]:
+        local_order: Scalar,
+        controller_state: _ControllerState,
+    ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
         del args
         if y_error is None and y0 is not None:
             # y0 is not None check is included to handle the edge case that the state
@@ -226,7 +235,7 @@ class IController(AbstractAdaptiveStepSizeController):
                 "error estimates."
             )
         prev_dt = t1 - t0
-        made_jump, at_dtmin = controller_state
+        made_jump, at_dtmin, prev_scaled_error = controller_state
 
         #
         # Figure out how things went on the last step: error, and whether to
@@ -251,12 +260,24 @@ class IController(AbstractAdaptiveStepSizeController):
         # for completeness, e.g. just in case we ever remove the stop_gradient.)
         cond = scaled_error == 0
         _scaled_error = jnp.where(cond, 1.0, scaled_error)
-        factor = lax.cond(
-            cond,
-            lambda _: self.ifactor,
-            self._scale_factor,
-            (solver_order, keep_step, _scaled_error),
+        if self.pcoeff == 0:
+            pfactor = 1
+        else:
+            prev_scaled_error = jnp.where(
+                jnp.isnan(prev_scaled_error), _scaled_error, prev_scaled_error
+            )
+            pcoeff = self.pcoeff / local_order
+            pfactor = (prev_scaled_error / _scaled_error) ** pcoeff
+        if self.icoeff == 0:
+            ifactor = 1
+        else:
+            icoeff = self.icoeff / local_order
+            ifactor = 1 / _scaled_error ** icoeff
+        factormin = jnp.where(keep_step, 1, self.factormin)
+        factor = jnp.clip(
+            self.safety * pfactor * ifactor, a_min=factormin, a_max=self.factormax
         )
+        factor = jnp.where(cond, self.factormax, factor)
         factor = lax.stop_gradient(factor)  # See note in init above.
         dt = prev_dt * factor
 
@@ -287,16 +308,9 @@ class IController(AbstractAdaptiveStepSizeController):
         next_t1 = self._clip_step_ts(next_t0, next_t0 + dt)
         next_t1, next_made_jump = self._clip_jump_ts(next_t0, next_t1)
 
-        controller_state = (next_made_jump, at_dtmin)
+        scaled_error = jnp.where(keep_step, scaled_error, prev_scaled_error)
+        controller_state = (next_made_jump, at_dtmin, scaled_error)
         return keep_step, next_t0, next_t1, made_jump, controller_state, result
-
-    def _scale_factor(self, operand):
-        order, keep_step, scaled_error = operand
-        dfactor = jnp.where(keep_step, 1, self.dfactor)
-        exponent = 1 / (order + 1)  # +1 to convert from global error to local error
-        return jnp.clip(
-            self.safety / scaled_error ** exponent, a_min=dfactor, a_max=self.ifactor
-        )
 
     def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
         if self.step_ts is None:
@@ -344,8 +358,11 @@ class IController(AbstractAdaptiveStepSizeController):
         return t1, next_made_jump
 
 
-IController.__init__.__doc__ = """**Arguments:**
+PIDController.__init__.__doc__ = """**Arguments:**
 
+- `pcoeff`: The coefficient of the proportional part of the step size control.
+- `icoeff`: The coefficient of the integral part of the step size control.
+- `dcoeff`: The coefficient of the derivative part of the step size control.
 - `rtol`: Relative tolerance.
 - `atol`: Absolute tolerance.
 - `dtmin`: Minimum step size. The step size is either clipped to this value, or an
@@ -361,8 +378,10 @@ IController.__init__.__doc__ = """**Arguments:**
 - `jump_ts`: Denotes times at which the vector field has a known discontinuity. This
     can be used to step exactly to the discontinuity. (And any other appropriate action
     taken, like FSAL algorithms re-evaluating the vector field.)
-- `dfactor`: Minimum amount a step size can be decreased relative to the previous step.
-- `ifactor`: Maximum amount a step size can be increased relative to the previous step.
+- `factormin`: Minimum amount a step size can be decreased relative to the previous
+    step.
+- `factormax`: Maximum amount a step size can be increased relative to the previous
+    step.
 - `norm`: A function `PyTree -> Scalar` used in the error control. Precisely, step
     sizes are chosen so that `norm(error / (atol + rtol * y))` is approximately
     one.

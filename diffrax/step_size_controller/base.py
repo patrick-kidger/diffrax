@@ -87,7 +87,7 @@ class AbstractStepSizeController(eqx.Module):
         y1_candidate: PyTree,
         args: PyTree,
         y_error: Optional[PyTree],
-        solver_order: int,
+        local_order: Scalar,
         controller_state: _ControllerState,
     ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
         """Determines whether to accept or reject the current step, and determines the
@@ -105,7 +105,8 @@ class AbstractStepSizeController(eqx.Module):
             [`diffrax.diffeqsolve`][].
         - `y_error`: An estimate of the local truncation error, as calculated by the
             main solver.
-        - `solver_order`: The order of the main solver.
+        - `local_order`: The order of `y_error`. For an ODE this is typically equal to
+            `solver.order + 1`.
         - `controller_state`: Any evolving state for the step size controller itself,
             at `t0`.
 

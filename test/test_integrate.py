@@ -16,11 +16,11 @@ from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 @pytest.mark.parametrize("t_dtype", (int, float, jnp.int32, jnp.float32))
 @pytest.mark.parametrize("treedef", treedefs)
 @pytest.mark.parametrize(
-    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
+    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.PIDController())
 )
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver) and isinstance(
-        stepsize_controller, diffrax.IController
+        stepsize_controller, diffrax.PIDController
     ):
         return
 
@@ -213,7 +213,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     key = getkey()
     y0 = jrandom.normal(key, (2, 2))
     stepsize_controller = (
-        diffrax.IController() if dt0 is None else diffrax.ConstantStepSize()
+        diffrax.PIDController() if dt0 is None else diffrax.ConstantStepSize()
     )
 
     def f(t, y, args):
@@ -271,8 +271,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     "solver_ctr,stepsize_controller,dt0",
     (
         (diffrax.Tsit5, diffrax.ConstantStepSize(), 0.3),
-        (diffrax.Tsit5, diffrax.IController(rtol=1e-8, atol=1e-8), None),
-        (diffrax.Kvaerno3, diffrax.IController(rtol=1e-8, atol=1e-8), None),
+        (diffrax.Tsit5, diffrax.PIDController(rtol=1e-8, atol=1e-8), None),
+        (diffrax.Kvaerno3, diffrax.PIDController(rtol=1e-8, atol=1e-8), None),
     ),
 )
 @pytest.mark.parametrize("treedef", treedefs)
