@@ -127,6 +127,32 @@ def rms_norm(x: PyTree) -> Scalar:
 
 
 def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> Scalar:
+    """Defines an adjoint seminorm. This can frequently be used to increase the
+    efficiency of backpropagation via [`diffrax.BacksolveAdjoint`][], as follows:
+
+    ```python
+    adjoint_controller = diffrax.PIDController(norm=diffrax.adjoint_rms_seminorm)
+    adjoint = diffrax.BacksolveAdjoint(stepsize_controller=adjoint_controller)
+    diffrax.diffeqsolve(..., adjoint=adjoint)
+    ```
+
+    Note that this means that any `stepsize_controller` specified for the forward pass
+    will not be automatically used for the backward pass (as `adjoint_controller`
+    overrides it), so you should specify any custom `rtol`, `atol` etc. for the
+    backward pass as well.
+
+    ??? cite "Reference"
+
+        ```bibtex
+        @article{kidger2021hey,
+            author={Kidger, Patrick and Chen, Ricky T. Q. and Lyons, Terry},
+            title={``{H}ey, that's not an {ODE}'': {F}aster {ODE} {A}djoints via
+                   {S}eminorms},
+            year={2021},
+            journal={International Conference on Machine Learning}
+        }
+        ```
+    """
     assert isinstance(x, tuple)
     assert len(x) == 4
     y, a_y, a_args, a_terms = x

@@ -303,7 +303,6 @@ class BacksolveAdjoint(AbstractAdjoint):
             BacksolveAdjoint(solver=Dopri5())
             ```
             to specify a particular solver to use on the backward pass.
-            ```
         """
         valid_keys = {
             "dt0",
