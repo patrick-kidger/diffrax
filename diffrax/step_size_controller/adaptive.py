@@ -14,9 +14,6 @@ from ..term import AbstractTerm
 from .base import AbstractStepSizeController
 
 
-# Empirical initial step selection algorithm from:
-# E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential Equations I:
-# Nonstiff Problems", Sec. II.4, 2nd edition.
 def _select_initial_step(
     terms: PyTree[AbstractTerm],
     t0: Scalar,
@@ -50,23 +47,6 @@ def _select_initial_step(
     )
 
     return jnp.minimum(100 * h0, h1)
-
-
-def _scale_error_estimate(
-    y_error: PyTree,
-    y0: PyTree,
-    y1_candidate: PyTree,
-    rtol: Scalar,
-    atol: Scalar,
-    norm: Callable[[Array], Scalar],
-) -> Scalar:
-    def _calc(_y0, _y1_candidate, _y_error):
-        return _y_error / (
-            atol + jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate)) * rtol
-        )
-
-    scale = jax.tree_map(_calc, y0, y1_candidate, y_error)
-    return norm(scale)
 
 
 _ControllerState = Tuple[Bool, Bool, Scalar]
@@ -108,16 +88,103 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
 # https://diffeq.sciml.ai/stable/extras/timestepping/
 # are good notes on different step size control algorithms.
 class PIDController(AbstractAdaptiveStepSizeController):
-    """Adapts the step size to produce a solution accurate to a given tolerance.
+    r"""Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
 
     Steps are adapted using a PID controller.
 
-    !!! tip
+    ??? tip "Choosing PID coefficients"
 
         This controller can be reduced to any special case (e.g. just a PI controller,
-        or just an I Controller) by setting `p_coeff`, `i_coeff` or `d_coeff` to zero
+        or just an I controller) by setting `p_coeff`, `i_coeff` or `d_coeff` to zero
         as appropriate.
+
+        For especially easy-to-solve problems then an I controller will often be most
+        efficient:
+        ```python
+        PIDController(pcoeff=0, icoeff=1, dcoeff=0)
+        ```
+
+        For moderate difficulty problems then a PI controller will often do well (this
+        is the default):
+        ```python
+        PIDController(pcoeff=0.4, icoeff=0.7, dcoeff=0)
+        ```
+
+        For SDEs then a slow PI controller is recommended. For example:
+        ```python
+        PIDController(pcoeff=0.1, icoeff=0.3, dcoeff=0)
+        ```
+
+        The best choice is generally not well-understood, and selecting `pcoeff`,
+        `icoeff`, `dcoeff` is largely an empirical / problem-dependent / solver-
+        dependent choice. So if you a lot about efficiency then consider experimenting
+        with these choices; you can check how many steps are being made via:
+        ```python
+        sol = diffeqsolve(...)
+        print(sol.stats["num_steps"])
+        ```
+
+    ??? cite "References"
+
+        Both (a) the initial step size selection algorithm for ODEs and (b) the use of
+        an I controller for ODEs, are from Section II.4 of:
+
+        ```bibtex
+        @book{hairer2008solving-i,
+          address={Berlin},
+          author={Hairer, E. and N{\o}rsett, S.P. and Wanner, G.},
+          edition={Second Revised Edition},
+          publisher={Springer},
+          title={{S}olving {O}rdinary {D}ifferential {E}quations {I} {N}onstiff
+                 {P}roblems},
+          year={2008}
+        }
+        ```
+
+        The use of a PI controller for ODEs are from Section IV.2 of:
+
+        ```bibtex
+        @book{hairer2002solving-ii,
+          address={Berlin},
+          author={Hairer, E. and Wanner, G.},
+          edition={Second Revised Edition},
+          publisher={Springer},
+          title={{S}olving {O}rdinary {D}ifferential {E}quations {II} {S}tiff and
+                 {D}ifferential-{A}lgebraic {P}roblems},
+          year={2002}
+        }
+        ```
+
+        The use of PI and PID controllers for SDEs are from the following.
+
+        ```bibtex
+        @article{burrage2004adaptive,
+          title={Adaptive stepsize based on control theory for stochastic
+                 differential equations},
+          journal={Journal of Computational and Applied Mathematics},
+          volume={170},
+          number={2},
+          pages={317--336},
+          year={2004},
+          doi={https://doi.org/10.1016/j.cam.2004.01.027},
+          author={P.M. Burrage and R. Herdiana and K. Burrage},
+        }
+
+        @article{ilie2015adaptive,
+          author={Ilie, Silvana and Jackson, Kenneth R. and Enright, Wayne H.},
+          title={{A}daptive {T}ime-{S}tepping for the {S}trong {N}umerical {S}olution
+                 of {S}tochastic {D}ifferential {E}quations},
+          year={2015},
+          publisher={Springer-Verlag},
+          address={Berlin, Heidelberg},
+          volume={68},
+          number={4},
+          doi={https://doi.org/10.1007/s11075-014-9872-6},
+          journal={Numer. Algorithms},
+          pages={791–-812},
+        }
+        ```
     """
 
     pcoeff: Scalar = 0.7
@@ -250,9 +317,11 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # accept/reject it.
         #
 
-        scaled_error = _scale_error_estimate(
-            y_error, y0, y1_candidate, self.rtol, self.atol, self.norm
-        )
+        def _scale(_y0, _y1_candidate, _y_error):
+            _y = jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate))
+            return _y_error / (self.atol + _y * self.rtol)
+
+        scaled_error = self.norm(jax.tree_map(_scale, y0, y1_candidate, y_error))
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin
@@ -268,7 +337,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # for completeness, e.g. just in case we ever remove the stop_gradient.)
         cond = scaled_error == 0
         _scaled_error = jnp.where(cond, 1.0, scaled_error)
-        if self.pcoeff == 0:
+        if isinstance(self.pcoeff, (int, float)) and self.pcoeff == 0:
             pfactor = 1
         else:
             prev_scaled_error = jnp.where(
@@ -276,7 +345,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
             )
             pcoeff = self.pcoeff / local_order
             pfactor = (prev_scaled_error / _scaled_error) ** pcoeff
-        if self.icoeff == 0:
+        if isinstance(self.icoeff, (int, float)) and self.icoeff == 0:
             ifactor = 1
         else:
             icoeff = self.icoeff / local_order

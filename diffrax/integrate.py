@@ -396,12 +396,22 @@ def _is_unsafe_sde(terms: PyTree[AbstractTerm]) -> bool:
 def _get_local_order(terms: PyTree[AbstractTerm], solver: AbstractSolver) -> Scalar:
     """Guess the local order of convergence.
 
-    This is imperfect. See issue #47.
+    The error estimate is assumed to come from the difference of two methods. If these
+    two methods have orders `p` and `q` then the local order of the error estimate is
+    `min(p, q) + 1` for an ODE and `min(p, q) + 0.5` for an SDE.
+
+    - In the SDE case then we assume `p == q == solver.strong_order`.
+    - In the ODE case then we assume `p == q + 1 == solver.order`.
+    - We assume that non-SDE/ODE cases do not arise.
+
+    This is imperfect as these assumptions may not be true. In addition in the SDE
+    case, then solvers will sometimes exhibit higher orders of convergence for specific
+    noise types (see issue #47).
     """
     if _is_sde(terms):
         return solver.strong_order + 0.5
     else:
-        return solver.order + 1  # assumes ODE, not RDE etc.
+        return solver.order
 
 
 # TODO: when t0, t1, dt0 are not tracers, and stepsize_controller is Constant, then
@@ -645,14 +655,16 @@ def diffeqsolve(
 
     # Initialise states
     tprev = t0
+    local_order = _get_local_order(terms, solver)
     if controller_state is None:
-        local_order = _get_local_order(terms, solver)
         (tnext, controller_state) = stepsize_controller.init(
             terms, t0, t1, y0, dt0, args, solver.func_for_init, local_order
         )
     else:
         if dt0 is None:
-            (tnext, _) = stepsize_controller.init(terms, t0, t1, y0, dt0, args, solver)
+            (tnext, _) = stepsize_controller.init(
+                terms, t0, t1, y0, dt0, args, solver.func_for_init, local_order
+            )
         else:
             tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
