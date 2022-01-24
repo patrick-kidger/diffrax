@@ -1,5 +1,6 @@
-from typing import Sequence, Type, Union
+from typing import Callable, Sequence, Type, Union
 
+import jax
 import jax.experimental.host_callback as hcb
 import jax.numpy as jnp
 
@@ -7,8 +8,11 @@ from ..custom_types import Array, Int
 from .unvmap import unvmap_any
 
 
+_Bool = Union[bool, Array[..., bool]]
+
+
 def error_if(
-    pred: Union[bool, Array[..., bool]],
+    pred: Union[_Bool, Callable[[], _Bool]],
     msg: str,
     error_cls: Type[Exception] = ValueError,
 ) -> bool:
@@ -16,14 +20,13 @@ def error_if(
 
     Example:
         def f(x):
-            cond = cond_fn(x)
-            error_if(cond)
+            error_if(x < 0, "x must be >= 0")
     """
     branched_error_if(pred, 0, [msg], error_cls)
 
 
 def branched_error_if(
-    pred: Union[bool, Array[..., bool]],
+    pred: Union[_Bool, Callable[[], _Bool]],
     index: Int,
     msgs: Sequence[str],
     error_cls: Type[Exception] = ValueError,
@@ -35,10 +38,21 @@ def branched_error_if(
                 _index = _index.item()
             raise error_cls(msgs[_index])
 
+    if callable(pred):
+        with jax.ensure_compile_time_eval():
+            pred = pred()
+
     if isinstance(pred, jnp.ndarray):
-        pred = unvmap_any(pred)
+        with jax.ensure_compile_time_eval():
+            pred = unvmap_any(pred)
+
+    if isinstance(pred, jax.core.Tracer):
         hcb.call(raises, (pred, index))
-    elif isinstance(pred, bool):
+    elif isinstance(pred, (bool, jnp.ndarray)):
         raises((pred, index))
     else:
-        assert False, "`pred` must either be a `bool` or a JAX array."
+        msg = (
+            "`pred` must either be a `bool`, a JAX array, or a zero-argument callable "
+            "that returns a `bool` or JAX array."
+        )
+        assert False, msg

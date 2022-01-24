@@ -1,4 +1,7 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Sequence, Tuple, Union
+
+import jax
+import jax.numpy as jnp
 
 from ..custom_types import Array, Int, PyTree, Scalar
 from ..misc import error_if
@@ -59,10 +62,15 @@ class ConstantStepSize(AbstractStepSizeController):
 class StepTo(AbstractStepSizeController):
     """Make steps to just prespecified times."""
 
-    ts: Array["times"]  # noqa: F821
+    ts: Union[Sequence[Scalar], Array["times"]]  # noqa: F821
 
     def __post_init__(self):
-        error_if(len(self.ts) < 2, "`ts` must have length at least 2.")
+        with jax.ensure_compile_time_eval():
+            object.__setattr__(self, "ts", jnp.asarray(self.ts))
+        if self.ts.ndim != 1:
+            raise ValueError("`ts` must be one-dimensional.")
+        if len(self.ts) < 2:
+            raise ValueError("`ts` must have length at least 2.")
 
     def wrap(self, direction: Scalar):
         ts = self.ts * direction

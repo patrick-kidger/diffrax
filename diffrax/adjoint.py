@@ -23,8 +23,9 @@ class AbstractAdjoint(eqx.Module):
         solver,
         stepsize_controller,
         saveat,
-        dt0,
+        t0,
         t1,
+        dt0,
         max_steps,
         throw,
         init_state,
@@ -70,8 +71,8 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
     A binomial checkpointing scheme is used so that memory usage is low.
     """
 
-    def loop(self, *, dt0, throw, **kwargs):
-        del dt0, throw
+    def loop(self, *, throw, **kwargs):
+        del throw
         return self._loop_fn(**kwargs, is_bounded=True)
 
 
@@ -84,11 +85,11 @@ class NoAdjoint(AbstractAdjoint):
     this may sometimes improve the speed at which the differential equation is solved.
     """
 
-    def loop(self, *, dt0, throw, **kwargs):
-        del dt0, throw
-        out = self._loop_fn(**kwargs, is_bounded=False)
-        out = jax.tree_map(nondifferentiable_output, out)
-        return out
+    def loop(self, *, throw, **kwargs):
+        del throw
+        final_state, aux_stats = self._loop_fn(**kwargs, is_bounded=False)
+        final_state = jax.tree_map(nondifferentiable_output, final_state)
+        return final_state, aux_stats
 
 
 # Compute derivatives with respect to the first argument:
@@ -96,8 +97,8 @@ class NoAdjoint(AbstractAdjoint):
 # - args, corresponding to explicit parameters;
 # - terms, corresponding to implicit parameters as part of the vector field.
 @eqx.filter_custom_vjp
-def _loop_backsolve(y__args__terms, *, self, dt0, throw, init_state, **kwargs):
-    del dt0, throw
+def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
+    del throw
     y, args, terms = y__args__terms
     init_state = eqx.tree_at(
         lambda s: jax.tree_leaves(s.y), init_state, jax.tree_leaves(y)
@@ -109,24 +110,25 @@ def _loop_backsolve(y__args__terms, *, self, dt0, throw, init_state, **kwargs):
 
 
 def _loop_backsolve_fwd(y__args__terms, **kwargs):
-    final_state = _loop_backsolve(y__args__terms, **kwargs)
+    final_state, aux_stats = _loop_backsolve(y__args__terms, **kwargs)
     ts = final_state.ts
     ys = final_state.ys
-    return final_state, (ts, ys)
+    return (final_state, aux_stats), (ts, ys)
 
 
 # TODO: implement this as a single diffeqsolve with events, once events are supported.
 def _loop_backsolve_bwd(
     residuals,
-    grad_final_state,
+    grad_final_state__aux_stats,
     y__args__terms,
     *,
     self,
     solver,
     stepsize_controller,
     saveat,
-    dt0,
+    t0,
     t1,
+    dt0,
     max_steps,
     throw,
     init_state,
@@ -137,11 +139,12 @@ def _loop_backsolve_bwd(
     # using them later.
     #
 
-    del t1
+    del init_state, t1
     ts, ys = residuals
     del residuals
+    grad_final_state, _ = grad_final_state__aux_stats
     grad_ys = grad_final_state.ys
-    del grad_final_state
+    del grad_final_state, grad_final_state__aux_stats
     y, args, terms = y__args__terms
     del y__args__terms
     diff_args = eqx.filter(args, eqx.is_inexact_array)
@@ -169,8 +172,6 @@ def _loop_backsolve_bwd(
     del y, args, terms
     saveat_t0 = saveat.t0
     del saveat
-    t0 = init_state.tprev
-    del init_state
 
     #
     # Now run a scan backwards in time, diffeqsolve'ing between each pair of adjacent
@@ -333,7 +334,7 @@ class BacksolveAdjoint(AbstractAdjoint):
             lambda s: jax.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
         )
 
-        final_state = _loop_backsolve(
+        final_state, aux_stats = _loop_backsolve(
             (y, args, terms), self=self, saveat=saveat, init_state=init_state, **kwargs
         )
 
@@ -345,4 +346,4 @@ class BacksolveAdjoint(AbstractAdjoint):
             lambda s: jax.tree_leaves(s.ys), final_state, jax.tree_leaves(ys)
         )
 
-        return final_state
+        return final_state, aux_stats

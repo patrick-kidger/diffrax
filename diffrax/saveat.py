@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, Sequence, Union
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 
-from .custom_types import Array
+from .custom_types import Array, Scalar
 
 
 class SaveAt(eqx.Module):
@@ -13,39 +14,19 @@ class SaveAt(eqx.Module):
     [`diffrax.diffeqsolve`][].
     """
 
-    t0: bool
-    t1: bool
-    ts: Optional[Array["times"]]  # noqa: F821
-    steps: bool
-    dense: bool
-    solver_state: bool
-    controller_state: bool
-    made_jump: bool
+    t0: bool = False
+    t1: bool = False
+    ts: Optional[Union[Sequence[Scalar], Array["times"]]] = None  # noqa: F821
+    steps: bool = False
+    dense: bool = False
+    solver_state: bool = False
+    controller_state: bool = False
+    made_jump: bool = False
 
-    # Explicit __init__ so we can do jnp.asarray(ts)
-    # No super().__init__ call in mimicry of dataclasses' (and thus Equinox's) lack of
-    # doing so.
-    def __init__(
-        self,
-        *,
-        t0=False,
-        t1=False,
-        ts=None,
-        steps=False,
-        dense=False,
-        solver_state=False,
-        controller_state=False,
-        made_jump=False,
-    ):
-        self.t0 = t0
-        self.t1 = t1
-        self.ts = None if ts is None else jnp.asarray(ts)
-        self.steps = steps
-        self.dense = dense
-        self.solver_state = solver_state
-        self.controller_state = controller_state
-        self.made_jump = made_jump
-
+    def __post_init__(self):
+        with jax.ensure_compile_time_eval():
+            ts = None if self.ts is None else jnp.asarray(self.ts)
+        object.__setattr__(self, "ts", ts)
         if (
             not self.t0
             and not self.t1
