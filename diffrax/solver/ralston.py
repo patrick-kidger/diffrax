@@ -1,6 +1,6 @@
 import numpy as np
 
-from ..local_interpolation import FourthOrderPolynomialInterpolation
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -12,13 +12,6 @@ _ralston_tableau = ButcherTableau(
 )
 
 
-class _RalstonInterpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0.5])
-
-
 class Ralston(AbstractERK):
     """Ralston's method.
 
@@ -27,5 +20,5 @@ class Ralston(AbstractERK):
     """
 
     tableau = _ralston_tableau
-    interpolation_cls = _RalstonInterpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 2

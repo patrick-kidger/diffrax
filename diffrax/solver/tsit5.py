@@ -5,7 +5,7 @@ import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import ω
+from ..misc import linear_rescale, ω
 from .base import vector_tree_dot
 from .runge_kutta import AbstractERK, ButcherTableau
 
@@ -100,12 +100,15 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
     y1: PyTree[Array[...]]  # Unused, just here for API compatibility
     k: PyTree[Array["order":7, ...]]  # noqa: F821
 
-    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:  # noqa: F821
+    def evaluate(
+        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+    ) -> PyTree:  # noqa: F821
+        del left
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
 
-        _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
-        t = (t0 - self.t0) / _div
+        t = linear_rescale(self.t0, t0, self.t1)
+
         # TODO: write as a matrix-multiply or vmap'd polyval
         b1 = (
             -1.0530884977290216
@@ -137,8 +140,6 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
             self.y0 ** ω
             + vector_tree_dot(jnp.stack([b1, b2, b3, b4, b5, b6, b7]), self.k) ** ω
         ).ω
-
-    # TODO: implement derivative
 
 
 class Tsit5(AbstractERK):

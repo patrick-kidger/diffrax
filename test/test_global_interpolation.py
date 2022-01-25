@@ -311,18 +311,19 @@ def test_interpolation_classes(mode, getkey):
                     jax.tree_map(_test, firstderiv, derivs, y0, y1)
 
 
-def _test_dense_interpolation(solver_ctr, getkey, t1):
-    y0 = jrandom.uniform(getkey(), (), minval=0.4, maxval=2)
+def _test_dense_interpolation(solver_ctr, key, t1):
+    y0 = jrandom.uniform(key, (), minval=0.4, maxval=2)
+    dt0 = t1 / 1e3
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: -y),
         t0=0,
         t1=t1,
         y0=y0,
-        dt0=0.01,
+        dt0=dt0,
         saveat=diffrax.SaveAt(dense=True),
         solver=solver_ctr(),
     )
-    points = jnp.linspace(0, t1, 1000)  # finer resolution than the step size
+    points = jnp.linspace(0, t1, int(1e4))  # finer resolution than the step size
     vals = jax.vmap(sol.evaluate)(points)
     true_vals = jnp.exp(-points) * y0
 
@@ -334,15 +335,24 @@ def _test_dense_interpolation(solver_ctr, getkey, t1):
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_dense_interpolation(solver_ctr, getkey):
-    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(
-        solver_ctr, getkey, 1
-    )
-    assert shaped_allclose(vals, true_vals, atol=1e-5, rtol=1e-5)
-    if derivs is not None:
-        # TODO: apply more stringent tolerances where possible.
-        # Need to upgrade away from some of the simplistic interpolation routines used
-        # at the moment though.
-        assert shaped_allclose(derivs, true_derivs, atol=0.1, rtol=0.1)
+    key = jrandom.PRNGKey(5678)
+    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver_ctr, key, 1)
+    assert jnp.array_equal(vals[0], true_vals[0])
+    val_tol = {
+        diffrax.Euler: 1e-3,
+        diffrax.ImplicitEuler: 1e-3,
+        diffrax.LeapfrogMidpoint: 1e-5,
+    }.get(solver_ctr, 1e-6)
+    assert shaped_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
+    deriv_tol = {
+        diffrax.ReversibleHeun: 1e-2,
+        diffrax.Midpoint: 1e-2,
+        diffrax.LeapfrogMidpoint: 1e-2,
+        diffrax.Euler: 1e-3,
+        diffrax.ImplicitEuler: 1e-3,
+        diffrax.Ralston: 1e-3,
+    }.get(solver_ctr, 1e-6)
+    assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
 
 
 # When vmap'ing then it can happen that some batch elements take more steps to solve
@@ -350,9 +360,23 @@ def test_dense_interpolation(solver_ctr, getkey):
 # that all of this works as intended.
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_dense_interpolation_vmap(solver_ctr, getkey):
-    _test_dense = ft.partial(_test_dense_interpolation, solver_ctr, getkey)
-    _test_dense_vmap = jax.vmap(_test_dense, out_axes=(0, 0, 0, 0, None))
-    vals, true_vals, derivs, true_derivs, tol = _test_dense_vmap(jnp.array([0.5, 1.0]))
-    assert shaped_allclose(vals, true_vals, atol=tol, rtol=tol)
-    if derivs is not None:
-        assert shaped_allclose(derivs, true_derivs, atol=tol, rtol=tol)
+    key = jrandom.PRNGKey(5678)
+    _test_dense = ft.partial(_test_dense_interpolation, solver_ctr, key)
+    _test_dense_vmap = jax.vmap(_test_dense)
+    vals, true_vals, derivs, true_derivs = _test_dense_vmap(jnp.array([0.5, 1.0]))
+    assert jnp.array_equal(vals[:, 0], true_vals[:, 0])
+    val_tol = {
+        diffrax.Euler: 1e-3,
+        diffrax.ImplicitEuler: 1e-3,
+        diffrax.LeapfrogMidpoint: 1e-5,
+    }.get(solver_ctr, 1e-6)
+    assert shaped_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
+    deriv_tol = {
+        diffrax.ReversibleHeun: 1e-2,
+        diffrax.Midpoint: 1e-2,
+        diffrax.LeapfrogMidpoint: 1e-2,
+        diffrax.Euler: 1e-3,
+        diffrax.ImplicitEuler: 1e-3,
+        diffrax.Ralston: 1e-3,
+    }.get(solver_ctr, 1e-6)
+    assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)

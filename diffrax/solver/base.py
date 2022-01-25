@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Tuple, Type, TypeVar
+from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
 import jax
@@ -34,9 +34,10 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     def term_structure(self) -> PyTreeDef:
         """What PyTree structure `terms` should have when used with this solver."""
 
+    # On the type: frequently just Type[AbstractLocalInterpolation]
     @property
     @abc.abstractmethod
-    def interpolation_cls(self) -> Type[AbstractLocalInterpolation]:
+    def interpolation_cls(self) -> Callable[..., AbstractLocalInterpolation]:
         """How to interpolate the solution in between steps."""
 
     @property

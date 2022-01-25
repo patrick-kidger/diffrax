@@ -1,6 +1,6 @@
 import numpy as np
 
-from ..local_interpolation import FourthOrderPolynomialInterpolation
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .base import AbstractStratonovichSolver
 from .runge_kutta import AbstractERK, ButcherTableau
 
@@ -11,13 +11,6 @@ _midpoint_tableau = ButcherTableau(
     b_error=np.array([1.0, -1.0]),
     c=np.array([0.5]),
 )
-
-
-class _MidpointInterpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0.5])
 
 
 class Midpoint(AbstractERK, AbstractStratonovichSolver):
@@ -32,6 +25,6 @@ class Midpoint(AbstractERK, AbstractStratonovichSolver):
     """
 
     tableau = _midpoint_tableau
-    interpolation_cls = _MidpointInterpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 2
     strong_order = 0.5

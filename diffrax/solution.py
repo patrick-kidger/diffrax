@@ -82,7 +82,7 @@ class Solution(AbstractPath):
         return self.interpolation.evaluate(t0, t1, left)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        r"""If dense output was saved, then calculate an approximation to the
+        r"""If dense output was saved, then calculate an **approximation** to the
         derivative of the solution at any point in the region of integration `self.t0`
         to `self.t1`.
 
@@ -90,10 +90,10 @@ class Solution(AbstractPath):
         this calculates an approximation to $\frac{\mathrm{d}y}{\mathrm{d}t}$.
 
         (This is *not* backpropagating through the differential equation -- that
-        typically corresponds to compute something like
-        $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y(t_0)}$.)
+        typically corresponds to e.g. $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y(t_0)}$.)
 
-        !!! note
+        !!! example
+
             For an ODE satisfying
 
             $\frac{\mathrm{d}y}{\mathrm{d}t} = f(t, y(t))$
@@ -101,22 +101,20 @@ class Solution(AbstractPath):
             then this value is approximately equal to $f(t, y(t))$.
 
         !!! warning
-            The value calculated here is not necessarily very close to the
+
+            This value is generally not very accurate. Differential equation solvers
+            are usually designed to produce splines whose value is close to the true
+            solution; not to produce splines whose derivative is close to the
             derivative of the true solution.
 
-            Differential equation solvers typically produce dense output as a spline.
-            The value returned here is the derivative of that spline.
-
-            This spline will be close to the true solution of the differential
-            equation, but this does not mean that their derivatives will be close.
+            If you need accurate derivatives for the solution of an ODE, it is usually
+            best to calculate `vector_field(t, sol.evaluate(t), args)`. That is, to
+            pay the extra computational cost of another vector field evaluation, in
+            order to get a more accurate value.
 
             Put precisely: this `derivative` method returns the *derivative of the
             numerical solution*, and *not* an approximation to the derivative of the
             true solution.
-
-            If solving an ODE and wanting the derivative to the true solution, then
-            taking `self.evaluate(t)`, and evaluating the vector field on it, will
-            typically be much more accurate.
 
         **Arguments:**
 

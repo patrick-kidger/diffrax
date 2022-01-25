@@ -44,7 +44,7 @@ SaveAt.__init__.__doc__ = """**Main Arguments:**
 - `ts`: Some array of times at which to save the output.
 - `steps`: If `True`, save the output at every step of the numerical solver.
 - `dense`: If `True`, save dense output, that can later be evaluated at any part of
-    the interval $[t_0, t_1]$.
+    the interval $[t_0, t_1]$ via `sol = diffeqsolve(...); sol.evaluate(...)`.
 
 **Other Arguments:**
 

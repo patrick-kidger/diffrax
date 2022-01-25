@@ -278,21 +278,16 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
             ],
         ]
     )
-    diff_coeffs = eval_coeffs * np.array([6, 5, 4, 3, 2, 1])
-    eval_coeffs = np.array(eval_coeffs)
-    diff_coeffs = np.array(diff_coeffs)
 
-    def evaluate(self, t0: Scalar, t1: Optional[Scalar] = None) -> PyTree:  # noqa: F821
+    def evaluate(
+        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+    ) -> PyTree:  # noqa: F821
+        del left
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
         t = linear_rescale(self.t0, t0, self.t1)
         coeffs = _vmap_polyval(self.eval_coeffs, t) * t
         return (self.y0 ** ω + vector_tree_dot(coeffs, self.k) ** ω).ω
-
-    def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
-        t = linear_rescale(self.t0, t, self.t1)
-        coeffs = _vmap_polyval(self.diff_coeffs, t)
-        return vector_tree_dot(coeffs, (self.k ** ω / (self.t1 - self.t0)).ω)
 
 
 class Dopri8(AbstractERK):

@@ -1,6 +1,6 @@
 import numpy as np
 
-from ..local_interpolation import FourthOrderPolynomialInterpolation
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
 
@@ -36,13 +36,6 @@ _kvaerno3_tableau = ButcherTableau(
 )
 
 
-class _Kvaerno3Interpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0.5, 0, 0])
-
-
 class Kvaerno3(AbstractESDIRK):
     r"""Kvaerno's 3/2 method.
 
@@ -66,5 +59,5 @@ class Kvaerno3(AbstractESDIRK):
         ```
     """
     tableau = _kvaerno3_tableau
-    interpolation_cls = _Kvaerno3Interpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 3

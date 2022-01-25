@@ -319,7 +319,7 @@ def loop(
 
         if saveat.dense:
             made_inplace_update = True
-            dense_ts = maybe_inplace(dense_save_index, dense_ts, tprev)
+            dense_ts = maybe_inplace(dense_save_index + 1, dense_ts, tprev)
             dense_infos = jax.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
                 dense_infos,

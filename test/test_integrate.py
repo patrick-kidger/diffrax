@@ -262,9 +262,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         t = jnp.linspace(0.3, 4, 20)
         for ti in t:
             assert shaped_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
-            if solver_ctr is not diffrax.Tsit5:
-                # derivative not implemented for Tsit5
-                assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
+            assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
 
 @pytest.mark.parametrize(

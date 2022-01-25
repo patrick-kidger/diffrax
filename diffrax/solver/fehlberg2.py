@@ -1,6 +1,6 @@
 import numpy as np
 
-from ..local_interpolation import FourthOrderPolynomialInterpolation
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -12,13 +12,6 @@ _fehlberg2_tableau = ButcherTableau(
 )
 
 
-class _Fehlberg2Interpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0.5, 0])
-
-
 class Fehlberg2(AbstractERK):
     """Fehlberg's method.
 
@@ -27,5 +20,5 @@ class Fehlberg2(AbstractERK):
     """
 
     tableau = _fehlberg2_tableau
-    interpolation_cls = _Fehlberg2Interpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 2

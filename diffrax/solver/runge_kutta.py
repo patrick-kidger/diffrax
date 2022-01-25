@@ -253,7 +253,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 (diagonal, terms.vf_prod, ti, yi_partial, args, control),
                 jac,
             )
-            ki = unravel(nonlinear_sol.ki)
+            ki = unravel(nonlinear_sol.root)
             return ki, jac, nonlinear_sol.result
 
 
