@@ -49,7 +49,7 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-_ControllerState = Tuple[Bool, Bool, Scalar]
+_ControllerState = Tuple[Bool, Bool, Scalar, Scalar]
 
 
 _gendocs = getattr(typing, "GENERATING_DOCUMENTATION", False)
@@ -86,7 +86,9 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
-# are good notes on different step size control algorithms.
+# are good introductory notes on different step size control algorithms.
+# TODO: we don't currently offer a limiter, or a variant accept/reject scheme, as given
+#       in Soderlind and Wang 2006.
 class PIDController(AbstractAdaptiveStepSizeController):
     r"""Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
@@ -96,19 +98,22 @@ class PIDController(AbstractAdaptiveStepSizeController):
     ??? tip "Choosing PID coefficients"
 
         This controller can be reduced to any special case (e.g. just a PI controller,
-        or just an I controller) by setting `p_coeff`, `i_coeff` or `d_coeff` to zero
+        or just an I controller) by setting `pcoeff`, `icoeff` or `dcoeff` to zero
         as appropriate.
 
-        For especially easy-to-solve problems then an I controller will often be most
-        efficient:
+        For smoothly-varying (i.e. easy to solve) problems then an I controller will
+        often be most efficient:
         ```python
         PIDController(pcoeff=0, icoeff=1, dcoeff=0)
         ```
 
-        For moderate difficulty problems then a PI controller will often do well (this
-        is the default):
+        For moderate difficulty problems that may have relatively rapid changes (this
+        includes mildly stiff problems) then a PI controller will often do well.
+        Several different coefficients are suggested in the literature, e.g.
         ```python
-        PIDController(pcoeff=0.4, icoeff=0.7, dcoeff=0)
+        PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0)  # default coefficients
+        PIDController(pcoeff=0.3, icoeff=0.3, dcoeff=0)
+        PIDController(pcoeff=0.2, icoeff=0.4, dcoeff=0)
         ```
 
         For SDEs then a slow PI controller is recommended. For example:
@@ -116,10 +121,10 @@ class PIDController(AbstractAdaptiveStepSizeController):
         PIDController(pcoeff=0.1, icoeff=0.3, dcoeff=0)
         ```
 
-        The best choice is generally not well-understood, and selecting `pcoeff`,
-        `icoeff`, `dcoeff` is largely an empirical / problem-dependent / solver-
-        dependent choice. So if you a lot about efficiency then consider experimenting
-        with these choices; you can check how many steps are being made via:
+        The best choice is largely empirical, and problem/solver dependent. For most
+        moderately difficult ODE problems you can try tuning these coefficient subject
+        to `pcoeff>=0.2`, `icoeff>=0.3`, `pcoeff + icoeff <= 0.7`. You can check the
+        number of steps made via:
         ```python
         sol = diffeqsolve(...)
         print(sol.stats["num_steps"])
@@ -127,7 +132,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
     ??? cite "References"
 
-        Both (a) the initial step size selection algorithm for ODEs and (b) the use of
+        Both the initial step size selection algorithm for ODEs, and the use of
         an I controller for ODEs, are from Section II.4 of:
 
         ```bibtex
@@ -156,7 +161,34 @@ class PIDController(AbstractAdaptiveStepSizeController):
         }
         ```
 
-        The use of PI and PID controllers for SDEs are from the following.
+        and Sections 1--3 of:
+
+        ```bibtex
+        @article{soderlind2002automatic,
+            title={Automatic control and adaptive time-stepping},
+            author={Gustaf S{\"o}derlind},
+            year={2002},
+            journal={Numerical Algorithms},
+            volume={31},
+            pages={281--310}
+        }
+        ```
+
+        The use of PID controllers are from:
+
+        ```bibtex
+        @article{soderlind2003digital,
+            title={{D}igital {F}ilters in {A}daptive {T}ime-{S}tepping,
+            author={Gustaf S{\"o}derlind},
+            year={2003},
+            journal={ACM Transactions on Mathematical Software},
+            volume={20},
+            number={1},
+            pages={1--26}
+        }
+        ```
+
+        The use of PI and PID controllers for SDEs are from:
 
         ```bibtex
         @article{burrage2004adaptive,
@@ -187,8 +219,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
         ```
     """
 
-    pcoeff: Scalar = 0.7
-    icoeff: Scalar = 0.4
+    pcoeff: Scalar = 0.4
+    icoeff: Scalar = 0.3
     dcoeff: Scalar = 0
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
@@ -283,7 +315,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin, jnp.nan)
+        return t1, (jump_next_step, at_dtmin, jnp.nan, jnp.nan)
 
     def adapt_step_size(
         self,
@@ -296,6 +328,59 @@ class PIDController(AbstractAdaptiveStepSizeController):
         local_order: Scalar,
         controller_state: _ControllerState,
     ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
+        # Note that different implementations, and different papers, do slightly
+        # different things here. It's generally not clear which of these choices are
+        # best. (If you know anything about which of these choices is best then please
+        # let me know!)
+        #
+        # Some will compute
+        # `scaled_error = norm(y_error / (atol + y * rtol))`.       (1)
+        # Some will compute
+        # `scaled_error = norm(y_error) / (atol + norm(y) * rtol)`  (2)
+        # We do (1). torchdiffeq and torchsde do (1). Soderlind's papers and
+        # OrdinaryDiffEq.jl do (2).
+        # We choose to do (1) by considering what were to happen if we were to increase
+        # the dimensionality of `y` and `y_error` with zeros. (i.e. append as many
+        # `dy/dt=0` problems as we please, and then solve them perfectly) Assuming that
+        # `norm` normalises by the number of dimensions (e.g. like an RMS norm) then
+        # (2) will see `norm(y_error) -> 0`, `norm(y) -> 0`, and therefore `atol`
+        # playing a larger and larger role. In contrast (2) simply scales things down
+        # without `atol` taking on extra importance. (This is quite thin justification
+        # though.)
+        #
+        # Some will put the multiplication by `safety` outside the `coeff/local_order`
+        # exponent. (1) Some will put it inside. (2)
+        # We do (1). torchdiffeq and OrdinaryDiffEq.jl does (1). torchsde and
+        # Soderlind's papers do (2).
+        # We choose to do (1) arbitrarily.
+        #
+        # Some will perform PI or PID control via
+        # h_{n+1} = (ε_n / r_n)^β_1 * (ε_n / r_{n-1})^β_2 * (ε_n / r_{n-2})^β_3 * h_n            (1) # noqa: E501
+        # Some will perform
+        # h_{n+1} = (ε_n / r_n)^β_1 * (ε_{n-1} / r_{n-1})^β_2 * (ε_{n-2} / r_{n-2})^β_3 * h_n    (2) # noqa: E501
+        # Some will perform
+        # h_{n+1} = δ_{n,n}^β_1 * δ_{n,n-1}^β_2 * δ_{n,n-2}^β_3 * h_n                            (3) # noqa: E501
+        # Some could perform
+        # h_{n+1} = δ_{n,n}^β_1 * δ_{n-1,n-1}^β_2 * δ_{n-2,n-2}^β_3 * h_n                        (4) # noqa: E501
+        # where
+        # h_n is the nth step size
+        # ε_n     = atol + norm(y) * rtol with y on the nth step
+        # r_n     = norm(y_error) with y_error on the nth step
+        # δ_{n,m} = norm(y_error / (atol + norm(y) * rtol)) with y_error on the nth
+        #                                                   step and y on the mth step
+        # β_1     = pcoeff + icoeff + dcoeff
+        # β_2     = -(pcoeff + 2 * dcoeff)
+        # β_3     = dcoeff
+        # We do (4). torchsde tries to do (3). (But looks like it has a bug in that the
+        # numerator and denominator for the P-control have been swapped, I think?)
+        # Soderlind's papers do (1). OrdinaryDiffEq.jl does (2).
+        # We choose to do (4) by rejecting the others. We reject (1) and (2) for the
+        # same reason as computing `scaled_error`, above. (`atol` scaling.) We reject
+        # (3) because (whilst it is more similar to Soderlind's work with (1)), it is
+        # more inefficient than (4) to implement, as it requires storing the y-shaped
+        # (atol + norm(y) * rtol) between steps rather than just the scalar δ_{n,n}
+        # between steps.
+
         del args
         if y_error is None and y0 is not None:
             # y0 is not None check is included to handle the edge case that the state
@@ -307,9 +392,12 @@ class PIDController(AbstractAdaptiveStepSizeController):
                 "error estimates."
             )
         prev_dt = t1 - t0
-        made_jump, at_dtmin, prev_scaled_error = controller_state
-        # Attribute takes priority, if the user knows the correct local order better
-        # than our guess.
+        (
+            made_jump,
+            at_dtmin,
+            prev_inv_scaled_error,
+            prev_prev_inv_scaled_error,
+        ) = controller_state
         local_order = self._get_local_order(local_order)
 
         #
@@ -325,36 +413,43 @@ class PIDController(AbstractAdaptiveStepSizeController):
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin
+        # Double-where trick to avoid NaN gradients.
+        # See JAX issues #5039 and #1052.
+        _cond = scaled_error == 0
+        _scaled_error = jnp.where(_cond, 1, scaled_error)
+        _inv_scaled_error = 1 / _scaled_error
+        inv_scaled_error = jnp.where(_cond, jnp.inf, _inv_scaled_error)
 
         #
         # Adjust next step size
         #
 
-        # Double-where trick to avoid NaN gradients.
-        # See JAX issues #5039 and #1052.
-        #
-        # (Although we've actually since added a stop_gradient afterwards, this is kept
-        # for completeness, e.g. just in case we ever remove the stop_gradient.)
-        cond = scaled_error == 0
-        _scaled_error = jnp.where(cond, 1.0, scaled_error)
-        if isinstance(self.pcoeff, (int, float)) and self.pcoeff == 0:
-            pfactor = 1
-        else:
-            prev_scaled_error = jnp.where(
-                jnp.isnan(prev_scaled_error), _scaled_error, prev_scaled_error
-            )
-            pcoeff = self.pcoeff / local_order
-            pfactor = (prev_scaled_error / _scaled_error) ** pcoeff
-        if isinstance(self.icoeff, (int, float)) and self.icoeff == 0:
-            ifactor = 1
-        else:
-            icoeff = self.icoeff / local_order
-            ifactor = 1 / _scaled_error ** icoeff
+        # The [prev_]prev_inv_scaled_error can be nan from `self.init(...)`.
+        # In this case we shouldn't let the extra factors kick in until we've made
+        # some more steps, so we set the factor to one.
+        # They can be inf from the previous `self.adapt_step_size(...)`. In this case
+        # we had zero estimated error on the previous step and will have already
+        # increased stepsize by `self.factormax` then. So set the factor to one now.
+        _nan_to_one = lambda x: jnp.where(jnp.isnan(x) | (x == jnp.inf), 1, x)
+        _zero_coeff = lambda c: isinstance(c, (int, float)) and c == 0
+        coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / local_order
+        coeff2 = -(self.pcoeff + 2 * self.dcoeff) / local_order
+        coeff3 = self.dcoeff / local_order
+        factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
+        factor2 = (
+            1 if _zero_coeff(coeff2) else _nan_to_one(prev_inv_scaled_error) ** coeff2
+        )  # noqa: E501
+        factor3 = (
+            1
+            if _zero_coeff(coeff3)
+            else _nan_to_one(prev_prev_inv_scaled_error) ** coeff3
+        )  # noqa: E501
         factormin = jnp.where(keep_step, 1, self.factormin)
         factor = jnp.clip(
-            self.safety * pfactor * ifactor, a_min=factormin, a_max=self.factormax
+            self.safety * factor1 * factor2 * factor3,
+            a_min=factormin,
+            a_max=self.factormax,
         )
-        factor = jnp.where(cond, self.factormax, factor)
         factor = lax.stop_gradient(factor)  # See note in init above.
         dt = prev_dt * factor
 
@@ -385,11 +480,21 @@ class PIDController(AbstractAdaptiveStepSizeController):
         next_t1 = self._clip_step_ts(next_t0, next_t0 + dt)
         next_t1, next_made_jump = self._clip_jump_ts(next_t0, next_t1)
 
-        scaled_error = jnp.where(keep_step, scaled_error, prev_scaled_error)
-        controller_state = (next_made_jump, at_dtmin, scaled_error)
+        inv_scaled_error = jnp.where(keep_step, inv_scaled_error, prev_inv_scaled_error)
+        prev_inv_scaled_error = jnp.where(
+            keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
+        )
+        controller_state = (
+            next_made_jump,
+            at_dtmin,
+            inv_scaled_error,
+            prev_inv_scaled_error,
+        )
         return keep_step, next_t0, next_t1, made_jump, controller_state, result
 
     def _get_local_order(self, local_order: Optional[Scalar]) -> Scalar:
+        # Attribute takes priority, if the user knows the correct local order better
+        # than our guess.
         local_order = local_order if self.local_order is None else self.local_order
         if local_order is None:
             raise ValueError(
