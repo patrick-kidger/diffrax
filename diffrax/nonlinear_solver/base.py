@@ -33,7 +33,7 @@ class AbstractNonlinearSolver(eqx.Module):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # Note that this breaks the descriptor protocol so we have to pass self
-        # manually.
+        # manually in __call__.
         cls._solve = jax.custom_jvp(cls._solve, nondiff_argnums=(0, 1, 2, 3, 4))
         cls._solve.defjvp(_root_solve_jvp)
 
@@ -74,9 +74,10 @@ class AbstractNonlinearSolver(eqx.Module):
 
         **Returns:**
 
-        A 2-tuple `(z, result)`, where `z` (hopefully) solves `fn(z, args) = 0`,
-        and `result` is a status code indicating whether the solver managed to
-        converge or not.
+        A `NonlinearSolution` object, with attributes `root`, `num_steps`, `result`.
+        `root` (hopefully) solves `fn(root, args) = 0`. `num_steps` is the number of
+        steps taken in the nonlinear solver. `result` is a status code indicating
+        whether the solver managed to converge or not.
         """
 
         diff_args, nondiff_args = eqx.partition(args, is_perturbed)
@@ -156,4 +157,4 @@ def _root_solve_jvp(
 
     tang_root = -jnp.linalg.solve(jac_flat_root, jvp_flat_diff_args)
     tang_root = unflatten_root(tang_root)
-    return solution, (tang_root, 0)
+    return solution, NonlinearSolution(root=tang_root, num_steps=0, result=0)

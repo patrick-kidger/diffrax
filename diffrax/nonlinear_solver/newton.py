@@ -98,7 +98,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         scale = atol + rtol * self.norm(x)
         flat, unflatten = fu.ravel_pytree(x)
         if flat.size == 0:
-            return x, RESULTS.successful
+            return NonlinearSolution(root=x, num_steps=0, result=RESULTS.successful)
         curried = lambda z: fu.ravel_pytree(fn(unflatten(z), args))[0]
 
         def cond_fn(val):
