@@ -326,12 +326,37 @@ def test_compile_time_steps():
     assert sol.stats["compiled_num_steps"] is None
 
     sol = diffrax.diffeqsolve(
-        terms, 0, 1, y0, 0.1, solver, stepsize_controller=diffrax.ConstantStepSize()
+        terms,
+        0,
+        1,
+        y0,
+        0.1,
+        solver,
+        stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
     )
     assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
 
-    sol = diffrax.diffeqsolve(terms, 0, 1, y0, 0.01, solver)
-    assert shaped_allclose(sol.stats["compiled_num_steps"], 100)
+    sol = diffrax.diffeqsolve(
+        terms,
+        0,
+        1,
+        y0,
+        0.1,
+        solver,
+        stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
+    )
+    assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        0,
+        1,
+        y0,
+        0.1,
+        solver,
+        stepsize_controller=diffrax.ConstantStepSize(compile_steps=False),
+    )
+    assert sol.stats["compiled_num_steps"] is None
 
     sol = diffrax.diffeqsolve(
         terms,
@@ -340,9 +365,44 @@ def test_compile_time_steps():
         y0,
         None,
         solver,
-        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1]),
+        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=True),
     )
     assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        0,
+        1,
+        y0,
+        None,
+        solver,
+        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=None),
+    )
+    assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        0,
+        1,
+        y0,
+        None,
+        solver,
+        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=False),
+    )
+    assert sol.stats["compiled_num_steps"] is None
+
+    with pytest.raises(ValueError):
+        sol = jax.jit(
+            lambda t0: diffrax.diffeqsolve(
+                terms,
+                t0,
+                1,
+                y0,
+                0.1,
+                solver,
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
+            )
+        )(0)
 
     sol = jax.jit(
         lambda t0: diffrax.diffeqsolve(
@@ -352,10 +412,10 @@ def test_compile_time_steps():
             y0,
             0.1,
             solver,
-            stepsize_controller=diffrax.ConstantStepSize(),
+            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
         )
     )(0)
-    assert shaped_allclose(sol.stats["compiled_num_steps"], None)
+    assert sol.stats["compiled_num_steps"] is None
 
     sol = jax.jit(
         lambda t1: diffrax.diffeqsolve(
@@ -365,17 +425,23 @@ def test_compile_time_steps():
             y0,
             0.1,
             solver,
-            stepsize_controller=diffrax.ConstantStepSize(),
+            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
         )
     )(1)
-    assert shaped_allclose(sol.stats["compiled_num_steps"], None)
+    assert sol.stats["compiled_num_steps"] is None
 
     sol = jax.jit(
         lambda dt0: diffrax.diffeqsolve(
-            terms, 0, 1, y0, dt0, solver, stepsize_controller=diffrax.ConstantStepSize()
+            terms,
+            0,
+            1,
+            y0,
+            dt0,
+            solver,
+            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
         )
     )(0.1)
-    assert shaped_allclose(sol.stats["compiled_num_steps"], None)
+    assert sol.stats["compiled_num_steps"] is None
 
     # Work around JAX issue #9298
     diffeqsolve_nojit = diffrax.diffeqsolve.__wrapped__
@@ -390,7 +456,7 @@ def test_compile_time_steps():
                 y0,
                 0.1,
                 solver,
-                stepsize_controller=diffrax.ConstantStepSize(),
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(_t0)
     )()
@@ -406,7 +472,7 @@ def test_compile_time_steps():
                 y0,
                 0.1,
                 solver,
-                stepsize_controller=diffrax.ConstantStepSize(),
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(_t1)
     )()
@@ -422,7 +488,7 @@ def test_compile_time_steps():
                 y0,
                 dt0,
                 solver,
-                stepsize_controller=diffrax.ConstantStepSize(),
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(_dt0)
     )()

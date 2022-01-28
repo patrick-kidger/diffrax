@@ -15,6 +15,8 @@ class ConstantStepSize(AbstractStepSizeController):
     [`diffrax.diffeqsolve`][].
     """
 
+    compile_steps: Optional[bool] = False
+
     def wrap(self, direction: Scalar):
         return self
 
@@ -59,10 +61,26 @@ class ConstantStepSize(AbstractStepSizeController):
         )
 
 
+ConstantStepSize.__init__.__doc__ = """**Arguments:**
+
+- `compile_steps`: If `True` then the number of steps taken in the differential
+    equation solve will be baked into the compilation. When this is possible then
+    this can improve compile times and run times slightly. The downside is that this
+    implies re-compiling if this changes, and that this is only possible if the exact
+    number of steps to be taken is known in advance (i.e. `t0`, `t1`, `dt0` cannot be
+    traced values) -- and an error will be thrown if the exact number of steps could
+    not be determined. Set to `False` (the default) to not bake in the number of steps.
+    Set to `None` to attempt to bake in the number of steps, but to fall back to
+    `False`-behaviour if the number of steps could not be determined (rather than
+    throwing an error).
+"""
+
+
 class StepTo(AbstractStepSizeController):
     """Make steps to just prespecified times."""
 
     ts: Union[Sequence[Scalar], Array["times"]]  # noqa: F821
+    compile_steps: Optional[bool] = False
 
     def __post_init__(self):
         with jax.ensure_compile_time_eval():
@@ -80,7 +98,7 @@ class StepTo(AbstractStepSizeController):
             "`StepTo(ts=...)` must be strictly increasing (or strictly decreasing if "
             "t0 > t1).",
         )
-        return type(self)(ts=ts)
+        return type(self)(ts=ts, compile_steps=self.compile_steps)
 
     def init(
         self,
@@ -131,4 +149,5 @@ StepTo.__init__.__doc__ = """**Arguments:**
 
 - `ts`: The times to step to. Must be an increasing/decreasing sequence of times
     between the `t0` and `t1` passed to [`diffrax.diffeqsolve`][].
+- `compile_steps`: As [`diffrax.ConstantStepSize.__init__`][].
 """

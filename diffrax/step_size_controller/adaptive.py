@@ -101,30 +101,33 @@ class PIDController(AbstractAdaptiveStepSizeController):
         or just an I controller) by setting `pcoeff`, `icoeff` or `dcoeff` to zero
         as appropriate.
 
-        For smoothly-varying (i.e. easy to solve) problems then an I controller will
-        often be most efficient:
+        For smoothly-varying (i.e. easy to solve) problems then an I controller, or a
+        PI controller with `icoeff=1`, will often be most efficient.
         ```python
-        PIDController(pcoeff=0, icoeff=1, dcoeff=0)
+        PIDController(pcoeff=0,   icoeff=1, dcoeff=0)  # default coefficients
+        PIDController(pcoeff=0.4, icoeff-1, dcoeff=0)
         ```
 
-        For moderate difficulty problems that may have relatively rapid changes (this
-        includes mildly stiff problems) then a PI controller will often do well.
-        Several different coefficients are suggested in the literature, e.g.
+        For moderate difficulty problems that may have an error estimate that does
+        not vary smoothly, then a less sensitive controller will often do well. (This
+        includes many mildly stiff problems.) Several different coefficients are
+        suggested in the literature, e.g.
         ```python
-        PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0)  # default coefficients
+        PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0)
         PIDController(pcoeff=0.3, icoeff=0.3, dcoeff=0)
         PIDController(pcoeff=0.2, icoeff=0.4, dcoeff=0)
         ```
 
-        For SDEs then a slow PI controller is recommended. For example:
+        For SDEs (an extreme example of a problem type that does not have smooth
+        behaviour) then an insensitive PI controller is recommended. For example:
         ```python
         PIDController(pcoeff=0.1, icoeff=0.3, dcoeff=0)
         ```
 
         The best choice is largely empirical, and problem/solver dependent. For most
-        moderately difficult ODE problems you can try tuning these coefficient subject
-        to `pcoeff>=0.2`, `icoeff>=0.3`, `pcoeff + icoeff <= 0.7`. You can check the
-        number of steps made via:
+        moderately difficult ODE problems it is recommended to try tuning these
+        coefficients subject to `pcoeff>=0.2`, `icoeff>=0.3`, `pcoeff + icoeff <= 0.7`.
+        You can check the number of steps made via:
         ```python
         sol = diffeqsolve(...)
         print(sol.stats["num_steps"])
@@ -219,8 +222,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
         ```
     """
 
-    pcoeff: Scalar = 0.4
-    icoeff: Scalar = 0.3
+    pcoeff: Scalar = 0
+    icoeff: Scalar = 1
     dcoeff: Scalar = 0
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None

@@ -21,7 +21,8 @@ The list of step size controllers is as follows. The most common cases are fixed
 
 ::: diffrax.ConstantStepSize
     selection:
-        members: false
+        members:
+            - __init__
 
 ::: diffrax.StepTo
     selection:

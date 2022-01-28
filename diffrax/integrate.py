@@ -355,6 +355,7 @@ def loop(
 
     if is_bounded:
         # Some privileged optimisations, but for common use cases.
+        # TODO: make these a method on an AbstractFixedStepSizeController?
         #
         # These optimisations depend on implementations details of `ConstantStepSize`,
         # `StepTo`, and `bounded_while_loop`.
@@ -368,7 +369,10 @@ def loop(
             # anyway; this is already fast. Don't try to determine the number of steps
             # needed.
             compiled_num_steps = None
-        elif isinstance(stepsize_controller, ConstantStepSize):
+        elif isinstance(stepsize_controller, ConstantStepSize) and (
+            stepsize_controller.compile_steps is None
+            or stepsize_controller.compile_steps is True
+        ):
             # We can determine the number of steps quite easily with constant step
             # size.
             #
@@ -397,8 +401,18 @@ def loop(
                     )
                     compiled_num_steps = unvmap_max(compiled_num_steps)
                 else:
-                    compiled_num_steps = None
-        elif isinstance(stepsize_controller, StepTo):
+                    if stepsize_controller.compile_steps is None:
+                        compiled_num_steps = None
+                    else:
+                        assert stepsize_controller.compile_steps is True
+                        raise ValueError(
+                            "Could not determine exact number of steps, but "
+                            "`stepsize_controller.compile_steps=True`"
+                        )
+        elif isinstance(stepsize_controller, StepTo) and (
+            stepsize_controller.compile_steps is None
+            or stepsize_controller.compile_steps is True
+        ):
             # The user has explicitly specified the number of steps.
             compiled_num_steps = len(stepsize_controller.ts) - 1
         else:
