@@ -49,11 +49,11 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     try:
         diffrax.diffeqsolve(
             diffrax.ODETerm(f),
+            solver_ctr(),
             t0,
             t1,
-            y0,
             dt0,
-            solver=solver_ctr(),
+            y0,
             stepsize_controller=stepsize_controller,
         )
     except RuntimeError as e:
@@ -86,7 +86,7 @@ def test_ode_order(solver_ctr):
     errors = []
     for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
         dt0 = 2 ** exponent
-        sol = diffrax.diffeqsolve(diffrax.ODETerm(f), t0, t1, y0, dt0, solver_ctr())
+        sol = diffrax.diffeqsolve(diffrax.ODETerm(f), solver_ctr(), t0, t1, dt0, y0)
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2 ** -28:
@@ -173,16 +173,14 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     ref_terms = diffrax.MultiTerm(
         diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
     )
-    true_sol = diffrax.diffeqsolve(
-        ref_terms, t0, t1, y0, dt0=2 ** -14, solver=ref_solver
-    )
+    true_sol = diffrax.diffeqsolve(ref_terms, ref_solver, t0, t1, dt0=2 ** -14, y0=y0)
     true_yT = true_sol.ys[-1]
 
     exponents = []
     errors = []
     for exponent in [-3, -4, -5, -6, -7, -8, -9, -10]:
         dt0 = 2 ** exponent
-        sol = diffrax.diffeqsolve(terms, t0, t1, y0, dt0, solver_ctr())
+        sol = diffrax.diffeqsolve(terms, solver_ctr(), t0, t1, dt0, y0)
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2 ** -28:
@@ -223,11 +221,11 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     t1 = 0.3
     sol1 = diffrax.diffeqsolve(
         diffrax.ODETerm(f),
+        solver_ctr(),
         t0,
         t1,
-        y0,
         dt0,
-        solver_ctr(),
+        y0,
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
@@ -244,11 +242,11 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.ts])
     sol2 = diffrax.diffeqsolve(
         diffrax.ODETerm(f),
+        solver_ctr(),
         t0,
         t1,
-        y0,
         negdt0,
-        solver_ctr(),
+        y0,
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
@@ -279,11 +277,11 @@ def test_pytree_state(solver_ctr, stepsize_controller, dt0, treedef, getkey):
     y0 = random_pytree(getkey(), treedef)
     sol = diffrax.diffeqsolve(
         term,
+        solver=solver_ctr(),
         t0=0,
         t1=1,
-        y0=y0,
         dt0=dt0,
-        solver=solver_ctr(),
+        y0=y0,
         stepsize_controller=stepsize_controller,
     )
     y1 = sol.ys
@@ -298,15 +296,15 @@ def test_semi_implicit_euler():
     dt0 = 0.00001
     sol1 = diffrax.diffeqsolve(
         (term1, term2),
+        diffrax.SemiImplicitEuler(),
         0,
         1,
-        y0,
         dt0,
-        solver=diffrax.SemiImplicitEuler(),
+        y0,
         max_steps=100000,
     )
     term_combined = diffrax.ODETerm(lambda t, y, args: (-y[1], y[0]))
-    sol2 = diffrax.diffeqsolve(term_combined, 0, 1, y0, 0.001, solver=diffrax.Tsit5())
+    sol2 = diffrax.diffeqsolve(term_combined, diffrax.Tsit5(), 0, 1, 0.001, y0)
     assert shaped_allclose(sol1.ys, sol2.ys)
 
 
@@ -316,77 +314,77 @@ def test_compile_time_steps():
     solver = diffrax.Tsit5()
 
     sol = diffrax.diffeqsolve(
-        terms, 0, 1, y0, None, solver, stepsize_controller=diffrax.PIDController()
+        terms, solver, 0, 1, None, y0, stepsize_controller=diffrax.PIDController()
     )
     assert sol.stats["compiled_num_steps"] is None
 
     sol = diffrax.diffeqsolve(
-        terms, 0, 1, y0, 0.1, solver, stepsize_controller=diffrax.PIDController()
+        terms, solver, 0, 1, 0.1, y0, stepsize_controller=diffrax.PIDController()
     )
     assert sol.stats["compiled_num_steps"] is None
 
     sol = diffrax.diffeqsolve(
         terms,
+        solver,
         0,
         1,
-        y0,
         0.1,
-        solver,
+        y0,
         stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
     )
     assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
 
     sol = diffrax.diffeqsolve(
         terms,
+        solver,
         0,
         1,
-        y0,
         0.1,
-        solver,
+        y0,
         stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
     )
     assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
 
     sol = diffrax.diffeqsolve(
         terms,
+        solver,
         0,
         1,
-        y0,
         0.1,
-        solver,
+        y0,
         stepsize_controller=diffrax.ConstantStepSize(compile_steps=False),
     )
     assert sol.stats["compiled_num_steps"] is None
 
     sol = diffrax.diffeqsolve(
         terms,
+        solver,
         0,
         1,
-        y0,
         None,
-        solver,
+        y0,
         stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=True),
     )
     assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
 
     sol = diffrax.diffeqsolve(
         terms,
+        solver,
         0,
         1,
-        y0,
         None,
-        solver,
+        y0,
         stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=None),
     )
     assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
 
     sol = diffrax.diffeqsolve(
         terms,
+        solver,
         0,
         1,
-        y0,
         None,
-        solver,
+        y0,
         stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=False),
     )
     assert sol.stats["compiled_num_steps"] is None
@@ -395,11 +393,11 @@ def test_compile_time_steps():
         sol = jax.jit(
             lambda t0: diffrax.diffeqsolve(
                 terms,
+                solver,
                 t0,
                 1,
-                y0,
                 0.1,
-                solver,
+                y0,
                 stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(0)
@@ -407,11 +405,11 @@ def test_compile_time_steps():
     sol = jax.jit(
         lambda t0: diffrax.diffeqsolve(
             terms,
+            solver,
             t0,
             1,
-            y0,
             0.1,
-            solver,
+            y0,
             stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
         )
     )(0)
@@ -420,11 +418,11 @@ def test_compile_time_steps():
     sol = jax.jit(
         lambda t1: diffrax.diffeqsolve(
             terms,
+            solver,
             0,
             t1,
-            y0,
             0.1,
-            solver,
+            y0,
             stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
         )
     )(1)
@@ -433,11 +431,11 @@ def test_compile_time_steps():
     sol = jax.jit(
         lambda dt0: diffrax.diffeqsolve(
             terms,
+            solver,
             0,
             1,
-            y0,
             dt0,
-            solver,
+            y0,
             stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
         )
     )(0.1)
@@ -451,11 +449,11 @@ def test_compile_time_steps():
         lambda: jax.vmap(
             lambda t0: diffeqsolve_nojit(
                 terms,
+                solver,
                 t0,
                 1,
-                y0,
                 0.1,
-                solver,
+                y0,
                 stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(_t0)
@@ -467,11 +465,11 @@ def test_compile_time_steps():
         lambda: jax.vmap(
             lambda t1: diffeqsolve_nojit(
                 terms,
+                solver,
                 0,
                 t1,
-                y0,
                 0.1,
-                solver,
+                y0,
                 stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(_t1)
@@ -483,11 +481,11 @@ def test_compile_time_steps():
         lambda: jax.vmap(
             lambda dt0: diffeqsolve_nojit(
                 terms,
+                solver,
                 0,
                 1,
-                y0,
                 dt0,
-                solver,
+                y0,
                 stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
             )
         )(_dt0)

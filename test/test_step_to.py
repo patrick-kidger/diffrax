@@ -12,11 +12,11 @@ def _test(ts, flip=False):
     y0 = jnp.array(1.0)
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(f),
+        solver=diffrax.Euler(),
         t0=2 if flip else 0,
         t1=0 if flip else 2,
-        y0=y0,
         dt0=None,
-        solver=diffrax.Euler(),
+        y0=y0,
         stepsize_controller=diffrax.StepTo(ts=ts),
         saveat=diffrax.SaveAt(ts=ts),
     )

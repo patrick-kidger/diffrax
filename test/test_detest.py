@@ -427,11 +427,11 @@ def _test(solver_ctr, problems, higher):
             stepsize_controller = diffrax.PIDController(rtol=rtol, atol=atol)
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(vector_field),
+            solver=solver_ctr(),
             t0=0.0,
             t1=20.0,
-            y0=init,
             dt0=dt0,
-            solver=solver_ctr(),
+            y0=init,
             stepsize_controller=stepsize_controller,
             max_steps=max_steps,
         )

@@ -17,7 +17,7 @@ def test_no_adjoint():
         dt0 = 0.1
         solver = diffrax.Dopri5()
         adjoint = diffrax.NoAdjoint()
-        sol = diffrax.diffeqsolve(term, t0, t1, y0, dt0, solver, adjoint=adjoint)
+        sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, adjoint=adjoint)
         return jnp.sum(sol.ys)
 
     with pytest.raises(RuntimeError):
@@ -56,12 +56,12 @@ def test_backsolve(getkey):
         return jnp.sum(
             diffrax.diffeqsolve(
                 term,
+                solver,
                 0.3,
                 9.5,
-                y0,
                 None,
-                solver,
-                args=args,
+                y0,
+                args,
                 stepsize_controller=stepsize_controller,
                 saveat=saveat,
                 adjoint=adjoint,
@@ -127,11 +127,11 @@ def test_adjoint_seminorm():
         )
         sol = diffrax.diffeqsolve(
             term,
+            diffrax.Tsit5(),
             0,
             1,
-            y0,
             None,
-            diffrax.Tsit5(),
+            y0,
             stepsize_controller=diffrax.PIDController(),
             adjoint=adjoint,
         )

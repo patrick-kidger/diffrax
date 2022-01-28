@@ -316,12 +316,12 @@ def _test_dense_interpolation(solver_ctr, key, t1):
     dt0 = t1 / 1e3
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: -y),
+        solver=solver_ctr(),
         t0=0,
         t1=t1,
-        y0=y0,
         dt0=dt0,
+        y0=y0,
         saveat=diffrax.SaveAt(dense=True),
-        solver=solver_ctr(),
     )
     points = jnp.linspace(0, t1, int(1e4))  # finer resolution than the step size
     vals = jax.vmap(sol.evaluate)(points)

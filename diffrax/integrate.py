@@ -510,11 +510,11 @@ def _get_local_order(terms: PyTree[AbstractTerm], solver: AbstractSolver) -> Sca
 @eqx.filter_jit
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
+    solver: AbstractSolver,
     t0: Scalar,
     t1: Scalar,
-    y0: PyTree,
     dt0: Optional[Scalar],
-    solver: AbstractSolver,
+    y0: PyTree,
     args: Optional[PyTree] = None,
     *,
     saveat: SaveAt = SaveAt(t1=True),
@@ -540,16 +540,16 @@ def diffeqsolve(
     - `terms`: The terms of the differential equation. This specifies the vector field.
         (For non-ordinary differential equations (SDEs, CDEs), this also specifies the
         Brownian motion or the control.)
+    - `solver`: The solver for the differential equation. See the guide on [how to
+        choose a solver](../usage/how-to-choose-a-solver.md).
     - `t0`: The start of the region of integration.
     - `t1`: The end of the region of integration.
-    - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
-        can be coerced to JAX arrays, like Python floats.)
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
         this will also be the step size for all other steps. (Except the last one,
         which may be slightly smaller and clipped to `t1`.) If set as `None` then the
         initial step size will be determined automatically if possible.
-    - `solver`: The solver for the differential equation. See the guide on [how to
-        choose a solver](../usage/how-to-choose-a-solver.md).
+    - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
+        can be coerced to JAX arrays, like Python floats.)
     - `args`: Any additional arguments to pass to the vector field.
     - `saveat`: What times to save the solution of the differential equation. Defaults
         to just the last time `t1`. (Keyword-only argument.)

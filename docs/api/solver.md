@@ -6,7 +6,7 @@ The complete list of solvers, categorised by type, is as follows.
 
 !!! note
 
-    The type of solver chosen determines how the `terms` field of `diffeqsolve` should be laid out. Most of them demand that it should be a single `AbstractTerm`. But for example [`diffrax.SemiImplicitEuler`][] demands that it by a 2-tuple `(AbstractTerm, AbstractTerm)`, to represent the two vector fields that solver uses.
+    The type of solver chosen determines how the `terms` argument of `diffeqsolve` should be laid out. Most of them demand that it should be a single `AbstractTerm`. But for example [`diffrax.SemiImplicitEuler`][] demands that it by a 2-tuple `(AbstractTerm, AbstractTerm)`, to represent the two vector fields that solver uses.
 
     If it is different from this default, then you can find the appropriate structure documented below, and available programmatically under `<solver>.term_structure`.
 
@@ -21,7 +21,7 @@ The complete list of solvers, categorised by type, is as follows.
     diffusion = lambda t, y, args: y[..., None]
     bm = UnsafeBrownianPath(shape=(1,), key=...)
     terms = MultiTerm(ODETerm(drift), ControlTerm(diffusion, bm))
-    diffeqsolve(terms, ..., solver=Euler())
+    diffeqsolve(terms, solver=Euler(), ...)
     ```
 
     In addition there are some [SDE-specific solvers](#sde-only-solvers).

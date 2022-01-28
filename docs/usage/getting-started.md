@@ -29,7 +29,7 @@ solver = Dopri5()
 saveat = SaveAt(ts=[0., 1., 2., 3.])
 stepsize_controller = PIDController(rtol=1e-5, atol=1e-5)
 
-sol = diffeqsolve(term, t0=0, t1=3, y0=1, dt0=0.1, solver=solver, saveat=saveat,
+sol = diffeqsolve(term, solver, t0=0, t1=3, dt0=0.1, y0=1, saveat=saveat,
                   stepsize_controller=stepsize_controller)
 
 print(sol.ts)  # DeviceArray([0.   , 1.   , 2.   , 3.    ])
@@ -79,7 +79,7 @@ terms = MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))
 solver = Euler()
 saveat = SaveAt(dense=True)
 
-sol = diffeqsolve(terms, t0=0, t1=3, y0=1, dt0=0.05, solver=solver, saveat=saveat)
+sol = diffeqsolve(terms, solver, t0=0, t1=3, dt0=0.05, y0=1, saveat=saveat)
 print(sol.evaluate(0.1))  # DeviceArray(0.9026031)
 ```
 
@@ -158,7 +158,7 @@ vector_field = lambda t, y, args: -y
 control = QuadraticPath()
 term = ControlTerm(vector_field, control).to_ode()
 solver = Dopri5()
-sol = diffeqsolve(term, t0=0, t1=3, y0=1, dt0=0.05, solver=solver)
+sol = diffeqsolve(term, solver, t0=0, t1=3, dt0=0.05, y0=1, dt0=0.05)
 
 print(sol.ts)  # DeviceArray([3.])
 print(sol.ys)  # DeviceArray([0.00012341])

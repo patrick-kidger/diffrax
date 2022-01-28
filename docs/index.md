@@ -30,11 +30,9 @@ def f(t, y, args):
     return -y
 
 term = ODETerm(f)
-t0, t1 = 0, 1
-y0 = jnp.array([2., 3.])
-dt0 = 0.1
 solver = Dopri5()
-solution = diffeqsolve(term, t0, t1, y0, dt0, solver)
+y0 = jnp.array([2., 3.])
+solution = diffeqsolve(term, solver, t0=0, t1=1, dt0=0.1, y0=y0)
 ```
 
 Here, `Dopri5` refers to the Dormand--Prince 5(4) numerical differential equation solver, which is a standard choice for many problems.

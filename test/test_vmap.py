@@ -25,11 +25,11 @@ def test_vmap_y0(stepsize_controller):
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
             diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
-            diffrax.Heun(),
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -43,11 +43,11 @@ def test_vmap_y0(stepsize_controller):
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
             diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
-            diffrax.Heun(),
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -62,11 +62,11 @@ def test_vmap_y0(stepsize_controller):
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
             diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
-            diffrax.Heun(),
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -80,11 +80,11 @@ def test_vmap_y0(stepsize_controller):
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
             diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
-            diffrax.Heun(),
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -105,11 +105,11 @@ def test_vmap_y0(stepsize_controller):
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
             diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
-            diffrax.Heun(),
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )

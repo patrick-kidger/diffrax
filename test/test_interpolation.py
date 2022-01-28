@@ -37,11 +37,11 @@ def test_derivative(getkey):
     y0 = jrandom.normal(getkey(), (3,))
     dense_interp = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, p: -y),
+        diffrax.Euler(),
         0,
         1,
-        y0,
         0.01,
-        diffrax.Euler(),
+        y0,
         saveat=diffrax.SaveAt(dense=True, t1=True),
     )
     y1 = dense_interp.ys[-1]
@@ -60,11 +60,11 @@ def test_derivative(getkey):
         y0 = jrandom.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
             diffrax.ODETerm(lambda t, y, p: -y),
+            solver_ctr(),
             0,
             1,
-            y0,
             0.01,
-            solver_ctr(),
+            y0,
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
         y1 = solution.ys[-1]
