@@ -5,10 +5,11 @@ Diffrax is a [JAX](https://github.com/google/jax)-based library providing numeri
 
 Features include:
 - ODE/SDE/CDE (ordinary/stochastic/controlled) solvers;
-- lots of different solvers (including `tsit5`, `dopri8`, symplectic solvers, implicit solvers);
+- lots of different solvers (including `Tsit5`, `Dopri8`, symplectic solvers, implicit solvers);
 - vmappable _everything_ (including the region of integration);
 - using a PyTree as the state;
 - dense solutions;
+- multiple adjoint methods for backpropagation;
 - support for neural differential equations.
 
 _From a technical point of view, the internal structure of the library is pretty cool -- all kinds of equations (ODEs, SDEs, CDEs) are solved in a unified way (rather than being treated separately), producing a small tightly-written library._
@@ -20,7 +21,7 @@ _From a technical point of view, the internal structure of the library is pretty
 ```
 TODO
 ```
-Requires Python 3.8+ and JAX 0.2.20+
+Requires Python 3.8+ and JAX 0.2.27+
 
 ## Examples
 
@@ -33,15 +34,20 @@ Requires Python 3.8+ and JAX 0.2.20+
 - [`stochastic_gradient_descent.ipynb`](./examples/stochastic_gradient_descent.ipynb) trains a simple neural network via SGD, using an ODE solver. (SGD is just Euler's method for solving an ODE.)
 
 Quick example:
+
 ```python
-from diffrax import diffeqsolve, dopri5
+from diffrax import diffeqsolve, ODETerm, Dopri5
 import jax.numpy as jnp
 
 def f(t, y, args):
     return -y
 
-solver = dopri5(f)
-solution = diffeqsolve(solver, t0=0, t1=1, y0=jnp.array([2., 3.]), dt0=0.1)
+term = ODETerm(f)
+t0, t1 = 0, 1
+y0 = jnp.array([2., 3.])
+dt0 = 0.1
+solver = Dopri5()
+solution = diffeqsolve(term, t0, t1, y0, dt0, solver)
 ```
 
 ## Documentation

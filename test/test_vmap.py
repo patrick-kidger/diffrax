@@ -6,7 +6,7 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.IController())
+    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.PIDController())
 )
 def test_vmap_y0(stepsize_controller):
     t0 = 0
@@ -21,16 +21,15 @@ def test_vmap_y0(stepsize_controller):
     def f(t, y, args):
         return a @ y
 
-    solver = diffrax.heun(f)
-
     saveat = diffrax.SaveAt(t0=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -43,11 +42,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(t1=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -61,11 +61,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(ts=_t)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -78,11 +79,12 @@ def test_vmap_y0(stepsize_controller):
     saveat = diffrax.SaveAt(steps=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )
@@ -90,20 +92,24 @@ def test_vmap_y0(stepsize_controller):
     num_steps = sol.stats["num_steps"]
     if not isinstance(stepsize_controller, diffrax.ConstantStepSize):
         # not the same number of steps for every batch element
-        assert len(set(num_steps)) > 1
+        assert len(set(num_steps.to_py())) > 1
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert sol.ts.shape == (10, max(num_steps))
-    assert sol.ys.shape == (10, max(num_steps), 2)
+    assert sol.ts.shape == (
+        10,
+        65536,
+    )  # 65536 is the default diffeqsolve(max_steps=...)
+    assert sol.ys.shape == (10, 65536, 2)
 
     saveat = diffrax.SaveAt(dense=True)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
-            solver,
+            diffrax.ODETerm(f),
+            diffrax.Heun(),
             t0,
             t1,
-            y0i,
             dt0,
+            y0i,
             stepsize_controller=stepsize_controller,
             saveat=saveat,
         )

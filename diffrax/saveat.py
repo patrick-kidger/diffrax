@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, Sequence, Union
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 
-from .custom_types import Array
+from .custom_types import Array, Scalar
 
 
 class SaveAt(eqx.Module):
@@ -13,36 +14,19 @@ class SaveAt(eqx.Module):
     [`diffrax.diffeqsolve`][].
     """
 
-    t0: bool
-    t1: bool
-    ts: Optional[Array["times"]]  # noqa: F821
-    steps: bool
-    dense: bool
-    solver_state: bool
-    controller_state: bool
+    t0: bool = False
+    t1: bool = False
+    ts: Optional[Union[Sequence[Scalar], Array["times"]]] = None  # noqa: F821
+    steps: bool = False
+    dense: bool = False
+    solver_state: bool = False
+    controller_state: bool = False
+    made_jump: bool = False
 
-    # Explicit __init__ so we can do jnp.asarray(ts)
-    # No super().__init__ call in mimicry of dataclasses' (and thus Equinox's) lack of
-    # doing so.
-    def __init__(
-        self,
-        *,
-        t0=False,
-        t1=False,
-        ts=None,
-        steps=False,
-        dense=False,
-        solver_state=False,
-        controller_state=False
-    ):
-        self.t0 = t0
-        self.t1 = t1
-        self.ts = None if ts is None else jnp.asarray(ts)
-        self.steps = steps
-        self.dense = dense
-        self.solver_state = solver_state
-        self.controller_state = controller_state
-
+    def __post_init__(self):
+        with jax.ensure_compile_time_eval():
+            ts = None if self.ts is None else jnp.asarray(self.ts)
+        object.__setattr__(self, "ts", ts)
         if (
             not self.t0
             and not self.t1
@@ -53,16 +37,22 @@ class SaveAt(eqx.Module):
             raise ValueError("Empty saveat -- nothing will be saved.")
 
 
-SaveAt.__init__.__doc__ = """**Arguments:**
+SaveAt.__init__.__doc__ = """**Main Arguments:**
 
 - `t0`: If `True`, save the initial input `y0`.
 - `t1`: If `True`, save the output at `t1`.
 - `ts`: Some array of times at which to save the output.
 - `steps`: If `True`, save the output at every step of the numerical solver.
 - `dense`: If `True`, save dense output, that can later be evaluated at any part of
-    the interval $[t_0, t_1]$.
+    the interval $[t_0, t_1]$ via `sol = diffeqsolve(...); sol.evaluate(...)`.
+
+**Other Arguments:**
+
+It is unlikely you will need to use options.
+
 - `solver_state`: If `True`, save the internal state of the numerical solver at
     `t1`.
 - `controller_state`: If `True`, save the internal state of the step size
     controller at `t1`.
+- `made_jump`: If `True`, save the internal state of the jump tracker at `t1`.
 """

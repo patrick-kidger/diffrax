@@ -1,10 +1,12 @@
 import abc
-from typing import Optional, Tuple, TypeVar
+from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
 
-from ..custom_types import Array, PyTree, Scalar
+from ..custom_types import Bool, PyTree, Scalar
+from ..solution import RESULTS
 from ..solver import AbstractSolver
+from ..term import AbstractTerm
 
 
 _ControllerState = TypeVar("ControllerState", bound=PyTree)
@@ -14,9 +16,7 @@ class AbstractStepSizeController(eqx.Module):
     """Abstract base class for all step size controllers."""
 
     @abc.abstractmethod
-    def wrap(
-        self, unravel_y: callable, direction: Scalar
-    ) -> "AbstractStepSizeController":
+    def wrap(self, direction: Scalar) -> "AbstractStepSizeController":
         """Remakes this step size controller, adding additional information.
 
         Most step size controllers can't be used without first calling `wrap` to give
@@ -24,8 +24,6 @@ class AbstractStepSizeController(eqx.Module):
 
         **Arguments:**
 
-        - `unravel_y`: as returned by [`diffrax.utils.ravel_pytree`][]; specifies how
-            to unravel the flattened PyTree back to its original PyTree structure.
         - `direction`: Either 1 or -1, indicating whether the integration is going to
             be performed forwards-in-time or backwards-in-time respectively.
 
@@ -34,49 +32,70 @@ class AbstractStepSizeController(eqx.Module):
         A copy of the the step size controller, updated to reflect the additional
         information.
         """
-        pass
+
+    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
+        """Remakes the solver, adding additional information.
+
+        Some step size controllers need to modify the solver slightly. For example,
+        adaptive step size controllers can automatically set the tolerances used in
+        implicit solvers.
+
+        **Arguments:**
+
+        - `solver`: The solver to modify.
+
+        **Returns:**
+
+        The modified solver.
+        """
+        return solver
 
     @abc.abstractmethod
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
-        y0: Array["state"],  # noqa: F821
+        t1: Scalar,
+        y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        solver: AbstractSolver,
+        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        local_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
 
-        **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
-        flattened one-dimensional JAX array. (Obtained via
-        [`diffrax.utils.ravel_pytree`][] if `y0` was originally a PyTree.)
+        **Arguments:** As `diffeqsolve`.
+
+        - `func_for_init`: The value of `solver.func_for_init`.
+        - `local_order`: The local order of convergence. If solving an ODE this will
+            typically be `solver.order + 1`. If solving an SDE this will typically be
+            `solver.strong_order + 0.5`.
 
         **Returns:**
 
         A 2-tuple of:
 
         - The endpoint $\tau$ for the initial first step: the first step will be made
-            over the interval $[t_0, \tau]$. If `dt0` is not `None` then this is
-            typically `t0 + dt0`. (Although the step size controller doesn't have to
-            respect this if it really doesn't want to.)
+            over the interval $[t_0, \tau]$. If `dt0` is specified (not `None`) then
+            this is typically `t0 + dt0`. (Although in principle the step size
+            controller doesn't have to respect this if it doesn't want to.)
         - The initial hidden state for the step size controller, which is used the
             first time `adapt_step_size` is called.
         """
-        pass
 
     @abc.abstractmethod
     def adapt_step_size(
         self,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state":...],  # noqa: F821
-        y1_candidate: Array["state":...],  # noqa: F821
+        y0: PyTree,
+        y1_candidate: PyTree,
         args: PyTree,
-        y_error: Optional[Array["state"]],  # noqa: F821
-        solver_order: int,
+        y_error: Optional[PyTree],
+        local_order: Scalar,
         controller_state: _ControllerState,
-    ) -> Tuple[Array[(), bool], Scalar, Scalar, Array[(), bool], _ControllerState, int]:
+    ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
         """Determines whether to accept or reject the current step, and determines the
         step size to use on the next step.
 
@@ -92,7 +111,8 @@ class AbstractStepSizeController(eqx.Module):
             [`diffrax.diffeqsolve`][].
         - `y_error`: An estimate of the local truncation error, as calculated by the
             main solver.
-        - `solver_order`: The order of the main solver.
+        - `local_order`: The order of `y_error`. For an ODE this is typically equal to
+            `solver.order + 1`.
         - `controller_state`: Any evolving state for the step size controller itself,
             at `t0`.
 
@@ -113,14 +133,4 @@ class AbstractStepSizeController(eqx.Module):
         - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
             happened successfully, or if it failed for some reason. (e.g. hitting a
             minimum allowed step size in the solver.)
-
-        !!! warning
-
-            Note that it is up to the step size controller to produce an output that
-            is consistent with the accept/reject step decision. (The output of the
-            step size controller is *not* further post-processed to ensure that e.g.
-            the controller state is reset in some appropriate way if a step is
-            rejected -- often step size controllers want to maintain state across
-            step rejections, which would make this impossible.)
         """
-        pass

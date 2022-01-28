@@ -1,77 +1,66 @@
 import abc
-from typing import Any, Dict, Optional, Tuple, Type, TypeVar
+from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
+import jax
+import jax.numpy as jnp
 
-from ..custom_types import Array, Bool, DenseInfo, PyTree, Scalar
+from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
+from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
+from ..term import AbstractTerm
 
 
 _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
 
 
-class AbstractSolver(eqx.Module):
+def vector_tree_dot(a, b):
+    return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
+
+
+class _MetaAbstractSolver(type(eqx.Module)):
+    def __instancecheck__(cls, obj):
+        if super(_MetaAbstractSolver, AbstractWrappedSolver).__instancecheck__(obj):
+            obj = obj.solver
+        return super().__instancecheck__(obj)
+
+
+class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     """Abstract base class for all differential equation solvers."""
 
     @property
     @abc.abstractmethod
-    def interpolation_cls(self) -> Type[AbstractLocalInterpolation]:
-        pass
+    def term_structure(self) -> PyTreeDef:
+        """What PyTree structure `terms` should have when used with this solver."""
 
+    # On the type: frequently just Type[AbstractLocalInterpolation]
     @property
     @abc.abstractmethod
-    def order(self) -> int:
-        """Order of the solver."""
-        pass
+    def interpolation_cls(self) -> Callable[..., AbstractLocalInterpolation]:
+        """How to interpolate the solution in between steps."""
 
-    def _wrap(
-        self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar
-    ) -> Dict[str, Any]:
-        """This method should be overloaded by subclasses, subject to co-operative
-        multiple inheritance.
+    @property
+    def order(self) -> Optional[int]:
+        """Order of the solver for solving ODEs."""
+        return None
 
-        It is called as part of [`diffrax.AbstractSolver.wrap`][].
-        """
-        return {}
-
-    # TODO: maybe rework the interface slightly?
-    # This feels a lot like a worse way of doing DifferentialEquation.jl's
-    # ODEProblem(...)
-    def wrap(
-        self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar
-    ) -> "AbstractSolver":
-        """Remakes this solver, adding additional information.
-
-        Most differential equation solvers can't be used without first calling `wrap`
-        to give them the extra information they need to integrate.
-
-        **Arguments:**
-
-        - `t0`: The initial timepoint from which to begin integrating.
-        - `y0`: The initial value from which to begin integrating.
-        - `direction:` Either 1 or -1, indicating whether the integration is going to
-             be performed forwards-in-time or backwards-in-time respectively.
-
-        **Returns:**
-
-        A copy of the solver, updated to reflect the additional information.
-        """
-        kwargs = self._wrap(t0, y0, args, direction)
-        return type(self)(**kwargs)
+    @property
+    def strong_order(self) -> Optional[Scalar]:
+        """Strong order of the solver for solving SDEs."""
+        return None
 
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
         """Initialises any hidden state for the solver.
 
-        **Arguments** are as `diffeqsolve`, with the exception that `y0` must be a
-        flattened one-dimensional JAX array. (Obtained via
-        [`diffrax.utils.ravel_pytree`][] if `y0` was originally a PyTree.)
+        **Arguments** as [`diffrax.diffeqsolve`][].
 
         **Returns:**
 
@@ -82,34 +71,30 @@ class AbstractSolver(eqx.Module):
     @abc.abstractmethod
     def step(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
         solver_state: _SolverState,
         made_jump: Bool,
-    ) -> Tuple[
-        Array["state"],  # noqa: F821
-        Optional[Array["state"]],  # noqa: F821
-        DenseInfo,
-        _SolverState,
-        RESULTS,
-    ]:
+    ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
-        A step is made over some interval $[t_0, t_1]$.
+        Each step is made over the specified interval $[t_0, t_1]$.
 
         **Arguments:**
 
+        - `terms`: The PyTree of terms representing the vector fields and controls.
         - `t0`: The start of the interval that the step is made over.
-        - `t1`: The end of the interval that the step is amde over.
+        - `t1`: The end of the interval that the step is made over.
         - `y0`: The current value of the solution at `t0`.
         - `args`: Any extra arguments passed to the vector field.
         - `solver_state`: Any evolving state for the solver itself, at `t0`.
         - `made_jump`: Whether there was a discontinuity in the vector field at `t0`.
             Some solvers (notably FSAL Runge--Kutta solvers) usually assume that there
-            are no jumps and for efficiency re-use information between steps, which is
-            kept in their `solver_state`.
+            are no jumps and for efficiency re-use information between steps; this
+            indicates that a jump has just occurred and this assumption is not true.
 
         **Returns:**
 
@@ -124,36 +109,26 @@ class AbstractSolver(eqx.Module):
             `SaveAt(dense=...)`.)
         - The value of the solver state at `t1`.
         - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
-            happened successfully, or if it failed for some reason. (e.g. no solution
-            could be found to the nonlinear problem in an implicit solver.)
+            happened successfully, or if (unusually) it failed for some reason.
         """
-        pass
 
     def func_for_init(
-        self,
-        t0: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
-    ) -> Array["state"]:  # noqa: F821
+        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
+    ) -> PyTree:
         """Provides vector field evaluations to select the initial step size.
 
-        Note that `step` operates over an interval, rather than acting at
-        a point $t$. (This is important for handling SDEs and CDEs.)
+        This is used to make a point evaluation. This is unlike
+        [`diffrax.AbstractSolver.step`][], which operates over an interval.
 
-        However, ODEs have one trick up their sleeve that require point evaluations:
-        selecting the initial step size automatically.
+        In general differential equation solvers are interval-based. There is precisely
+        one place where point evaluations are needed: selecting the initial step size
+        automatically in an ODE solve. And that is what this function is for.
 
-        This function is used for that one purpose.
-
-        **Arguments:**
-
-        - `t0`: The initial point of the overall region of integration.
-        - `y0`: The (ravelled) initial value for the ODE at `t0`.
-        - `args`: Any extra arguments to pass to the vector field.
+        **Arguments:** As [`diffrax.diffeqsolve`][]
 
         **Returns:**
 
-        The (ravelled) evaluation of the vector field at `t0`.
+        The evaluation of the vector field at `t0`.
         """
 
         raise ValueError(
@@ -161,3 +136,113 @@ class AbstractSolver(eqx.Module):
             "scenario for this error to occur is when trying to use adaptive step "
             "size solvers with SDEs. Please specify an initial `dt0` instead."
         )
+
+
+class AbstractImplicitSolver(AbstractSolver):
+    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
+
+
+class AbstractItoSolver(AbstractSolver):
+    pass
+
+
+class AbstractStratonovichSolver(AbstractSolver):
+    pass
+
+
+class AbstractAdaptiveSolver(AbstractSolver):
+    pass
+
+
+class AbstractAdaptiveSDESolver(AbstractAdaptiveSolver):
+    pass
+
+
+class AbstractWrappedSolver(AbstractSolver):
+    solver: AbstractSolver
+
+
+class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
+    """Wraps another solver, trading cost in order to provide error estimates. (These
+    error estimates mean that the solver can be used with an adaptive step size
+    controller, like [`diffrax.PIDController`][].)
+
+    For every step of the wrapped solver, it does this by also making two half-steps,
+    and comparing the results. (Hence the name "HalfSolver".)
+
+    As such each step costs 3 times the computational cost of the wrapped solver.
+
+    !!! tip
+
+        Many solvers already provided error estimates, making `HalfSolver` primarily
+        useful when using a solver that doesn't provide error estimates -- e.g.
+        [`diffrax.Euler`][] -- in particular this is common when solving SDEs.
+    """
+
+    @property
+    def term_structure(self):
+        return self.solver.term_structure
+
+    @property
+    def interpolation_cls(self):
+        return self.solver.interpolation_cls
+
+    @property
+    def order(self):
+        return self.solver.order
+
+    @property
+    def strong_order(self):
+        return self.solver.strong_order
+
+    def init(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ):
+        return self.solver.init(terms, t0, t1, y0, args)
+
+    def step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+        solver_state: _SolverState,
+        made_jump: Bool,
+    ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
+
+        original_solver_state = solver_state
+        thalf = t0 + 0.5 * (t1 - t0)
+
+        yhalf, _, _, solver_state, result1 = self.solver.step(
+            terms, t0, thalf, y0, args, solver_state, made_jump
+        )
+        y1, _, _, solver_state, result2 = self.solver.step(
+            terms, thalf, t1, yhalf, args, solver_state, made_jump=False
+        )
+
+        # TODO: use dense_info from the pair of half-steps instead
+        y1_alt, _, dense_info, _, result3 = self.solver.step(
+            terms, t0, t1, y0, args, original_solver_state, made_jump
+        )
+
+        y_error = jnp.abs(y1 - y1_alt)
+        result = jnp.maximum(result1, jnp.maximum(result2, result3))
+
+        return y1, y_error, dense_info, solver_state, result
+
+    def func_for_init(
+        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
+    ):
+        return self.solver.func_for_init(terms, t0, y0, args)
+
+
+HalfSolver.__init__.__doc__ = """**Arguments:**
+
+- `solver`: The solver to wrap.
+"""

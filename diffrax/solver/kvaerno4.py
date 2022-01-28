@@ -1,10 +1,6 @@
-from typing import Callable
-
 import numpy as np
 
-from ..custom_types import PyTree, Scalar
-from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ODETerm
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
 
@@ -78,23 +74,16 @@ _kvaerno4_tableau = ButcherTableau(
 )
 
 
-class _Kvaerno4Interpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0, 0, 0.5, 0])
-
-
 class Kvaerno4(AbstractESDIRK):
     r"""Kvaerno's 4/3 method.
 
     A-L stable stiffly accurate 4th order ESDIRK method. Has an embedded 3rd order
-    method. Uses 5 stages.
+    method for adaptive step sizing. Uses 5 stages.
 
     When solving an ODE over the interval $[t_0, t_1]$, note that this method will make
     some evaluations slightly past $t_1$.
 
-    ??? Reference
+    ??? cite "Reference"
 
         ```bibtex
         @article{kvaerno2004singly,
@@ -111,11 +100,5 @@ class Kvaerno4(AbstractESDIRK):
         ```
     """
     tableau = _kvaerno4_tableau
-    interpolation_cls = _Kvaerno4Interpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 4
-
-
-def kvaerno4(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Kvaerno4:
-    return Kvaerno4(term=ODETerm(vector_field=vector_field), **kwargs)

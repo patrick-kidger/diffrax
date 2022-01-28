@@ -1,17 +1,24 @@
 import abc
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
 import jax
+import jax.flatten_util as fu
 import jax.numpy as jnp
 import jax.scipy as jsp
 
-from ..custom_types import PyTree
-from ..misc import is_perturbed, ravel_pytree
+from ..custom_types import Int, PyTree, Scalar
+from ..misc import is_perturbed
 from ..solution import RESULTS
 
 
-LU_Jacobian = "LU_Jacobian"
+LU_Jacobian = TypeVar("LU_Jacobian")
+
+
+class NonlinearSolution(eqx.Module):
+    root: PyTree
+    num_steps: Int
+    result: RESULTS
 
 
 class AbstractNonlinearSolver(eqx.Module):
@@ -20,10 +27,13 @@ class AbstractNonlinearSolver(eqx.Module):
     Subclasses will be differentiable via the implicit function theorem.
     """
 
+    rtol: Optional[Scalar] = None
+    atol: Optional[Scalar] = None
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # Note that this breaks the descriptor protocol so we have to pass self
-        # manually.
+        # manually in __call__.
         cls._solve = jax.custom_jvp(cls._solve, nondiff_argnums=(0, 1, 2, 3, 4))
         cls._solve.defjvp(_root_solve_jvp)
 
@@ -40,7 +50,7 @@ class AbstractNonlinearSolver(eqx.Module):
 
     def __call__(
         self, fn: Callable, x: PyTree, args: PyTree, jac: Optional[LU_Jacobian] = None
-    ) -> Tuple[PyTree, RESULTS]:
+    ) -> NonlinearSolution:
         """Find `z` such that `fn(z, args) = 0`.
 
         Gradients will be computed with respect to `args`. (And in particular not with
@@ -64,9 +74,10 @@ class AbstractNonlinearSolver(eqx.Module):
 
         **Returns:**
 
-        A 2-tuple `(z, result)`, where `z` (hopefully) solves `fn(z, args) = 0`,
-        and `result` is a status code indicating whether the solver managed to
-        converge or not.
+        A `NonlinearSolution` object, with attributes `root`, `num_steps`, `result`.
+        `root` (hopefully) solves `fn(root, args) = 0`. `num_steps` is the number of
+        steps taken in the nonlinear solver. `result` is a status code indicating
+        whether the solver managed to converge or not.
         """
 
         diff_args, nondiff_args = eqx.partition(args, is_perturbed)
@@ -79,8 +90,8 @@ class AbstractNonlinearSolver(eqx.Module):
         Arguments as [`diffrax.AbstractNonlinearSolver.__call__`][].
         """
 
-        flat, unflatten = ravel_pytree(x)
-        curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
+        flat, unflatten = fu.ravel_pytree(x)
+        curried = lambda z: fu.ravel_pytree(fn(unflatten(z), args))[0]
         if not jnp.issubdtype(flat, jnp.inexact):
             # Handle integer arguments
             flat = flat.astype(jnp.float32)
@@ -118,31 +129,32 @@ def _root_solve_jvp(
 
     (diff_args,) = diff_args
     (tang_diff_args,) = tang_diff_args
-    root, result = self._solve(self, fn, x, jac, nondiff_args, diff_args)
+    solution = self._solve(self, fn, x, jac, nondiff_args, diff_args)
+    root = solution.root
 
-    flat_root, unflatten_root = ravel_pytree(root)
+    flat_root, unflatten_root = fu.ravel_pytree(root)
     args = eqx.combine(nondiff_args, diff_args)
 
     def _for_jac(_root):
         _root = unflatten_root(_root)
         _out = fn(_root, args)
-        _out, _ = ravel_pytree(_out)
+        _out, _ = fu.ravel_pytree(_out)
         return _out
 
     jac_flat_root = jax.jacfwd(_for_jac)(flat_root)
 
-    flat_diff_args, unflatten_diff_args = ravel_pytree(diff_args)
-    flat_tang_diff_args, _ = ravel_pytree(tang_diff_args)
+    flat_diff_args, unflatten_diff_args = fu.ravel_pytree(diff_args)
+    flat_tang_diff_args, _ = fu.ravel_pytree(tang_diff_args)
 
     def _for_jvp(_diff_args):
         _diff_args = unflatten_diff_args(_diff_args)
         _args = eqx.combine(nondiff_args, _diff_args)
         _out = fn(root, _args)
-        _out, _ = ravel_pytree(_out)
+        _out, _ = fu.ravel_pytree(_out)
         return _out
 
     _, jvp_flat_diff_args = jax.jvp(_for_jvp, (flat_diff_args,), (flat_tang_diff_args,))
 
     tang_root = -jnp.linalg.solve(jac_flat_root, jvp_flat_diff_args)
     tang_root = unflatten_root(tang_root)
-    return (root, result), (tang_root, 0)
+    return solution, NonlinearSolution(root=tang_root, num_steps=0, result=0)

@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
-import helpers
+from helpers import shaped_allclose
 
 
 # Basic test
@@ -80,9 +80,10 @@ def test_newton_solver():
         jax.tree_map(_assert_shape, out, x)
 
         # Newton's method
+        zero = jax.tree_map(jnp.zeros_like, x)
         out, result = solver(fn, x, args)
         assert result == 0
-        assert jnp.allclose(fn(out, args), 0, rtol=tol, atol=tol)
+        assert shaped_allclose(fn(out, args), zero, rtol=tol, atol=tol)
 
         # Chord method
         jac = solver.jac(fn, x, args)
@@ -91,7 +92,7 @@ def test_newton_solver():
             out, result = mega_solver(fn, x, args, jac)
         else:
             out, result = solver(fn, x, args, jac)
-        assert jnp.allclose(fn(out, args), 0, rtol=tol, atol=tol)
+        assert shaped_allclose(fn(out, args), zero, rtol=tol, atol=tol)
         assert result == 0
 
         def _fn(y, a):
@@ -100,5 +101,5 @@ def test_newton_solver():
             return jax.tree_util.tree_reduce(operator.add, out)
 
         x_grads, args_grads = jax.grad(_fn, argnums=(0, 1))(x, args)
-        assert jnp.allclose(x_grads, 0, rtol=tol, atol=tol)
-        assert helpers.tree_allclose(args_grads, grads, rtol=tol, atol=tol)
+        assert shaped_allclose(x_grads, zero, rtol=tol, atol=tol)
+        assert shaped_allclose(args_grads, grads, rtol=tol, atol=tol)

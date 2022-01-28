@@ -40,7 +40,12 @@ div.doc-contents {
 
 /* Increase visibility of splitters "---" */
 
-.md-typeset hr {
+[data-md-color-scheme="default"] .md-typeset hr {
+    border-bottom-color: rgb(0, 0, 0);
+    border-bottom-width: 1pt;
+}
+
+[data-md-color-scheme="slate"] .md-typeset hr {
     border-bottom-color: rgb(230, 230, 230);
 }
 
@@ -102,7 +107,7 @@ html {
 
 ??? Blah
 
-    ::: diffrax.something
+    ::: library.something
 */
 
 .md-typeset details .mkdocstrings > h4 {
@@ -111,4 +116,13 @@ html {
 
 .md-typeset details .mkdocstrings > h5 {
     display: none;
+}
+
+/* Change default colours for <a> tags */
+
+[data-md-color-scheme="default"] {
+    --md-typeset-a-color: rgb(0, 189, 164) !important;
+}
+[data-md-color-scheme="slate"] {
+    --md-typeset-a-color: rgb(0, 189, 164) !important;
 }

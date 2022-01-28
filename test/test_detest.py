@@ -13,11 +13,12 @@ import math
 
 import diffrax
 import jax
+import jax.flatten_util as fu
 import jax.numpy as jnp
 import pytest
 import scipy.integrate as integrate
 
-from helpers import all_ode_solvers, fixed_ode_solvers, tree_allclose
+from helpers import all_ode_solvers, shaped_allclose
 
 
 #
@@ -27,31 +28,31 @@ from helpers import all_ode_solvers, fixed_ode_solvers, tree_allclose
 
 def _a1():
     diffeq = lambda t, y, args: -y
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a2():
     diffeq = lambda t, y, args: -0.5 * y ** 3
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a3():
     diffeq = lambda t, y, args: y * jnp.cos(t)
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a4():
     diffeq = lambda t, y, args: 0.25 * y * (1 - 0.05 * y)
-    init = 1
+    init = 1.0
     return diffeq, init
 
 
 def _a5():
     diffeq = lambda t, y, args: (y - t) / (y + t)
-    init = 4
+    init = 4.0
     return diffeq, init
 
 
@@ -67,7 +68,7 @@ def _b1():
         dy2 = -y2 + y1 * y2
         return dy1, dy2
 
-    init = (1, 3)
+    init = (1.0, 3.0)
     return diffeq, init
 
 
@@ -79,7 +80,7 @@ def _b2():
         dy3 = y2 - y3
         return dy1, dy2, dy3
 
-    init = (2, 0, 1)
+    init = (2.0, 0.0, 1.0)
     return diffeq, init
 
 
@@ -91,7 +92,7 @@ def _b3():
         dy3 = y2 ** 2
         return dy1, dy2, dy3
 
-    init = (1, 0, 0)
+    init = (1.0, 0.0, 0.0)
     return diffeq, init
 
 
@@ -104,7 +105,7 @@ def _b4():
         dy3 = y1 / r
         return dy1, dy2, dy3
 
-    init = (3, 0, 0)
+    init = (3.0, 0.0, 0.0)
     return diffeq, init
 
 
@@ -116,7 +117,7 @@ def _b5():
         dy3 = -0.51 * y1 * y2
         return dy1, dy2, dy3
 
-    init = (0, 1, 1)
+    init = (0.0, 1.0, 1.0)
     return diffeq, init
 
 
@@ -281,7 +282,7 @@ def _make_d(ε):
         dy4 = -y2 / r_cubed
         return dy1, dy2, dy3, dy4
 
-    init = (1 - ε, 0, 0, math.sqrt((1 + ε) / (1 - ε)))
+    init = (1 - ε, 0.0, 0.0, math.sqrt((1 + ε) / (1 - ε)))
     return diffeq, init
 
 
@@ -315,7 +316,7 @@ def _e2():
         dy2 = (1 - y1 ** 2) * y2 - y1
         return dy1, dy2
 
-    init = (2, 0)
+    init = (2.0, 0.0)
     return diffeq, init
 
 
@@ -326,7 +327,7 @@ def _e3():
         dy2 = y1 ** 3 / 6 - y1 + 2 * jnp.sin(2.78535 * t)
         return dy1, dy2
 
-    init = (0, 0)
+    init = (0.0, 0.0)
     return diffeq, init
 
 
@@ -338,7 +339,7 @@ def _e4():
         dy2 = 0.032 - 0.4 * y2 ** 2
         return dy1, dy2
 
-    init = (30, 0)
+    init = (30.0, 0.0)
     return diffeq, init
 
 
@@ -350,13 +351,13 @@ def _e5():
         dy2 = jnp.sqrt(1 + y2 ** 2) / (25 - t)
         return dy1, dy2
 
-    init = (0, 0)
+    init = (0.0, 0.0)
     return diffeq, init
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_a(solver_ctr):
-    if solver_ctr in (diffrax.euler, diffrax.implicit_euler):
+    if solver_ctr in (diffrax.Euler, diffrax.ImplicitEuler):
         # Euler is pretty bad at solving things, so only do some simple tests.
         _test(solver_ctr, [_a1, _a2], higher=False)
     else:
@@ -365,7 +366,10 @@ def test_a(solver_ctr):
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
 def test_b(solver_ctr):
-    _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True)
+    if solver_ctr is diffrax.Kvaerno4:
+        _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True)
+    else:
+        _test(solver_ctr, [_b1, _b2, _b3, _b4, _b5], higher=True)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -386,39 +390,60 @@ def test_e(solver_ctr):
 def _test(solver_ctr, problems, higher):
     for problem in problems:
         vector_field, init = problem()
-        solver = solver_ctr(vector_field)
-        if higher and solver.order < 4:
+        if higher and solver_ctr.order < 4:
             # Too difficult to get accurate solutions with a low-order solver
             return
-        if solver_ctr in fixed_ode_solvers:
+        max_steps = 16 ** 4
+        if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver):
             dt0 = 0.01
+            if solver_ctr is diffrax.LeapfrogMidpoint:
+                # This is an *awful* long-time-horizon solver.
+                # It gets decent results to begin with, but then the oscillations
+                # build up by t=20.
+                # Teeny-tiny steps fix this.
+                dt0 = 0.000001
+                max_steps = 20_000_000
+            stepsize_controller = diffrax.ConstantStepSize()
+        elif solver_ctr is diffrax.ReversibleHeun and problem is _a1:
+            # ReversibleHeun is a bit like LeapfrogMidpoint, and therefore bad over
+            # long time horizons. (It develops very large oscillations over long time
+            # horizons.)
+            # Unlike LeapfrogMidpoint, however, ReversibleHeun offers adaptive step
+            # sizing... which picks up on the problem, and tries to take teeny-tiny
+            # steps to compensate. In practice this means the solve does not terminate
+            # even for very large values of max_steps.
+            # Just for this one problem, therefore, we switch to using a constant step
+            # size. (To avoid the adaptive step sizing sabotaging us.)
+            dt0 = 0.001
             stepsize_controller = diffrax.ConstantStepSize()
         else:
             dt0 = None
-            if solver.order < 4:
+            if solver_ctr.order < 4:
                 rtol = 1e-6
                 atol = 1e-6
             else:
                 rtol = 1e-8
                 atol = 1e-8
-            stepsize_controller = diffrax.IController(rtol=rtol, atol=atol)
+            stepsize_controller = diffrax.PIDController(rtol=rtol, atol=atol)
         sol = diffrax.diffeqsolve(
-            solver,
-            t0=0,
-            t1=20,
-            y0=init,
+            diffrax.ODETerm(vector_field),
+            solver=solver_ctr(),
+            t0=0.0,
+            t1=20.0,
             dt0=dt0,
+            y0=init,
             stepsize_controller=stepsize_controller,
+            max_steps=max_steps,
         )
         y1 = jax.tree_map(lambda yi: yi[0], sol.ys)
 
-        scipy_y0, unravel = diffrax.utils.ravel_pytree(init)
+        scipy_y0, unravel = fu.ravel_pytree(init)
         scipy_y0 = scipy_y0.to_py()
 
         def scipy_fn(t, y):
             y = unravel(y)
             dy = vector_field(t, y, None)
-            dy, _ = diffrax.utils.ravel_pytree(dy)
+            dy, _ = fu.ravel_pytree(dy)
             return dy.to_py()
 
         scipy_sol = integrate.solve_ivp(
@@ -432,11 +457,11 @@ def _test(solver_ctr, problems, higher):
         )
         scipy_y1 = unravel(scipy_sol.y[:, 0])
 
-        if solver.order < 4:
+        if solver_ctr.order < 4:
             rtol = 1e-3
             atol = 1e-3
         else:
-            rtol = 3e-5
-            atol = 3e-5
+            rtol = 4e-5
+            atol = 4e-5
 
-        assert tree_allclose(y1, scipy_y1, rtol=rtol, atol=atol)
+        assert shaped_allclose(y1, scipy_y1, rtol=rtol, atol=atol)

@@ -4,20 +4,41 @@
 
 The complete list of solvers, categorised by type, is as follows.
 
-Unless otherwise specified, their `__init__` method always takes a single [`diffrax.AbstractTerm`][].
+!!! note
+
+    The type of solver chosen determines how the `terms` argument of `diffeqsolve` should be laid out. Most of them demand that it should be a single `AbstractTerm`. But for example [`diffrax.SemiImplicitEuler`][] demands that it by a 2-tuple `(AbstractTerm, AbstractTerm)`, to represent the two vector fields that solver uses.
+
+    If it is different from this default, then you can find the appropriate structure documented below, and available programmatically under `<solver>.term_structure`.
+
+??? info "Stochastic differential equations"
+
+    For the most part, no distinction is made between solvers for different kinds of differential equation, like between ODEs and SDEs. Diffrax's term system allows for treating them all in a unified way.
+
+    Those ODE solvers that make sense as SDE solvers are documented as such. For the common case of an SDE with drift and Brownian-motion-driven diffusion, they can be used by combining drift and diffusion into a single term:
+
+    ```python
+    drift = lambda t, y, args: -y
+    diffusion = lambda t, y, args: y[..., None]
+    bm = UnsafeBrownianPath(shape=(1,), key=...)
+    terms = MultiTerm(ODETerm(drift), ControlTerm(diffusion, bm))
+    diffeqsolve(terms, solver=Euler(), ...)
+    ```
+
+    In addition there are some [SDE-specific solvers](#sde-only-solvers).
 
 
-??? "`diffrax.AbstractSolver`"
+??? abstract "`diffrax.AbstractSolver`"
 
     All of the classes implement the following interface specified by [`diffrax.AbstractSolver`][].
 
-    The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface; otherwise this is all just internal to the library.
+    The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface or defining your own solvers; otherwise this is all just internal to the library.
 
     ::: diffrax.AbstractSolver
         selection:
             members:
                 - order
-                - wrap
+                - strong_order
+                - term_structure
                 - init
                 - step
                 - func_for_init
@@ -31,6 +52,14 @@ Unless otherwise specified, their `__init__` method always takes a single [`diff
         members: false
 
 ::: diffrax.Heun
+    selection:
+        members: false
+
+::: diffrax.Midpoint
+    selection:
+        members: false
+
+::: diffrax.Ralston
     selection:
         members: false
 
@@ -76,81 +105,71 @@ Unless otherwise specified, their `__init__` method always takes a single [`diff
 
 ---
 
-## Convenience wrappers
+### Symplectic methods
 
-The following are convenience wrappers for the above solvers, for the common case of solving single-term ODEs and SDEs.
+??? info "Term and state structure"
 
----
+    The state of the system (the initial value of which is given by `y0` to [`diffrax.diffeqsolve`][]) must be a 2-tuple (of PyTrees). The terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple of `AbstractTerms`.
+    
+    Letting `v, w = y0` and `f, g = terms`, then `v` is updated according to
+    `f(t, w, args) * dt` and `w` is updated according to `g(t, v, args) * dt`.
 
-### Ordinary differential equations
-
-!!! example
-    All of the following are used as:
-    ```python
-    vector_field = lambda t, y, args: -y
-    solver = euler(vector_field)
-    ```
-
-    This is equivalent to:
-    ```python
-    vector_field = lambda t, y, args: -y
-    ode_term = ODETerm(vector_field)
-    solver = Euler(ode_term)
-    ```
-
-::: diffrax.euler
-
-::: diffrax.implicit_euler
-
-::: diffrax.heun
-
-::: diffrax.fehlberg2
-
-::: diffrax.bosh3
-
-::: diffrax.kvaerno3
-
-::: diffrax.kvaerno4
-
-::: diffrax.kvaerno5
-
-::: diffrax.tsit5
-
-::: diffrax.dopri5
-
-::: diffrax.dopri8
+::: diffrax.SemiImplicitEuler
+    selection:
+        members: false
 
 ---
 
-### Stochastic differential equations
+### Reversible methods
 
-!!! note
-    Generally speaking any first or second order ODE solver can be used as an SDE
-    solver. Sometimes they then go by slightly different names -- for example Euler
-    becomes Euler--Maruyama.
+::: diffrax.ReversibleHeun
+    selection:
+        members: false
 
-!!! example
-    All of the following are used as:
-    ```python
-    drift = lambda t, y, args: -y
-    diffusion = lambda t, y, args: y[..., None]  # 1-dimensional Brownian motion
-    bm = UnsafeBrownianPath(shape=(1,), key=...)
-    solver = euler_maruyama(drift, diffusion, bm)
-    ```
+---
 
-    This is equivalent to:
-    ```python
-    drift = lambda t, y, args: -y
-    diffusion = lambda t, y, args: y[..., None]
-    bm = UnsafeBrownianPath(shape=(1,), key=...)
-    drift_term = ODETerm(drift)
-    diffusion_term = ControlTerm(diffusion, bm)
-    multi_term = MultiTerm((drift_term, diffusion_term))
-    solver = Euler(multi_term)
-    ```
+### Linear multistep methods
 
-::: diffrax.euler_maruyama
+::: diffrax.LeapfrogMidpoint
+    selection:
+        members: false
 
-::: diffrax.implicit_euler_maruyama
+---
 
-::: diffrax.heun
+### SDE-only solvers
+
+??? tip "Other SDE solvers"
+
+    Don't forget that many low-order ODE solvers can also be used as SDE solvers:
+
+    **Itô:**
+
+    - [`diffrax.Euler`][]
+
+    **Stratonovich:**
+
+    - [`diffrax.Heun`][]
+    - [`diffrax.Midpoint`][]
+    - [`diffrax.ReversibleHeun`][]
+
+??? info "Term structure"
+
+    For these SDE-specific solvers, the terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple `(AbstractTerm, AbstractTerm)`, representing the drift and diffusion respectively. Typically that means `(ODETerm(...), ControlTerm(..., ...))`.
+
+::: diffrax.EulerHeun
+    selection:
+        members: false
+
+::: diffrax.ItoMilstein
+    selection:
+        members: false
+
+::: diffrax.StratonovichMilstein
+    selection:
+        members: false
+
+## Wrapper solvers
+
+::: diffrax.HalfSolver
+    selection:
+        members: false

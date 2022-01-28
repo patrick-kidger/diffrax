@@ -1,11 +1,12 @@
-from typing import Any, List, Optional, Tuple
+import typing
+from typing import Optional, Tuple
 
 import jax
+import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, PyTree, Scalar
-from .ravel import ravel_pytree
 
 
 _itemsize_kind_type = {
@@ -26,49 +27,35 @@ def force_bitcast_convert_type(val, new_type):
     return lax.bitcast_convert_type(val, new_type)
 
 
-def _stack_pytrees(*arrays):
-    return jnp.stack(arrays)
-
-
-def stack_pytrees(pytrees: List[PyTree]) -> PyTree:
-    return jax.tree_map(_stack_pytrees, *pytrees)
-
-
-def is_perturbed(x: Any) -> bool:
-    if isinstance(x, jax.ad.JVPTracer):
-        return True
-    elif isinstance(x, jax.core.Tracer):
-        return any(is_perturbed(attr) for name, attr in x._contents())
-    else:
-        return False
-
-
-def check_no_derivative(x: Array, name: str) -> None:
-    if is_perturbed(x):
-        raise ValueError(f"Cannot differentiate {name}.")
-
-
 class ContainerMeta(type):
     def __new__(cls, name, bases, dict):
-        assert "_reverse_lookup" not in dict
+
+        if getattr(typing, "GENERATING_DOCUMENTATION", False):
+            # Display containers as ints in documentation
+            return int
+
+        assert "reverse_lookup" not in dict
         _dict = {}
-        _reverse_lookup = {}
+        reverse_lookup = []
         i = 0
         for key, value in dict.items():
             if key.startswith("__") and key.endswith("__"):
                 _dict[key] = value
             else:
                 _dict[key] = i
-                _reverse_lookup[i] = value
+                reverse_lookup.append(value)
                 i += 1
-        _dict["_reverse_lookup"] = _reverse_lookup
+        _dict["reverse_lookup"] = reverse_lookup
         return super().__new__(cls, name, bases, _dict)
 
+    def __instancecheck__(cls, instance):
+        return isinstance(instance, int) or super().__instancecheck__(instance)
+
     def __getitem__(cls, item):
-        return cls._reverse_lookup[item]
+        return cls.reverse_lookup[item]
 
     def __len__(cls):
-        return len(cls._reverse_lookup)
+        return len(cls.reverse_lookup)
 
 
 def _fill_forward(
@@ -113,29 +100,6 @@ def fill_forward(
     return ys
 
 
-@jax.custom_jvp
-def nextafter(x: Array) -> Array:
-    y = jnp.nextafter(x, jnp.inf)
-    # Flush denormal to normal.
-    # Our use for these is to handle jumps in the vector field. Typically that means
-    # there will be an "if x > cond" condition somewhere. However JAX uses DAZ
-    # (denormals-are-zero), which will cause this check to fail near zero:
-    # `jnp.nextafter(0, jnp.inf) > 0` gives `False`.
-    return jnp.where(x == 0, jnp.finfo(x.dtype).tiny, y)
-
-
-nextafter.defjvps(lambda x_dot, _, __: x_dot)
-
-
-@jax.custom_jvp
-def nextbefore(x: Array) -> Array:
-    y = jnp.nextafter(x, jnp.NINF)
-    return jnp.where(x == 0, -jnp.finfo(x.dtype).tiny, y)
-
-
-nextbefore.defjvps(lambda x_dot, _, __: x_dot)
-
-
 def linear_rescale(t0, t, t1):
     """Calculates (t - t0) / (t1 - t0), assuming t0 <= t <= t1.
 
@@ -151,7 +115,7 @@ def linear_rescale(t0, t, t1):
 
 
 def rms_norm(x: PyTree) -> Scalar:
-    x, _ = ravel_pytree(x)
+    x, _ = fu.ravel_pytree(x)
     if x.size == 0:
         return 0
     sqnorm = jnp.mean(x ** 2)
@@ -160,6 +124,40 @@ def rms_norm(x: PyTree) -> Scalar:
     # See JAX issues #5039 and #1052.
     _sqnorm = jnp.where(cond, 1.0, sqnorm)
     return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
+
+
+def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> Scalar:
+    """Defines an adjoint seminorm. This can frequently be used to increase the
+    efficiency of backpropagation via [`diffrax.BacksolveAdjoint`][], as follows:
+
+    ```python
+    adjoint_controller = diffrax.PIDController(norm=diffrax.adjoint_rms_seminorm)
+    adjoint = diffrax.BacksolveAdjoint(stepsize_controller=adjoint_controller)
+    diffrax.diffeqsolve(..., adjoint=adjoint)
+    ```
+
+    Note that this means that any `stepsize_controller` specified for the forward pass
+    will not be automatically used for the backward pass (as `adjoint_controller`
+    overrides it), so you should specify any custom `rtol`, `atol` etc. for the
+    backward pass as well.
+
+    ??? cite "Reference"
+
+        ```bibtex
+        @article{kidger2021hey,
+            author={Kidger, Patrick and Chen, Ricky T. Q. and Lyons, Terry},
+            title={``{H}ey, that's not an {ODE}'': {F}aster {ODE} {A}djoints via
+                   {S}eminorms},
+            year={2021},
+            journal={International Conference on Machine Learning}
+        }
+        ```
+    """
+    assert isinstance(x, tuple)
+    assert len(x) == 4
+    y, a_y, a_args, a_terms = x
+    del a_args, a_terms  # whole point
+    return rms_norm((y, a_y))
 
 
 def left_broadcast_to(arr, shape):

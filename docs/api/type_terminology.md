@@ -18,4 +18,4 @@ In addition shapes and dtypes of `Array`s are annotated:
 - These are combined via e.g. `Array["dim1", "dim2", bool]`.
 - The above syntax is essentially inspired by [torchtyping](https://github.com/patrick-kidger/torchtyping).
 
-Similarly `PyTree["dims"]` is used to refer to a PyTree all of whose leaves are JAX arrays with shape `(dims,)`. (And so on.)
+Likewise, `PyTree[T]` is used to refer to a PyTree all of whose leaves have type `T`.

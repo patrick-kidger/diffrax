@@ -1,102 +1,77 @@
-from typing import Callable, Tuple
+from typing import Tuple
 
-import jax.lax as lax
+import jax
 
-from ..custom_types import Array, DenseInfo, PyTree, Scalar
+from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
+from ..misc import ω
 from ..solution import RESULTS
-from ..term import AbstractTerm, ODETerm, WrapTerm
+from ..term import AbstractTerm
 from .base import AbstractSolver
 
 
-_SolverState = Tuple[Scalar, Array["state"], bool]  # noqa: F821
+_ErrorEstimate = None
+_SolverState = Tuple[Scalar, PyTree]
 
 
 # TODO: support arbitrary linear multistep methods
 class LeapfrogMidpoint(AbstractSolver):
     r"""Leapfrog/midpoint method.
 
-    2nd order method linear multistep method.
+    2nd order linear multistep method.
 
     Note that this is referred to as the "leapfrog/midpoint method" as this is the name
     used by Shampine in the reference below. It should not be confused with any of the
     many other "leapfrog methods" (there are several), or with the "midpoint method"
     (which is usually taken to refer to an explicit Runge--Kutta method).
 
-    @article{shampine2009stability,
-        title={Stability of the leapfrog/midpoint method},
-        author={L. F. Shampine},
-        journal={Applied Mathematics and Computation},
-        volume={208},
-        number={1},
-        pages={293-298},
-        year={2009},
-    }
-    """
-    term: AbstractTerm
+    ??? cite "Reference"
 
+        @article{shampine2009stability,
+            title={Stability of the leapfrog/midpoint method},
+            author={L. F. Shampine},
+            journal={Applied Mathematics and Computation},
+            volume={208},
+            number={1},
+            pages={293-298},
+            year={2009},
+        }
+    """
+
+    term_structure = jax.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
     order = 2
 
-    def _wrap(self, t0: Scalar, y0: PyTree, args: PyTree, direction: Scalar):
-        kwargs = super()._wrap(t0, y0, args, direction)
-        kwargs["term"] = WrapTerm(
-            term=self.term, t=t0, y=y0, args=args, direction=direction
-        )
-        return kwargs
-
     def init(
-        self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: Array["state"],  # noqa: F821
-        args: PyTree,
+        self, terms: AbstractTerm, t0: Scalar, t1: Scalar, y0: PyTree, args: PyTree
     ) -> _SolverState:
-        del t1, args
-        return (t0, y0, True)
+        del terms, t1, args
+        # Corresponds to making an explicit Euler step on the first step.
+        return t0, y0
 
     def step(
         self,
+        terms: AbstractTerm,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Array[(), bool],
-    ) -> Tuple[Array["state"], None, DenseInfo, _SolverState]:  # noqa: F821
+        made_jump: Bool,
+    ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del made_jump
-        tm1, ym1, firststep = solver_state
-        y1 = lax.cond(
-            firststep, self._firststep, self._laterstep, (tm1, t0, t1, ym1, y0, args)
-        )
-        dense_info = {"y0": y0, "y1": y1}
-        solver_state = (t0, y0, False)
+        tm1, ym1 = solver_state
+        control = terms.contr(tm1, t1)
+        y1 = (ym1 ** ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
+        dense_info = dict(y0=y0, y1=y1)
+        solver_state = (t0, y0)
         return y1, None, dense_info, solver_state, RESULTS.successful
-
-    def _firststep(self, operand):
-        # Euler method on the first step
-        _, t0, t1, _, y0, args = operand
-        control = self.term.contr(t0, t1)
-        y1 = y0 + self.term.vf_prod(t0, y0, args, control)
-        return y1
-
-    def _laterstep(self, operand):
-        tm1, t0, t1, ym1, y0, args = operand
-        control = self.term.contr(tm1, t1)
-        y1 = ym1 + self.term.vf_prod(t0, y0, args, control)
-        return y1
 
     def func_for_init(
         self,
+        terms: AbstractTerm,
         t0: Scalar,
-        y0: Array["state"],  # noqa: F821
+        y0: PyTree,
         args: PyTree,
-    ) -> Array["state"]:  # noqa: F821
-        return self.term.func_for_init(t0, y0, args)
-
-
-def leapfrog_midpoint(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
-    **kwargs,
-) -> LeapfrogMidpoint:
-    return LeapfrogMidpoint(term=ODETerm(vector_field=vector_field), **kwargs)
+    ) -> PyTree:
+        return terms.func_for_init(t0, y0, args)

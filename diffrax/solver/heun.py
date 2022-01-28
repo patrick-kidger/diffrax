@@ -1,11 +1,7 @@
-from typing import Callable, Optional
-
 import numpy as np
 
-from ..brownian import AbstractBrownianPath
-from ..custom_types import PyTree, Scalar
-from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ControlTerm, MultiTerm, ODETerm
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
+from .base import AbstractStratonovichSolver
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -17,47 +13,22 @@ _heun_tableau = ButcherTableau(
 )
 
 
-class _HeunInterpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0.5])
-
-
-class Heun(AbstractERK):
+class Heun(AbstractERK, AbstractStratonovichSolver):
     """Heun's method.
 
-    Explicit 2nd order Runge--Kutta method. Has an embedded Euler method.
+    2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
+    step sizing.
 
     Also sometimes known as either the "improved Euler method", "modified Euler method"
     or "explicit trapezoidal rule".
 
     Should not be confused with Heun's third order method, which is a different (higher
     order) method occasionally also just referred to as "Heun's method".
+
+    When used to solve SDEs, converges to the Stratonovich solution.
     """
 
     tableau = _heun_tableau
-    interpolation_cls = _HeunInterpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 2
-
-
-def heun(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
-    diffusion: Optional[Callable[[Scalar, PyTree, PyTree], PyTree]] = None,
-    bm: Optional[AbstractBrownianPath] = None,
-    **kwargs,
-) -> Heun:
-    if diffusion is None:
-        if bm is not None:
-            raise ValueError
-        return Heun(term=ODETerm(vector_field=vector_field), **kwargs)
-    else:
-        if bm is None:
-            raise ValueError
-        term = MultiTerm(
-            terms=(
-                ODETerm(vector_field=vector_field),
-                ControlTerm(vector_field=diffusion, control=bm),
-            )
-        )
-        return Heun(term=term, **kwargs)
+    strong_order = 0.5

@@ -1,11 +1,12 @@
-from typing import Callable, Optional
+from typing import Optional
 
 import jax.numpy as jnp
 import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..term import ODETerm
+from ..misc import linear_rescale, ω
+from .base import vector_tree_dot
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -95,18 +96,19 @@ _tsit5_tableau = ButcherTableau(
 
 
 class _Tsit5Interpolation(AbstractLocalInterpolation):
-    y0: Array["state"]  # noqa: F821
-    y1: Array["state"]  # noqa: F821  # Unused, just here for API compatibility
-    k: Array["order":7, "state"]  # noqa: F821
+    y0: PyTree[Array[...]]
+    y1: PyTree[Array[...]]  # Unused, just here for API compatibility
+    k: PyTree[Array["order":7, ...]]  # noqa: F821
 
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None
-    ) -> Array["state"]:  # noqa: F821
+        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+    ) -> PyTree:  # noqa: F821
+        del left
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
 
-        _div = jnp.where(t0 == self.t0, 1, self.t1 - self.t0)
-        t = (t0 - self.t0) / _div
+        t = linear_rescale(self.t0, t0, self.t1)
+
         # TODO: write as a matrix-multiply or vmap'd polyval
         b1 = (
             -1.0530884977290216
@@ -134,17 +136,19 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         )
         b6 = -34.87065786149660974 * (t - 1.2) * (t - 0.666666666666666667) * t ** 2
         b7 = 2.5 * (t - 1) * (t - 0.6) * t ** 2
-        return self.y0 + jnp.stack([b1, b2, b3, b4, b5, b6, b7]) @ self.k
-
-    # TODO: implement derivative
+        return (
+            self.y0 ** ω
+            + vector_tree_dot(jnp.stack([b1, b2, b3, b4, b5, b6, b7]), self.k) ** ω
+        ).ω
 
 
 class Tsit5(AbstractERK):
     r"""Tsitouras' 5/4 method.
 
-    5th order Runge--Kutta method. Has an embedded 4th order method.
+    5th order explicit Runge--Kutta method. Has an embedded 4th order method for
+    adaptive step sizing.
 
-    ??? Reference
+    ??? cite "Reference"
 
         ```bibtex
         @article{tsitouras2011runge,
@@ -163,10 +167,3 @@ class Tsit5(AbstractERK):
     tableau = _tsit5_tableau
     interpolation_cls = _Tsit5Interpolation
     order = 5
-
-
-def tsit5(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree],
-    **kwargs,
-) -> Tsit5:
-    return Tsit5(term=ODETerm(vector_field=vector_field), **kwargs)

@@ -1,9 +1,9 @@
 # Step size controllers
 
-The list of step size controllers is as follows.
+The list of step size controllers is as follows. The most common cases are fixed step sizes with [`diffrax.ConstantStepSize`][] and adaptive step sizes with [`diffrax.PIDController`][].
 
 
-??? "`diffrax.AbstractStepSizeController`"
+??? abstract "`diffrax.AbstractStepSizeController`"
 
     All of the classes implement the following interface specified by [`diffrax.AbstractStepSizeController`][].
 
@@ -13,6 +13,7 @@ The list of step size controllers is as follows.
         selection:
             members:
                 - wrap
+                - wrap_solver
                 - init
                 - adapt_step_size
 
@@ -20,12 +21,22 @@ The list of step size controllers is as follows.
 
 ::: diffrax.ConstantStepSize
     selection:
-        members: false
+        members:
+            - __init__
 
-::: diffrax.IController
+::: diffrax.StepTo
     selection:
         members:
             - __init__
+            - ts
+
+::: diffrax.PIDController
+    selection:
+        members:
+            - __init__
+            - pcoeff
+            - icoeff
+            - dcoeff
             - rtol
             - atol
             - dtmin
@@ -33,7 +44,7 @@ The list of step size controllers is as follows.
             - force_dtmin
             - step_ts
             - jump_ts
-            - ifactor
-            - dfactor
+            - factormin
+            - factormax
             - norm
             - safety

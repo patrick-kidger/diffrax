@@ -1,10 +1,6 @@
-from typing import Callable
-
 import numpy as np
 
-from ..custom_types import PyTree, Scalar
-from ..local_interpolation import FourthOrderPolynomialInterpolation
-from ..term import ODETerm
+from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -16,25 +12,13 @@ _fehlberg2_tableau = ButcherTableau(
 )
 
 
-class _Fehlberg2Interpolation(FourthOrderPolynomialInterpolation):
-    # I don't think this is well-chosen -- I think this is just a simple choice to get
-    # an approximation for y at the middle of each step, and that better choices are
-    # probably available.
-    c_mid = np.array([0, 0.5, 0])
-
-
 class Fehlberg2(AbstractERK):
     """Fehlberg's method.
 
-    Explicit 2nd order Runge--Kutta method. Has an embedded Euler method.
+    2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
+    step sizing.
     """
 
     tableau = _fehlberg2_tableau
-    interpolation_cls = _Fehlberg2Interpolation
+    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
     order = 2
-
-
-def fehlberg2(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Fehlberg2:
-    return Fehlberg2(term=ODETerm(vector_field=vector_field), **kwargs)

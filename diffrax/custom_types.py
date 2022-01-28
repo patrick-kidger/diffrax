@@ -1,6 +1,6 @@
 import inspect
 import typing
-from typing import Any, Dict, Generic, Tuple, TypeVar, Union
+from typing import Dict, Generic, Tuple, TypeVar, Union
 
 import jax
 
@@ -102,6 +102,7 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     Scalar.__module__ = "builtins"  # once again __qualname__ is already good.
 
     # Skip the union with Array in docs.
+    Int = int
     Bool = bool
 
     #
@@ -115,14 +116,18 @@ else:
 
     class Array:
         def __class_getitem__(cls, item):
-            return Any
+            return Array
 
     class PyTree:
         def __class_getitem__(cls, item):
-            return Any
+            return PyTree
 
     Scalar = Union[int, float, Array[()]]
 
+    Int = Union[int, Array[(), int]]
     Bool = Union[bool, Array[(), bool]]
 
-DenseInfo = Dict[str, PyTree]
+DenseInfo = Dict[str, PyTree[Array]]
+DenseInfos = Dict[str, PyTree[Array["times", ...]]]  # noqa: F821
+
+PyTreeDef = type(jax.tree_structure(0))

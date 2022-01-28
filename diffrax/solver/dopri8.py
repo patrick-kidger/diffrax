@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -6,8 +6,8 @@ import numpy as np
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import linear_rescale
-from ..term import ODETerm
+from ..misc import linear_rescale, ω
+from .base import vector_tree_dot
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -186,9 +186,9 @@ _vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
 
 
 class _Dopri8Interpolation(AbstractLocalInterpolation):
-    y0: Array["state"]  # noqa: F821
-    y1: Array["state"]  # noqa: F821  # Unused, just here for API compatibility
-    k: Array["order":14, "state"]  # noqa: F821
+    y0: PyTree[Array[...]]
+    y1: PyTree[Array[...]]  # Unused, just here for API compatibility
+    k: PyTree[Array["order":14, ...]]  # noqa: F821
 
     eval_coeffs = np.array(
         [
@@ -278,31 +278,25 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
             ],
         ]
     )
-    diff_coeffs = eval_coeffs * np.array([6, 5, 4, 3, 2, 1])
-    eval_coeffs = np.array(eval_coeffs)
-    diff_coeffs = np.array(diff_coeffs)
 
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None
-    ) -> Array["state"]:  # noqa: F821
+        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+    ) -> PyTree:  # noqa: F821
+        del left
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
         t = linear_rescale(self.t0, t0, self.t1)
-        coeffs = _vmap_polyval(np.asarray(self.eval_coeffs), t) * t
-        return self.y0 + coeffs @ self.k
-
-    def derivative(self, t: Scalar) -> Array["state"]:  # noqa: F821
-        t = linear_rescale(self.t0, t, self.t1)
-        coeffs = _vmap_polyval(np.asarray(self.diff_coeffs), t)
-        return coeffs @ (self.k / (self.t1 - self.t0))
+        coeffs = _vmap_polyval(self.eval_coeffs, t) * t
+        return (self.y0 ** ω + vector_tree_dot(coeffs, self.k) ** ω).ω
 
 
 class Dopri8(AbstractERK):
     """Dormand--Prince's 8/7 method.
 
-    8th order Runge--Kutta method. Has an embedded 7th order method.
+    8th order Runge--Kutta method. Has an embedded 7th order method for adaptive step
+    sizing.
 
-    ??? References
+    ??? cite "References"
 
         Coefficients from:
         ```bibtex
@@ -335,9 +329,3 @@ class Dopri8(AbstractERK):
     tableau = _dopri8_tableau
     interpolation_cls = _Dopri8Interpolation
     order = 8
-
-
-def dopri8(
-    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree], **kwargs
-) -> Dopri8:
-    return Dopri8(term=ODETerm(vector_field=vector_field), **kwargs)

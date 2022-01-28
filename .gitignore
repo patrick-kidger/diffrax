@@ -4,4 +4,4 @@
 build/
 dist/
 site/
-docs/_scripts/.all_objects.cache
+.all_objects.cache

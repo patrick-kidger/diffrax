@@ -1,8 +1,7 @@
-import typing
 from dataclasses import field
 from typing import Any, Dict, Optional
 
-from .custom_types import Array, PyTree, Scalar
+from .custom_types import Array, Bool, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
 from .misc import ContainerMeta
 from .path import AbstractPath
@@ -19,10 +18,6 @@ class RESULTS(metaclass=ContainerMeta):
     )
 
 
-if getattr(typing, "GENERATING_DOCUMENTATION", False):
-    RESULTS = int  # noqa: F811
-
-
 class Solution(AbstractPath):
     """The solution to a differential equation.
 
@@ -34,30 +29,37 @@ class Solution(AbstractPath):
         (i.e. just `diffeqsolve(..., saveat=SaveAt(dense=True))` is used.)
     - `ys`: The value of the solution at each of the times in `ts`. Might `None` if no
         values were saved.
-    - `solver_state`: If saved, is the final internal state of the numerical solver.
-    - `controller_state`: If saved, is the final internal state for the step size
-        controller.
     - `stats`: Statistics for the solve (number of steps etc.).
     - `result`: Integer specifying the success or cause of failure of the solve. A
-        value of `0` corresponds to a successful solve. Any other value is a failure;
-        a human-readable message can be obtained via [`diffrax.Solution.message`][] or
-        via `diffrax.RESULTS[result]`.
+        value of `0` corresponds to a successful solve. Any other value is a failure.
+        A human-readable message can be obtained by looking up messages via
+        `diffrax.RESULTS[<integer>]`.
+    - `solver_state`: If saved, the final internal state of the numerical solver.
+    - `controller_state`: If saved, the final internal state for the step size
+        controller.
+    - `made_jump`: If saved, the final internal state for the jump tracker.
+
+    !!! note
+
+        If `diffeqsolve(..., saveat=SaveAt(steps=True))` is set, then the `ts` and `ys`
+        in the solution object will be padded with `NaN`s, out to the value of
+        `max_steps` passed to [`diffrax.diffeqsolve`][].
+
+        This is because JAX demands that shapes be known statically ahead-of-time. As
+        we do not know how many steps we will take until the solve is performed, we
+        must allocate enough space for the maximum possible number of steps.
     """
 
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     ts: Optional[Array["times"]]  # noqa: F821
     ys: Optional[PyTree["times", ...]]  # noqa: F821
-    solver_state: Optional[PyTree]
-    controller_state: Optional[PyTree]
     interpolation: Optional[DenseInterpolation]
     stats: Dict[str, Any]
     result: RESULTS
-
-    @property
-    def message(self):
-        """Human-readable version of `result`."""
-        return RESULTS[self.result]
+    solver_state: Optional[PyTree]
+    controller_state: Optional[PyTree]
+    made_jump: Optional[Bool]
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -80,7 +82,7 @@ class Solution(AbstractPath):
         return self.interpolation.evaluate(t0, t1, left)
 
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        r"""If dense output was saved, then calculate an approximation to the
+        r"""If dense output was saved, then calculate an **approximation** to the
         derivative of the solution at any point in the region of integration `self.t0`
         to `self.t1`.
 
@@ -88,10 +90,10 @@ class Solution(AbstractPath):
         this calculates an approximation to $\frac{\mathrm{d}y}{\mathrm{d}t}$.
 
         (This is *not* backpropagating through the differential equation -- that
-        typically corresponds to compute something like
-        $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y(t_0)}$.)
+        typically corresponds to e.g. $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y(t_0)}$.)
 
-        !!! note
+        !!! example
+
             For an ODE satisfying
 
             $\frac{\mathrm{d}y}{\mathrm{d}t} = f(t, y(t))$
@@ -99,22 +101,20 @@ class Solution(AbstractPath):
             then this value is approximately equal to $f(t, y(t))$.
 
         !!! warning
-            The value calculated here is not necessarily very close to the
+
+            This value is generally not very accurate. Differential equation solvers
+            are usually designed to produce splines whose value is close to the true
+            solution; not to produce splines whose derivative is close to the
             derivative of the true solution.
 
-            Differential equation solvers typically produce dense output as a spline.
-            The value returned here is the derivative of that spline.
+            If you need accurate derivatives for the solution of an ODE, it is usually
+            best to calculate `vector_field(t, sol.evaluate(t), args)`. That is, to
+            pay the extra computational cost of another vector field evaluation, in
+            order to get a more accurate value.
 
-            This spline will be close to the true solution of the differential
-            equation, but this does not mean that the derivative will be.
-
-            Thus, precisely, this `derivative` method returns the *derivative of the
+            Put precisely: this `derivative` method returns the *derivative of the
             numerical solution*, and *not* an approximation to the derivative of the
             true solution.
-
-            If solving an ODE and wanting the derivative to the true solution, then
-            evaluating the vector field on `self.evaluate(t)` will typically be much
-            more accurate.
 
         **Arguments:**
 

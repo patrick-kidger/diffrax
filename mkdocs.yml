@@ -6,17 +6,17 @@ theme:
         - header.autohide  # header disappears as you scroll
     palette:
         # Light mode / dark mode
+        # We deliberately don't automatically use `media` to check a user's preferences. We default to light mode as
+        # (a) it looks more professional, and (b) is more obvious about the fact that it offers a (dark mode) toggle.
         - scheme: default
           primary: white
-          accent: indigo
-          media: "(prefers-color-scheme: light)"
+          accent: amber
           toggle:
              icon: material/weather-night
              name: Switch to dark mode
         - scheme: slate
           primary: black
           accent: amber
-          media: "(prefers-color-scheme: dark)"
           toggle:
              icon: material/weather-sunny
              name: Switch to light mode
@@ -46,8 +46,6 @@ extra_javascript:
 
 extra_css:
     - _static/custom_css.css
-    # Awful hack to get the favicon to load.  # TODO: find a proper way to include extra static files.
-    - _static/favicon.png
 
 markdown_extensions:
     - pymdownx.arithmatex  # Render LaTeX via MathJax
@@ -58,22 +56,22 @@ markdown_extensions:
     - admonition
     - toc:
         permalink: "¤"  # Adds a clickable permalink to each section heading
+        toc_depth: 4  # Prevents h5, h6 (i.e. methods) from showing up in the TOC.
 
 plugins:
     - search  # default search plugin; needs manually re-enabling when using any other plugins
     - autorefs  # Cross-links to headings
+    - include_exclude_files:
+        include:
+        exclude:
+            - "_overrides"
     - mknotebooks  # Jupyter notebooks
     - mkdocstrings:
-        watch:
-            - diffrax
         handlers:
             python:
-                # Monkey-patches mkdocstrings/pytkdocs to get custom behaviuor
                 setup_commands:
-                    - import sys
-                    - sys.path.append("docs/_scripts")
-                    - import setup_commands
-                    - setup_commands.main()
+                    - import pytkdocs_tweaks
+                    - pytkdocs_tweaks.main()
 
                 selection:
                     inherited_members: true  # Allow looking up inherited methods
@@ -81,16 +79,16 @@ plugins:
                     show_root_heading: true  # actually display anything at all...
                     show_root_full_path: true  # display "diffrax.asdf" not just "asdf"
                     show_if_no_docstring: true
-                    show_signature_annotations: true  # do _not_ show type annotations in the signature. These are detailed in a table below instead.
+                    show_signature_annotations: true
                     show_source: false  # don't include source code
                     members_order: source  # order methods according to their order of definition in the source code, not alphabetical order
-                    heading_level: 4
+                    heading_level: 4  # Makes everything top-level be <h4>. Child entries will be <h5> etc., but because of toc_depth, above, (deliberately) won't appear in the TOC.
 
 nav:
     - 'index.md'
     - 'further_details/citation.md'
     - Usage:
-        - 'usage/overview.md'
+        - 'usage/getting-started.md'
         - 'usage/how-to-choose-a-solver.md'
         - 'usage/manual-stepping.md'
         - 'usage/extending.md'
@@ -111,14 +109,15 @@ nav:
         - 'api/stepsize_controller.md'
         - 'api/solution.md'
     - Advanced API:
+        - 'api/adjoints.md'
         - 'api/terms.md'
         - 'api/path.md'
         - 'api/interpolation.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
-        - 'api/utils.md'
-    - Developer Documentation:
-        - 'devdocs/predictor_dirk.md'
     - Further details:
-        - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'
+        - Developer Documentation:
+            - 'devdocs/predictor_dirk.md'
+            - 'devdocs/omega.md'
+            - 'devdocs/adjoint_commutative_noise.md'

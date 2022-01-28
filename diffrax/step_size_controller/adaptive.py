@@ -1,6 +1,4 @@
-import functools as ft
 import typing
-from dataclasses import field
 from typing import Callable, Optional, Tuple
 
 import equinox as eqx
@@ -8,71 +6,53 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from ..custom_types import Array, PyTree, Scalar
-from ..misc import nextafter, nextbefore, rms_norm, unvmap
+from ..custom_types import Array, Bool, PyTree, Scalar
+from ..misc import nextafter, nextbefore, rms_norm, ω
 from ..solution import RESULTS
-from ..solver import AbstractSolver
+from ..solver import AbstractImplicitSolver, AbstractSolver
+from ..term import AbstractTerm
 from .base import AbstractStepSizeController
 
 
-# Empirical initial step selection algorithm from:
-# E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential Equations I:
-# Nonstiff Problems", Sec. II.4, 2nd edition.
-@ft.partial(eqx.filter_jit, filter_spec=eqx.is_array)
 def _select_initial_step(
+    terms: PyTree[AbstractTerm],
     t0: Scalar,
-    y0: Array["state"],  # noqa: F821
+    y0: PyTree,
     args: PyTree,
-    solver: AbstractSolver,
+    func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+    local_order: Scalar,
     rtol: Scalar,
     atol: Scalar,
-    unravel_y: jax.tree_util.Partial,
-    norm: Callable[[Array], Scalar],
-):
-    f0 = solver.func_for_init(t0, y0, args)
-    scale = atol + jnp.abs(y0) * rtol
-    d0 = norm(unravel_y(y0 / scale))
-    d1 = norm(unravel_y(f0 / scale))
+    norm: Callable[[PyTree], Scalar],
+) -> Scalar:
+    f0 = func_for_init(terms, t0, y0, args)
+    scale = (atol + ω(y0).call(jnp.abs) * rtol).ω
+    d0 = norm((y0 ** ω / scale ** ω).ω)
+    d1 = norm((f0 ** ω / scale ** ω).ω)
 
     _cond = (d0 < 1e-5) | (d1 < 1e-5)
     _d1 = jnp.where(_cond, 1, d1)
     h0 = jnp.where(_cond, 1e-6, 0.01 * (d0 / _d1))
 
     t1 = t0 + h0
-    y1 = y0 + h0 * f0
-    f1 = solver.func_for_init(t1, y1, args)
-    d2 = norm(unravel_y((f1 - f0) / scale)) / h0
+    y1 = (y0 ** ω + h0 * f0 ** ω).ω
+    f1 = func_for_init(terms, t1, y1, args)
+    d2 = norm(((f1 ** ω - f0 ** ω) / scale ** ω).ω) / h0
 
+    max_d = jnp.maximum(d1, d2)
     h1 = jnp.where(
-        (d1 <= 1e-15) | (d2 <= 1e-15),
+        max_d <= 1e-15,
         jnp.maximum(1e-6, h0 * 1e-3),
-        (0.01 * jnp.maximum(d1, d2)) ** (1 / solver.order),
+        (0.01 / max_d) ** (1 / local_order),
     )
 
     return jnp.minimum(100 * h0, h1)
 
 
-def _scale_error_estimate(
-    y_error: Array["state"],  # noqa: F821
-    y0: Array["state"],  # noqa: F821
-    y1_candidate: Array["state"],  # noqa: F821
-    unravel_y: callable,
-    rtol: Scalar,
-    atol: Scalar,
-    norm: Callable[[Array], Scalar],
-) -> Scalar:
-    scale = y_error / (atol + jnp.maximum(y0, y1_candidate) * rtol)
-    scale = unravel_y(scale)
-    return norm(scale)
+_ControllerState = Tuple[Bool, Bool, Scalar, Scalar]
 
 
-_no_set_at_init = object()  # Is set during wrap instead
-
-
-_ControllerState = Tuple[Array[(), bool], Array[(), bool]]
-
-
-_no_gendocs = not getattr(typing, "GENERATING_DOCUMENTATION", False)
+_gendocs = getattr(typing, "GENERATING_DOCUMENTATION", False)
 
 
 class _gendocs_norm:
@@ -80,69 +60,217 @@ class _gendocs_norm:
         return str(rms_norm)
 
 
-# https://diffeq.sciml.ai/stable/extras/timestepping/
-# are good notes on different step size control algorithms.
-class IController(AbstractStepSizeController):
-    """Adapts the step size to produce a solution accurate to a given tolerance.
-    The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
-
-    Steps are adapted using an I-controller.
-    """
-
+class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     # Default tolerances taken from scipy.integrate.solve_ivp
     rtol: Scalar = 1e-3
     atol: Scalar = 1e-6
+
+    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
+        # Poor man's multiple dispatch
+        if isinstance(solver, AbstractImplicitSolver):
+            if solver.nonlinear_solver.rtol is None:
+                solver = eqx.tree_at(
+                    lambda s: s.nonlinear_solver.rtol,
+                    solver,
+                    self.rtol,
+                    is_leaf=lambda x: x is None,
+                )
+            if solver.nonlinear_solver.atol is None:
+                solver = eqx.tree_at(
+                    lambda s: s.nonlinear_solver.atol,
+                    solver,
+                    self.atol,
+                    is_leaf=lambda x: x is None,
+                )
+        return solver
+
+
+# https://diffeq.sciml.ai/stable/extras/timestepping/
+# are good introductory notes on different step size control algorithms.
+# TODO: we don't currently offer a limiter, or a variant accept/reject scheme, as given
+#       in Soderlind and Wang 2006.
+class PIDController(AbstractAdaptiveStepSizeController):
+    r"""Adapts the step size to produce a solution accurate to a given tolerance.
+    The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
+
+    Steps are adapted using a PID controller.
+
+    ??? tip "Choosing PID coefficients"
+
+        This controller can be reduced to any special case (e.g. just a PI controller,
+        or just an I controller) by setting `pcoeff`, `icoeff` or `dcoeff` to zero
+        as appropriate.
+
+        For smoothly-varying (i.e. easy to solve) problems then an I controller, or a
+        PI controller with `icoeff=1`, will often be most efficient.
+        ```python
+        PIDController(pcoeff=0,   icoeff=1, dcoeff=0)  # default coefficients
+        PIDController(pcoeff=0.4, icoeff-1, dcoeff=0)
+        ```
+
+        For moderate difficulty problems that may have an error estimate that does
+        not vary smoothly, then a less sensitive controller will often do well. (This
+        includes many mildly stiff problems.) Several different coefficients are
+        suggested in the literature, e.g.
+        ```python
+        PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0)
+        PIDController(pcoeff=0.3, icoeff=0.3, dcoeff=0)
+        PIDController(pcoeff=0.2, icoeff=0.4, dcoeff=0)
+        ```
+
+        For SDEs (an extreme example of a problem type that does not have smooth
+        behaviour) then an insensitive PI controller is recommended. For example:
+        ```python
+        PIDController(pcoeff=0.1, icoeff=0.3, dcoeff=0)
+        ```
+
+        The best choice is largely empirical, and problem/solver dependent. For most
+        moderately difficult ODE problems it is recommended to try tuning these
+        coefficients subject to `pcoeff>=0.2`, `icoeff>=0.3`, `pcoeff + icoeff <= 0.7`.
+        You can check the number of steps made via:
+        ```python
+        sol = diffeqsolve(...)
+        print(sol.stats["num_steps"])
+        ```
+
+    ??? cite "References"
+
+        Both the initial step size selection algorithm for ODEs, and the use of
+        an I controller for ODEs, are from Section II.4 of:
+
+        ```bibtex
+        @book{hairer2008solving-i,
+          address={Berlin},
+          author={Hairer, E. and N{\o}rsett, S.P. and Wanner, G.},
+          edition={Second Revised Edition},
+          publisher={Springer},
+          title={{S}olving {O}rdinary {D}ifferential {E}quations {I} {N}onstiff
+                 {P}roblems},
+          year={2008}
+        }
+        ```
+
+        The use of a PI controller for ODEs are from Section IV.2 of:
+
+        ```bibtex
+        @book{hairer2002solving-ii,
+          address={Berlin},
+          author={Hairer, E. and Wanner, G.},
+          edition={Second Revised Edition},
+          publisher={Springer},
+          title={{S}olving {O}rdinary {D}ifferential {E}quations {II} {S}tiff and
+                 {D}ifferential-{A}lgebraic {P}roblems},
+          year={2002}
+        }
+        ```
+
+        and Sections 1--3 of:
+
+        ```bibtex
+        @article{soderlind2002automatic,
+            title={Automatic control and adaptive time-stepping},
+            author={Gustaf S{\"o}derlind},
+            year={2002},
+            journal={Numerical Algorithms},
+            volume={31},
+            pages={281--310}
+        }
+        ```
+
+        The use of PID controllers are from:
+
+        ```bibtex
+        @article{soderlind2003digital,
+            title={{D}igital {F}ilters in {A}daptive {T}ime-{S}tepping,
+            author={Gustaf S{\"o}derlind},
+            year={2003},
+            journal={ACM Transactions on Mathematical Software},
+            volume={20},
+            number={1},
+            pages={1--26}
+        }
+        ```
+
+        The use of PI and PID controllers for SDEs are from:
+
+        ```bibtex
+        @article{burrage2004adaptive,
+          title={Adaptive stepsize based on control theory for stochastic
+                 differential equations},
+          journal={Journal of Computational and Applied Mathematics},
+          volume={170},
+          number={2},
+          pages={317--336},
+          year={2004},
+          doi={https://doi.org/10.1016/j.cam.2004.01.027},
+          author={P.M. Burrage and R. Herdiana and K. Burrage},
+        }
+
+        @article{ilie2015adaptive,
+          author={Ilie, Silvana and Jackson, Kenneth R. and Enright, Wayne H.},
+          title={{A}daptive {T}ime-{S}tepping for the {S}trong {N}umerical {S}olution
+                 of {S}tochastic {D}ifferential {E}quations},
+          year={2015},
+          publisher={Springer-Verlag},
+          address={Berlin, Heidelberg},
+          volume={68},
+          number={4},
+          doi={https://doi.org/10.1007/s11075-014-9872-6},
+          journal={Numer. Algorithms},
+          pages={791–-812},
+        }
+        ```
+    """
+
+    pcoeff: Scalar = 0
+    icoeff: Scalar = 1
+    dcoeff: Scalar = 0
     dtmin: Optional[Scalar] = None
     dtmax: Optional[Scalar] = None
     force_dtmin: bool = True
     step_ts: Optional[Array["steps"]] = None  # noqa: F821
-    jump_ts: Optional[Array["steps"]] = None  # noqa: F821
-    ifactor: Scalar = 10.0
-    dfactor: Scalar = 0.2
+    jump_ts: Optional[Array["jumps"]] = None  # noqa: F821
+    factormin: Scalar = 0.2
+    factormax: Scalar = 10.0
     # The documentation treats callables as methods and displays `norm` twice: as both
     # an attribute and a method.
-    norm: Callable = rms_norm if _no_gendocs else _gendocs_norm()
-    unvmap_dt: bool = False
+    norm: Callable[[PyTree], Scalar] = _gendocs_norm() if _gendocs else rms_norm
     safety: Scalar = 0.9
-    # Don't include these in the autogenerated documentation
-    unravel_y: Callable = field(init=_no_gendocs, repr=False, default=_no_set_at_init)
-    direction: Scalar = field(init=_no_gendocs, repr=False, default=_no_set_at_init)
+    local_order: Optional[Scalar] = None
 
-    def wrap(self, unravel_y: callable, direction: Scalar):
-        return type(self)(
-            rtol=self.rtol,
-            atol=self.atol,
-            safety=self.safety,
-            ifactor=self.ifactor,
-            dfactor=self.dfactor,
-            norm=self.norm,
-            dtmin=self.dtmin,
-            dtmax=self.dtmax,
-            force_dtmin=self.force_dtmin,
-            unvmap_dt=self.unvmap_dt,
-            step_ts=None if self.step_ts is None else self.step_ts * direction,
-            jump_ts=None if self.jump_ts is None else self.jump_ts * direction,
-            unravel_y=unravel_y,
-            direction=direction,
+    def wrap(self, direction: Scalar):
+        step_ts = None if self.step_ts is None else self.step_ts * direction
+        jump_ts = None if self.jump_ts is None else self.jump_ts * direction
+        return eqx.tree_at(
+            lambda s: (s.step_ts, s.jump_ts),
+            self,
+            (step_ts, jump_ts),
+            is_leaf=lambda x: x is None,
         )
 
     def init(
         self,
+        terms: PyTree[AbstractTerm],
         t0: Scalar,
-        y0: Array["state"],  # noqa: F821
+        t1: Scalar,
+        y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        solver: AbstractSolver,
+        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        local_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
+        del t1
         if dt0 is None:
+            local_order = self._get_local_order(local_order)
             dt0 = _select_initial_step(
+                terms,
                 t0,
                 y0,
                 args,
-                solver,
+                func_for_init,
+                local_order,
                 self.rtol,
                 self.atol,
-                self.unravel_y,
                 self.norm,
             )
             # So this stop_gradient is a choice I'm not 100% convinced by.
@@ -179,8 +307,6 @@ class IController(AbstractStepSizeController):
             #
             # I would welcome your thoughts, dear reader, if you have any insight!
             dt0 = lax.stop_gradient(dt0)
-        if self.unvmap_dt:
-            dt0 = jnp.min(unvmap(dt0))
         if self.dtmax is not None:
             dt0 = jnp.minimum(dt0, self.dtmax)
         if self.dtmin is None:
@@ -192,69 +318,149 @@ class IController(AbstractStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin)
+        return t1, (jump_next_step, at_dtmin, jnp.nan, jnp.nan)
 
     def adapt_step_size(
         self,
         t0: Scalar,
         t1: Scalar,
-        y0: Array["state"],  # noqa: F821
-        y1_candidate: Array["state"],  # noqa: F821
+        y0: PyTree,
+        y1_candidate: PyTree,
         args: PyTree,
-        y_error: Optional[Array["state"]],  # noqa: F821
-        solver_order: int,
+        y_error: Optional[PyTree],
+        local_order: Scalar,
         controller_state: _ControllerState,
-    ) -> Tuple[Array[(), bool], Scalar, Scalar, Array[(), bool], _ControllerState, int]:
+    ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
+        # Note that different implementations, and different papers, do slightly
+        # different things here. It's generally not clear which of these choices are
+        # best. (If you know anything about which of these choices is best then please
+        # let me know!)
+        #
+        # Some will compute
+        # `scaled_error = norm(y_error / (atol + y * rtol))`.       (1)
+        # Some will compute
+        # `scaled_error = norm(y_error) / (atol + norm(y) * rtol)`  (2)
+        # We do (1). torchdiffeq and torchsde do (1). Soderlind's papers and
+        # OrdinaryDiffEq.jl do (2).
+        # We choose to do (1) by considering what were to happen if we were to increase
+        # the dimensionality of `y` and `y_error` with zeros. (i.e. append as many
+        # `dy/dt=0` problems as we please, and then solve them perfectly) Assuming that
+        # `norm` normalises by the number of dimensions (e.g. like an RMS norm) then
+        # (2) will see `norm(y_error) -> 0`, `norm(y) -> 0`, and therefore `atol`
+        # playing a larger and larger role. In contrast (2) simply scales things down
+        # without `atol` taking on extra importance. (This is quite thin justification
+        # though.)
+        #
+        # Some will put the multiplication by `safety` outside the `coeff/local_order`
+        # exponent. (1) Some will put it inside. (2)
+        # We do (1). torchdiffeq and OrdinaryDiffEq.jl does (1). torchsde and
+        # Soderlind's papers do (2).
+        # We choose to do (1) arbitrarily.
+        #
+        # Some will perform PI or PID control via
+        # h_{n+1} = (ε_n / r_n)^β_1 * (ε_n / r_{n-1})^β_2 * (ε_n / r_{n-2})^β_3 * h_n            (1) # noqa: E501
+        # Some will perform
+        # h_{n+1} = (ε_n / r_n)^β_1 * (ε_{n-1} / r_{n-1})^β_2 * (ε_{n-2} / r_{n-2})^β_3 * h_n    (2) # noqa: E501
+        # Some will perform
+        # h_{n+1} = δ_{n,n}^β_1 * δ_{n,n-1}^β_2 * δ_{n,n-2}^β_3 * h_n                            (3) # noqa: E501
+        # Some could perform
+        # h_{n+1} = δ_{n,n}^β_1 * δ_{n-1,n-1}^β_2 * δ_{n-2,n-2}^β_3 * h_n                        (4) # noqa: E501
+        # where
+        # h_n is the nth step size
+        # ε_n     = atol + norm(y) * rtol with y on the nth step
+        # r_n     = norm(y_error) with y_error on the nth step
+        # δ_{n,m} = norm(y_error / (atol + norm(y) * rtol)) with y_error on the nth
+        #                                                   step and y on the mth step
+        # β_1     = pcoeff + icoeff + dcoeff
+        # β_2     = -(pcoeff + 2 * dcoeff)
+        # β_3     = dcoeff
+        # We do (4). torchsde tries to do (3). (But looks like it has a bug in that the
+        # numerator and denominator for the P-control have been swapped, I think?)
+        # Soderlind's papers do (1). OrdinaryDiffEq.jl does (2).
+        # We choose to do (4) by rejecting the others. We reject (1) and (2) for the
+        # same reason as computing `scaled_error`, above. (`atol` scaling.) We reject
+        # (3) because (whilst it is more similar to Soderlind's work with (1)), it is
+        # more inefficient than (4) to implement, as it requires storing the y-shaped
+        # (atol + norm(y) * rtol) between steps rather than just the scalar δ_{n,n}
+        # between steps.
+
         del args
-        if y_error is None:
+        if y_error is None and y0 is not None:
+            # y0 is not None check is included to handle the edge case that the state
+            # is just a trivial `None` PyTree. In this case `y_error` has the same
+            # PyTree structure and thus overlaps with our special usage of `None` to
+            # indicate a lack of error estimate.
             raise RuntimeError(
                 "Cannot use adaptive step sizes with a solver that does not provide "
                 "error estimates."
             )
         prev_dt = t1 - t0
-        made_jump, at_dtmin = controller_state
+        (
+            made_jump,
+            at_dtmin,
+            prev_inv_scaled_error,
+            prev_prev_inv_scaled_error,
+        ) = controller_state
+        local_order = self._get_local_order(local_order)
 
         #
         # Figure out how things went on the last step: error, and whether to
         # accept/reject it.
         #
 
-        scaled_error = _scale_error_estimate(
-            y_error, y0, y1_candidate, self.unravel_y, self.rtol, self.atol, self.norm
-        )
+        def _scale(_y0, _y1_candidate, _y_error):
+            _y = jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate))
+            return _y_error / (self.atol + _y * self.rtol)
+
+        scaled_error = self.norm(jax.tree_map(_scale, y0, y1_candidate, y_error))
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin
-        if self.unvmap_dt:
-            keep_step = jnp.all(unvmap(keep_step))
+        # Double-where trick to avoid NaN gradients.
+        # See JAX issues #5039 and #1052.
+        _cond = scaled_error == 0
+        _scaled_error = jnp.where(_cond, 1, scaled_error)
+        _inv_scaled_error = 1 / _scaled_error
+        inv_scaled_error = jnp.where(_cond, jnp.inf, _inv_scaled_error)
 
         #
         # Adjust next step size
         #
 
-        # Double-where trick to avoid NaN gradients.
-        # See JAX issues #5039 and #1052.
-        #
-        # (Although we've actually since added a stop_gradient afterwards, this is kept
-        # for completeness, e.g. just in case we ever remove the stop_gradient.)
-        cond = scaled_error == 0
-        _scaled_error = jnp.where(cond, 1.0, scaled_error)
-        factor = lax.cond(
-            cond,
-            lambda _: self.ifactor,
-            self._scale_factor,
-            (solver_order, keep_step, _scaled_error),
+        # The [prev_]prev_inv_scaled_error can be nan from `self.init(...)`.
+        # In this case we shouldn't let the extra factors kick in until we've made
+        # some more steps, so we set the factor to one.
+        # They can be inf from the previous `self.adapt_step_size(...)`. In this case
+        # we had zero estimated error on the previous step and will have already
+        # increased stepsize by `self.factormax` then. So set the factor to one now.
+        _nan_to_one = lambda x: jnp.where(jnp.isnan(x) | (x == jnp.inf), 1, x)
+        _zero_coeff = lambda c: isinstance(c, (int, float)) and c == 0
+        coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / local_order
+        coeff2 = -(self.pcoeff + 2 * self.dcoeff) / local_order
+        coeff3 = self.dcoeff / local_order
+        factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
+        factor2 = (
+            1 if _zero_coeff(coeff2) else _nan_to_one(prev_inv_scaled_error) ** coeff2
+        )  # noqa: E501
+        factor3 = (
+            1
+            if _zero_coeff(coeff3)
+            else _nan_to_one(prev_prev_inv_scaled_error) ** coeff3
+        )  # noqa: E501
+        factormin = jnp.where(keep_step, 1, self.factormin)
+        factor = jnp.clip(
+            self.safety * factor1 * factor2 * factor3,
+            a_min=factormin,
+            a_max=self.factormax,
         )
         factor = lax.stop_gradient(factor)  # See note in init above.
-        if self.unvmap_dt:
-            factor = jnp.min(unvmap(factor))
         dt = prev_dt * factor
 
         #
         # Clip next step size based on dtmin/dtmax
         #
 
-        result = jnp.full_like(t0, RESULTS.successful)
+        result = jnp.full_like(t0, RESULTS.successful, dtype=int)
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
         if self.dtmin is None:
@@ -277,31 +483,34 @@ class IController(AbstractStepSizeController):
         next_t1 = self._clip_step_ts(next_t0, next_t0 + dt)
         next_t1, next_made_jump = self._clip_jump_ts(next_t0, next_t1)
 
-        controller_state = (next_made_jump, at_dtmin)
+        inv_scaled_error = jnp.where(keep_step, inv_scaled_error, prev_inv_scaled_error)
+        prev_inv_scaled_error = jnp.where(
+            keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
+        )
+        controller_state = (
+            next_made_jump,
+            at_dtmin,
+            inv_scaled_error,
+            prev_inv_scaled_error,
+        )
         return keep_step, next_t0, next_t1, made_jump, controller_state, result
 
-    def _scale_factor(self, operand):
-        order, keep_step, scaled_error = operand
-        dfactor = jnp.where(keep_step, 1, self.dfactor)
-        exponent = 1 / order
-        return jnp.clip(
-            self.safety / scaled_error ** exponent, a_min=dfactor, a_max=self.ifactor
-        )
+    def _get_local_order(self, local_order: Optional[Scalar]) -> Scalar:
+        # Attribute takes priority, if the user knows the correct local order better
+        # than our guess.
+        local_order = local_order if self.local_order is None else self.local_order
+        if local_order is None:
+            raise ValueError(
+                "The order of convergence for the solver has not been specified; pass "
+                "`PIDController(..., local_order=...)` manually instead. If solving "
+                "an ODE then this should be equal to the (global) order plus one. If "
+                "solving an SDE then should be equal to the (global) order plus 0.5."
+            )
+        return local_order
 
     def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
         if self.step_ts is None:
             return t1
-        if self.unvmap_dt:
-            # Need to think about how to implement this correctly.
-            #
-            # If t is batched, and has the same time at different batch elements,
-            # then we should get the same number (at floating point precision) in all
-            # batch elements. I think this precludes most arithmetic operations for
-            # accomplishing this.
-            raise NotImplementedError(
-                "The interaction between step_ts and unvmap_dt has not been "
-                "implemented. Set unvmap_dt=False instead."
-            )
 
         # TODO: it should be possible to switch this O(nlogn) for just O(n) by keeping
         # track of where we were last, and using that as a hint for the next search.
@@ -322,11 +531,6 @@ class IController(AbstractStepSizeController):
     def _clip_jump_ts(self, t0: Scalar, t1: Scalar) -> Tuple[Scalar, Array[(), bool]]:
         if self.jump_ts is None:
             return t1, jnp.full_like(t1, fill_value=False, dtype=bool)
-        if self.unvmap_dt:
-            raise NotImplementedError(
-                "The interaction between jump_ts and unvmap_dt has not been "
-                "implemented. Set unvmap_dt=False instead."
-            )
         if self.jump_ts is not None and not jnp.issubdtype(
             self.jump_ts.dtype, jnp.inexact
         ):
@@ -350,8 +554,11 @@ class IController(AbstractStepSizeController):
         return t1, next_made_jump
 
 
-IController.__init__.__doc__ = """**Arguments:**
+PIDController.__init__.__doc__ = """**Arguments:**
 
+- `pcoeff`: The coefficient of the proportional part of the step size control.
+- `icoeff`: The coefficient of the integral part of the step size control.
+- `dcoeff`: The coefficient of the derivative part of the step size control.
 - `rtol`: Relative tolerance.
 - `atol`: Absolute tolerance.
 - `dtmin`: Minimum step size. The step size is either clipped to this value, or an
@@ -359,7 +566,7 @@ IController.__init__.__doc__ = """**Arguments:**
 - `dtmax`: Maximum step size; the step size is clipped to this value.
 - `force_dtmin`: How to handle the step size hitting the minimum. If `True` then the
     step size is clipped to `dtmin`. If `False` then the step fails and the integration
-    errors. (Which will in turn either sets an error flag, or raises an exception,
+    errors. (Which will in turn either set an error flag, or raise an exception,
     depending on the `throw` value for `diffeqsolve(..., throw=...).)
 - `step_ts`: Denotes *extra* times that must be stepped to. This can be used to help
     deal with a vector field that has a known derivative discontinuity, by stepping
@@ -367,10 +574,15 @@ IController.__init__.__doc__ = """**Arguments:**
 - `jump_ts`: Denotes times at which the vector field has a known discontinuity. This
     can be used to step exactly to the discontinuity. (And any other appropriate action
     taken, like FSAL algorithms re-evaluating the vector field.)
-- `ifactor`: Maximum amount a step size can be increased relative to the previous step.
-- `dfactor`: Minimum amount a step size can be decreased relative to the previous step.
+- `factormin`: Minimum amount a step size can be decreased relative to the previous
+    step.
+- `factormax`: Maximum amount a step size can be increased relative to the previous
+    step.
 - `norm`: A function `PyTree -> Scalar` used in the error control. Precisely, step
     sizes are chosen so that `norm(error / (atol + rtol * y))` is approximately
     one.
 - `safety`: Multiplicative safety factor.
+- `local_order`: Optional. The local order of convergence for the solver. Can be used
+    to override the local order determined automatically, if extra structure is known
+    about this particular problem. (Typically when solving SDEs with known structure.)
 """

@@ -9,32 +9,22 @@ import jax.numpy as jnp
 import jax.random as jrandom
 
 
-# TODO: test semi_implicit_euler
-
-
 all_ode_solvers = (
-    diffrax.bosh3,
-    diffrax.dopri5,
-    diffrax.dopri8,
-    diffrax.euler,
-    diffrax.fehlberg2,
-    diffrax.heun,
-    # TODO: reinstate
-    #    diffrax.leapfrog_midpoint,
-    #    diffrax.reversible_heun,
-    diffrax.tsit5,
-    diffrax.implicit_euler,
-    diffrax.kvaerno3,
-    diffrax.kvaerno4,
-    diffrax.kvaerno5,
-)
-
-
-# TODO: encode this into the types somehow, whether via inheritance, traits, ...
-fixed_ode_solvers = (
-    diffrax.euler,
-    diffrax.leapfrog_midpoint,
-    diffrax.implicit_euler,
+    diffrax.Bosh3,
+    diffrax.Dopri5,
+    diffrax.Dopri8,
+    diffrax.Euler,
+    diffrax.Ralston,
+    diffrax.Midpoint,
+    diffrax.Fehlberg2,
+    diffrax.Heun,
+    diffrax.LeapfrogMidpoint,
+    diffrax.ReversibleHeun,
+    diffrax.Tsit5,
+    diffrax.ImplicitEuler,
+    diffrax.Kvaerno3,
+    diffrax.Kvaerno4,
+    diffrax.Kvaerno5,
 )
 
 
@@ -63,9 +53,17 @@ treedefs = [
 ]
 
 
-def tree_allclose(x, y, **kwargs):
+def _shaped_allclose(x, y, **kwargs):
+    return jnp.shape(x) == jnp.shape(y) and jnp.allclose(x, y, **kwargs)
+
+
+def shaped_allclose(x, y, **kwargs):
+    """As `jnp.allclose`, except:
+    - It also supports PyTree arguments.
+    - It mandates that shapes match as well (no broadcasting)
+    """
     same_structure = jax.tree_structure(x) == jax.tree_structure(y)
-    allclose = ft.partial(jnp.allclose, **kwargs)
+    allclose = ft.partial(_shaped_allclose, **kwargs)
     return same_structure and jax.tree_util.tree_reduce(
         operator.and_, jax.tree_map(allclose, x, y), True
     )

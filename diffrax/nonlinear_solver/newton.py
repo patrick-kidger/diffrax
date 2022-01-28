@@ -2,14 +2,15 @@ from typing import Callable, Optional, Tuple
 
 import equinox as eqx
 import jax
+import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import Bool, PyTree, Scalar
-from ..misc import ravel_pytree, rms_norm
+from ..misc import rms_norm
 from ..solution import RESULTS
-from .base import AbstractNonlinearSolver, LU_Jacobian
+from .base import AbstractNonlinearSolver, LU_Jacobian, NonlinearSolution
 
 
 def _small(diffsize: Scalar) -> Bool:
@@ -55,25 +56,26 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
 
     Also supports the quasi-Newton chord method.
 
-    !!! note
+    !!! info
+
         If using this as part of a implicit ODE solver, then:
 
-        - An adaptive step size controller should be used (e.g. `diffrax.IController`).
-          This will allow smaller steps to be made if the nonlinear solver fails to
-          converge.
+        - An adaptive step size controller should be used (e.g.
+          `diffrax.PIDController`). This will allow smaller steps to be made if the
+          nonlinear solver fails to converge.
         - As a general rule, the values for `rtol` and `atol` should be set to the same
-          values as used for the adaptive step size controller.
+          values as used for the adaptive step size controller. (And this will happen
+          automatically by default.)
         - The value for `kappa` should usually be left alone.
 
     !!! warning
+
         Note that backpropagation through `__call__` may not produce accurate values if
         `tolerate_nonconvergence=True`, as the backpropagation calculation implicitly
         assumes that the forward pass converged.
     """
 
     max_steps: int = 10
-    rtol: Scalar = 1e-3
-    atol: Scalar = 1e-6
     kappa: Scalar = 1e-2
     norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
@@ -91,11 +93,13 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         diff_args: PyTree,
     ) -> Tuple[PyTree, RESULTS]:
         args = eqx.combine(nondiff_args, diff_args)
-        scale = self.atol + self.rtol * self.norm(x)
-        flat, unflatten = ravel_pytree(x)
+        rtol = 1e-3 if self.rtol is None else self.rtol
+        atol = 1e-6 if self.atol is None else self.atol
+        scale = atol + rtol * self.norm(x)
+        flat, unflatten = fu.ravel_pytree(x)
         if flat.size == 0:
-            return x, RESULTS.successful
-        curried = lambda z: ravel_pytree(fn(unflatten(z), args))[0]
+            return NonlinearSolution(root=x, num_steps=0, result=RESULTS.successful)
+        curried = lambda z: fu.ravel_pytree(fn(unflatten(z), args))[0]
 
         def cond_fn(val):
             _, step, diffsize, diffsize_prev = val
@@ -126,7 +130,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         val = body_fn(val)
         val = body_fn(val)
         val = lax.while_loop(cond_fn, body_fn, val)
-        flat, _, diffsize, diffsize_prev = val
+        flat, num_steps, diffsize, diffsize_prev = val
 
         if self.tolerate_nonconvergence:
             result = RESULTS.successful
@@ -141,7 +145,8 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             )
             result = jnp.where(diverged, RESULTS.implicit_divergence, result)
             result = jnp.where(small, RESULTS.successful, result)
-        return unflatten(flat), result
+        root = unflatten(flat)
+        return NonlinearSolution(root=root, num_steps=num_steps, result=result)
 
 
 NewtonNonlinearSolver.__init__.__doc__ = """
@@ -149,8 +154,10 @@ NewtonNonlinearSolver.__init__.__doc__ = """
 
 - `max_steps`: The maximum number of steps allowed. If more than this are required then
     the iteration fails.
-- `rtol`: The relative tolerance for determining convergence.
-- `atol`: The absolute tolerance for determining convergence.
+- `rtol`: The relative tolerance for determining convergence. If using an adaptive step
+    size controller, will default to the same `rtol`. Else defaults to `1e-3`.
+- `atol`: The absolute tolerance for determining convergence. If using an adaptive step
+    size controller, will default to the same `atol`. Else defaults to `1e-6`.
 - `kappa`: The kappa value for determining convergence.
 - `norm`: A function `PyTree -> Scalar`, which is called to determine the size of the
     current value. (Used in determining convergence.)
