@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import Int, PyTree, Scalar
-from ..misc import is_perturbed
+from ..misc import fixed_custom_jvp, is_perturbed
 from ..solution import RESULTS
 
 
@@ -34,7 +34,7 @@ class AbstractNonlinearSolver(eqx.Module):
         super().__init_subclass__(**kwargs)
         # Note that this breaks the descriptor protocol so we have to pass self
         # manually in __call__.
-        cls._solve = jax.custom_jvp(cls._solve, nondiff_argnums=(0, 1, 2, 3, 4))
+        cls._solve = fixed_custom_jvp(cls._solve, nondiff_argnums=(0, 1, 2, 3, 4))
         cls._solve.defjvp(_root_solve_jvp)
 
     @abc.abstractmethod

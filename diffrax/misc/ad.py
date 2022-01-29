@@ -1,9 +1,11 @@
 from typing import Any
 
+import equinox as eqx
 import jax
 import jax.interpreters.ad as ad
 import jax.interpreters.batching as batching
 import jax.interpreters.xla as xla
+import jax.lax as lax
 
 from ..custom_types import PyTree
 
@@ -63,3 +65,37 @@ ad.primitive_transposes[
 
 def nondifferentiable_output(x: PyTree) -> PyTree:
     return _nondifferentiable_output_p.bind(x)
+
+
+class fixed_custom_jvp:
+    """As jax.custom_jvp but works around JAX issue #9374."""
+
+    def __init__(self, fn, nondiff_argnums=()):
+        assert set(nondiff_argnums) == set(range(len(nondiff_argnums)))
+
+        def fn_wrapper(nondiff_args_nontracer, nondiff_args_tracer, diff_args):
+            nondiff_args = eqx.combine(nondiff_args_nontracer, nondiff_args_tracer)
+            return fn(*nondiff_args, *diff_args)
+
+        self.fn = jax.custom_jvp(fn_wrapper, nondiff_argnums=(0,))
+        self.cutoff = max(nondiff_argnums, default=-1) + 1
+        self.fn_jvp = None
+
+    def defjvp(self, fn_jvp):
+        def fn_jvp_wrapper(nondiff_args_nontracer, combined_args, tang_combined_args):
+            nondiff_args_tracer, diff_args = combined_args
+            _, tang_diff_args = tang_combined_args
+            nondiff_args = eqx.combine(nondiff_args_nontracer, nondiff_args_tracer)
+            return fn_jvp(*nondiff_args, diff_args, tang_diff_args)
+
+        self.fn.defjvp(fn_jvp_wrapper)
+
+    def __call__(self, *args):
+        is_tracer = lambda x: isinstance(x, jax.core.Tracer)
+        nondiff_args = args[: self.cutoff]
+        diff_args = args[self.cutoff :]
+        nondiff_args_tracer, nondiff_args_nontracer = eqx.partition(
+            nondiff_args, is_tracer
+        )
+        nondiff_args_tracer = jax.tree_map(lax.stop_gradient, nondiff_args_tracer)
+        return self.fn(nondiff_args_nontracer, nondiff_args_tracer, diff_args)

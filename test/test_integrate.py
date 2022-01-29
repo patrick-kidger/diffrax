@@ -491,3 +491,18 @@ def test_compile_time_steps():
         )(_dt0)
     )()
     assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
+
+
+def test_grad_implicit_solve():
+    # Check that we work around JAX issue #9374
+
+    term = diffrax.ODETerm(lambda t, y, args: args * y)
+    solve = diffrax.Kvaerno5()
+
+    def f(args):
+        return jnp.sum(
+            diffrax.diffeqsolve(term, solve, t0=0, t1=1, dt0=0.1, y0=1.0, args=args).ys
+        )
+
+    grads = jax.grad(f)(1.0)
+    assert jnp.isfinite(grads)
