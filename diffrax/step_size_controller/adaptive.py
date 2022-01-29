@@ -318,7 +318,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin, jnp.nan, jnp.nan)
+        return t1, (jump_next_step, at_dtmin, jnp.inf, jnp.inf)
 
     def adapt_step_size(
         self,
@@ -427,26 +427,26 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # Adjust next step size
         #
 
-        # The [prev_]prev_inv_scaled_error can be nan from `self.init(...)`.
+        # The [prev_]prev_inv_scaled_error can be inf from `self.init(...)`.
         # In this case we shouldn't let the extra factors kick in until we've made
         # some more steps, so we set the factor to one.
-        # They can be inf from the previous `self.adapt_step_size(...)`. In this case
-        # we had zero estimated error on the previous step and will have already
+        # They can also be inf from the previous `self.adapt_step_size(...)`. In this
+        # case we had zero estimated error on the previous step and will have already
         # increased stepsize by `self.factormax` then. So set the factor to one now.
-        _nan_to_one = lambda x: jnp.where(jnp.isnan(x) | (x == jnp.inf), 1, x)
+        _inf_to_one = lambda x: jnp.where(x == jnp.inf, 1, x)
         _zero_coeff = lambda c: isinstance(c, (int, float)) and c == 0
         coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / local_order
         coeff2 = -(self.pcoeff + 2 * self.dcoeff) / local_order
         coeff3 = self.dcoeff / local_order
         factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
         factor2 = (
-            1 if _zero_coeff(coeff2) else _nan_to_one(prev_inv_scaled_error) ** coeff2
-        )  # noqa: E501
+            1 if _zero_coeff(coeff2) else _inf_to_one(prev_inv_scaled_error) ** coeff2
+        )
         factor3 = (
             1
             if _zero_coeff(coeff3)
-            else _nan_to_one(prev_prev_inv_scaled_error) ** coeff3
-        )  # noqa: E501
+            else _inf_to_one(prev_prev_inv_scaled_error) ** coeff3
+        )
         factormin = jnp.where(keep_step, 1, self.factormin)
         factor = jnp.clip(
             self.safety * factor1 * factor2 * factor3,

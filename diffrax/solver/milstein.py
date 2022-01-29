@@ -245,7 +245,7 @@ class ItoMilstein(AbstractItoSolver):
         # v0_matrix has structure (tree(Δw), tree(y0), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
         v0_matrix = jax.tree_transpose(
             Δw_treedef, y_treedef.compose(Δw_treedef), v0_matrix
-        )  # fmt: skip # noqa: E501
+        )
         # v0_matrix has structure (tree(y0), tree(Δw), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
 
         #
