@@ -520,7 +520,7 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
-    max_steps: Optional[int] = 16 ** 4,
+    max_steps: Optional[int] = 16**4,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,

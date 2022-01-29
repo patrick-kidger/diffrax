@@ -62,7 +62,7 @@ class LeapfrogMidpoint(AbstractSolver):
         del made_jump
         tm1, ym1 = solver_state
         control = terms.contr(tm1, t1)
-        y1 = (ym1 ** ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
+        y1 = (ym1**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
         solver_state = (t0, y0)
         return y1, None, dense_info, solver_state, RESULTS.successful

@@ -85,11 +85,11 @@ def test_ode_order(solver_ctr):
     exponents = []
     errors = []
     for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
-        dt0 = 2 ** exponent
+        dt0 = 2**exponent
         sol = diffrax.diffeqsolve(diffrax.ODETerm(f), solver_ctr(), t0, t1, dt0, y0)
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
-        if error < 2 ** -28:
+        if error < 2**-28:
             break
         exponents.append(exponent)
         errors.append(jnp.log2(error))
@@ -100,7 +100,7 @@ def test_ode_order(solver_ctr):
 
 
 def _squareplus(x):
-    return 0.5 * (x + jnp.sqrt(x ** 2 + 4))
+    return 0.5 * (x + jnp.sqrt(x**2 + 4))
 
 
 def _solvers():
@@ -153,7 +153,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     t1 = 2
     y0 = jrandom.normal(ykey, (3,), dtype=jnp.float64)
     bm = diffrax.VirtualBrownianTree(
-        t0=t0, t1=t1, shape=(noise_dim,), tol=2 ** -15, key=bmkey
+        t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
     if solver_ctr.term_structure == jax.tree_structure(0):
         terms = diffrax.MultiTerm(
@@ -173,17 +173,17 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     ref_terms = diffrax.MultiTerm(
         diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
     )
-    true_sol = diffrax.diffeqsolve(ref_terms, ref_solver, t0, t1, dt0=2 ** -14, y0=y0)
+    true_sol = diffrax.diffeqsolve(ref_terms, ref_solver, t0, t1, dt0=2**-14, y0=y0)
     true_yT = true_sol.ys[-1]
 
     exponents = []
     errors = []
     for exponent in [-3, -4, -5, -6, -7, -8, -9, -10]:
-        dt0 = 2 ** exponent
+        dt0 = 2**exponent
         sol = diffrax.diffeqsolve(terms, solver_ctr(), t0, t1, dt0, y0)
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
-        if error < 2 ** -28:
+        if error < 2**-28:
             break
         exponents.append(exponent)
         errors.append(jnp.log2(error))

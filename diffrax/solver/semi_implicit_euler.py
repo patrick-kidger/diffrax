@@ -41,8 +41,8 @@ class SemiImplicitEuler(AbstractSolver):
 
         control1 = term_1.contr(t0, t1)
         control2 = term_2.contr(t0, t1)
-        y1_1 = (y0_1 ** ω + term_1.vf_prod(t0, y0_2, args, control1) ** ω).ω
-        y1_2 = (y0_2 ** ω + term_2.vf_prod(t0, y1_1, args, control2) ** ω).ω
+        y1_1 = (y0_1**ω + term_1.vf_prod(t0, y0_2, args, control1) ** ω).ω
+        y1_2 = (y0_2**ω + term_2.vf_prod(t0, y1_1, args, control2) ** ω).ω
 
         y1 = (y1_1, y1_2)
         dense_info = dict(y0=y0, y1=y1)

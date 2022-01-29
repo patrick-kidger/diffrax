@@ -503,5 +503,5 @@ class AdjointTerm(AbstractTerm):
             return _term.vf_prod(t, _y, _args, control)
 
         dy, vjp = jax.vjp(_to_vjp, y, diff_args, diff_term)
-        da_y, da_diff_args, da_diff_term = vjp((-(a_y ** ω)).ω)
+        da_y, da_diff_args, da_diff_term = vjp((-(a_y**ω)).ω)
         return dy, da_y, da_diff_args, da_diff_term

@@ -40,13 +40,13 @@ class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
         drift, diffusion = terms
         dt = drift.contr(t0, t1)
         dW = diffusion.contr(t0, t1)
-        y_prime = (y0 ** ω + diffusion.vf_prod(t0, y0, args, dW) ** ω).ω
+        y_prime = (y0**ω + diffusion.vf_prod(t0, y0, args, dW) ** ω).ω
 
         f0 = drift.vf_prod(t0, y0, args, dt)
         g0 = diffusion.vf_prod(t0, y0, args, dW)
         g_prime = diffusion.vf_prod(t0, y_prime, args, dW)
 
-        y1 = (y0 ** ω + f0 ** ω + 0.5 * (g0 ** ω + g_prime ** ω)).ω
+        y1 = (y0**ω + f0**ω + 0.5 * (g0**ω + g_prime**ω)).ω
 
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful

@@ -33,7 +33,7 @@ def _a1():
 
 
 def _a2():
-    diffeq = lambda t, y, args: -0.5 * y ** 3
+    diffeq = lambda t, y, args: -0.5 * y**3
     init = 1.0
     return diffeq, init
 
@@ -88,8 +88,8 @@ def _b3():
     def diffeq(t, y, args):
         y1, y2, y3 = y
         dy1 = -y1
-        dy2 = y1 - y2 ** 2
-        dy3 = y2 ** 2
+        dy2 = y1 - y2**2
+        dy3 = y2**2
         return dy1, dy2, dy3
 
     init = (1.0, 0.0, 0.0)
@@ -99,7 +99,7 @@ def _b3():
 def _b4():
     def diffeq(t, y, args):
         y1, y2, y3 = y
-        r = jnp.sqrt(y1 ** 2 + y2 ** 2)
+        r = jnp.sqrt(y1**2 + y2**2)
         dy1 = -y2 - y1 * y3 / r
         dy2 = y1 - y2 * y3 / r
         dy3 = y1 / r
@@ -211,7 +211,7 @@ def _c5():
         y_ij, dy_ij = y
         y_ik = y_ij
         assert y_ij.shape == (3, 5)
-        r_cubed_j = r_cubed_k = jnp.sum(y_ij ** 2, axis=0) ** 1.5
+        r_cubed_j = r_cubed_k = jnp.sum(y_ij**2, axis=0) ** 1.5
         d_cubed_jk = jnp.sum((y_ij[:, :, None] - y_ij[:, None, :]) ** 2, axis=0) ** 1.5
 
         term1_ij = -(m0 + m_j) * y_ij / r_cubed_j
@@ -275,7 +275,7 @@ def _c5():
 def _make_d(ε):
     def diffeq(t, y, args):
         y1, y2, y3, y4 = y
-        r_cubed = (y1 ** 2 + y2 ** 2) ** (1.5)
+        r_cubed = (y1**2 + y2**2) ** (1.5)
         dy1 = y3
         dy2 = y4
         dy3 = -y1 / r_cubed
@@ -313,7 +313,7 @@ def _e2():
     def diffeq(t, y, args):
         y1, y2 = y
         dy1 = y2
-        dy2 = (1 - y1 ** 2) * y2 - y1
+        dy2 = (1 - y1**2) * y2 - y1
         return dy1, dy2
 
     init = (2.0, 0.0)
@@ -324,7 +324,7 @@ def _e3():
     def diffeq(t, y, args):
         y1, y2 = y
         dy1 = y2
-        dy2 = y1 ** 3 / 6 - y1 + 2 * jnp.sin(2.78535 * t)
+        dy2 = y1**3 / 6 - y1 + 2 * jnp.sin(2.78535 * t)
         return dy1, dy2
 
     init = (0.0, 0.0)
@@ -336,7 +336,7 @@ def _e4():
     def diffeq(t, y, args):
         y1, y2 = y
         dy1 = y2
-        dy2 = 0.032 - 0.4 * y2 ** 2
+        dy2 = 0.032 - 0.4 * y2**2
         return dy1, dy2
 
     init = (30.0, 0.0)
@@ -348,7 +348,7 @@ def _e5():
     def diffeq(t, y, args):
         y1, y2 = y
         dy1 = y2
-        dy2 = jnp.sqrt(1 + y2 ** 2) / (25 - t)
+        dy2 = jnp.sqrt(1 + y2**2) / (25 - t)
         return dy1, dy2
 
     init = (0.0, 0.0)
@@ -393,7 +393,7 @@ def _test(solver_ctr, problems, higher):
         if higher and solver_ctr.order < 4:
             # Too difficult to get accurate solutions with a low-order solver
             return
-        max_steps = 16 ** 4
+        max_steps = 16**4
         if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver):
             dt0 = 0.01
             if solver_ctr is diffrax.LeapfrogMidpoint:

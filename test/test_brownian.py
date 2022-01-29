@@ -28,7 +28,7 @@ def test_shape(ctr, getkey):
             assert path.t0 is None
             assert path.t1 is None
         elif ctr is diffrax.VirtualBrownianTree:
-            tol = 2 ** -5
+            tol = 2**-5
             path = ctr(t0, t1, tol, shape, getkey())
             assert path.t0 == 0
             assert path.t1 == 2
@@ -54,7 +54,7 @@ def test_statistics(ctr):
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape=(), key=key)
         elif ctr is diffrax.VirtualBrownianTree:
-            path = ctr(t0=0, t1=5, tol=2 ** -5, shape=(), key=key)
+            path = ctr(t0=0, t1=5, tol=2**-5, shape=(), key=key)
         else:
             assert False
         return path.evaluate(0, 5)
@@ -78,7 +78,7 @@ def test_conditional_statistics():
     ts = []
     prev_ti = sorted_ts[0]
     for ti in sorted_ts[1:]:
-        if ti < prev_ti + 2 ** -10:
+        if ti < prev_ti + 2**-10:
             continue
         prev_ti = ti
         ts.append(ti)
@@ -90,7 +90,7 @@ def test_conditional_statistics():
     bm_keys = jrandom.split(bm_key, 100000)
     path = jax.vmap(
         lambda k: diffrax.VirtualBrownianTree(
-            t0=t0, t1=t1, shape=(), tol=2 ** -12, key=k
+            t0=t0, t1=t1, shape=(), tol=2**-12, key=k
         )
     )(bm_keys)
 

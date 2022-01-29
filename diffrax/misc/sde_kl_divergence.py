@@ -11,7 +11,7 @@ from ..custom_types import PyTree
 def _kl(drift1, drift2, diffusion):
     inv_diffusion = jnp.linalg.pinv(diffusion)
     scale = inv_diffusion @ (drift1 - drift2)
-    return 0.5 * jnp.sum(scale ** 2)
+    return 0.5 * jnp.sum(scale**2)
 
 
 class _AugDrift(eqx.Module):

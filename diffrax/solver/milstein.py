@@ -66,7 +66,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
             return diffusion.vf_prod(t0, _y0, args, dw)
 
         _, v0_prod = jax.jvp(_to_jvp, (y0,), (g0_prod,))
-        y1 = (y0 ** ω + f0_prod ** ω + g0_prod ** ω + 0.5 * v0_prod ** ω).ω
+        y1 = (y0**ω + f0_prod**ω + g0_prod**ω + 0.5 * v0_prod**ω).ω
 
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
@@ -275,7 +275,7 @@ class ItoMilstein(AbstractItoSolver):
         #
         # Finally we get to add everything together. Phew.
         #
-        y1 = (y0 ** ω + f0_prod ** ω + g0_prod ** ω + 0.5 * v0_prod ** ω).ω
+        y1 = (y0**ω + f0_prod**ω + g0_prod**ω + 0.5 * v0_prod**ω).ω
 
         #
         # A couple of final notes:

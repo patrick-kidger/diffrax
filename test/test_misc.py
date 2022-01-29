@@ -25,7 +25,7 @@ def test_ω_add_mul(getkey):
     for treedef in treedefs:
         a = b = c = random_pytree(getkey(), treedef)
 
-        e1 = (a ** ω * 2 + b ** ω * c ** ω - 3).ω
+        e1 = (a**ω * 2 + b**ω * c**ω - 3).ω
         e2 = jax.tree_map(lambda ai, bi, ci: ai * 2 + bi * ci - 3, a, b, c)
         assert shaped_allclose(e1, e2)
 

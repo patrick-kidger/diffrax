@@ -99,8 +99,8 @@ def _implicit_relation(ki, nonlinear_solve_args):
     _, unravel = fu.ravel_pytree(yi_partial)
     ki = unravel(ki)
     diff = (
-        vf_prod(ti, (yi_partial ** ω + diagonal * ki ** ω).ω, args, control) ** ω
-        - ki ** ω
+        vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
+        - ki**ω
     ).ω
     diff, _ = fu.ravel_pytree(diff)
     return diff
@@ -154,7 +154,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             k0 = lax.cond(
                 made_jump,
                 lambda _: terms.vf_prod(t0, y0, args, control),
-                lambda _: (k0 ** ω * (dt / prev_dt)).ω,
+                lambda _: (k0**ω * (dt / prev_dt)).ω,
                 None,
             )
             jac = None
@@ -177,7 +177,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # This is because of our vector-field-control approach.
         lentime = (len(self.tableau.c) + 1,)
         k = jax.tree_map(lambda y: jnp.empty(lentime + jnp.shape(y)), y0)
-        k = (k ** ω).at[0].set(k0 ** ω).ω
+        k = (k**ω).at[0].set(k0**ω).ω
 
         for i, (a_i, c_i) in enumerate(zip(self.tableau.a_lower, self.tableau.c)):
             if c_i == 1:
@@ -185,7 +185,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 ti = t1
             else:
                 ti = t0 + c_i * dt
-            yi_partial = (y0 ** ω + vector_tree_dot(a_i, ω(k)[: i + 1].ω) ** ω).ω
+            yi_partial = (y0**ω + vector_tree_dot(a_i, ω(k)[: i + 1].ω) ** ω).ω
             ki, jac, new_result = self._eval_stage(
                 terms, i + 1, ti, yi_partial, args, control, jac, k
             )
@@ -196,9 +196,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         if self.tableau.ssal:
             y1 = yi_partial
         else:
-            y1 = (y0 ** ω + vector_tree_dot(self.tableau.b_sol, k) ** ω).ω
+            y1 = (y0**ω + vector_tree_dot(self.tableau.b_sol, k) ** ω).ω
         if self.tableau.fsal:
-            k1 = (k ** ω)[-1].ω
+            k1 = (k**ω)[-1].ω
         else:
             k1 = None
         y_error = vector_tree_dot(self.tableau.b_error, k)

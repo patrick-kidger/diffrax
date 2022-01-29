@@ -39,7 +39,7 @@ class Euler(AbstractItoSolver, AbstractSolver):
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         control = terms.contr(t0, t1)
-        y1 = (y0 ** ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
+        y1 = (y0**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
 

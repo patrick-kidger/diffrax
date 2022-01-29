@@ -117,13 +117,13 @@ class LinearInterpolation(AbstractGlobalInterpolation):
             return _ys[index]
 
         prev_ys = jax.tree_map(_index, self.ys)
-        next_ys = (self.ys ** ω)[index + 1].ω
+        next_ys = (self.ys**ω)[index + 1].ω
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
         diff_t = next_t - prev_t
 
         return (
-            prev_ys ** ω + (next_ys ** ω - prev_ys ** ω) * (fractional_part / diff_t)
+            prev_ys**ω + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t)
         ).ω
 
     @eqx.filter_jit
@@ -318,7 +318,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         # continuous.
         t = t * self.direction
         out = self._get_local_interpolation(t, left).derivative(t)
-        return (self.direction * out ** ω).ω
+        return (self.direction * out**ω).ω
 
     @property
     def t0(self):
@@ -583,7 +583,7 @@ def _hermite_coeffs(t0, y0, deriv0, t1, y1):
     a = y0
     b = deriv0
     c = 2 * d_deriv / t_diff
-    d = -d_deriv / t_diff ** 2
+    d = -d_deriv / t_diff**2
 
     return d, c, b, a
 

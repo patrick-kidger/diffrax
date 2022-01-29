@@ -118,7 +118,7 @@ def rms_norm(x: PyTree) -> Scalar:
     x, _ = fu.ravel_pytree(x)
     if x.size == 0:
         return 0
-    sqnorm = jnp.mean(x ** 2)
+    sqnorm = jnp.mean(x**2)
     cond = sqnorm == 0
     # Double-where trick to avoid NaN gradients.
     # See JAX issues #5039 and #1052.

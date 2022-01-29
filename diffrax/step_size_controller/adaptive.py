@@ -27,17 +27,17 @@ def _select_initial_step(
 ) -> Scalar:
     f0 = func_for_init(terms, t0, y0, args)
     scale = (atol + ω(y0).call(jnp.abs) * rtol).ω
-    d0 = norm((y0 ** ω / scale ** ω).ω)
-    d1 = norm((f0 ** ω / scale ** ω).ω)
+    d0 = norm((y0**ω / scale**ω).ω)
+    d1 = norm((f0**ω / scale**ω).ω)
 
     _cond = (d0 < 1e-5) | (d1 < 1e-5)
     _d1 = jnp.where(_cond, 1, d1)
     h0 = jnp.where(_cond, 1e-6, 0.01 * (d0 / _d1))
 
     t1 = t0 + h0
-    y1 = (y0 ** ω + h0 * f0 ** ω).ω
+    y1 = (y0**ω + h0 * f0**ω).ω
     f1 = func_for_init(terms, t1, y1, args)
-    d2 = norm(((f1 ** ω - f0 ** ω) / scale ** ω).ω) / h0
+    d2 = norm(((f1**ω - f0**ω) / scale**ω).ω) / h0
 
     max_d = jnp.maximum(d1, d2)
     h1 = jnp.where(

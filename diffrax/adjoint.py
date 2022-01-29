@@ -182,7 +182,7 @@ def _loop_backsolve_bwd(
         _t1, _t0, _y0, _grad_y0 = _vals
         _a0, _solver_state, _controller_state = _state
         _a_y0, _a_diff_args0, _a_diff_term0 = _a0
-        _a_y0 = (_a_y0 ** ω + _grad_y0 ** ω).ω
+        _a_y0 = (_a_y0**ω + _grad_y0**ω).ω
         _aug0 = (_y0, _a_y0, _a_diff_args0, _a_diff_term0)
 
         _sol = diffeqsolve(

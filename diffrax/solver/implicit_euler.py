@@ -19,7 +19,7 @@ def _implicit_relation(z1, nonlinear_solve_args):
     vf_prod, t1, y0, args, control = nonlinear_solve_args
     _, unravel = fu.ravel_pytree(y0)
     z1 = unravel(z1)
-    diff = (vf_prod(t1, (y0 ** ω + z1 ** ω).ω, args, control) ** ω - z1 ** ω).ω
+    diff = (vf_prod(t1, (y0**ω + z1**ω).ω, args, control) ** ω - z1**ω).ω
     diff, _ = fu.ravel_pytree(diff)
     return diff
 
@@ -55,7 +55,7 @@ class ImplicitEuler(AbstractImplicitSolver):
             _implicit_relation, pred, (terms.vf_prod, t1, y0, args, control), jac
         )
         z1 = unravel(nonlinear_sol.root)
-        y1 = (y0 ** ω + z1 ** ω).ω
+        y1 = (y0**ω + z1**ω).ω
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, nonlinear_sol.result
 
