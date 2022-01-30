@@ -51,7 +51,9 @@ class _State(eqx.Module):
     solver_state: PyTree
     controller_state: PyTree
     result: RESULTS
-    step: Int
+    num_steps: Int
+    num_accepted_steps: Int
+    num_rejected_steps: Int
     # Output that is .at[].set() updated during the solve (and their indices)
     saveat_ts_index: Scalar
     ts: Array["times"]  # noqa: F821
@@ -184,7 +186,9 @@ def loop(
         )
 
         # Count the number of steps, just for statistical purposes.
-        step = state.step + 1
+        num_steps = state.num_steps + 1
+        num_accepted_steps = state.num_accepted_steps + keep_step
+        num_rejected_steps = state.num_rejected_steps + ~keep_step
 
         #
         # Store the output produced from this numerical step.
@@ -341,7 +345,9 @@ def loop(
             solver_state=solver_state,
             controller_state=controller_state,
             result=result,
-            step=step,
+            num_steps=num_steps,
+            num_accepted_steps=num_accepted_steps,
+            num_rejected_steps=num_rejected_steps,
             saveat_ts_index=saveat_ts_index,
             ts=ts,
             ys=ys,
@@ -782,7 +788,9 @@ def diffeqsolve(
         out_size += max_steps
     if saveat.t1 and not saveat.steps:
         out_size += 1
-    step = 0
+    num_steps = 0
+    num_accepted_steps = 0
+    num_rejected_steps = 0
     saveat_ts_index = 0
     save_index = 0
     made_jump = False if made_jump is None else made_jump
@@ -820,7 +828,9 @@ def diffeqsolve(
         solver_state=solver_state,
         controller_state=controller_state,
         result=result,
-        step=step,
+        num_steps=num_steps,
+        num_accepted_steps=num_accepted_steps,
+        num_rejected_steps=num_rejected_steps,
         saveat_ts_index=saveat_ts_index,
         ts=ts,
         ys=ys,
@@ -891,7 +901,9 @@ def diffeqsolve(
     # Store metadata
     compiled_num_steps = aux_stats["compiled_num_steps"]
     stats = {
-        "num_steps": final_state.step,
+        "num_steps": final_state.num_steps,
+        "num_accepted_steps": final_state.num_accepted_steps,
+        "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
         "compiled_num_steps": compiled_num_steps,
     }
