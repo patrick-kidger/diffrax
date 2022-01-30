@@ -449,7 +449,7 @@ def loop(
         else:
 
             def _cond_fun(state):
-                return cond_fun(state) & (state.step < max_steps)
+                return cond_fun(state) & (state.num_steps < max_steps)
 
         final_state = bounded_while_loop(
             _cond_fun, body_fun, init_state, max_steps=None
