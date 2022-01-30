@@ -7,8 +7,8 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
 
-from ..custom_types import Bool, PyTree, Scalar
-from ..misc import rms_norm
+from ..custom_types import Bool, Int, PyTree, Scalar
+from ..misc import error_if, rms_norm
 from ..solution import RESULTS
 from .base import AbstractNonlinearSolver, LU_Jacobian, NonlinearSolution
 
@@ -75,14 +75,14 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         assumes that the forward pass converged.
     """
 
-    max_steps: int = 10
+    max_steps: Optional[Int] = 10
     kappa: Scalar = 1e-2
     norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
 
     def __post_init__(self):
-        if self.max_steps < 2:
-            raise ValueError(f"max_steps must be at least 2. Got {self.max_steps}")
+        if self.max_steps is not None:
+            error_if(self.max_steps < 2, "max_steps must be at least 2.")
 
     def _solve(
         self,
@@ -105,7 +105,10 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             _, step, diffsize, diffsize_prev = val
             rate = diffsize / diffsize_prev
             factor = diffsize * rate / (1 - rate)
-            step_okay = step < self.max_steps
+            if self.max_steps is None:
+                step_okay = True
+            else:
+                step_okay = step < self.max_steps
             not_small = ~_small(diffsize)
             not_diverged = ~_diverged(rate)
             not_converged = ~_converged(factor, self.kappa)
@@ -153,7 +156,7 @@ NewtonNonlinearSolver.__init__.__doc__ = """
 **Arguments:**
 
 - `max_steps`: The maximum number of steps allowed. If more than this are required then
-    the iteration fails.
+    the iteration fails. Set to `None` to allow an arbitrary number of steps.
 - `rtol`: The relative tolerance for determining convergence. If using an adaptive step
     size controller, will default to the same `rtol`. Else defaults to `1e-3`.
 - `atol`: The absolute tolerance for determining convergence. If using an adaptive step
