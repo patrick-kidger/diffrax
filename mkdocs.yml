@@ -104,7 +104,6 @@ nav:
         - Continuous Normalising Flow: 'examples/continuous_normalising_flow.ipynb'
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
-        - Stochastic Gradient Descent: 'examples/stochastic_gradient_descent.ipynb'
     - Basic API:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
