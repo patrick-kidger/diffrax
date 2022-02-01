@@ -26,6 +26,14 @@ For stiff problems then try the [`diffrax.Kvaerno3`][], [`diffrax.Kvaerno4`][], 
 
 See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
 
+!!! danger
+
+    If solving a differential equation (stiff or not) to relatively high tolerances (typically $10^{-8}$ or lower) then you should make sure to [use 64-bit precision](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision), instead of JAX's default 32-bit precision. Not doing so can introduce a variety of interesting errors. For example the following are all symptoms of having failed to do this:
+
+    - `NaN` gradients;
+    - Taking many more solver steps than necessary (e.g. 8 steps -> 800 steps);
+    - Wrapping with `jax.value_and_grad` or `jax.grad` actually changing the result of the primal (forward) computation.
+
 ## Stochastic differential equations
 
 !!! info
