@@ -119,5 +119,6 @@ nav:
         - 'further_details/acknowledgements.md'
         - Developer Documentation:
             - 'devdocs/predictor_dirk.md'
-            - 'devdocs/omega.md'
             - 'devdocs/adjoint_commutative_noise.md'
+            - 'devdocs/omega.md'
+            - 'devdocs/bounded_while_loop.md'

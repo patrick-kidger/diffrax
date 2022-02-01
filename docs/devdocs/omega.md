@@ -18,7 +18,7 @@ jax.tree_map(lambda a, b: a + b, x, y)
 ```
 and are designed just to be a convenient syntax for broadcasting operations over a PyTree.
 
-Other operations are of course defined: `ω` understands several of the built-in Python operators, including addition, subtraction, matrix multiplication etc. It's only had methods added as have been needed though -- some more might need adding as-and-when you need them.
+Other operations are of course defined: `ω` understands several of the built-in Python operators, including addition, subtraction, matrix multiplication etc.
 
 !!! tip
 

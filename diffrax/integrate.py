@@ -509,10 +509,6 @@ def _get_local_order(terms: PyTree[AbstractTerm], solver: AbstractSolver) -> Sca
         return solver.order
 
 
-# TODO: when t0, t1, dt0 are not tracers, and stepsize_controller is Constant, then
-# we know the exact number of steps in advance. In this case we could set max_steps and
-# base for the bounded_while_loop exactly, and probably get a slight improvement in
-# runtime.
 @eqx.filter_jit
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
@@ -526,7 +522,7 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
-    max_steps: Optional[int] = 16**4,
+    max_steps: Optional[int] = 16**3,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
@@ -580,9 +576,10 @@ def diffeqsolve(
         optimise-then-discretise will still work), and also disables
         `saveat.steps=True` and `saveat.dense=True`.
 
-        Note that compile times will increase as `max_steps` increases. (Specifically,
-        each time `max_steps` passes a power of 16.) You can reduce compilation times
-        by using the smallest value of `max_steps` that is reasonable for your problem.
+        Note that (a) compile times; and (b) backpropagation run times; will increase
+        as `max_steps` increases. (Specifically, each time `max_steps` passes a power
+        of 16.) You can reduce these times by using the smallest value of `max_steps`
+        that is reasonable for your problem.
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 

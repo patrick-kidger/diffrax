@@ -233,11 +233,14 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
         def _call(_data):
             return _while_loop(cond_fun, body_fun, _data, max_steps // base, base)
 
-        @jax.checkpoint
         def _scan_fn(_data, _):
             _pred, _, _ = _data
             _unvmap_pred = unvmap_any(_pred)
             return lax.cond(_unvmap_pred, _call, lambda x: x, _data), None
+
+        # Don't put checkpointing on the lowest level
+        if max_steps != base:
+            _scan_fn = jax.checkpoint(_scan_fn, prevent_cse=False)
 
         return lax.scan(_scan_fn, data, xs=None, length=base)[0]
 
