@@ -81,24 +81,24 @@ def test_newton_solver():
 
         # Newton's method
         zero = jax.tree_map(jnp.zeros_like, x)
-        out, result = solver(fn, x, args)
-        assert result == 0
-        assert shaped_allclose(fn(out, args), zero, rtol=tol, atol=tol)
+        sol = solver(fn, x, args)
+        assert sol.result == 0
+        assert shaped_allclose(fn(sol.root, args), zero, rtol=tol, atol=tol)
 
         # Chord method
         jac = solver.jac(fn, x, args)
         if fn is _fn4:
             # Need a looooot of steps for this one.
-            out, result = mega_solver(fn, x, args, jac)
+            sol = mega_solver(fn, x, args, jac)
         else:
-            out, result = solver(fn, x, args, jac)
-        assert shaped_allclose(fn(out, args), zero, rtol=tol, atol=tol)
-        assert result == 0
+            sol = solver(fn, x, args, jac)
+        assert sol.result == 0
+        assert shaped_allclose(fn(sol.root, args), zero, rtol=tol, atol=tol)
 
         def _fn(y, a):
-            out, _ = solver(fn, y, a)
-            out = jax.tree_map(jnp.sum, out)
-            return jax.tree_util.tree_reduce(operator.add, out)
+            sol = solver(fn, y, a)
+            root = jax.tree_map(jnp.sum, sol.root)
+            return jax.tree_util.tree_reduce(operator.add, root)
 
         x_grads, args_grads = jax.grad(_fn, argnums=(0, 1))(x, args)
         assert shaped_allclose(x_grads, zero, rtol=tol, atol=tol)
