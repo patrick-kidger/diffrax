@@ -810,8 +810,8 @@ def diffeqsolve(
             _,
             _,
         ) = solver.step(terms, tprev, tnext, y0, args, solver_state, made_jump)
-        dense_ts = jnp.full(max_steps + 1, jnp.nan)
-        _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.nan)
+        dense_ts = jnp.full(max_steps + 1, jnp.inf)
+        _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.inf)
         dense_infos = jax.tree_map(_make_full, dense_info)
         dense_save_index = 0
     else:
