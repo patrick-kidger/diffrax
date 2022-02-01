@@ -65,6 +65,7 @@ plugins:
         include:
         exclude:
             - "_overrides"
+            - "_static/README.md"
     - mknotebooks  # Jupyter notebooks
     - mkdocstrings:
         handlers:
