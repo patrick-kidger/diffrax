@@ -152,6 +152,7 @@ def loop(
             local_order,
             state.controller_state,
         )
+        assert jnp.result_type(keep_step) is jnp.dtype(bool)
 
         #
         # Do some book-keeping.
@@ -188,7 +189,9 @@ def loop(
         # Count the number of steps, just for statistical purposes.
         num_steps = state.num_steps + 1
         num_accepted_steps = state.num_accepted_steps + keep_step
-        num_rejected_steps = state.num_rejected_steps + ~keep_step
+        # Not just ~keep_step, which does the wrong thing when keep_step is a non-array
+        # bool True/False.
+        num_rejected_steps = state.num_rejected_steps + jnp.invert(keep_step)
 
         #
         # Store the output produced from this numerical step.
