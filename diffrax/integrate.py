@@ -887,7 +887,7 @@ def diffeqsolve(
     if saveat.dense:
         interpolation = DenseInterpolation(
             ts=final_state.dense_ts,
-            ts_size=final_state.dense_save_index,
+            ts_size=final_state.dense_save_index + 1,
             interpolation_cls=solver.interpolation_cls,
             infos=final_state.dense_infos,
             direction=direction,
