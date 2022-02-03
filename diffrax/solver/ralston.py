@@ -4,11 +4,20 @@ from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
+#
+# Note that a lot of implementations actually get Ralston's method wrong.
+# Ralston's method is the 2/3-method, not the 3/4-method.
+# At some point it looks like someone wrote down the wrong thing on Wikipedia, and
+# everyone just blindly copied it without realising.
+# (Wikipedia has now been fixed.)
+# Do the Taylor expansions yourself if you don't believe me!
+# Credit to James Foster for pointing this one out to me.
+#
 _ralston_tableau = ButcherTableau(
-    a_lower=(np.array([0.75]),),
-    b_sol=np.array([1 / 3, 2 / 3]),
-    b_error=np.array([2 / 3, -2 / 3]),
-    c=np.array([0.75]),
+    a_lower=(np.array([2 / 3]),),
+    b_sol=np.array([0.25, 0.75]),
+    b_error=np.array([0.75, -0.75]),
+    c=np.array([2 / 3]),
 )
 
 
