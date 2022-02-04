@@ -1,12 +1,12 @@
 # FAQ
 
-## The solve is taking loads of steps / I'm getting NaN gradients / other weird behaviour.
+### The solve is taking loads of steps / I'm getting NaN gradients / other weird behaviour.
 
 Try switching to 64-bit precision. (Instead of the 32-bit that is the default in JAX.) [See here](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision).
 
-## I'm not getting any gradient computed for one of my model parameters.
+### I'm not getting zero gradient for one of my model parameters.
 
-This can happen if you use `diffeqsolve(..., adjoint=BacksolveAdjoint())` incorrectly.
+This can happen if you use [`diffrax.BacksolveAdjoint`][] incorrectly.
 
 Gradients will be computed for:
 
@@ -17,7 +17,7 @@ Gradients will be computed for:
 
 !!! example
 
-    A common example of computing gradients through `terms` is if using an [Equinox](https://github.com/patrick-kidger/equinox) module to represent a parameterised vector field. For example:
+    Gradients through `args` and `y0` are self-explanatory. Meanwhile, a common example of computing gradients through `terms` is if using an [Equinox](https://github.com/patrick-kidger/equinox) module to represent a parameterised vector field. For example:
 
     ```python
     import equinox as eqx
@@ -32,7 +32,7 @@ Gradients will be computed for:
     mlp = eqx.nn.MLP(...)
     func = Func(mlp)
     term = diffrax.ODETerm(func)
-    diffrax.diffeqsolve(term, ...)
+    diffrax.diffeqsolve(term, ..., adjoint=diffrax.BacksolveAdjoint())
     ```
 
     In this case `diffrax.ODETerm`, `Func` and `eqx.nn.MLP` are all PyTrees, so all of the parameters inside `mlp` are visible to `diffeqsolve` and it can compute gradients with respect to them.
