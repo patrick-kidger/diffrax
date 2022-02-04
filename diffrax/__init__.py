@@ -19,6 +19,7 @@ from .local_interpolation import (
     AbstractLocalInterpolation,
     FourthOrderPolynomialInterpolation,
     LocalLinearInterpolation,
+    ThirdOrderHermitePolynomialInterpolation,
 )
 from .misc import adjoint_rms_seminorm, sde_kl_divergence
 from .nonlinear_solver import (

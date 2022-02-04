@@ -25,4 +25,6 @@ class Bosh3(AbstractERK):
 
     tableau = _bosh3_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
-    order = 3
+
+    def order(self, terms):
+        return 3

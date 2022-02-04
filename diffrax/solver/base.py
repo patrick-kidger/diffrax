@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 
 from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
+from ..heuristics import is_sde
 from ..local_interpolation import AbstractLocalInterpolation
 from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from ..solution import RESULTS
@@ -40,15 +41,38 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     def interpolation_cls(self) -> Callable[..., AbstractLocalInterpolation]:
         """How to interpolate the solution in between steps."""
 
-    @property
-    def order(self) -> Optional[int]:
+    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         """Order of the solver for solving ODEs."""
         return None
 
-    @property
-    def strong_order(self) -> Optional[Scalar]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
         """Strong order of the solver for solving SDEs."""
         return None
+
+    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+        """Order of the error estimate used for adaptive stepping.
+
+        The default (slightly heuristic) implementation is as follows.
+
+        The error estimate is assumed to come from the difference of two methods. If
+        these two methods have orders `p` and `q` then the local order of the error
+        estimate is `min(p, q) + 1` for an ODE and `min(p, q) + 0.5` for an SDE.
+
+        - In the SDE case then we assume `p == q == solver.strong_order()`.
+        - In the ODE case then we assume `p == q + 1 == solver.order()`.
+        - We assume that non-SDE/ODE cases do not arise.
+
+        This is imperfect as these assumptions may not be true. In addition in the SDE
+        case, then solvers will sometimes exhibit higher orders of convergence for
+        specific noise types (see issue #47).
+        """
+        if is_sde(terms):
+            order = self.strong_order(terms)
+            if order is not None:
+                order = order + 0.5
+            return order
+        else:
+            return self.order(terms)
 
     def init(
         self,
@@ -187,13 +211,22 @@ class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
     def interpolation_cls(self):
         return self.solver.interpolation_cls
 
-    @property
-    def order(self):
-        return self.solver.order
+    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+        return self.solver.order(terms)
 
-    @property
-    def strong_order(self):
-        return self.solver.strong_order
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+        return self.solver.strong_order(terms)
+
+    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+        if is_sde(terms):
+            order = self.strong_order(terms)
+            if order is not None:
+                order = order + 0.5
+        else:
+            order = self.order(terms)
+            if order is not None:
+                order = order + 1
+        return order
 
     def init(
         self,

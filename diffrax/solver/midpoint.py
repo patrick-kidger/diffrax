@@ -26,5 +26,9 @@ class Midpoint(AbstractERK, AbstractStratonovichSolver):
 
     tableau = _midpoint_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
-    order = 2
-    strong_order = 0.5
+
+    def order(self, terms):
+        return 2
+
+    def strong_order(self, terms):
+        return 0.5

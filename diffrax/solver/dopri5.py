@@ -86,4 +86,6 @@ class Dopri5(AbstractERK):
     """
     tableau = _dopri5_tableau
     interpolation_cls = _Dopri5Interpolation
-    order = 5
+
+    def order(self, terms):
+        return 5

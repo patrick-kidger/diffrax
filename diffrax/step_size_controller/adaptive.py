@@ -20,7 +20,7 @@ def _select_initial_step(
     y0: PyTree,
     args: PyTree,
     func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
-    local_order: Scalar,
+    error_order: Scalar,
     rtol: Scalar,
     atol: Scalar,
     norm: Callable[[PyTree], Scalar],
@@ -43,7 +43,7 @@ def _select_initial_step(
     h1 = jnp.where(
         max_d <= 1e-15,
         jnp.maximum(1e-6, h0 * 1e-3),
-        (0.01 / max_d) ** (1 / local_order),
+        (0.01 / max_d) ** (1 / error_order),
     )
 
     return jnp.minimum(100 * h0, h1)
@@ -236,7 +236,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
     # an attribute and a method.
     norm: Callable[[PyTree], Scalar] = _gendocs_norm() if _gendocs else rms_norm
     safety: Scalar = 0.9
-    local_order: Optional[Scalar] = None
+    error_order: Optional[Scalar] = None
 
     def wrap(self, direction: Scalar):
         step_ts = None if self.step_ts is None else self.step_ts * direction
@@ -257,18 +257,18 @@ class PIDController(AbstractAdaptiveStepSizeController):
         dt0: Optional[Scalar],
         args: PyTree,
         func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
-        local_order: Optional[Scalar],
+        error_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         del t1
         if dt0 is None:
-            local_order = self._get_local_order(local_order)
+            error_order = self._get_error_order(error_order)
             dt0 = _select_initial_step(
                 terms,
                 t0,
                 y0,
                 args,
                 func_for_init,
-                local_order,
+                error_order,
                 self.rtol,
                 self.atol,
                 self.norm,
@@ -328,7 +328,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         y1_candidate: PyTree,
         args: PyTree,
         y_error: Optional[PyTree],
-        local_order: Scalar,
+        error_order: Scalar,
         controller_state: _ControllerState,
     ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
         # Note that different implementations, and different papers, do slightly
@@ -351,7 +351,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # without `atol` taking on extra importance. (This is quite thin justification
         # though.)
         #
-        # Some will put the multiplication by `safety` outside the `coeff/local_order`
+        # Some will put the multiplication by `safety` outside the `coeff/error_order`
         # exponent. (1) Some will put it inside. (2)
         # We do (1). torchdiffeq and OrdinaryDiffEq.jl does (1). torchsde and
         # Soderlind's papers do (2).
@@ -401,7 +401,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
             prev_inv_scaled_error,
             prev_prev_inv_scaled_error,
         ) = controller_state
-        local_order = self._get_local_order(local_order)
+        error_order = self._get_error_order(error_order)
 
         #
         # Figure out how things went on the last step: error, and whether to
@@ -435,9 +435,9 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # increased stepsize by `self.factormax` then. So set the factor to one now.
         _inf_to_one = lambda x: jnp.where(x == jnp.inf, 1, x)
         _zero_coeff = lambda c: isinstance(c, (int, float)) and c == 0
-        coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / local_order
-        coeff2 = -(self.pcoeff + 2 * self.dcoeff) / local_order
-        coeff3 = self.dcoeff / local_order
+        coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / error_order
+        coeff2 = -(self.pcoeff + 2 * self.dcoeff) / error_order
+        coeff3 = self.dcoeff / error_order
         factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
         factor2 = (
             1 if _zero_coeff(coeff2) else _inf_to_one(prev_inv_scaled_error) ** coeff2
@@ -495,18 +495,18 @@ class PIDController(AbstractAdaptiveStepSizeController):
         )
         return keep_step, next_t0, next_t1, made_jump, controller_state, result
 
-    def _get_local_order(self, local_order: Optional[Scalar]) -> Scalar:
-        # Attribute takes priority, if the user knows the correct local order better
+    def _get_error_order(self, error_order: Optional[Scalar]) -> Scalar:
+        # Attribute takes priority, if the user knows the correct error order better
         # than our guess.
-        local_order = local_order if self.local_order is None else self.local_order
-        if local_order is None:
+        error_order = error_order if self.error_order is None else self.error_order
+        if error_order is None:
             raise ValueError(
                 "The order of convergence for the solver has not been specified; pass "
-                "`PIDController(..., local_order=...)` manually instead. If solving "
+                "`PIDController(..., error_order=...)` manually instead. If solving "
                 "an ODE then this should be equal to the (global) order plus one. If "
                 "solving an SDE then should be equal to the (global) order plus 0.5."
             )
-        return local_order
+        return error_order
 
     def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
         if self.step_ts is None:
@@ -582,7 +582,7 @@ PIDController.__init__.__doc__ = """**Arguments:**
     sizes are chosen so that `norm(error / (atol + rtol * y))` is approximately
     one.
 - `safety`: Multiplicative safety factor.
-- `local_order`: Optional. The local order of convergence for the solver. Can be used
-    to override the local order determined automatically, if extra structure is known
+- `error_order`: Optional. The order of the error estimate for the solver. Can be used
+    to override the error order determined automatically, if extra structure is known
     about this particular problem. (Typically when solving SDEs with known structure.)
 """

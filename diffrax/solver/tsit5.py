@@ -166,4 +166,6 @@ class Tsit5(AbstractERK):
     """
     tableau = _tsit5_tableau
     interpolation_cls = _Tsit5Interpolation
-    order = 5
+
+    def order(self, terms):
+        return 5

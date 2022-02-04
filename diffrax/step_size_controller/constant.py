@@ -29,9 +29,9 @@ class ConstantStepSize(AbstractStepSizeController):
         dt0: Optional[Scalar],
         args: PyTree,
         func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
-        local_order: Optional[Scalar],
+        error_order: Optional[Scalar],
     ) -> Tuple[Scalar, Scalar]:
-        del terms, t1, y0, args, func_for_init, local_order
+        del terms, t1, y0, args, func_for_init, error_order
         if dt0 is None:
             raise ValueError(
                 "Constant step size solvers cannot select step size automatically; "
@@ -47,10 +47,10 @@ class ConstantStepSize(AbstractStepSizeController):
         y1_candidate: PyTree,
         args: PyTree,
         y_error: PyTree,
-        local_order: Scalar,
+        error_order: Scalar,
         controller_state: Scalar,
     ) -> Tuple[bool, Scalar, Scalar, bool, Scalar, RESULTS]:
-        del t0, y0, y1_candidate, args, y_error, local_order
+        del t0, y0, y1_candidate, args, y_error, error_order
         return (
             True,
             t1,
@@ -109,9 +109,9 @@ class StepTo(AbstractStepSizeController):
         dt0: None,
         args: PyTree,
         func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
-        local_order: Optional[Scalar],
+        error_order: Optional[Scalar],
     ) -> Tuple[Scalar, int]:
-        del y0, args, func_for_init, local_order
+        del y0, args, func_for_init, error_order
         if dt0 is not None:
             raise ValueError(
                 "`dt0` should be `None`. Step location is already determined "
@@ -131,10 +131,10 @@ class StepTo(AbstractStepSizeController):
         y1_candidate: Array["state"],  # noqa: F821
         args: PyTree,
         y_error: Array["state"],  # noqa: F821
-        local_order: Scalar,
+        error_order: Scalar,
         controller_state: int,
     ) -> Tuple[bool, Scalar, Scalar, bool, Int, RESULTS]:
-        del t0, y0, y1_candidate, args, y_error, local_order
+        del t0, y0, y1_candidate, args, y_error, error_order
         return (
             True,
             t1,

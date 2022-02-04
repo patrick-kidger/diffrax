@@ -22,8 +22,12 @@ class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
-    order = 1
-    strong_order = 0.5
+
+    def order(self, terms):
+        return 1
+
+    def strong_order(self, terms):
+        return 0.5
 
     def step(
         self,
@@ -40,10 +44,11 @@ class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
         drift, diffusion = terms
         dt = drift.contr(t0, t1)
         dW = diffusion.contr(t0, t1)
-        y_prime = (y0**ω + diffusion.vf_prod(t0, y0, args, dW) ** ω).ω
 
         f0 = drift.vf_prod(t0, y0, args, dt)
         g0 = diffusion.vf_prod(t0, y0, args, dW)
+
+        y_prime = (y0**ω + g0**ω).ω
         g_prime = diffusion.vf_prod(t0, y_prime, args, dW)
 
         y1 = (y0**ω + f0**ω + 0.5 * (g0**ω + g_prime**ω)).ω

@@ -34,8 +34,12 @@ class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
 
     term_structure = jax.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
-    order = 2
-    strong_order = 0.5
+
+    def order(self, terms):
+        return 2
+
+    def strong_order(self, terms):
+        return 0.5
 
     def init(
         self, terms: AbstractTerm, t0: Scalar, t1: Scalar, y0: PyTree, args: PyTree
