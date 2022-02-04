@@ -62,10 +62,6 @@ The complete list of solvers, categorised by type, is as follows.
     selection:
         members: false
 
-::: diffrax.Fehlberg2
-    selection:
-        members: false
-
 ::: diffrax.Bosh3
     selection:
         members: false

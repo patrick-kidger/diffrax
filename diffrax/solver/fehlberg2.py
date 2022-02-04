@@ -15,8 +15,8 @@ _fehlberg2_tableau = ButcherTableau(
 class Fehlberg2(AbstractERK):
     """Fehlberg's method.
 
-    2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
-    step sizing.
+    2nd order explicit Runge--Kutta method. Has an embedded first order method for
+    adaptive step sizing.
     """
 
     tableau = _fehlberg2_tableau
