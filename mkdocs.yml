@@ -97,6 +97,7 @@ nav:
         - 'usage/manual-stepping.md'
         - 'usage/extending.md'
     - Examples:
+        - Basic examples: 'basic-examples.md'
         - Neural ODE: 'examples/neural_ode.ipynb'
         - Neural CDE: 'examples/neural_cde.ipynb'
         - Neural SDE: 'examples/neural_sde.ipynb'

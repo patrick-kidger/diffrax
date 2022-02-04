@@ -494,6 +494,8 @@ def diffeqsolve(
 
     The differential equation is integrated from `t0` to `t1`.
 
+    See the [Getting started](../usage/getting-started.md) page for example usage.
+
     **Main arguments:**
 
     These are the arguments most commonly used day-to-day.
@@ -502,7 +504,8 @@ def diffeqsolve(
         (For non-ordinary differential equations (SDEs, CDEs), this also specifies the
         Brownian motion or the control.)
     - `solver`: The solver for the differential equation. See the guide on [how to
-        choose a solver](../usage/how-to-choose-a-solver.md).
+        choose a solver](../usage/how-to-choose-a-solver.md), or the [complete list of
+        solvers](../api/solver.md).
     - `t0`: The start of the region of integration.
     - `t1`: The end of the region of integration.
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
@@ -512,9 +515,11 @@ def diffeqsolve(
     - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
         can be coerced to JAX arrays, like Python floats.)
     - `args`: Any additional arguments to pass to the vector field.
-    - `saveat`: What times to save the solution of the differential equation. Defaults
-        to just the last time `t1`. (Keyword-only argument.)
+    - `saveat`: What times to save the solution of the differential equation. See
+        [`diffrax.SaveAt`][]. Defaults to just the last time `t1`. (Keyword-only
+        argument.)
     - `stepsize_controller`: How to change the step size as the integration progresses.
+        See the [list of stepsize controllers](../api/stepsize_controller.md).
         Defaults to using a fixed constant step size. (Keyword-only argument.)
 
     **Other arguments:**
