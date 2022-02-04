@@ -38,6 +38,7 @@ The complete list of solvers, categorised by type, is as follows.
             members:
                 - order
                 - strong_order
+                - error_order
                 - term_structure
                 - init
                 - step

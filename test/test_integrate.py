@@ -77,6 +77,7 @@ def test_ode_order(solver_ctr):
     def f(t, y, args):
         return A @ y
 
+    term = diffrax.ODETerm(f)
     t0 = 0
     t1 = 4
     y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
@@ -86,7 +87,7 @@ def test_ode_order(solver_ctr):
     errors = []
     for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
         dt0 = 2**exponent
-        sol = diffrax.diffeqsolve(diffrax.ODETerm(f), solver_ctr(), t0, t1, dt0, y0)
+        sol = diffrax.diffeqsolve(term, solver_ctr(), t0, t1, dt0, y0)
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2**-28:
@@ -96,7 +97,7 @@ def test_ode_order(solver_ctr):
 
     order = scipy.stats.linregress(exponents, errors).slope
     # We accept quite a wide range. Improving this test would be nice.
-    assert -0.9 < order - solver_ctr.order < 0.9
+    assert -0.9 < order - solver_ctr.order(term) < 0.9
 
 
 def _squareplus(x):

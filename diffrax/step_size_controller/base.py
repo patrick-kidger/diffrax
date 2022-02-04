@@ -60,7 +60,7 @@ class AbstractStepSizeController(eqx.Module):
         dt0: Optional[Scalar],
         args: PyTree,
         func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
-        local_order: Optional[Scalar],
+        error_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
@@ -68,9 +68,9 @@ class AbstractStepSizeController(eqx.Module):
         **Arguments:** As `diffeqsolve`.
 
         - `func_for_init`: The value of `solver.func_for_init`.
-        - `local_order`: The local order of convergence. If solving an ODE this will
-            typically be `solver.order + 1`. If solving an SDE this will typically be
-            `solver.strong_order + 0.5`.
+        - `error_order`: The order of the error estimate. If solving an ODE this will
+            typically be `solver.order()`. If solving an SDE this will typically be
+            `solver.strong_order() + 0.5`.
 
         **Returns:**
 
@@ -93,7 +93,7 @@ class AbstractStepSizeController(eqx.Module):
         y1_candidate: PyTree,
         args: PyTree,
         y_error: Optional[PyTree],
-        local_order: Scalar,
+        error_order: Scalar,
         controller_state: _ControllerState,
     ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
         """Determines whether to accept or reject the current step, and determines the
@@ -111,8 +111,9 @@ class AbstractStepSizeController(eqx.Module):
             [`diffrax.diffeqsolve`][].
         - `y_error`: An estimate of the local truncation error, as calculated by the
             main solver.
-        - `local_order`: The order of `y_error`. For an ODE this is typically equal to
-            `solver.order + 1`.
+        - `error_order`: The order of `y_error`. For an ODE this is typically equal to
+            `solver.order()`; for an SDE this is typically equal to
+            `solver.strong_order() + 0.5`.
         - `controller_state`: Any evolving state for the step size controller itself,
             at `t0`.
 

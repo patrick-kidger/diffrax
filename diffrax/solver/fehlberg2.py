@@ -21,4 +21,6 @@ class Fehlberg2(AbstractERK):
 
     tableau = _fehlberg2_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
-    order = 2
+
+    def order(self, terms):
+        return 2

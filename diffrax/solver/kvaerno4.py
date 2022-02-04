@@ -101,4 +101,6 @@ class Kvaerno4(AbstractESDIRK):
     """
     tableau = _kvaerno4_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
-    order = 4
+
+    def order(self, terms):
+        return 4

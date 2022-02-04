@@ -60,4 +60,6 @@ class Kvaerno3(AbstractESDIRK):
     """
     tableau = _kvaerno3_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
-    order = 3
+
+    def order(self, terms):
+        return 3

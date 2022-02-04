@@ -40,7 +40,9 @@ class LeapfrogMidpoint(AbstractSolver):
 
     term_structure = jax.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
-    order = 2
+
+    def order(self, terms):
+        return 2
 
     def init(
         self, terms: AbstractTerm, t0: Scalar, t1: Scalar, y0: PyTree, args: PyTree

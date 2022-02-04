@@ -22,8 +22,12 @@ class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
-    order = 1
-    strong_order = 0.5
+
+    def order(self, terms):
+        return 1
+
+    def strong_order(self, terms):
+        return 0.5
 
     def step(
         self,

@@ -328,4 +328,6 @@ class Dopri8(AbstractERK):
 
     tableau = _dopri8_tableau
     interpolation_cls = _Dopri8Interpolation
-    order = 8
+
+    def order(self, terms):
+        return 8

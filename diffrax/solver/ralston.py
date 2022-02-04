@@ -30,4 +30,6 @@ class Ralston(AbstractERK):
 
     tableau = _ralston_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
-    order = 2
+
+    def order(self, terms):
+        return 2

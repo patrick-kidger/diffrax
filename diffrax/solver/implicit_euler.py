@@ -32,7 +32,9 @@ class ImplicitEuler(AbstractImplicitSolver):
 
     term_structure = jax.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
-    order = 1
+
+    def order(self, terms):
+        return 1
 
     def step(
         self,
