@@ -175,14 +175,16 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     ref_terms = diffrax.MultiTerm(
         diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
     )
-    true_sol = diffrax.diffeqsolve(ref_terms, ref_solver, t0, t1, dt0=2**-14, y0=y0)
+    true_sol = diffrax.diffeqsolve(
+        ref_terms, ref_solver, t0, t1, dt0=2**-14, y0=y0, max_steps=None
+    )
     true_yT = true_sol.ys[-1]
 
     exponents = []
     errors = []
     for exponent in [-3, -4, -5, -6, -7, -8, -9, -10]:
         dt0 = 2**exponent
-        sol = diffrax.diffeqsolve(terms, solver_ctr(), t0, t1, dt0, y0)
+        sol = diffrax.diffeqsolve(terms, solver_ctr(), t0, t1, dt0, y0, max_steps=None)
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2**-28:

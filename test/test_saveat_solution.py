@@ -113,11 +113,12 @@ def test_saveat_solution():
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
-    assert sol.ts.shape == (65536,)
-    assert sol.ys.shape == (65536, 1)
-    assert shaped_allclose(
-        sol.ys, _y0 * jnp.exp(-0.5 * (sol.ts - _t0))[:, None], equal_nan=True
-    )
+    assert sol.ts.shape == (4096,)
+    assert sol.ys.shape == (4096, 1)
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
+    _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
+    assert shaped_allclose(sol.ys, _ys)
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
