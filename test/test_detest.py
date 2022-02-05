@@ -391,7 +391,8 @@ def _test(solver_ctr, problems, higher):
     for problem in problems:
         vector_field, init = problem()
         term = diffrax.ODETerm(vector_field)
-        if higher and solver_ctr.order(term) < 4:
+        solver = solver_ctr()
+        if higher and solver.order(term) < 4:
             # Too difficult to get accurate solutions with a low-order solver
             return
         max_steps = 16**4
@@ -419,7 +420,7 @@ def _test(solver_ctr, problems, higher):
             stepsize_controller = diffrax.ConstantStepSize()
         else:
             dt0 = None
-            if solver_ctr.order(term) < 4:
+            if solver.order(term) < 4:
                 rtol = 1e-6
                 atol = 1e-6
             else:
@@ -428,7 +429,7 @@ def _test(solver_ctr, problems, higher):
             stepsize_controller = diffrax.PIDController(rtol=rtol, atol=atol)
         sol = diffrax.diffeqsolve(
             term,
-            solver=solver_ctr(),
+            solver=solver,
             t0=0.0,
             t1=20.0,
             dt0=dt0,
@@ -458,7 +459,7 @@ def _test(solver_ctr, problems, higher):
         )
         scipy_y1 = unravel(scipy_sol.y[:, 0])
 
-        if solver_ctr.order(term) < 4:
+        if solver.order(term) < 4:
             rtol = 1e-3
             atol = 1e-3
         else:
