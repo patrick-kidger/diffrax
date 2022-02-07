@@ -6,7 +6,7 @@ The full list of solvers is available on the [Solvers](../api/solver.md) page.
 
 !!! info
 
-    ODE problems are informally divided into "stiff" and "non-stiff" problems. Non-stiff problems are quite common, and generally solved using straightforawrd techniques like explicit Runge--Kutta methods. "Stiff" problems are simply (and informally) defined as those problems for which explicit Runge--Kutta methods don't work.
+    ODE problems are informally divided into "stiff" and "non-stiff" problems. "Stiffness" generally refers to how difficult an equation is to solve numerically. Non-stiff problems are quite common, and usually solved using straightforawrd techniques like explicit Runge--Kutta methods. Stiff problems usually require more computationally expensive techniques, like implicit Runge--Kutta methods.
 
 ### Non-stiff problems
 
@@ -33,6 +33,8 @@ See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
     - `NaN` gradients;
     - Taking many more solver steps than necessary (e.g. 8 steps -> 800 steps);
     - Wrapping with `jax.value_and_grad` or `jax.grad` actually changing the result of the primal (forward) computation.
+
+---
 
 ## Stochastic differential equations
 
@@ -85,6 +87,8 @@ In this case then the Itô solution and the Stratonovich solution coincide, and 
 
 - The cheapest (but least accurate) solver is [`diffrax.Euler`][].
 - Otherwise [`diffrax.Heun`][] is a good choice. It gets first-order strong convergence and second-order weak convergence.
+
+---
 
 ## Controlled differential equations
 

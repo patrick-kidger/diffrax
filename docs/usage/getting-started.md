@@ -70,17 +70,18 @@ over the interval $[0, 3]$.
 
 ```python
 import jax.random as jrandom
-from diffrax import diffeqsolve, ControlTerm, Euler, MultiTerm, ODETerm, SaveAt, UnsafeBrownianPath
+from diffrax import diffeqsolve, ControlTerm, Euler, MultiTerm, ODETerm, SaveAt, VirtualBrownianTree
 
+t0, t1 = 1, 3
 drift = lambda t, y, args: -y
 diffusion = lambda t, y, args: 0.1 * t
-brownian_motion = UnsafeBrownianPath(shape=(), key=jrandom.PRNGKey(0))
+brownian_motion = VirtualBrownianTree(t0, t1, tol=1e-3, shape=(), key=jrandom.PRNGKey(0))
 terms = MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))
 solver = Euler()
 saveat = SaveAt(dense=True)
 
-sol = diffeqsolve(terms, solver, t0=0, t1=3, dt0=0.05, y0=1, saveat=saveat)
-print(sol.evaluate(0.1))  # DeviceArray(0.9026031)
+sol = diffeqsolve(terms, solver, t0, t1, dt0=0.05, y0=1.0, saveat=saveat)
+print(sol.evaluate(1.1))  # DeviceArray(0.89436394)
 ```
 
 - On terms:
@@ -158,7 +159,7 @@ vector_field = lambda t, y, args: -y
 control = QuadraticPath()
 term = ControlTerm(vector_field, control).to_ode()
 solver = Dopri5()
-sol = diffeqsolve(term, solver, t0=0, t1=3, dt0=0.05, y0=1, dt0=0.05)
+sol = diffeqsolve(term, solver, t0=0, t1=3, dt0=0.05, y0=1)
 
 print(sol.ts)  # DeviceArray([3.])
 print(sol.ys)  # DeviceArray([0.00012341])
