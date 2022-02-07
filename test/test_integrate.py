@@ -12,11 +12,21 @@ import scipy.stats
 from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
 
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
+@pytest.mark.parametrize(
+    "solver_ctr",
+    (
+        diffrax.Euler,
+        diffrax.LeapfrogMidpoint,
+        diffrax.ReversibleHeun,
+        diffrax.Tsit5,
+        diffrax.ImplicitEuler,
+        diffrax.Kvaerno3,
+    ),
+)
 @pytest.mark.parametrize("t_dtype", (int, float, jnp.int32, jnp.float32))
 @pytest.mark.parametrize("treedef", treedefs)
 @pytest.mark.parametrize(
-    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.PIDController())
+    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.PIDController(atol=1e2))
 )
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver) and isinstance(
