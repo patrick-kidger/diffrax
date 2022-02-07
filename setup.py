@@ -48,6 +48,7 @@ python_requires = "~=3.8"
 
 install_requires = [
     "jax>=0.2.27",
+    "jaxlib>=0.1.76",
     "equinox>=0.1.5",
 ]
 
