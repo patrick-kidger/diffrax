@@ -92,7 +92,6 @@ def _set_binary(base, name: str, op: callable) -> callable:
                 is_leaf=self.is_leaf,
             )
         else:
-            breakpoint()
             raise RuntimeError("Type of `other` not understood.")
 
     fn.__name__ = name
