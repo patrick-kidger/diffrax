@@ -27,7 +27,7 @@ class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
         ```bibtex
         @article{kidger2021efficient,
             author={Kidger, Patrick and Foster, James and Li, Xuechen and Lyons, Terry},
-            title={Efficient and Accurate Gradients for Neural {SDE}s},
+            title={{E}fficient and {A}ccurate {G}radients for {N}eural {SDE}s},
             year={2021},
             journal={Advances in Neural Information Processing Systems}
         }
