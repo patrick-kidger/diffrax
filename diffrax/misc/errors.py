@@ -3,6 +3,7 @@ from typing import Callable, Sequence, Type, Union
 import jax
 import jax.experimental.host_callback as hcb
 import jax.numpy as jnp
+import numpy as np
 
 from ..custom_types import Array, Int
 from .unvmap import unvmap_any
@@ -48,11 +49,11 @@ def branched_error_if(
 
     if isinstance(pred, jax.core.Tracer):
         hcb.call(raises, (pred, index))
-    elif isinstance(pred, (bool, jnp.ndarray)):
+    elif isinstance(pred, (bool, np.ndarray, jnp.ndarray)):
         raises((pred, index))
     else:
         msg = (
-            "`pred` must either be a `bool`, a JAX array, or a zero-argument callable "
-            "that returns a `bool` or JAX array."
+            "`pred` must either be a `bool`, a NumPy array, a JAX array, or a "
+            "zero-argument callable that returns a `bool` or JAX array."
         )
         assert False, msg
