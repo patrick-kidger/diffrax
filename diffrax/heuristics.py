@@ -12,7 +12,7 @@ from .term import AbstractTerm
 # Fortunately, at time of writing this is used for two things:
 # - solver.error_order
 # - error checking
-# The former can be overriden by `PIDController(error_order=...)` and the latter is
+# The former can be overridden by `PIDController(error_order=...)` and the latter is
 # really just to catch common errors.
 # That is, for the power user who implements enough to bypass this check -- probably
 # they know what they're doing and can handle both of these cases appropriately.
