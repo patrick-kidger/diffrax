@@ -46,7 +46,7 @@ Here, `Dopri5` refers to the Dormand--Prince 5(4) numerical differential equatio
 
 ## Citation
 
-If you found this library useful in academic research, please cite:
+If you found this library useful in academic research, please cite: [(arXiv link)](https://arxiv.org/abs/2202.02435)
 
 ```bibtex
 @phdthesis{kidger2021on,
