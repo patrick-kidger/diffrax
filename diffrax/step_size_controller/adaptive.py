@@ -238,6 +238,13 @@ class PIDController(AbstractAdaptiveStepSizeController):
     safety: Scalar = 0.9
     error_order: Optional[Scalar] = None
 
+    def __post_init__(self):
+        with jax.ensure_compile_time_eval():
+            step_ts = None if self.step_ts is None else jnp.asarray(self.step_ts)
+            jump_ts = None if self.jump_ts is None else jnp.asarray(self.jump_ts)
+        object.__setattr__(self, "step_ts", step_ts)
+        object.__setattr__(self, "jump_ts", jump_ts)
+
     def wrap(self, direction: Scalar):
         step_ts = None if self.step_ts is None else self.step_ts * direction
         jump_ts = None if self.jump_ts is None else self.jump_ts * direction
