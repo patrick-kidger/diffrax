@@ -56,7 +56,7 @@ def time_run(rtol, atol):
     error = jnp.sqrt(jnp.sum((ys - ref_sol.ys) ** 2)).item()
     num_steps = num_steps.item()
     time = min(timeit.repeat(lambda: run(rtol, atol), repeat=100, number=1))
-    print(f"{error=} {time=} {num_steps=}")
+    print(f"error={error} time={time} num_steps={num_steps}")
 
 
 rtols = (1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10)

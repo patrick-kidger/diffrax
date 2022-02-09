@@ -9,8 +9,8 @@ jobs:
   run-tests:
     strategy:
       matrix:
-        python-version: [ 3.8, 3.9 ]
-        os: [ ubuntu-latest, macOS-latest ]
+        python-version: [ 3.7, 3.8, 3.9 ]
+        os: [ macOS-latest ]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -33,4 +33,4 @@ jobs:
       - name: Test with pytest
         run: |
           python -m pip install .
-          python -m pytest
+          python -m pytest --durations=0

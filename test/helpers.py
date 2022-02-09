@@ -45,9 +45,6 @@ treedefs = [
     for x in (
         None,
         0,
-        [0],
-        {"a": 0},
-        {"a": 0, "b": 0},
         {"a": [0, 0], "b": 0},
     )
 ]
@@ -71,7 +68,8 @@ def shaped_allclose(x, y, **kwargs):
 
 def time_fn(fn, repeat=1):
     fn()  # Compile
-    if gc_enabled := gc.isenabled():
+    gc_enabled = gc.isenabled()
+    if gc_enabled:
         gc.collect()
     gc.disable()
     try:

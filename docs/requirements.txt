@@ -6,8 +6,3 @@ mkdocstrings==0.17.0     # Autogenerate documentation from docstrings.
 mknotebooks==0.7.1       # Turn Jupyter Lab notebooks into webpages.
 pytkdocs_tweaks==0.0.4   # Tweaks mkdocstrings to improve various aspects
 mkdocs_include_exclude_files==0.0.1  # Allow for customising which files get included
-
-# Dependencies of Diffrax itself.
-# Always use most up-to-date versions.
-jax[cpu]
-equinox
