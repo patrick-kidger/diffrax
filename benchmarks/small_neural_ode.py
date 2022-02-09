@@ -192,9 +192,9 @@ def main(batch_size=64, t1=100, multiple=False, grad=False):
 
     print(
         f"""
-           {torch_time=}
-         {diffrax_time=}
-    {experimental_time=}
+           torch_time={torch_time}
+         diffrax_time={diffrax_time}
+    experimetnal_time={experimental_time}
     """
     )
 
