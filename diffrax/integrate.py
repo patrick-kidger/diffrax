@@ -599,7 +599,8 @@ def diffeqsolve(
 
     # Error checking
     if dt0 is not None:
-        error_if(lambda: (t1 - t0) * dt0 <= 0, "Must have (t1 - t0) * dt0 > 0")
+        msg = f"Must have (t1 ({t1, type(t1)}) - t0  ({t0, type(t0)})) * dt0  ({dt0, type(dt0)})> 0"
+        error_if(lambda: (t1 - t0) * dt0 <= 0, msg)
 
     # Error checking
     term_leaves, term_structure = jax.tree_flatten(
