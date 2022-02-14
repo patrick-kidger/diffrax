@@ -1,7 +1,7 @@
 import numpy as np
 
 from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
-from .base import AbstractStratonovichSolver
+from .base import AbstractAdaptiveSDESolver, AbstractStratonovichSolver
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -13,7 +13,7 @@ _heun_tableau = ButcherTableau(
 )
 
 
-class Heun(AbstractERK, AbstractStratonovichSolver):
+class Heun(AbstractERK, AbstractStratonovichSolver, AbstractAdaptiveSDESolver):
     """Heun's method.
 
     2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive

@@ -1,6 +1,7 @@
 import numpy as np
 
 from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
+from .base import AbstractAdaptiveSDESolver, AbstractStratonovichSolver
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -21,7 +22,7 @@ _ralston_tableau = ButcherTableau(
 )
 
 
-class Ralston(AbstractERK):
+class Ralston(AbstractERK, AbstractStratonovichSolver, AbstractAdaptiveSDESolver):
     """Ralston's method.
 
     2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
@@ -33,3 +34,6 @@ class Ralston(AbstractERK):
 
     def order(self, terms):
         return 2
+
+    def strong_order(self, terms):
+        return 0.5
