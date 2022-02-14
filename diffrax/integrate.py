@@ -622,8 +622,8 @@ def diffeqsolve(
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
             warnings.warn(
-                f"`{solver.__name__}` is not marked as converging to either the Itô "
-                "or the Stratonovich solution."
+                f"`{type(solver).__name__}` is not marked as converging to either the "
+                "Itô or the Stratonovich solution."
             )
         if isinstance(adjoint, BacksolveAdjoint):
             if isinstance(solver, AbstractItoSolver):
