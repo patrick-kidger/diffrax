@@ -21,6 +21,7 @@ def error_if(
     Works even under JIT.
 
     Example:
+        @jax.jit
         def f(x):
             error_if(x < 0, "x must be >= 0")
             
