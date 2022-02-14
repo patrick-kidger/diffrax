@@ -11,12 +11,16 @@ from ..custom_types import PyTree
 
 
 def is_perturbed(x: Any) -> bool:
-    if isinstance(x, jax.ad.JVPTracer):
-        return True
-    elif isinstance(x, jax.core.Tracer):
-        return any(is_perturbed(attr) for name, attr in x._contents())
-    else:
-        return False
+    return eqx.is_inexact_array(x)
+    # TODO:
+    # Use some more fine criterion, once JAX issue #9567 is fixed.
+    #
+    # if isinstance(x, jax.ad.JVPTracer):
+    #     return True
+    # elif isinstance(x, jax.core.Tracer):
+    #     return any(is_perturbed(attr) for name, attr in x._contents())
+    # else:
+    #     return False
 
 
 def nondifferentiable_input(x: PyTree, name: str) -> None:
