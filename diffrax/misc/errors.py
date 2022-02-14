@@ -18,10 +18,13 @@ def error_if(
     error_cls: Type[Exception] = ValueError,
 ) -> bool:
     """For use as part of validating inputs.
+    Works even under JIT.
 
     Example:
         def f(x):
             error_if(x < 0, "x must be >= 0")
+            
+        f(jax.numpy.array(-1))
     """
     branched_error_if(pred, 0, [msg], error_cls)
 
