@@ -24,7 +24,7 @@ def error_if(
         @jax.jit
         def f(x):
             error_if(x < 0, "x must be >= 0")
-            
+
         f(jax.numpy.array(-1))
     """
     branched_error_if(pred, 0, [msg], error_cls)
