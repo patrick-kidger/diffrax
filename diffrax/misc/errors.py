@@ -57,7 +57,7 @@ def branched_error_if(
         raises((pred, index))
     else:
         msg = (
-            f"`pred` {pred} must either be a `bool`, a JAX array, or a zero-argument callable "
-            f"that returns a `bool` or JAX array, instead of {type(pred)}."
+            "`pred` must either be a `bool`, a JAX array, or a zero-argument callable "
+            f"that returns a `bool` or JAX array, instead we got value: {pred} of type: {type(pred)}."
         )
         assert False, msg
