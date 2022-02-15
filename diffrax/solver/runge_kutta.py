@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 import jax
-import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import numpy as np
@@ -96,13 +95,10 @@ def _implicit_relation(ki, nonlinear_solve_args):
     # https://github.com/SciML/DiffEqDevMaterials/blob/master/newton/output/main.pdf
     # (Bearing in mind that our ki is dt times smaller than theirs.)
     diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
-    _, unravel = fu.ravel_pytree(yi_partial)
-    ki = unravel(ki)
     diff = (
         vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
         - ki**ω
     ).ω
-    diff, _ = fu.ravel_pytree(diff)
     return diff
 
 
@@ -239,7 +235,6 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 ki_pred = terms.vf_prod(ti, yi_partial, args, control)
             else:
                 ki_pred = vector_tree_dot(self.tableau.a_predictor[i - 1], ω(k)[:i].ω)
-            ki_pred, unravel = fu.ravel_pytree(ki_pred)
             if self._recompute_jac(i):
                 jac = self.nonlinear_solver.jac(
                     _implicit_relation,
@@ -253,7 +248,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 (diagonal, terms.vf_prod, ti, yi_partial, args, control),
                 jac,
             )
-            ki = unravel(nonlinear_sol.root)
+            ki = nonlinear_sol.root
             return ki, jac, nonlinear_sol.result
 
 

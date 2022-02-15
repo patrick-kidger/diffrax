@@ -10,6 +10,10 @@ import jax.lax as lax
 from ..custom_types import PyTree
 
 
+# TODO: this will sometimes return False on a perturbed array, see JAX issue #9567.
+# Correspondingly it should *not be used* until that is fixed.
+# (The only use is in nondifferentiable_input, below, which will simply not raise
+# errors quite as frequently as it should do -- not too bad.)
 def is_perturbed(x: Any) -> bool:
     if isinstance(x, jax.ad.JVPTracer):
         return True

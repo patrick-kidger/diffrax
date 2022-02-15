@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import pytest
 import scipy.stats
+from diffrax.misc import ω
 
 from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
@@ -507,16 +508,26 @@ def test_compile_time_steps():
     assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
 
 
-def test_grad_implicit_solve():
+@pytest.mark.parametrize("solver", [diffrax.ImplicitEuler(), diffrax.Kvaerno5()])
+def test_grad_implicit_solve(solver):
     # Check that we work around JAX issue #9374
+    # Whilst we're at -- for efficiency -- check the use of PyTree-valued state with
+    # implicit solves.
 
-    term = diffrax.ODETerm(lambda t, y, args: args * y)
-    solve = diffrax.Kvaerno5()
+    term = diffrax.ODETerm(lambda t, y, args: (-args * y**ω).ω)
 
+    @jax.jit
     def f(args):
-        return jnp.sum(
-            diffrax.diffeqsolve(term, solve, t0=0, t1=1, dt0=0.1, y0=1.0, args=args).ys
-        )
+        y0 = (1.0, {"a": 2.0})
+        ys = diffrax.diffeqsolve(term, solver, t0=0, t1=1, dt0=0.1, y0=y0, args=args).ys
+        return jnp.sum(ys[0] + ys[1]["a"])
 
-    grads = jax.grad(f)(1.0)
+    grads = jax.jit(jax.grad(f))(1.0)
     assert jnp.isfinite(grads)
+
+    # Test numerical gradients: Diffrax issue #64
+    eps = 1e-6
+    val = f(1.0)
+    val_eps = f(1.0 + eps)
+    numerical_grads = (val_eps - val) / eps
+    assert shaped_allclose(grads, numerical_grads)

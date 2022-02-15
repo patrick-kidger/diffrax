@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import Int, PyTree, Scalar
-from ..misc import fixed_custom_jvp, is_perturbed
+from ..misc import fixed_custom_jvp
 from ..solution import RESULTS
 
 
@@ -80,7 +80,9 @@ class AbstractNonlinearSolver(eqx.Module):
         whether the solver managed to converge or not.
         """
 
-        diff_args, nondiff_args = eqx.partition(args, is_perturbed)
+        # TODO: switch from is_inexact_array to is_perturbed once JAX issue #9567 is
+        # fixed.
+        diff_args, nondiff_args = eqx.partition(args, eqx.is_inexact_array)
         return self._solve(self, fn, x, jac, nondiff_args, diff_args)
 
     @staticmethod

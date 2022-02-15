@@ -1,9 +1,4 @@
-from .ad import (
-    fixed_custom_jvp,
-    is_perturbed,
-    nondifferentiable_input,
-    nondifferentiable_output,
-)
+from .ad import fixed_custom_jvp, nondifferentiable_input, nondifferentiable_output
 from .bounded_while_loop import bounded_while_loop, HadInplaceUpdate
 from .errors import branched_error_if, error_if
 from .misc import (
