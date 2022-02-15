@@ -10,17 +10,17 @@ import jax.lax as lax
 from ..custom_types import PyTree
 
 
+# TODO: this will sometimes return False on a perturbed array, see JAX issue #9567.
+# Correspondingly it should *not be used* until that is fixed.
+# (The only use is in nondifferentiable_input, below, which will simply not raise
+# errors quite as frequently as it should do -- not too bad.)
 def is_perturbed(x: Any) -> bool:
-    return eqx.is_inexact_array(x)
-    # TODO:
-    # Use some more fine criterion, once JAX issue #9567 is fixed.
-    #
-    # if isinstance(x, jax.ad.JVPTracer):
-    #     return True
-    # elif isinstance(x, jax.core.Tracer):
-    #     return any(is_perturbed(attr) for name, attr in x._contents())
-    # else:
-    #     return False
+    if isinstance(x, jax.ad.JVPTracer):
+        return True
+    elif isinstance(x, jax.core.Tracer):
+        return any(is_perturbed(attr) for name, attr in x._contents())
+    else:
+        return False
 
 
 def nondifferentiable_input(x: PyTree, name: str) -> None:
