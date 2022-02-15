@@ -24,7 +24,7 @@ def error_if(
         @jax.jit
         def f(x):
             error_if(x < 0, "x must be >= 0")
-            
+
         f(jax.numpy.array(-1))
     """
     branched_error_if(pred, 0, [msg], error_cls)
@@ -58,6 +58,7 @@ def branched_error_if(
     else:
         msg = (
             "`pred` must either be a `bool`, a JAX array, or a zero-argument callable "
-            f"that returns a `bool` or JAX array, instead we got value: {pred} of type: {type(pred)}."
+            "that returns a `bool` or JAX array, instead we got "
+            f"value: {pred} of type: {type(pred)}."
         )
         assert False, msg

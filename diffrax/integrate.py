@@ -599,10 +599,12 @@ def diffeqsolve(
 
     # Error checking
     if dt0 is not None:
-        msg = ("Must have (t1 - t0) * dt0 > 0, we instead got: "
-        f"t1, with value: {t1} and type {type(t1)}, "
-        f"t0, with value: {t0} and type {type(t0)} and, "
-        f"dt0, with value: {dt0} and type {type(dt0)}")
+        msg = (
+            "Must have (t1 - t0) * dt0 > 0, we instead got: "
+            f"t1, with value: {t1} and type {type(t1)}, "
+            f"t0, with value: {t0} and type {type(t0)} and, "
+            f"dt0, with value: {dt0} and type {type(dt0)}"
+        )
         error_if(lambda: (t1 - t0) * dt0 <= 0, msg)
 
     # Error checking
