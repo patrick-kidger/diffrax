@@ -467,7 +467,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # Clip next step size based on dtmin/dtmax
         #
 
-        result = jnp.full_like(t0, RESULTS.successful, dtype=int)
+        result = RESULTS.successful
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
         if self.dtmin is None:
