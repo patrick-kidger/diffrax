@@ -189,24 +189,20 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 args,
                 control,
                 jac=None,
-                k=None,
                 fs=None,
+                ks=None,
                 return_fi=False,
             )
 
-        # Note that our `k` is (for an ODE) `dt` times smaller than the usual
-        # implementation (e.g. what you see in torchdiffeq or in the reference texts).
-        # This is because of our vector-field-control approach.
-        # Instead, this (if necessary) stored in `fs`.
         lentime = (len(self.tableau.c) + 1,)
-        k = jax.tree_map(lambda y: jnp.empty(lentime + jnp.shape(y)), y0)
-        k = (k**ω).at[0].set(k0**ω).ω
-
         if fsal and implicit:
             fs = jax.tree_map(lambda f: jnp.empty(lentime + jnp.shape(f)), f0)
             fs = (fs**ω).at[0].set(f0**ω).ω
+            ks = None
         else:
             fs = None
+            ks = jax.tree_map(lambda y: jnp.empty(lentime + jnp.shape(y)), y0)
+            ks = (ks**ω).at[0].set(k0**ω).ω
 
         for i, (a_i, c_i) in enumerate(zip(self.tableau.a_lower, self.tableau.c)):
             if c_i == 1:
@@ -214,30 +210,46 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 ti = t1
             else:
                 ti = t0 + c_i * dt
-            yi_partial = (y0**ω + vector_tree_dot(a_i, ω(k)[: i + 1].ω) ** ω).ω
+            if fsal and implicit:
+                increment = vector_tree_dot(a_i, ω(fs)[: i + 1].ω)
+                increment = terms.prod(increment, control)
+            else:
+                increment = vector_tree_dot(a_i, ω(ks)[: i + 1].ω)
+            yi_partial = (y0**ω + increment**ω).ω
             if implicit:
                 return_fi = fsal
             else:
                 return_fi = fsal and (i + 1 == len(self.tableau.a_lower))
             fi, ki, jac, new_result = self._eval_stage(
-                terms, i + 1, ti, yi_partial, args, control, jac, k, fs, return_fi
+                terms, i + 1, ti, yi_partial, args, control, jac, fs, ks, return_fi
             )
             result = jnp.where(result == RESULTS.successful, new_result, result)
-            k = ω(k).at[i + 1].set(ω(ki)).ω
             if fsal and implicit:
-                # TODO: stop using k if we're using fs
                 fs = ω(fs).at[i + 1].set(ω(fi)).ω
+            else:
+                ks = ω(ks).at[i + 1].set(ω(ki)).ω
 
         if self.tableau.ssal:
             y1 = yi_partial
         else:
-            y1 = (y0**ω + vector_tree_dot(self.tableau.b_sol, k) ** ω).ω
-        y_error = vector_tree_dot(self.tableau.b_error, k)
+            if fsal and implicit:
+                increment = vector_tree_dot(self.tableau.b_sol, fs)
+                increment = terms.prod(increment, control)
+            else:
+                increment = vector_tree_dot(self.tableau.b_sol, ks)
+            y1 = (y0**ω + increment**ω).ω
+        if fsal and implicit:
+            y_error = vector_tree_dot(self.tableau.b_error, fs)
+            y_error = terms.prod(y_error, control)
+        else:
+            y_error = vector_tree_dot(self.tableau.b_error, ks)
         y_error = jax.tree_map(
             lambda _y_error: jnp.where(result == RESULTS.successful, _y_error, jnp.inf),
             y_error,
         )
-        dense_info = dict(y0=y0, y1=y1, k=k)
+        if fsal and implicit:
+            ks = jax.vmap(lambda f: terms.prod(f, control))(fs)
+        dense_info = dict(y0=y0, y1=y1, k=ks)
         if fsal:
             solver_state = fi
         else:
@@ -254,7 +266,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         return terms.func_for_init(t0, y0, args)
 
     def _eval_stage(
-        self, terms, i, ti, yi_partial, args, control, jac, k, fs, return_fi
+        self, terms, i, ti, yi_partial, args, control, jac, fs, ks, return_fi
     ):
         if self.tableau.a_diagonal is None:
             diagonal = 0
@@ -303,7 +315,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     ki_pred = terms.vf_prod(ti, yi_partial, args, control)
                 else:
                     ki_pred = vector_tree_dot(
-                        self.tableau.a_predictor[i - 1], ω(k)[:i].ω
+                        self.tableau.a_predictor[i - 1], ω(ks)[:i].ω
                     )
                 if self._recompute_jac(i):
                     jac = self.nonlinear_solver.jac(
