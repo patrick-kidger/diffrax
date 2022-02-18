@@ -10,7 +10,7 @@ import numpy as np
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..misc import ω
 from ..solution import RESULTS
-from ..term import AbstractTerm
+from ..term import AbstractExpensiveVFTerm, AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
 
 
@@ -81,16 +81,25 @@ class ButcherTableau:
         )
 
 
-_SolverState = Optional[Tuple[PyTree, Scalar]]
+_SolverState = Optional[PyTree]
 
 
 # TODO: examine termination criterion for Newton iteration
-# TODO: consider dividing by diagonal and control
-# TODO: replace ki with ki=(zi + predictor), where this relation defines some zi, and
+# TODO: replace fi with fi=(zi + predictor), where this relation defines some zi, and
 #       iterate to find zi, using zi=0 as the predictor. This should give better
 #       numerical behaviour since the iteration is close to 0. (Although we have
 #       multiplied by the increment of the control, i.e. dt, which is small...)
-def _implicit_relation(ki, nonlinear_solve_args):
+def _implicit_relation_f(fi, nonlinear_solve_args):
+    diagonal, vf, prod, ti, yi_partial, args, control = nonlinear_solve_args
+    diff = (
+        vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
+        - fi**ω
+    ).ω
+    return diff
+
+
+# TODO: consider dividing by diagonal and control
+def _implicit_relation_k(ki, nonlinear_solve_args):
     # c.f:
     # https://github.com/SciML/DiffEqDevMaterials/blob/master/newton/output/main.pdf
     # (Bearing in mind that our ki is dt times smaller than theirs.)
@@ -115,6 +124,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     def _recompute_jac(self, i: int) -> bool:
         pass
 
+    def _is_fsal(self, terms):
+        is_expensive = lambda x: isinstance(x, AbstractExpensiveVFTerm)
+        leaves = jax.tree_flatten(terms, is_leaf=is_expensive)[0]
+        return self.tableau.fsal and not any(map(is_expensive, leaves))
+
     def init(
         self,
         terms: AbstractTerm,
@@ -123,11 +137,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
-        if self.tableau.fsal:
-            control = terms.contr(t0, t1)
-            k0 = terms.vf_prod(t0, y0, args, control)
-            dt = t1 - t0
-            return k0, dt
+        if self._is_fsal(terms):
+            return terms.vf_prod(t0, y0, args)
         else:
             return None
 
@@ -144,13 +155,17 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         control = terms.contr(t0, t1)
         dt = t1 - t0
+        fsal = self._is_fsal(terms)
+        implicit = self.tableau.a_diagonal is not None and any(
+            self.tableau.a_diagonal != 0
+        )
 
-        if self.tableau.fsal:
-            k0, prev_dt = solver_state
+        if fsal:
+            f0 = solver_state
             k0 = lax.cond(
                 made_jump,
                 lambda _: terms.vf_prod(t0, y0, args, control),
-                lambda _: (k0**ω * (dt / prev_dt)).ω,
+                lambda _: terms.prod(f0, control),
                 None,
             )
             jac = None
@@ -164,16 +179,34 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     t0_ = t1
                 else:
                     t0_ = t0 + self.tableau.diagonal[0] * dt
-            k0, jac, result = self._eval_stage(
-                terms, 0, t0_, y0, args, control, jac=None, k=None
+            # return_fi = fsal and ... (see below). But on this branch fsal is False,
+            # so return_fi is False as well.
+            _, k0, jac, result = self._eval_stage(
+                terms,
+                0,
+                t0_,
+                y0,
+                args,
+                control,
+                jac=None,
+                k=None,
+                fs=None,
+                return_fi=False,
             )
 
         # Note that our `k` is (for an ODE) `dt` times smaller than the usual
         # implementation (e.g. what you see in torchdiffeq or in the reference texts).
         # This is because of our vector-field-control approach.
+        # Instead, this (if necessary) stored in `fs`.
         lentime = (len(self.tableau.c) + 1,)
         k = jax.tree_map(lambda y: jnp.empty(lentime + jnp.shape(y)), y0)
         k = (k**ω).at[0].set(k0**ω).ω
+
+        if fsal and implicit:
+            fs = jax.tree_map(lambda f: jnp.empty(lentime + jnp.shape(f)), f0)
+            fs = (fs**ω).at[0].set(f0**ω).ω
+        else:
+            fs = None
 
         for i, (a_i, c_i) in enumerate(zip(self.tableau.a_lower, self.tableau.c)):
             if c_i == 1:
@@ -182,29 +215,31 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             else:
                 ti = t0 + c_i * dt
             yi_partial = (y0**ω + vector_tree_dot(a_i, ω(k)[: i + 1].ω) ** ω).ω
-            ki, jac, new_result = self._eval_stage(
-                terms, i + 1, ti, yi_partial, args, control, jac, k
+            if implicit:
+                return_fi = fsal
+            else:
+                return_fi = fsal and (i + 1 == len(self.tableau.a_lower))
+            fi, ki, jac, new_result = self._eval_stage(
+                terms, i + 1, ti, yi_partial, args, control, jac, k, fs, return_fi
             )
             result = jnp.where(result == RESULTS.successful, new_result, result)
-            # TODO: fast path to skip the rest of the stages if result is not successful
             k = ω(k).at[i + 1].set(ω(ki)).ω
+            if fsal and implicit:
+                # TODO: stop using k if we're using fs
+                fs = ω(fs).at[i + 1].set(ω(fi)).ω
 
         if self.tableau.ssal:
             y1 = yi_partial
         else:
             y1 = (y0**ω + vector_tree_dot(self.tableau.b_sol, k) ** ω).ω
-        if self.tableau.fsal:
-            k1 = (k**ω)[-1].ω
-        else:
-            k1 = None
         y_error = vector_tree_dot(self.tableau.b_error, k)
         y_error = jax.tree_map(
             lambda _y_error: jnp.where(result == RESULTS.successful, _y_error, jnp.inf),
             y_error,
         )
         dense_info = dict(y0=y0, y1=y1, k=k)
-        if self.tableau.fsal:
-            solver_state = (k1, dt)
+        if fsal:
+            solver_state = fi
         else:
             solver_state = None
         return y1, y_error, dense_info, solver_state, result
@@ -218,38 +253,74 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     ) -> PyTree:
         return terms.func_for_init(t0, y0, args)
 
-    def _eval_stage(self, terms, i, ti, yi_partial, args, control, jac, k):
+    def _eval_stage(
+        self, terms, i, ti, yi_partial, args, control, jac, k, fs, return_fi
+    ):
         if self.tableau.a_diagonal is None:
             diagonal = 0
         else:
             diagonal = self.tableau.a_diagonal[i]
         if diagonal == 0:
             # Explicit stage
-            ki = terms.vf_prod(ti, yi_partial, args, control)
-            return ki, jac, RESULTS.successful
+            if return_fi:
+                fi = terms.vf(ti, yi_partial, args)
+                ki = terms.prod(fi, control)
+            else:
+                fi = None
+                ki = terms.vf_prod(ti, yi_partial, args, control)
+            return fi, ki, jac, RESULTS.successful
         else:
             # Implicit stage
-            if i == 0:
-                # Implicit first stage. Make an extra function evaluation to use as a
-                # predictor for the solution to the first stage.
-                ki_pred = terms.vf_prod(ti, yi_partial, args, control)
+            if return_fi:
+                if i == 0:
+                    # Implicit first stage. Make an extra function evaluation to use as
+                    # a predictor for the solution to the first stage.
+                    fi_pred = terms.vf(ti, yi_partial, args)
+                else:
+                    fi_pred = vector_tree_dot(
+                        self.tableau.a_predictor[i - 1], ω(fs)[:i].ω
+                    )
+                if self._recompute_jac(i):
+                    jac = self.nonlinear_solver.jac(
+                        _implicit_relation_f,
+                        fi_pred,
+                        (diagonal, terms.vf, terms.prod, ti, yi_partial, args, control),
+                    )
+                assert jac is not None
+                nonlinear_sol = self.nonlinear_solver(
+                    _implicit_relation_f,
+                    fi_pred,
+                    (diagonal, terms.vf, terms.prod, ti, yi_partial, args, control),
+                    jac,
+                )
+                fi = nonlinear_sol.root
+                ki = terms.prod(fi, control)
+                return fi, ki, jac, nonlinear_sol.result
             else:
-                ki_pred = vector_tree_dot(self.tableau.a_predictor[i - 1], ω(k)[:i].ω)
-            if self._recompute_jac(i):
-                jac = self.nonlinear_solver.jac(
-                    _implicit_relation,
+                if i == 0:
+                    # Implicit first stage. Make an extra function evaluation to use as
+                    # a predictor for the solution to the first stage.
+                    ki_pred = terms.vf_prod(ti, yi_partial, args, control)
+                else:
+                    ki_pred = vector_tree_dot(
+                        self.tableau.a_predictor[i - 1], ω(k)[:i].ω
+                    )
+                if self._recompute_jac(i):
+                    jac = self.nonlinear_solver.jac(
+                        _implicit_relation_k,
+                        ki_pred,
+                        (diagonal, terms.vf_prod, ti, yi_partial, args, control),
+                    )
+                assert jac is not None
+                nonlinear_sol = self.nonlinear_solver(
+                    _implicit_relation_k,
                     ki_pred,
                     (diagonal, terms.vf_prod, ti, yi_partial, args, control),
+                    jac,
                 )
-            assert jac is not None
-            nonlinear_sol = self.nonlinear_solver(
-                _implicit_relation,
-                ki_pred,
-                (diagonal, terms.vf_prod, ti, yi_partial, args, control),
-                jac,
-            )
-            ki = nonlinear_sol.root
-            return ki, jac, nonlinear_sol.result
+                fi = None
+                ki = nonlinear_sol.root
+                return fi, ki, jac, nonlinear_sol.result
 
 
 class AbstractERK(AbstractRungeKutta):

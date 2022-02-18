@@ -390,7 +390,12 @@ class WrapTerm(AbstractTerm):
         return self.term.prod(vf, control)
 
 
-class AdjointTerm(AbstractTerm):
+# Used to mark those terms for which .vf is notably more expensive than .vf_prod.
+class AbstractExpensiveVFTerm(AbstractTerm):
+    pass
+
+
+class AdjointTerm(AbstractExpensiveVFTerm):
     term: AbstractTerm
 
     def vf(
