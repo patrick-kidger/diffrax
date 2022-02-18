@@ -81,7 +81,7 @@ class ButcherTableau:
         )
 
 
-_SolverState = Optional[Tuple[Optional[PyTree], Scalar]]
+_SolverState = Optional[Tuple[PyTree, Scalar]]
 
 
 # TODO: examine termination criterion for Newton iteration

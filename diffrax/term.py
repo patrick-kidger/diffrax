@@ -153,6 +153,7 @@ class AbstractTerm(eqx.Module):
         See [`diffrax.AbstractSolver.func_for_init`][].
         """
 
+        # Heuristic for whether it's safe to select an initial step automatically.
         vf = self.vf(t, y, args)
         flat_vf, tree_vf = jax.tree_flatten(vf)
         flat_y, tree_y = jax.tree_flatten(y)
