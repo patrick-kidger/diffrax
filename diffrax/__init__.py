@@ -73,7 +73,6 @@ from .step_size_controller import (
     StepTo,
 )
 from .term import (
-    AbstractExpensiveVFTerm,
     AbstractTerm,
     ControlTerm,
     MultiTerm,

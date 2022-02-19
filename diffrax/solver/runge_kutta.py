@@ -10,7 +10,7 @@ import numpy as np
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..misc import ω
 from ..solution import RESULTS
-from ..term import AbstractExpensiveVFTerm, AbstractTerm
+from ..term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
 
 
@@ -122,12 +122,19 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     @abc.abstractmethod
     def _recompute_jac(self, i: int) -> bool:
+        """Called on the i'th stage for all i. Used to determine when the Jacobian
+        should be recomputed or not.
+        """
         pass
 
-    def _is_fsal(self, terms):
-        is_expensive = lambda x: isinstance(x, AbstractExpensiveVFTerm)
-        leaves = jax.tree_flatten(terms, is_leaf=is_expensive)[0]
-        return self.tableau.fsal and not any(map(is_expensive, leaves))
+    def func_for_init(
+        self,
+        terms: AbstractTerm,
+        t0: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> PyTree:
+        return terms.func_for_init(t0, y0, args)
 
     def init(
         self,
@@ -137,8 +144,10 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
-        if self._is_fsal(terms):
-            return terms.vf_prod(t0, y0, args)
+        vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
+        fsal = self.tableau.fsal and not vf_expensive
+        if fsal:
+            return terms.vf(t0, y0, args)
         else:
             return None
 
@@ -153,22 +162,75 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         made_jump: Bool,
     ) -> Tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
 
+        #
+        # Some Runge--Kutta methods have special structure that we can use to improve
+        # efficiency.
+        #
+        # The famous one is FSAL; "first same as last". That is, the final evaluation
+        # of the vector field on the previous step is the same as the first evaluation
+        # on the subsequent step. We can reuse it and save an evaluation.
+        # However note that this requires saving a vf evaluation, not a
+        # vf-control-product. (This comes up when we have a different control on the
+        # next step, e.g. as with adaptive step sizes, or with SDEs.)
+        # As such we disable this is a vf is expensive and a vf-control-product is
+        # cheap. (The canonical example is the optimise-then-discretise adjoint SDE.
+        # For this SDE, the vf-control product is a vector-Jacobian product, which is
+        # notably cheaper than evaluating a full Jacobian.)
+        #
+        # Next we have SSAL; "solution same as last". That is, the output of the step
+        # has already been calculated during the internal stage calculations. We can
+        # reuse those and save a dot product.
+        #
+        # Finally we have a choice whether to save and work with vector field
+        # evaluations (fs), or to save and work with (vector field)-control products
+        # (ks).
+        # The former is needed for implicit FSAL solvers: they need to obtain the
+        # final f1 for the FSAL property, which means they need to do the implicit
+        # solve in vf-space rather than (vf-control-product)-space, which means they
+        # need to use `fs` to predict the initial point for the root finding operation.
+        # Meanwhile the latter is needed when solving optimise-then-discretise adjoint
+        # SDEs, for which vector field evaluations are prohibitively expensive, and we
+        # must necessarily work only with the (much cheap) vf-control-products. (In
+        # this case this is the difference between computing a Jacobian and computing a
+        # vector-Jacobian product.)
+        # For other probles, we choose to use `ks`. This doesn't have a strong
+        # rationale although it does have some minor efficiency points in its favour,
+        # e.g. we need `ks` to perform dense interpolation if needed.
+        #
+        _vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
+        _implicit_later_stages = self.tableau.a_diagonal is not None and any(
+            self.tableau.a_diagonal[1:] != 0
+        )
+        fsal = self.tableau.fsal and not _vf_expensive
+        ssal = self.tableau.ssal
+        if _implicit_later_stages and fsal:
+            use_fs = True
+        elif _vf_expensive:
+            use_fs = False
+        else:  # Choice not as important here; we use ks for minor efficiency reasons.
+            use_fs = False
+
+        #
+        # Initialise values. Evaluate the first stage if not FSAL.
+        #
+
         control = terms.contr(t0, t1)
         dt = t1 - t0
-        fsal = self._is_fsal(terms)
-        implicit = self.tableau.a_diagonal is not None and any(
-            self.tableau.a_diagonal != 0
-        )
 
         if fsal:
-            f0 = solver_state
-            k0 = lax.cond(
-                made_jump,
-                lambda _: terms.vf_prod(t0, y0, args, control),
-                lambda _: terms.prod(f0, control),
-                None,
-            )
-            jac = None
+            if use_fs:
+                f0 = solver_state
+            else:
+                f0 = solver_state
+                k0 = lax.cond(
+                    made_jump,
+                    lambda _: terms.vf_prod(t0, y0, args, control),
+                    lambda _: terms.prod(f0, control),
+                    None,
+                )
+                del f0
+            jac_f = None
+            jac_k = None
             result = RESULTS.successful
         else:
             if self.tableau.a_diagonal is None:
@@ -179,30 +241,44 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     t0_ = t1
                 else:
                     t0_ = t0 + self.tableau.diagonal[0] * dt
-            # return_fi = fsal and ... (see below). But on this branch fsal is False,
-            # so return_fi is False as well.
-            _, k0, jac, result = self._eval_stage(
+            f0, k0, jac_f, jac_k, result = self._eval_stage(
                 terms,
                 0,
                 t0_,
                 y0,
                 args,
                 control,
-                jac=None,
+                jac_f=None,
+                jac_k=None,
                 fs=None,
                 ks=None,
-                return_fi=False,
+                return_fi=use_fs,
+                return_ki=not use_fs,
             )
+            if use_fs:
+                assert k0 is None
+                del k0
+            else:
+                assert f0 is None
+                del f0
+
+        #
+        # Initialise `fs` or `ks` as a place to store the stage evaluations.
+        #
 
         lentime = (len(self.tableau.c) + 1,)
-        if fsal and implicit:
+        if use_fs:
             fs = jax.tree_map(lambda f: jnp.empty(lentime + jnp.shape(f)), f0)
             fs = (fs**ω).at[0].set(f0**ω).ω
             ks = None
         else:
             fs = None
-            ks = jax.tree_map(lambda y: jnp.empty(lentime + jnp.shape(y)), y0)
+            ks = jax.tree_map(lambda k: jnp.empty(lentime + jnp.shape(k)), k0)
             ks = (ks**ω).at[0].set(k0**ω).ω
+
+        #
+        # Iterate through the stages
+        #
 
         for i, (a_i, c_i) in enumerate(zip(self.tableau.a_lower, self.tableau.c)):
             if c_i == 1:
@@ -210,35 +286,60 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 ti = t1
             else:
                 ti = t0 + c_i * dt
-            if fsal and implicit:
+            if use_fs:
                 increment = vector_tree_dot(a_i, ω(fs)[: i + 1].ω)
                 increment = terms.prod(increment, control)
             else:
                 increment = vector_tree_dot(a_i, ω(ks)[: i + 1].ω)
             yi_partial = (y0**ω + increment**ω).ω
-            if implicit:
-                return_fi = fsal
-            else:
-                return_fi = fsal and (i + 1 == len(self.tableau.a_lower))
-            fi, ki, jac, new_result = self._eval_stage(
-                terms, i + 1, ti, yi_partial, args, control, jac, fs, ks, return_fi
+            last_iteration = i == len(self.tableau.a_lower) - 1
+            return_fi = use_fs or (fsal and last_iteration)
+            return_ki = not use_fs
+            fi, ki, jac_f, jac_k, new_result = self._eval_stage(
+                terms,
+                i + 1,
+                ti,
+                yi_partial,
+                args,
+                control,
+                jac_f,
+                jac_k,
+                fs,
+                ks,
+                return_fi,
+                return_ki,
             )
+            if not return_fi:
+                assert fi is None
+                del fi
+            if use_fs:
+                assert ki is None
+                del ki
             result = jnp.where(result == RESULTS.successful, new_result, result)
-            if fsal and implicit:
+            if use_fs:
                 fs = ω(fs).at[i + 1].set(ω(fi)).ω
             else:
                 ks = ω(ks).at[i + 1].set(ω(ki)).ω
 
-        if self.tableau.ssal:
+        #
+        # Compute step output
+        #
+
+        if ssal:
             y1 = yi_partial
         else:
-            if fsal and implicit:
+            if use_fs:
                 increment = vector_tree_dot(self.tableau.b_sol, fs)
                 increment = terms.prod(increment, control)
             else:
                 increment = vector_tree_dot(self.tableau.b_sol, ks)
             y1 = (y0**ω + increment**ω).ω
-        if fsal and implicit:
+
+        #
+        # Compute error estimate
+        #
+
+        if use_fs:
             y_error = vector_tree_dot(self.tableau.b_error, fs)
             y_error = terms.prod(y_error, control)
         else:
@@ -246,28 +347,43 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y_error = jax.tree_map(
             lambda _y_error: jnp.where(result == RESULTS.successful, _y_error, jnp.inf),
             y_error,
-        )
-        if fsal and implicit:
+        )  # i.e. an implicit step failed to converge
+
+        #
+        # Compute dense info
+        #
+
+        if use_fs:
             ks = jax.vmap(lambda f: terms.prod(f, control))(fs)
         dense_info = dict(y0=y0, y1=y1, k=ks)
+
+        #
+        # Compute next solver state
+        #
+
         if fsal:
             solver_state = fi
         else:
             solver_state = None
+
         return y1, y_error, dense_info, solver_state, result
 
-    def func_for_init(
-        self,
-        terms: AbstractTerm,
-        t0: Scalar,
-        y0: PyTree,
-        args: PyTree,
-    ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
-
     def _eval_stage(
-        self, terms, i, ti, yi_partial, args, control, jac, fs, ks, return_fi
+        self,
+        terms,
+        i,
+        ti,
+        yi_partial,
+        args,
+        control,
+        jac_f,
+        jac_k,
+        fs,
+        ks,
+        return_fi,
+        return_ki,
     ):
+        assert return_fi or return_ki
         if self.tableau.a_diagonal is None:
             diagonal = 0
         else:
@@ -276,11 +392,17 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             # Explicit stage
             if return_fi:
                 fi = terms.vf(ti, yi_partial, args)
-                ki = terms.prod(fi, control)
+                if return_ki:
+                    ki = terms.prod(fi, control)
+                else:
+                    ki = None
             else:
                 fi = None
-                ki = terms.vf_prod(ti, yi_partial, args, control)
-            return fi, ki, jac, RESULTS.successful
+                if return_ki:
+                    ki = terms.vf_prod(ti, yi_partial, args, control)
+                else:
+                    assert False
+            return fi, ki, jac_f, jac_k, RESULTS.successful
         else:
             # Implicit stage
             if return_fi:
@@ -293,46 +415,52 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         self.tableau.a_predictor[i - 1], ω(fs)[:i].ω
                     )
                 if self._recompute_jac(i):
-                    jac = self.nonlinear_solver.jac(
+                    jac_f = self.nonlinear_solver.jac(
                         _implicit_relation_f,
                         fi_pred,
                         (diagonal, terms.vf, terms.prod, ti, yi_partial, args, control),
                     )
-                assert jac is not None
+                assert jac_f is not None
                 nonlinear_sol = self.nonlinear_solver(
                     _implicit_relation_f,
                     fi_pred,
                     (diagonal, terms.vf, terms.prod, ti, yi_partial, args, control),
-                    jac,
+                    jac_f,
                 )
                 fi = nonlinear_sol.root
-                ki = terms.prod(fi, control)
-                return fi, ki, jac, nonlinear_sol.result
-            else:
-                if i == 0:
-                    # Implicit first stage. Make an extra function evaluation to use as
-                    # a predictor for the solution to the first stage.
-                    ki_pred = terms.vf_prod(ti, yi_partial, args, control)
+                if return_ki:
+                    ki = terms.prod(fi, control)
                 else:
-                    ki_pred = vector_tree_dot(
-                        self.tableau.a_predictor[i - 1], ω(ks)[:i].ω
-                    )
-                if self._recompute_jac(i):
-                    jac = self.nonlinear_solver.jac(
+                    ki = None
+                return fi, ki, jac_f, jac_k, nonlinear_sol.result
+            else:
+                if return_ki:
+                    if i == 0:
+                        # Implicit first stage. Make an extra function evaluation to
+                        # use as a predictor for the solution to the first stage.
+                        ki_pred = terms.vf_prod(ti, yi_partial, args, control)
+                    else:
+                        ki_pred = vector_tree_dot(
+                            self.tableau.a_predictor[i - 1], ω(ks)[:i].ω
+                        )
+                    if self._recompute_jac(i):
+                        jac_k = self.nonlinear_solver.jac(
+                            _implicit_relation_k,
+                            ki_pred,
+                            (diagonal, terms.vf_prod, ti, yi_partial, args, control),
+                        )
+                    assert jac_k is not None
+                    nonlinear_sol = self.nonlinear_solver(
                         _implicit_relation_k,
                         ki_pred,
                         (diagonal, terms.vf_prod, ti, yi_partial, args, control),
+                        jac_k,
                     )
-                assert jac is not None
-                nonlinear_sol = self.nonlinear_solver(
-                    _implicit_relation_k,
-                    ki_pred,
-                    (diagonal, terms.vf_prod, ti, yi_partial, args, control),
-                    jac,
-                )
-                fi = None
-                ki = nonlinear_sol.root
-                return fi, ki, jac, nonlinear_sol.result
+                    fi = None
+                    ki = nonlinear_sol.root
+                    return fi, ki, jac_f, jac_k, nonlinear_sol.result
+                else:
+                    assert False
 
 
 class AbstractERK(AbstractRungeKutta):
