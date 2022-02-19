@@ -43,8 +43,8 @@ def random_pytree(key, treedef):
 treedefs = [
     jax.tree_structure(x)
     for x in (
-        None,
         0,
+        None,
         {"a": [0, 0], "b": 0},
     )
 ]
