@@ -354,7 +354,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         #
 
         if use_fs:
-            ks = jax.vmap(lambda f: terms.prod(f, control))(fs)
+            if fs is None:
+                # Edge case for diffeqsolve(y0=None)
+                ks = None
+            else:
+                ks = jax.vmap(lambda f: terms.prod(f, control))(fs)
         dense_info = dict(y0=y0, y1=y1, k=ks)
 
         #
