@@ -139,7 +139,7 @@ class AbstractTerm(eqx.Module):
     # This is a pinhole break in our vector-field/control abstraction.
     # Everywhere else we get to evaluate over some interval, which allows us to
     # evaluate our control over that interval. However to select the initial point in
-    # an adapative step size scheme, the standard heuristic is to start by making
+    # an adaptive step size scheme, the standard heuristic is to start by making
     # evaluations at just the initial point -- no intervals involved.
     def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         """This is a special-cased version of [`diffrax.AbstractTerm.vf`][].
@@ -153,6 +153,7 @@ class AbstractTerm(eqx.Module):
         See [`diffrax.AbstractSolver.func_for_init`][].
         """
 
+        # Heuristic for whether it's safe to select an initial step automatically.
         vf = self.vf(t, y, args)
         flat_vf, tree_vf = jax.tree_flatten(vf)
         flat_y, tree_y = jax.tree_flatten(y)
@@ -167,6 +168,20 @@ class AbstractTerm(eqx.Module):
             )
         else:
             return vf
+
+    def is_vf_expensive(
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        y: Tuple[PyTree, PyTree, PyTree, PyTree],
+        args: PyTree,
+    ) -> bool:
+        """Specifies whether evaluating the vector field is "expensive", in the
+        specific sense that it is cheaper to evaluate `vf_prod` twice than `vf` once.
+
+        Some solvers use this to change their behaviour, so as to act more efficiently.
+        """
+        return False
 
 
 class ODETerm(AbstractTerm):
@@ -392,11 +407,24 @@ class WrapTerm(AbstractTerm):
 class AdjointTerm(AbstractTerm):
     term: AbstractTerm
 
+    def is_vf_expensive(
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        y: Tuple[PyTree, PyTree, PyTree, PyTree],
+        args: PyTree,
+    ) -> bool:
+        control = self.contr(t0, t1)
+        if sum(c.size for c in jax.tree_leaves(control)) in (0, 1):
+            return False
+        else:
+            return True
+
     def vf(
         self, t: Scalar, y: Tuple[PyTree, PyTree, PyTree, PyTree], args: PyTree
     ) -> PyTree:
         # We compute the vector field via `self.vf_prod`. We could also do it manually,
-        # but this is relatively painless.#
+        # but this is relatively painless.
         #
         # This can be done because `self.vf_prod` is linear in `control`. As such we
         # can obtain just the vector field component by representing this linear
@@ -443,7 +471,7 @@ class AdjointTerm(AbstractTerm):
         if jax.tree_structure(None) in (vf_prod_tree, control_tree):
             # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
-                "`AdjointTerm` not implemented for `None` controls or states."
+                "`AdjointTerm.vf` not implemented for `None` controls or states."
             )
         return jax.tree_transpose(vf_prod_tree, control_tree, jac)
 

@@ -35,6 +35,7 @@ The very first argument to [`diffrax.diffeqsolve`][] should be some PyTree of te
                 - contr
                 - prod
                 - vf_prod
+                - is_vf_expensive
 
 ---
 

@@ -13,21 +13,41 @@ from diffrax.misc import ω
 from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
 
+def _all_pairs(*args):
+    defaults = [arg["default"] for arg in args]
+    yield defaults
+    for i in range(len(args)):
+        for opt in args[i]["opts"]:
+            opts = defaults.copy()
+            opts[i] = opt
+            yield opts
+    for i in range(len(args)):
+        for j in range(i + 1, len(args)):
+            for opt1 in args[i]["opts"]:
+                for opt2 in args[j]["opts"]:
+                    opts = defaults.copy()
+                    opts[i] = opt1
+                    opts[j] = opt2
+                    yield opts
+
+
 @pytest.mark.parametrize(
-    "solver_ctr",
-    (
-        diffrax.Euler,
-        diffrax.LeapfrogMidpoint,
-        diffrax.ReversibleHeun,
-        diffrax.Tsit5,
-        diffrax.ImplicitEuler,
-        diffrax.Kvaerno3,
+    "solver_ctr,t_dtype,treedef,stepsize_controller",
+    _all_pairs(
+        dict(
+            default=diffrax.Euler,
+            opts=(
+                diffrax.LeapfrogMidpoint,
+                diffrax.ReversibleHeun,
+                diffrax.Tsit5,
+                diffrax.ImplicitEuler,
+                diffrax.Kvaerno3,
+            ),
+        ),
+        dict(default=jnp.float32, opts=(int, float, jnp.int32)),
+        dict(default=treedefs[0], opts=treedefs[1:]),
+        dict(default=diffrax.ConstantStepSize(), opts=(diffrax.PIDController(),)),
     ),
-)
-@pytest.mark.parametrize("t_dtype", (int, float, jnp.int32, jnp.float32))
-@pytest.mark.parametrize("treedef", treedefs)
-@pytest.mark.parametrize(
-    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.PIDController(atol=1e2))
 )
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver) and isinstance(
@@ -40,25 +60,25 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
 
     if t_dtype is int:
         t0 = 0
-        t1 = 2
-        dt0 = 1
+        t1 = 1
+        dt0 = 0.01
     elif t_dtype is float:
         t0 = 0.0
-        t1 = 2.0
-        dt0 = 1.0
+        t1 = 1.0
+        dt0 = 0.01
     elif t_dtype is jnp.int32:
         t0 = jnp.array(0)
-        t1 = jnp.array(2)
-        dt0 = jnp.array(1)
+        t1 = jnp.array(1)
+        dt0 = jnp.array(0.01)
     elif t_dtype is jnp.float32:
         t0 = jnp.array(0.0)
-        t1 = jnp.array(2.0)
-        dt0 = jnp.array(1.0)
+        t1 = jnp.array(1.0)
+        dt0 = jnp.array(0.01)
     else:
         raise ValueError
     y0 = random_pytree(getkey(), treedef)
     try:
-        diffrax.diffeqsolve(
+        sol = diffrax.diffeqsolve(
             diffrax.ODETerm(f),
             solver_ctr(),
             t0,
@@ -76,6 +96,9 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
             pass
         else:
             raise
+    y1 = sol.ys
+    true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
+    assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
 @pytest.mark.parametrize("solver_ctr", all_ode_solvers)
@@ -276,32 +299,6 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         for ti in t:
             assert shaped_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
             assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
-
-
-@pytest.mark.parametrize(
-    "solver_ctr,stepsize_controller,dt0",
-    (
-        (diffrax.Tsit5, diffrax.ConstantStepSize(), 0.3),
-        (diffrax.Tsit5, diffrax.PIDController(rtol=1e-8, atol=1e-8), None),
-        (diffrax.Kvaerno3, diffrax.PIDController(rtol=1e-8, atol=1e-8), None),
-    ),
-)
-@pytest.mark.parametrize("treedef", treedefs)
-def test_pytree_state(solver_ctr, stepsize_controller, dt0, treedef, getkey):
-    term = diffrax.ODETerm(lambda t, y, args: jax.tree_map(operator.neg, y))
-    y0 = random_pytree(getkey(), treedef)
-    sol = diffrax.diffeqsolve(
-        term,
-        solver=solver_ctr(),
-        t0=0,
-        t1=1,
-        dt0=dt0,
-        y0=y0,
-        stepsize_controller=stepsize_controller,
-    )
-    y1 = sol.ys
-    true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
-    assert shaped_allclose(y1, true_y1)
 
 
 def test_semi_implicit_euler():
