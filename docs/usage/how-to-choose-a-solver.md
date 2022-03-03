@@ -38,9 +38,7 @@ See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
 
 ## Stochastic differential equations
 
-!!! info
-
-    SDE solvers are relatively specialised depending on the type of problem. Each solver will converge to either the Itô solution or the Stratonovich solution. In addition some solvers require "commutative noise".
+SDE solvers are relatively specialised depending on the type of problem. Each solver will converge to either the Itô solution or the Stratonovich solution. In addition some solvers require "commutative noise".
 
 ??? info "Commutative noise"
 
@@ -83,7 +81,7 @@ $\mathrm{d}y(t) = μ(t, y(t))\mathrm{d}t + σ(t, y(t))\mathrm{d}w(t)$
 
 Then the diffusion matrix $σ$ is said to be additive if $σ(t, y) = σ(t)$. That is to say if the diffusion is independent of $y$.
 
-In this case then the Itô solution and the Stratonovich solution coincide, and mathematically speaking the choice of Itô vs Stratonovich is unimportant. (In addition, additive noise is commutative niose.)
+In this case then the Itô solution and the Stratonovich solution coincide, and mathematically speaking the choice of Itô vs Stratonovich is unimportant.
 
 - The cheapest (but least accurate) solver is [`diffrax.Euler`][].
 - Otherwise [`diffrax.Heun`][] is a good choice. It gets first-order strong convergence and second-order weak convergence.
@@ -100,7 +98,7 @@ If the control is differentiable (e.g. an interpolation of discrete data) and is
 vector_field = ...
 control = ...
 term = ControlTerm(vector_field, control)
-term.to_ode()
+term = term.to_ode()
 ```
 
 Then use any of the ODE solvers as discussed above.

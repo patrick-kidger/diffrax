@@ -1,6 +1,6 @@
 # Solvers
 
-The complete list of solvers, categorised by type, is as follows.
+The complete list of solvers, categorised by type, is as follows. See also [How to choose a solver](../usage/how-to-choose-a-solver.md).
 
 !!! info "Term structure"
 
@@ -106,8 +106,9 @@ The complete list of solvers, categorised by type, is as follows.
 
     The state of the system (the initial value of which is given by `y0` to [`diffrax.diffeqsolve`][]) must be a 2-tuple (of PyTrees). The terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple of `AbstractTerms`.
     
-    Letting `v, w = y0` and `f, g = terms`, then `v` is updated according to
-    `f(t, w, args) * dt` and `w` is updated according to `g(t, v, args) * dt`.
+    Letting `v, w = y0` and `f, g = terms`, then `v` is updated according to `f(t, w, args) * dt` and `w` is updated according to `g(t, v, args) * dt`.
+
+    See also this [Wikipedia page](https://en.wikipedia.org/wiki/Semi-implicit_Euler_method#Setting).
 
 ::: diffrax.SemiImplicitEuler
     selection:
