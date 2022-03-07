@@ -27,6 +27,7 @@ class LeapfrogMidpoint(AbstractSolver):
 
     ??? cite "Reference"
 
+        ```bibtex
         @article{shampine2009stability,
             title={Stability of the leapfrog/midpoint method},
             author={L. F. Shampine},
@@ -36,6 +37,7 @@ class LeapfrogMidpoint(AbstractSolver):
             pages={293-298},
             year={2009},
         }
+        ```
     """
 
     term_structure = jax.tree_structure(0)

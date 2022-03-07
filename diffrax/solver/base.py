@@ -187,20 +187,21 @@ class AbstractWrappedSolver(AbstractSolver):
 
 
 class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
-    """Wraps another solver, trading cost in order to provide error estimates. (These
-    error estimates mean that the solver can be used with an adaptive step size
-    controller, like [`diffrax.PIDController`][].)
+    """Wraps another solver, trading cost in order to provide error estimates. (That
+    is, it means the solver can be used with an adaptive step size controller,
+    regardless of whether the underlying solver supports adaptive step sizing.)
 
     For every step of the wrapped solver, it does this by also making two half-steps,
-    and comparing the results. (Hence the name "HalfSolver".)
+    and comparing the results between the full step and the two half steps. Hence the
+    name "HalfSolver".
 
     As such each step costs 3 times the computational cost of the wrapped solver.
 
     !!! tip
 
-        Many solvers already provided error estimates, making `HalfSolver` primarily
+        Many solvers already provide error estimates, making `HalfSolver` primarily
         useful when using a solver that doesn't provide error estimates -- e.g.
-        [`diffrax.Euler`][] -- in particular this is common when solving SDEs.
+        [`diffrax.Euler`][] -- such solvers are most common when solving SDEs.
     """
 
     @property

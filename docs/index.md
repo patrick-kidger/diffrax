@@ -49,4 +49,10 @@ If this page has caught your interest, then have a look at the [Getting Started]
 
 !!! help
 
-    Both Diffrax and its documentation are very new! If anything is unclear, or if you have any suggestions, then please open an issue or pull request on [GitHub](https://github.com/patrick-kidger/diffrax).
+    Both Diffrax and its documentation are very new! If:
+
+    - anything is unclear;
+    - you have any suggestions;
+    - you need any more features;
+
+    then please open an issue or pull request on [GitHub](https://github.com/patrick-kidger/diffrax).

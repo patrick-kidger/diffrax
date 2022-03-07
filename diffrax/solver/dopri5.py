@@ -66,18 +66,19 @@ class Dopri5(AbstractERK):
             volume={6},
             pages={19--26}
         }
+        ```
 
         However (despite the name), the Butcher tableau used here is actually due to
         Shampine:
 
         ```bibtex
-        @article{
+        @article{shampine1986some,
             author={Lawrence F. Shampine},
             journal={Mathematics of Computation},
             number={173},
             pages={135--150},
             publisher={American Mathematical Society},
-            title={Some Practical Runge-Kutta Formulas},
+            title={Some Practical {R}unge-{K}utta Formulas},
             volume={46},
             year={1986},
             doi={https://doi.org/10.2307/2008219}

@@ -31,9 +31,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     !!! warning
 
-        Requires commutative noise. Note that this commutativity condition is not
-        checked.
-    """
+        Requires [commutative noise](https://docs.kidger.site/diffrax/usage/how-to-choose-a-solver/#stochastic-differential-equations).
+        Note that this commutativity condition is not checked.
+    """  # noqa: E501
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
@@ -79,9 +79,9 @@ class ItoMilstein(AbstractItoSolver):
 
     !!! warning
 
-        Requires commutative noise. Note that this commutativity condition is not
-        checked.
-    """
+        Requires [commutative noise](https://docs.kidger.site/diffrax/usage/how-to-choose-a-solver/#stochastic-differential-equations).
+        Note that this commutativity condition is not checked.
+    """  # noqa: E501
 
     term_structure = jax.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
