@@ -48,7 +48,7 @@ SaveAt.__init__.__doc__ = """**Main Arguments:**
 
 **Other Arguments:**
 
-It is unlikely you will need to use options.
+It is less likely you will need to use these options.
 
 - `solver_state`: If `True`, save the internal state of the numerical solver at
     `t1`.
