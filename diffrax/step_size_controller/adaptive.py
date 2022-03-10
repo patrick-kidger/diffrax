@@ -105,7 +105,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         PI controller with `icoeff=1`, will often be most efficient.
         ```python
         PIDController(pcoeff=0,   icoeff=1, dcoeff=0)  # default coefficients
-        PIDController(pcoeff=0.4, icoeff-1, dcoeff=0)
+        PIDController(pcoeff=0.4, icoeff=1, dcoeff=0)
         ```
 
         For moderate difficulty problems that may have an error estimate that does
