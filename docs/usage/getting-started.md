@@ -40,7 +40,7 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
 - The solution is saved at the times `0`, `1`, `2`, `3`.
 - The initial step is of size `0.1`.
 - For all later steps, a PID controller is used to dynamically adapt step sizes to match a desired error tolerance.
-    - This is a more efficient variation on the "textbook" way to adapt step sizes (which is an I controller).
+    - This is a more efficient variation on the "textbook" way to adapt step sizes (which is an I controller, also known as a deadbeat controller).
     - The step size controller is specified separately to the solver.
 
 !!! note
