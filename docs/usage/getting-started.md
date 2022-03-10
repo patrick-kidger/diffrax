@@ -167,5 +167,5 @@ print(sol.ys)  # DeviceArray([0.00012341])
 
 - We specify a control by inheriting from [`diffrax.AbstractPath`][].
     - It's very common to create a control by interpolating data: Diffrax provides some [interpolation routines](../api/interpolation.md) for this.
-- No `diffeqsolve(..., saveat=...) argument is passed, so the default is used: saving at just the final time point `t1`.
+- No `diffeqsolve(..., saveat=...)` argument is passed, so the default is used: saving at just the final time point `t1`.
 - No step size controller is specified so by default a constant step size is used.
