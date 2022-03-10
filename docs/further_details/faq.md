@@ -4,7 +4,7 @@
 
 Try switching to 64-bit precision. (Instead of the 32-bit that is the default in JAX.) [See here](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision).
 
-### I'm not getting zero gradient for one of my model parameters.
+### I'm getting zero gradient for one of my model parameters.
 
 This can happen if you use [`diffrax.BacksolveAdjoint`][] incorrectly.
 
