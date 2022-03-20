@@ -605,7 +605,7 @@ def diffeqsolve(
             f"t0 with value {t0} and type {type(t0)}, "
             f"dt0 with value {dt0} and type {type(dt0)}"
         )
-        error_if(lambda: (t1 - t0) * dt0 < 0, msg)
+        error_if((t1 - t0) * dt0 < 0, msg)
 
     # Error checking
     term_leaves, term_structure = jax.tree_flatten(
