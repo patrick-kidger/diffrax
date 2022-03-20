@@ -35,4 +35,4 @@ def branched_error_if(
         raise error_cls(msgs[_index.item()])
 
     pred = unvmap_any(pred)
-    lax.cond(pred, lambda: hcb.call(raises, (index,)), lambda: None)
+    lax.cond(pred, lambda: hcb.call(raises, index), lambda: None)
