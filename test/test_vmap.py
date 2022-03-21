@@ -57,7 +57,7 @@ def test_vmap_y0(stepsize_controller):
     assert jnp.array_equal(sol.ts, jnp.full((10, 1), t1))
     assert sol.ys.shape == (10, 1, 2)
 
-    _t = [0, 0.3, 0.7, 1]
+    _t = jnp.array([0, 0.3, 0.7, 1])
     saveat = diffrax.SaveAt(ts=_t)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(

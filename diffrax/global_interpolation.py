@@ -16,7 +16,8 @@ class AbstractGlobalInterpolation(AbstractPath):
     ts: Array["times"]  # noqa: F821
 
     def __post_init__(self):
-        error_if(self.ts.ndim != 1, "`ts` must be one dimensional.")
+        if self.ts.ndim != 1:
+            raise ValueError("`ts` must be one dimensional.")
 
     def _ts_size(self):
         return self.ts.shape[0]
@@ -64,11 +65,11 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
     def __post_init__(self):
         def _check(_ys):
-            error_if(
-                _ys.shape[0] != self.ts.shape[0],
-                "Must have ts.shape[0] == ys.shape[0], that is to say the same number "
-                "of entries along the timelike dimension.",
-            )
+            if _ys.shape[0] != self.ts.shape[0]:
+                raise ValueError(
+                    "Must have ts.shape[0] == ys.shape[0], that is to say the same "
+                    "number of entries along the timelike dimension."
+                )
 
         jax.tree_map(_check, self.ys)
 
@@ -180,10 +181,14 @@ class CubicInterpolation(AbstractGlobalInterpolation):
                 "Each cubic coefficient must have `times - 1` entries, where "
                 "`times = self.ts.shape[0]`."
             )
-            error_if(d.shape[0] + 1 != self.ts.shape[0], error_msg)
-            error_if(c.shape[0] + 1 != self.ts.shape[0], error_msg)
-            error_if(b.shape[0] + 1 != self.ts.shape[0], error_msg)
-            error_if(a.shape[0] + 1 != self.ts.shape[0], error_msg)
+            if d.shape[0] + 1 != self.ts.shape[0]:
+                raise ValueError(error_msg)
+            if c.shape[0] + 1 != self.ts.shape[0]:
+                raise ValueError(error_msg)
+            if b.shape[0] + 1 != self.ts.shape[0]:
+                raise ValueError(error_msg)
+            if a.shape[0] + 1 != self.ts.shape[0]:
+                raise ValueError(error_msg)
 
         jax.tree_map(_check, *self.coeffs)
 
@@ -336,8 +341,10 @@ class DenseInterpolation(AbstractGlobalInterpolation):
 
 
 def _check_ts(ts: Array["times"]) -> None:  # noqa: F821
-    error_if(ts.ndim != 1, f"`ts` must be 1-dimensional; got {ts.ndim}.")
-    error_if(ts.shape[0] < 2, f"`ts` must be of length at least 2; got {ts.shape[0]}")
+    if ts.ndim != 1:
+        raise ValueError(f"`ts` must be 1-dimensional; got {ts.ndim}.")
+    if ts.shape[0] < 2:
+        raise ValueError(f"`ts` must be of length at least 2; got {ts.shape[0]}")
     # Also catches any NaN times.
     error_if(ts[:-1] >= ts[1:], "`ts` must be monotonically strictly increasing.")
 

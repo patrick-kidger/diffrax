@@ -600,12 +600,12 @@ def diffeqsolve(
     # Error checking
     if dt0 is not None:
         msg = (
-            "Must have (t1 - t0) * dt0 > 0, we instead got: "
-            f"t1, with value: {t1} and type {type(t1)}, "
-            f"t0, with value: {t0} and type {type(t0)} and, "
-            f"dt0, with value: {dt0} and type {type(dt0)}"
+            "Must have (t1 - t0) * dt0 >= 0, we instead got "
+            f"t1 with value {t1} and type {type(t1)}, "
+            f"t0 with value {t0} and type {type(t0)}, "
+            f"dt0 with value {dt0} and type {type(dt0)}"
         )
-        error_if(lambda: (t1 - t0) * dt0 <= 0, msg)
+        error_if((t1 - t0) * dt0 < 0, msg)
 
     # Error checking
     term_leaves, term_structure = jax.tree_flatten(
@@ -748,10 +748,10 @@ def diffeqsolve(
         # We have no way of knowing how many steps we'll actually end up taking, and
         # XLA doesn't support dynamic shapes. So we just have to allocate the maximum
         # amount of steps we can possibly take.
-        error_if(
-            max_steps is None,
-            "`max_steps=None` is incompatible with `saveat.steps=True`",
-        )
+        if max_steps is None:
+            raise ValueError(
+                "`max_steps=None` is incompatible with `saveat.steps=True`"
+            )
         out_size += max_steps
     if saveat.t1 and not saveat.steps:
         out_size += 1
@@ -766,10 +766,10 @@ def diffeqsolve(
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         error_if(t0 == t1, "Cannot save dense output if t0 == t1")
-        error_if(
-            max_steps is None,
-            "`max_steps=None` is incompatible with `saveat.dense=True`",
-        )
+        if max_steps is None:
+            raise ValueError(
+                "`max_steps=None` is incompatible with `saveat.dense=True`"
+            )
         (
             _,
             _,
