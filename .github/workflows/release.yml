@@ -14,7 +14,7 @@ jobs:
         with:
             python-version: "3.8"
             test-script: |
-                python -m pip install pytest
+                python -m pip install pytest psutil jax equinox scipy
                 cp -r ${{ github.workspace }}/test ./test
                 pytest
             pypi-token: ${{ secrets.pypi_token }}
