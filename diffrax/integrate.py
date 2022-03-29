@@ -88,8 +88,12 @@ def _save(state: _State, t: Scalar) -> _State:
     )
 
 
-def _clip_to_end(tnext, t1):
-    return jnp.where(tnext > t1 - 1e-6, t1, tnext)
+def _clip_to_end(tnext, t1, keep_step):
+    if tnext.dtype is jnp.dtype("float64"):
+        tol = 1e-10
+    else:
+        tol = 1e-6
+    return jnp.where(keep_step & (tnext > t1 - tol), t1, tnext)
 
 
 def loop(
@@ -161,7 +165,7 @@ def loop(
         # The 1e-6 tolerance means that we don't end up with too-small intervals for
         # dense output, which then gives numerically unstable answers due to floating
         # point errors.
-        tnext = _clip_to_end(tnext, t1)
+        tnext = _clip_to_end(tnext, t1, keep_step)
         tprev = jnp.minimum(tprev, t1)
 
         # The other parts of the mutable state are kept/not-kept (based on whether the
