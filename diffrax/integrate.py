@@ -407,7 +407,7 @@ def loop(
 
                     def _body_fun(_state):
                         _step, _t = _state
-                        return _step + 1, _clip_to_end(_t + dt0, t1)
+                        return _step + 1, _clip_to_end(_t + dt0, t1, True)
 
                     compiled_num_steps, _ = lax.while_loop(
                         _cond_fun, _body_fun, (0, t0)
