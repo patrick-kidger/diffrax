@@ -88,12 +88,14 @@ def _save(state: _State, t: Scalar) -> _State:
     )
 
 
-def _clip_to_end(tnext, t1, keep_step):
+def _clip_to_end(tprev, tnext, t1, keep_step):
     if tnext.dtype is jnp.dtype("float64"):
         tol = 1e-10
     else:
         tol = 1e-6
-    return jnp.where(keep_step & (tnext > t1 - tol), t1, tnext)
+    clip = tnext > t1 - tol
+    tclip = jnp.where(keep_step, t1, tprev + 0.5 * (t1 - tprev))
+    return jnp.where(clip, tclip, tnext)
 
 
 def loop(
@@ -165,8 +167,8 @@ def loop(
         # The 1e-6 tolerance means that we don't end up with too-small intervals for
         # dense output, which then gives numerically unstable answers due to floating
         # point errors.
-        tnext = _clip_to_end(tnext, t1, keep_step)
         tprev = jnp.minimum(tprev, t1)
+        tnext = _clip_to_end(tprev, tnext, t1, keep_step)
 
         # The other parts of the mutable state are kept/not-kept (based on whether the
         # step was accepted) by the stepsize controller. But it doesn't get access to
@@ -407,7 +409,7 @@ def loop(
 
                     def _body_fun(_state):
                         _step, _t = _state
-                        return _step + 1, _clip_to_end(_t + dt0, t1, True)
+                        return _step + 1, _clip_to_end(_t, _t + dt0, t1, True)
 
                     compiled_num_steps, _ = lax.while_loop(
                         _cond_fun, _body_fun, (0, t0)
