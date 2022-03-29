@@ -404,7 +404,7 @@ def _test(solver_ctr, problems, higher):
                 # build up by t=20.
                 # Teeny-tiny steps fix this.
                 dt0 = 0.000001
-                max_steps = 20_000_000
+                max_steps = 20_000_001
             stepsize_controller = diffrax.ConstantStepSize()
         elif solver_ctr is diffrax.ReversibleHeun and problem is _a1:
             # ReversibleHeun is a bit like LeapfrogMidpoint, and therefore bad over
