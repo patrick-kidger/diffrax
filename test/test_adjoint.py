@@ -123,7 +123,9 @@ def test_adjoint_seminorm():
 
     def solve(y0):
         adjoint = diffrax.BacksolveAdjoint(
-            stepsize_controller=diffrax.PIDController(norm=diffrax.adjoint_rms_seminorm)
+            stepsize_controller=diffrax.PIDController(
+                rtol=1e-3, atol=1e-6, norm=diffrax.adjoint_rms_seminorm
+            )
         )
         sol = diffrax.diffeqsolve(
             term,
@@ -132,7 +134,7 @@ def test_adjoint_seminorm():
             1,
             None,
             y0,
-            stepsize_controller=diffrax.PIDController(),
+            stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
             adjoint=adjoint,
         )
         return jnp.sum(sol.ys)

@@ -19,9 +19,9 @@ nextafter.defjvps(lambda x_dot, _, __: x_dot)
 
 
 @jax.custom_jvp
-def nextbefore(x: Array) -> Array:
+def prevbefore(x: Array) -> Array:
     y = jnp.nextafter(x, jnp.NINF)
     return jnp.where(x == 0, -jnp.finfo(x.dtype).tiny, y)
 
 
-nextbefore.defjvps(lambda x_dot, _, __: x_dot)
+prevbefore.defjvps(lambda x_dot, _, __: x_dot)
