@@ -7,7 +7,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 
 from ..custom_types import Array, Bool, PyTree, Scalar
-from ..misc import nextafter, nextbefore, rms_norm, ω
+from ..misc import nextafter, prevbefore, rms_norm, ω
 from ..solution import RESULTS
 from ..solver import AbstractImplicitSolver, AbstractSolver
 from ..term import AbstractTerm
@@ -49,7 +49,7 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-_ControllerState = Tuple[Bool, Bool, Scalar, Scalar]
+_ControllerState = Tuple[Bool, Bool, Scalar, Scalar, Scalar]
 
 
 _gendocs = getattr(typing, "GENERATING_DOCUMENTATION", False)
@@ -61,9 +61,22 @@ class _gendocs_norm:
 
 
 class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
-    # Default tolerances taken from scipy.integrate.solve_ivp
-    rtol: Scalar = 1e-3
-    atol: Scalar = 1e-6
+    rtol: Optional[Scalar] = None
+    atol: Optional[Scalar] = None
+
+    def __post_init__(self):
+        if self.rtol is None or self.atol is None:
+            raise ValueError(
+                "The default values for `rtol` and `atol` were removed in Diffrax "
+                "version 0.1.0. (As the choice of tolerance is nearly always "
+                "something that you, as an end user, should make an explicit choice "
+                "about.)\n"
+                "If you want to match the previous defaults then specify "
+                "`rtol=1e-3`, `atol=1e-6`. For example:\n"
+                "```\n"
+                "diffrax.PIDController(rtol=1e-3, atol=1e-6)\n"
+                "```\n"
+            )
 
     def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
         # Poor man's multiple dispatch
@@ -94,6 +107,26 @@ class PIDController(AbstractAdaptiveStepSizeController):
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
 
     Steps are adapted using a PID controller.
+
+    ??? tip "Choosing tolerances"
+
+        The choice of `rtol` and `atol` are used to determine how accurately you would
+        like the numerical approximation to your equation.
+
+        Typically this is something you already know; or alternatively something for
+        which you try a few different values of `rtol` and `atol` until you are getting
+        good enough solutions.
+
+        If you're not sure, then a good default for easy ("non-stiff") problems is
+        often something like `rtol=1e-3`, `atol=1e-6`. When more accurate solutions
+        are required then something like `rtol=1e-7`, `atol=`1e-9` are typical (along
+        with using `float64` instead of `float32`).
+
+        (Note that technically speaking, the meaning of `rtol` and `atol` is entirely
+        dependent on the choice of `solver`. In practice, however, most solvers tend to
+        provide similar behaviour for similar values of `rtol`, `atol`, so it is common
+        to refer to solving an equation to specificy tolerances, without necessarily
+        stating about the solver used.)
 
     ??? tip "Choosing PID coefficients"
 
@@ -239,6 +272,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
     error_order: Optional[Scalar] = None
 
     def __post_init__(self):
+        super().__post_init__()
         with jax.ensure_compile_time_eval():
             step_ts = None if self.step_ts is None else jnp.asarray(self.step_ts)
             jump_ts = None if self.jump_ts is None else jnp.asarray(self.jump_ts)
@@ -325,7 +359,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin, jnp.inf, jnp.inf)
+        return t1, (jump_next_step, at_dtmin, dt0, jnp.inf, jnp.inf)
 
     def adapt_step_size(
         self,
@@ -401,14 +435,23 @@ class PIDController(AbstractAdaptiveStepSizeController):
                 "Cannot use adaptive step sizes with a solver that does not provide "
                 "error estimates."
             )
-        prev_dt = t1 - t0
         (
             made_jump,
             at_dtmin,
+            prev_dt,
             prev_inv_scaled_error,
             prev_prev_inv_scaled_error,
         ) = controller_state
         error_order = self._get_error_order(error_order)
+        # t1 - t0 is the step we actually took, so that's usually what we mean by the
+        # "previous dt".
+        # However if we made a jump then this t1 was clipped relatively to what it
+        # could have been, so for guessing the next step size it's probably better to
+        # use the size the step would have been, had there been no jump.
+        # There are cases in which something besides the step size controller modifies
+        # the step locations t0, t1; most notably the main integration routine clipping
+        # steps when we're right at the end of the interval.
+        prev_dt = jnp.where(made_jump, prev_dt, t1 - t0)
 
         #
         # Figure out how things went on the last step: error, and whether to
@@ -483,7 +526,12 @@ class PIDController(AbstractAdaptiveStepSizeController):
         #
 
         if jnp.issubdtype(t1.dtype, jnp.inexact):
-            _t1 = jnp.where(made_jump, nextafter(t1), t1)
+            # Two nextafters. If made_jump then t1 = prevbefore(jump location)
+            # so now _t1 = nextafter(jump location)
+            # This is important because we don't know whether or not the jump is as a
+            # result of a left- or right-discontinuity, so we have to skip the jump
+            # location altogether.
+            _t1 = jnp.where(made_jump, nextafter(nextafter(t1)), t1)
         else:
             _t1 = t1
         next_t0 = jnp.where(keep_step, _t1, t0)
@@ -497,6 +545,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         controller_state = (
             next_made_jump,
             at_dtmin,
+            dt,
             inv_scaled_error,
             prev_inv_scaled_error,
         )
@@ -521,8 +570,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
         # TODO: it should be possible to switch this O(nlogn) for just O(n) by keeping
         # track of where we were last, and using that as a hint for the next search.
-        t0_index = jnp.searchsorted(self.step_ts, t0)
-        t1_index = jnp.searchsorted(self.step_ts, t1)
+        t0_index = jnp.searchsorted(self.step_ts, t0, side="right")
+        t1_index = jnp.searchsorted(self.step_ts, t1, side="right")
         # This minimum may or may not actually be necessary. The left branch is taken
         # iff t0_index < t1_index <= len(self.step_ts), so all valid t0_index s must
         # already satisfy the minimum.
@@ -537,7 +586,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
     def _clip_jump_ts(self, t0: Scalar, t1: Scalar) -> Tuple[Scalar, Array[(), bool]]:
         if self.jump_ts is None:
-            return t1, jnp.full_like(t1, fill_value=False, dtype=bool)
+            return t1, False
         if self.jump_ts is not None and not jnp.issubdtype(
             self.jump_ts.dtype, jnp.inexact
         ):
@@ -549,25 +598,24 @@ class PIDController(AbstractAdaptiveStepSizeController):
                 "t0, t1, dt0 must be floating point when specifying jump_t. Got "
                 f"{t1.dtype}."
             )
-        t0_index = jnp.searchsorted(self.step_ts, t0)
-        t1_index = jnp.searchsorted(self.step_ts, t1)
-        cond = t0_index < t1_index
+        t0_index = jnp.searchsorted(self.jump_ts, t0, side="right")
+        t1_index = jnp.searchsorted(self.jump_ts, t1, side="right")
+        next_made_jump = t0_index < t1_index
         t1 = jnp.where(
-            cond,
-            nextbefore(self.jump_ts[jnp.minimum(t0_index, len(self.step_ts) - 1)]),
+            next_made_jump,
+            prevbefore(self.jump_ts[jnp.minimum(t0_index, len(self.jump_ts) - 1)]),
             t1,
         )
-        next_made_jump = jnp.where(cond, True, False)
         return t1, next_made_jump
 
 
 PIDController.__init__.__doc__ = """**Arguments:**
 
+- `rtol`: Relative tolerance.
+- `atol`: Absolute tolerance.
 - `pcoeff`: The coefficient of the proportional part of the step size control.
 - `icoeff`: The coefficient of the integral part of the step size control.
 - `dcoeff`: The coefficient of the derivative part of the step size control.
-- `rtol`: Relative tolerance.
-- `atol`: Absolute tolerance.
 - `dtmin`: Minimum step size. The step size is either clipped to this value, or an
     error raised if the step size decreases below this, depending on `force_dtmin`.
 - `dtmax`: Maximum step size; the step size is clipped to this value.

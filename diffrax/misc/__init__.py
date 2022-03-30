@@ -10,7 +10,7 @@ from .misc import (
     linear_rescale,
     rms_norm,
 )
-from .nextafter import nextafter, nextbefore
+from .nextafter import nextafter, prevbefore
 from .omega import ω
 from .sde_kl_divergence import sde_kl_divergence
 from .unvmap import unvmap_all, unvmap_any, unvmap_max
