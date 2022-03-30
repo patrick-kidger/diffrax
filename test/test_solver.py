@@ -8,7 +8,7 @@ def test_half_solver():
     y0 = 1.0
     dt0 = None
     solver = diffrax.HalfSolver(diffrax.Euler())
-    stepsize_controller = diffrax.PIDController(rtl=1e-3, atol=1e-6)
+    stepsize_controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
     diffrax.diffeqsolve(
         term, solver, t0, t1, dt0, y0, stepsize_controller=stepsize_controller
     )
