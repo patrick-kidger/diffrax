@@ -46,7 +46,10 @@ def _all_pairs(*args):
         ),
         dict(default=jnp.float32, opts=(int, float, jnp.int32)),
         dict(default=treedefs[0], opts=treedefs[1:]),
-        dict(default=diffrax.ConstantStepSize(), opts=(diffrax.PIDController(),)),
+        dict(
+            default=diffrax.ConstantStepSize(),
+            opts=(diffrax.PIDController(rtol=1e-3, atol=1e-6),),
+        ),
     ),
 )
 def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
@@ -249,7 +252,9 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     key = getkey()
     y0 = jrandom.normal(key, (2, 2))
     stepsize_controller = (
-        diffrax.PIDController() if dt0 is None else diffrax.ConstantStepSize()
+        diffrax.PIDController(rtol=1e-3, atol=1e-6)
+        if dt0 is None
+        else diffrax.ConstantStepSize()
     )
 
     def f(t, y, args):
@@ -326,12 +331,24 @@ def test_compile_time_steps():
     solver = diffrax.Tsit5()
 
     sol = diffrax.diffeqsolve(
-        terms, solver, 0, 1, None, y0, stepsize_controller=diffrax.PIDController()
+        terms,
+        solver,
+        0,
+        1,
+        None,
+        y0,
+        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
     )
     assert sol.stats["compiled_num_steps"] is None
 
     sol = diffrax.diffeqsolve(
-        terms, solver, 0, 1, 0.1, y0, stepsize_controller=diffrax.PIDController()
+        terms,
+        solver,
+        0,
+        1,
+        0.1,
+        y0,
+        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
     )
     assert sol.stats["compiled_num_steps"] is None
 

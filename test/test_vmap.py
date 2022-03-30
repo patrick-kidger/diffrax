@@ -6,7 +6,8 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "stepsize_controller", (diffrax.ConstantStepSize(), diffrax.PIDController())
+    "stepsize_controller",
+    (diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-3, atol=1e-6)),
 )
 def test_vmap_y0(stepsize_controller):
     t0 = 0

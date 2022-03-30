@@ -132,7 +132,7 @@ def test_adjoint_seminorm():
             1,
             None,
             y0,
-            stepsize_controller=diffrax.PIDController(),
+            stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
             adjoint=adjoint,
         )
         return jnp.sum(sol.ys)
