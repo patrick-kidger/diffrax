@@ -1,5 +1,6 @@
 import jax
 import jax.interpreters.batching as batching
+import jax.interpreters.mlir as mlir
 import jax.interpreters.xla as xla
 import jax.numpy as jnp
 
@@ -29,9 +30,14 @@ def _unvmap_all_batch(x, batch_axes):
 _unvmap_all_p.def_impl(_unvmap_all_impl)
 _unvmap_all_p.def_abstract_eval(_unvmap_all_abstract_eval)
 batching.primitive_batchers[_unvmap_all_p] = _unvmap_all_batch
-xla.register_translation(
+if hasattr(xla, "lower_fun"):
+    xla.register_translation(
+        _unvmap_all_p,
+        xla.lower_fun(_unvmap_all_impl, multiple_results=False, new_style=True),
+    )
+mlir.register_lowering(
     _unvmap_all_p,
-    xla.lower_fun(_unvmap_all_impl, multiple_results=False, new_style=True),
+    mlir.lower_fun(_unvmap_all_impl, multiple_results=False),
 )
 
 # unvmap_any
@@ -59,9 +65,14 @@ def _unvmap_any_batch(x, batch_axes):
 _unvmap_any_p.def_impl(_unvmap_any_impl)
 _unvmap_any_p.def_abstract_eval(_unvmap_any_abstract_eval)
 batching.primitive_batchers[_unvmap_any_p] = _unvmap_any_batch
-xla.register_translation(
+if hasattr(xla, "lower_fun"):
+    xla.register_translation(
+        _unvmap_any_p,
+        xla.lower_fun(_unvmap_any_impl, multiple_results=False, new_style=True),
+    )
+mlir.register_lowering(
     _unvmap_any_p,
-    xla.lower_fun(_unvmap_any_impl, multiple_results=False, new_style=True),
+    mlir.lower_fun(_unvmap_any_impl, multiple_results=False),
 )
 
 # unvmap_max
@@ -89,7 +100,12 @@ def _unvmap_max_batch(x, batch_axes):
 _unvmap_max_p.def_impl(_unvmap_max_impl)
 _unvmap_max_p.def_abstract_eval(_unvmap_max_abstract_eval)
 batching.primitive_batchers[_unvmap_max_p] = _unvmap_max_batch
-xla.register_translation(
+if hasattr(xla, "lower_fun"):
+    xla.register_translation(
+        _unvmap_max_p,
+        xla.lower_fun(_unvmap_max_impl, multiple_results=False, new_style=True),
+    )
+mlir.register_lowering(
     _unvmap_max_p,
-    xla.lower_fun(_unvmap_max_impl, multiple_results=False, new_style=True),
+    mlir.lower_fun(_unvmap_max_impl, multiple_results=False),
 )

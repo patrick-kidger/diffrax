@@ -4,6 +4,7 @@ import equinox as eqx
 import jax
 import jax.interpreters.ad as ad
 import jax.interpreters.batching as batching
+import jax.interpreters.mlir as mlir
 import jax.interpreters.xla as xla
 import jax.lax as lax
 
@@ -57,9 +58,14 @@ _nondifferentiable_output_p.def_abstract_eval(lambda x: x)
 batching.primitive_batchers[
     _nondifferentiable_output_p
 ] = _nondifferentiable_output_batch
-xla.register_translation(
+if hasattr(xla, "lower_fun"):
+    xla.register_translation(
+        _nondifferentiable_output_p,
+        xla.lower_fun(lambda x: x, multiple_results=False, new_style=True),
+    )
+mlir.register_lowering(
     _nondifferentiable_output_p,
-    xla.lower_fun(lambda x: x, multiple_results=False, new_style=True),
+    mlir.lower_fun(lambda x: x, multiple_results=False),
 )
 ad.primitive_jvps[_nondifferentiable_output_p] = _nondifferentiable_output_jvp
 ad.primitive_transposes[
