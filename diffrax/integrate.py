@@ -886,7 +886,6 @@ def diffeqsolve(
         throw & (result != RESULTS.successful),
         error_index,
         RESULTS.reverse_lookup,
-        RuntimeError,
     )
 
     return Solution(

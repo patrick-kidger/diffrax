@@ -84,10 +84,10 @@ def test_saveat_solution():
 
     # Outside [t0, t1]
     saveat = diffrax.SaveAt(ts=[0])
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         sol = _integrate(saveat)
     saveat = diffrax.SaveAt(ts=[3])
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         sol = _integrate(saveat)
 
     saveat = diffrax.SaveAt(ts=[0.5, 0.8])
