@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ..custom_types import Bool, Int, PyTree, Scalar
-from ..misc import error_if, rms_norm
+from ..misc import rms_norm
 from ..solution import RESULTS
 from .base import AbstractNonlinearSolver, LU_Jacobian, NonlinearSolution
 
@@ -81,8 +81,8 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     tolerate_nonconvergence: bool = False
 
     def __post_init__(self):
-        if self.max_steps is not None:
-            error_if(self.max_steps < 2, "max_steps must be at least 2.")
+        if self.max_steps is not None and self.max_steps < 2:
+            raise ValueError("max_steps must be at least 2.")
 
     def _solve(
         self,
