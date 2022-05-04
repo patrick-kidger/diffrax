@@ -58,3 +58,7 @@ If you found this library useful in academic research, please cite: [(arXiv link
 ```
 
 (Also consider starring the project on GitHub.)
+
+## See also
+
+See the spin-out [Equinox](https://github.com/patrick-kidger/equinox) library for neural networks etc.
