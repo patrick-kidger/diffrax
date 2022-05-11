@@ -9,8 +9,11 @@ from ..custom_types import PyTree
 
 
 def _kl(drift1, drift2, diffusion):
-    inv_diffusion = jnp.linalg.pinv(diffusion)
-    scale = inv_diffusion @ (drift1 - drift2)
+    if diffusion.ndim == 1:
+        scale = (drift1 - drift2) / diffusion
+    else:
+        inv_diffusion = jnp.linalg.pinv(diffusion)
+        scale = inv_diffusion @ (drift1 - drift2)
     return 0.5 * jnp.sum(scale**2)
 
 
@@ -23,7 +26,7 @@ class _AugDrift(eqx.Module):
     def __call__(self, t, y, args):
         y, _ = y
         context = self.context(t)
-        aug_y = jnp.concatenate([y, context], axis=-1)
+        aug_y = jnp.concatenate([y, context], axis=-1) if context is not None else y
         drift1 = self.drift1(t, aug_y, args)
         drift2 = self.drift2(t, y, args)
         diffusion = self.diffusion(t, y, args)
@@ -66,6 +69,8 @@ def sde_kl_divergence(
     bm: AbstractBrownianPath,
 ):
     aug_y0 = (y0, 0.0)
+    if context is None:
+        context = lambda t: None
     return (
         _AugDrift(drift1, drift2, diffusion, context),
         _AugDiffusion(diffusion),
