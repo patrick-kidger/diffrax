@@ -1,9 +1,7 @@
-from collections import namedtuple
 import diffrax
 import jax
 import jax.numpy as jnp
 import pytest
-from diffrax import adjoint
 
 from helpers import random_pytree, shaped_allclose, treedefs
 
