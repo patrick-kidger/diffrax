@@ -2,7 +2,6 @@ import operator
 
 import jax
 import jax.numpy as jnp
-from jax.nn import relu
 
 from ..custom_types import PyTree, Scalar
 from ..term import ControlTerm, MultiTerm, ODETerm, WeaklyDiagonalControlTerm
@@ -16,7 +15,11 @@ def _kl(drift1, drift2, diffusion):
 
 def _kl_diagonal(drift1, drift2, diffusion):
     # stable division
-    diffusion = (relu(diffusion) + 1e-7) * jnp.sign(diffusion)
+    diffusion = jnp.where(
+        jax.lax.stop_gradient(diffusion) > 1e-7,
+        diffusion,
+        jnp.full_like(diffusion, fill_value=1e-7) * jnp.sign(diffusion),
+    )
     scale = (drift1 - drift2) / diffusion
     return 0.5 * jnp.sum(scale**2)
 
