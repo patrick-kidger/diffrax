@@ -89,7 +89,8 @@ def test_backsolve(getkey):
         )
 
     def _convert_float0(x):
-        if x.dtype is jax.dtypes.float0:
+        # bool also to work around JAX issue #11238
+        if x.dtype in (jax.dtypes.float0, jnp.dtype("bool")):
             return 0
         else:
             return x
