@@ -311,12 +311,12 @@ def test_interpolation_classes(mode, getkey):
                     jax.tree_map(_test, firstderiv, derivs, y0, y1)
 
 
-def _test_dense_interpolation(solver_ctr, key, t1):
+def _test_dense_interpolation(solver_ctr, solver_kwargs, key, t1):
     y0 = jrandom.uniform(key, (), minval=0.4, maxval=2)
     dt0 = t1 / 1e3
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: -y),
-        solver=solver_ctr(),
+        solver=solver_ctr(**solver_kwargs),
         t0=0,
         t1=t1,
         dt0=dt0,
@@ -333,10 +333,12 @@ def _test_dense_interpolation(solver_ctr, key, t1):
     return vals, true_vals, derivs, true_derivs
 
 
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_dense_interpolation(solver_ctr, getkey):
+@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
+def test_dense_interpolation(solver_ctr, solver_kwargs, getkey):
     key = jrandom.PRNGKey(5678)
-    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver_ctr, key, 1)
+    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(
+        solver_ctr, solver_kwargs, key, 1
+    )
     assert jnp.array_equal(vals[0], true_vals[0])
     val_tol = {
         diffrax.Euler: 1e-3,
@@ -358,10 +360,10 @@ def test_dense_interpolation(solver_ctr, getkey):
 # When vmap'ing then it can happen that some batch elements take more steps to solve
 # than others. This means some padding is used to make things line up; here we test
 # that all of this works as intended.
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_dense_interpolation_vmap(solver_ctr, getkey):
+@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
+def test_dense_interpolation_vmap(solver_ctr, solver_kwargs, getkey):
     key = jrandom.PRNGKey(5678)
-    _test_dense = ft.partial(_test_dense_interpolation, solver_ctr, key)
+    _test_dense = ft.partial(_test_dense_interpolation, solver_ctr, solver_kwargs, key)
     _test_dense_vmap = jax.vmap(_test_dense)
     vals, true_vals, derivs, true_derivs = _test_dense_vmap(jnp.array([0.5, 1.0]))
     assert jnp.array_equal(vals[:, 0], true_vals[:, 0])
