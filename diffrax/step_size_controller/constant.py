@@ -148,6 +148,8 @@ class StepTo(AbstractStepSizeController):
 StepTo.__init__.__doc__ = """**Arguments:**
 
 - `ts`: The times to step to. Must be an increasing/decreasing sequence of times
-    between the `t0` and `t1` passed to [`diffrax.diffeqsolve`][].
+    between the `t0` and `t1` (inclusive) passed to [`diffrax.diffeqsolve`][].
+    Correctness of `ts` with respect to `t0` and `t1` as well as its
+    monotonicity is checked by the implementation.
 - `compile_steps`: As [`diffrax.ConstantStepSize.__init__`][].
 """
