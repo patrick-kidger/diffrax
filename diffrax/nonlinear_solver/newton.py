@@ -103,6 +103,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
 
         def cond_fn(val):
             _, step, diffsize, diffsize_prev = val
+            at_least_two = step < 2
             rate = diffsize / diffsize_prev
             factor = diffsize * rate / (1 - rate)
             if self.max_steps is None:
@@ -112,7 +113,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             not_small = ~_small(diffsize)
             not_diverged = ~_diverged(rate)
             not_converged = ~_converged(factor, self.kappa)
-            return step_okay & not_small & not_diverged & not_converged
+            return at_least_two | (step_okay & not_small & not_diverged & not_converged)
 
         def body_fn(val):
             flat, step, diffsize, _ = val
@@ -128,10 +129,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             val = (flat, step + 1, diffsize, diffsize_prev)
             return val
 
-        # Unconditionally execute two loops to fill in diffsize and diffsize_prev.
-        val = (flat, 0, None, None)
-        val = body_fn(val)
-        val = body_fn(val)
+        val = (flat, 0, 0.0, 0.0)
         val = lax.while_loop(cond_fn, body_fn, val)
         flat, num_steps, diffsize, diffsize_prev = val
 
