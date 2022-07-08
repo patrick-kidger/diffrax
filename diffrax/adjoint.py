@@ -276,9 +276,16 @@ class BacksolveAdjoint(AbstractAdjoint):
     "optimise-then-discretise", the "continuous adjoint method" or simply the "adjoint
     method".
 
-    This method implies very low memory usage, but is usually relatively slow, and the
+    This method implies very low memory usage, but the
     computed gradients will only be approximate. As such other methods are generally
     preferred unless exceeding memory is a concern.
+
+    This will compute gradients with respect to the `terms`, `y0` and `args` arguments
+    passed to [`diffrax.diffeqsolve`][]. If you attempt to compute gradients with
+    respect to anything else (for example `t0`, or arguments passed via closure), then
+    a `CustomVJPException` will be raised. See also
+    [this FAQ](../../further_details/faq/#im-getting-a-customvjpexception)
+    entry.
 
     !!! note
 
@@ -290,7 +297,7 @@ class BacksolveAdjoint(AbstractAdjoint):
 
         Using this method prevents computing forward-mode autoderivatives of
         [`diffrax.diffeqsolve`][]. (That is to say, `jax.jvp` will not work.)
-    """
+    """  # noqa: E501
 
     kwargs: Dict[str, Any]
 
