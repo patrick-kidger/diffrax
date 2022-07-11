@@ -61,4 +61,8 @@ If you found this library useful in academic research, please cite: [(arXiv link
 
 ## See also
 
-See the spin-out [Equinox](https://github.com/patrick-kidger/equinox) library for neural networks etc.
+Neural networks: [Equinox](https://github.com/patrick-kidger/equinox).
+
+Type annotations and runtime checking for PyTrees and shape/dtype of JAX arrays: [jaxtyping](https://github.com/google/jaxtyping).
+
+SymPy<->JAX conversion; train symbolic expressions via gradient descent: [sympy2jax](https://github.com/google/sympy2jax).
