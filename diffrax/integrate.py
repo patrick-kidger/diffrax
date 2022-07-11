@@ -768,7 +768,7 @@ def diffeqsolve(
     save_index = 0
     made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.inf)
-    ys = jax.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
+    ys = jax.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf + 0.0j), y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         error_if(t0 == t1, "Cannot save dense output if t0 == t1")

@@ -273,7 +273,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             ks = None
         else:
             fs = None
-            ks = jax.tree_map(lambda k: jnp.empty(lentime + jnp.shape(k)), k0)
+            ks = jax.tree_map(lambda k: jnp.empty(lentime + jnp.shape(k), dtype=jnp.dtype(k0)), k0)
             ks = (ks**ω).at[0].set(k0**ω).ω
 
         #
