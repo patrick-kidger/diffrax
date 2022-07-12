@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from helpers import shaped_allclose
+from .helpers import shaped_allclose
 
 
 def test_no_adjoint():

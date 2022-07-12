@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
-from helpers import all_ode_solvers, shaped_allclose
+from .helpers import all_ode_solvers, shaped_allclose
 
 
 def _test_path_derivative(path, name):

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
 
-from helpers import shaped_allclose, time_fn
+from .helpers import shaped_allclose, time_fn
 
 
 def test_functional_no_vmap_no_inplace():

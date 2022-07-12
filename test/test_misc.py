@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from helpers import random_pytree, shaped_allclose, treedefs
+from .helpers import random_pytree, shaped_allclose, treedefs
 
 
 def test_fill_forward():

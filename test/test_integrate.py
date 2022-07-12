@@ -10,7 +10,7 @@ import pytest
 import scipy.stats
 from diffrax.misc import ω
 
-from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
+from .helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
 
 
 def _all_pairs(*args):
