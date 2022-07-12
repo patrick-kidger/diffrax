@@ -2,8 +2,12 @@
 
 The list of step size controllers is as follows. The most common cases are fixed step sizes with [`diffrax.ConstantStepSize`][] and adaptive step sizes with [`diffrax.PIDController`][].
 
+!!! warning
 
-??? abstract "`diffrax.AbstractStepSizeController`"
+    To perform adaptive stepping with SDEs requires [commutative noise](../usage/how-to-choose-a-solver.md#stochastic-differential-equations). Note that this commutativity condition is not checked.
+
+
+??? abstract "Abtract base classes"
 
     All of the classes implement the following interface specified by [`diffrax.AbstractStepSizeController`][].
 
@@ -17,6 +21,12 @@ The list of step size controllers is as follows. The most common cases are fixed
                 - init
                 - adapt_step_size
 
+    ::: diffrax.AbstractAdaptiveStepSizeController
+        selection:
+            members:
+                - rtol
+                - atol
+
 ---
 
 ::: diffrax.ConstantStepSize
@@ -28,23 +38,8 @@ The list of step size controllers is as follows. The most common cases are fixed
     selection:
         members:
             - __init__
-            - ts
 
 ::: diffrax.PIDController
     selection:
         members:
             - __init__
-            - pcoeff
-            - icoeff
-            - dcoeff
-            - rtol
-            - atol
-            - dtmin
-            - dtmax
-            - force_dtmin
-            - step_ts
-            - jump_ts
-            - factormin
-            - factormax
-            - norm
-            - safety

@@ -49,7 +49,7 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
 
     - The numerical solver (here `Dopri5`) can be switched out.
         - See the guide on [How to choose a solver](./how-to-choose-a-solver.md).
-        - See the [Solvers](../api/solver.md) page for the full list of solvers.
+        - See the [ODE solvers](../api/solvers/ode_solvers.md) page for the full list of solvers.
     - Where to save the result (e.g. to obtain dense output) can be adjusted by changing [`diffrax.SaveAt`][].
     - Step sizes and locations can be changed.
         - The initial step size can be selected adaptively by setting `dt0=None`.
@@ -92,6 +92,7 @@ print(sol.evaluate(1.1))  # DeviceArray(0.89436394)
 - The numerical solver used is `Euler()`. (Also known as Euler--Maruyama when applied to SDEs.)
     - There's no clever hackery behind the scenes: `Euler()` for an SDE simply works in exactly the same way as `Euler()` for an ODE -- we just need to specify the extra diffusion term.
     - This converges to an Itô SDE because of the choice of solver. (Whether an SDE solver converges to Itô or Stratonovich SDE is a property of the solver.)
+    - See the [SDE solvers](../api/solvers/sde_solvers.md) page for the full list of solvers.
 - The solution is saved densely -- a continuous path is the output. We can then evaluate it at any point in the interval; in this case `0.1`.
 - No step size controller is specified so by default a constant step size is used.
 

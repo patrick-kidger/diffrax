@@ -1,7 +1,7 @@
 import numpy as np
 
 from ..local_interpolation import ThirdOrderHermitePolynomialInterpolation
-from .base import AbstractAdaptiveSDESolver, AbstractStratonovichSolver
+from .base import AbstractStratonovichSolver
 from .runge_kutta import AbstractERK, ButcherTableau
 
 
@@ -13,7 +13,7 @@ _heun_tableau = ButcherTableau(
 )
 
 
-class Heun(AbstractERK, AbstractStratonovichSolver, AbstractAdaptiveSDESolver):
+class Heun(AbstractERK, AbstractStratonovichSolver):
     """Heun's method.
 
     2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
@@ -23,7 +23,8 @@ class Heun(AbstractERK, AbstractStratonovichSolver, AbstractAdaptiveSDESolver):
     or "explicit trapezoidal rule".
 
     Should not be confused with Heun's third order method, which is a different (higher
-    order) method occasionally also just referred to as "Heun's method".
+    order) method occasionally also just referred to as "Heun's method". (Which is
+    available in Diffrax as [`diffrax.Bosh3`][].)
 
     When used to solve SDEs, converges to the Stratonovich solution.
     """

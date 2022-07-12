@@ -1,5 +1,4 @@
 from .base import (
-    AbstractAdaptiveSDESolver,
     AbstractAdaptiveSolver,
     AbstractImplicitSolver,
     AbstractItoSolver,
@@ -31,6 +30,7 @@ from .runge_kutta import (
     AbstractRungeKutta,
     AbstractSDIRK,
     ButcherTableau,
+    CalculateJacobian,
 )
 from .semi_implicit_euler import SemiImplicitEuler
 from .tsit5 import Tsit5

@@ -14,7 +14,6 @@ The main points of extension are as follows:
         - `diffrax.AbstractImplicitSolver` are those solvers that solve implicit problems (and therefore take a `nonlinear_solver` argument).
         - `diffrax.AbstractAdaptiveSolver` are those solvers capable of providing error estimates (and thus can be used with adaptive step size controllers).
         - `diffrax.AbstractItoSolver` and `diffrax.AbstractStratonovichSolver` are used to specify which SDE solution a particular solver is known to converge to.
-        - `diffrax.AbstractAdaptiveSDESolver` are those solvers whose error estimates are suitable for SDEs. (That is, both the method and the embedded method both converge to the same choice of Itô/Stratonovich.)
         - `diffrax.AbstractWrappedSolver` indicates that the solver is used to wrap another solver, and so e.g. it will be treated as an implicit solver/etc. if the wrapped solver is also an implicit solver/etc.
 
 - **Custom step size controllers** should inherit from [`diffrax.AbstractStepSizeController`][].

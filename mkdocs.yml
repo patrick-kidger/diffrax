@@ -108,7 +108,10 @@ nav:
     - Basic API:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
-        - 'api/solver.md'
+        - Solvers:
+          - 'api/solvers/ode_solvers.md'
+          - 'api/solvers/sde_solvers.md'
+          - 'api/solvers/abstract_solvers.md'
         - 'api/saveat.md'
         - 'api/stepsize_controller.md'
         - 'api/solution.md'

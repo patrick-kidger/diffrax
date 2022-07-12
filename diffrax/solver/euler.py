@@ -7,14 +7,14 @@ from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractItoSolver, AbstractSolver
+from .base import AbstractItoSolver
 
 
 _ErrorEstimate = None
 _SolverState = None
 
 
-class Euler(AbstractItoSolver, AbstractSolver):
+class Euler(AbstractItoSolver):
     """Euler's method.
 
     1st order explicit Runge--Kutta method. Does not support adaptive step sizing.

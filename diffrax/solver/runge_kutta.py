@@ -35,6 +35,8 @@ def _scan(*sequences):
 # trace time.
 @dataclass(frozen=True)
 class ButcherTableau:
+    """The Butcher tableau for an explicit or diagonal Runge--Kutta method."""
+
     # Explicit RK methods
     c: np.ndarray
     b_sol: np.ndarray
@@ -98,9 +100,50 @@ class ButcherTableau:
         )
 
 
-class _CalculateJacobian(metaclass=ContainerMeta):
+ButcherTableau.__init__.__doc__ = """**Arguments:**
+
+Let `k` denote the number of stages of the solver.
+
+- `a_lower`: the lower triangle (without the diagonal) of the Butcher tableau. Should
+    be a tuple of NumPy arrays, corresponding to the rows of this lower triangle. The
+    first array represents the should be of shape `(1,)`. Each subsequent array should
+    be of shape `(2,)`, `(3,)` etc. The final array should have shape `(k - 1,)`.
+- `b_sol`: the linear combination of stages to take to produce the output at each step.
+    Should be a NumPy array of shape `(k,)`.
+- `b_error`: the linear combination of stages to take to produce the error estimate at
+    each step. Should be a NumPy array of shape `(k,)`. Note that this is *not*
+    differenced against `b_sol` prior to evaluation. (i.e. `b_error` gives the linear
+    combination for producing the error estimate directly, not for producing some
+    alternate solution that is compared against the main solution).
+- `c`: the time increments used in the Butcher tableau.
+- `a_diagonal`: optional. The diagonal of the Butcher tableau. Should be `None` or a
+    NumPy array of shape `(k,)`. Used for diagonal implicit Runge--Kutta methods only.
+- `a_predictor`: optional. Used in a similar way to `a_lower`; specifies the linear
+    combination of previous stages to use as a predictor for the solution to the
+    implicit problem at that stage. See
+    [the developer documentation](../../devdocs/predictor_dirk). U#sed for diagonal
+    implicit Runge--Kutta methods only.
+
+Whether the solver exhibits either the FSAL or SSAL properties is determined
+automatically.
+"""
+
+
+class CalculateJacobian(metaclass=ContainerMeta):
+    """An enumeration of possible ways a Runga--Kutta method may wish to calculate a
+    Jacobian.
+
+    `never`: used for explicit Runga--Kutta methods.
+
+    `every_step`: the Jacobian is calculated once per step; in particular it is
+        calculated at the start of the step and re-used for every stage in the step.
+        Used for SDIRK and ESDIRK methods.
+
+    `every_stage`: the Jacobian is calculated once per stage. Used for DIRK methods.
+    """
+
     never = "never"
-    at_start = "at_start"
+    every_step = "every_step"
     every_stage = "every_stage"
 
 
@@ -135,6 +178,19 @@ def _implicit_relation_k(ki, nonlinear_solve_args):
 
 
 class AbstractRungeKutta(AbstractAdaptiveSolver):
+    """Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
+    Runge--Kutta methods, which have a different computational structure.)
+
+    Whilst this class can be subclassed directly, when defining your own Runge--Kutta
+    methods, it is usally better to work with [`diffrax.AbstractERK`][],
+    [`diffrax.AbstractDIRK`][], [`diffrax.AbstractSDIRK`][],
+    [`diffrax.AbstractESDIRK`][] directly.
+
+    Subclasses should specify two class-level attributes. The first is `tableau`, an
+    instance of [`diffrax.ButcherTableau`][]. The second is `calculate_jacobian`, an
+    instance of [`diffrax.CalculateJacobian`][].
+    """
+
     scan_stages: bool = False
 
     term_structure = jax.tree_structure(0)
@@ -146,7 +202,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     @property
     @abc.abstractmethod
-    def _calculate_jacobian(self) -> _CalculateJacobian:
+    def calculate_jacobian(self) -> CalculateJacobian:
         pass
 
     def func_for_init(
@@ -259,7 +315,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 )
         else:
             if (
-                self._calculate_jacobian == _CalculateJacobian.at_start
+                self.calculate_jacobian == CalculateJacobian.every_step
                 or implicit_first_stage
                 or not self.scan_stages
             ):
@@ -286,7 +342,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         jac_f = None
         jac_k = None
-        if self._calculate_jacobian == _CalculateJacobian.at_start:
+        if self.calculate_jacobian == CalculateJacobian.every_step:
             assert self.tableau.a_diagonal is not None
             # Skipping the first element to account for ESDIRK methods.
             assert all(
@@ -472,7 +528,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 else:
                     _k_pred = _vector_tree_dot(_a_predictor_i, ks, _i)  # noqa: F821
                 # Determine Jacobian to use at this stage
-                if self._calculate_jacobian == _CalculateJacobian.every_stage:
+                if self.calculate_jacobian == CalculateJacobian.every_stage:
                     if _return_fi:
                         _jac_f = self.nonlinear_solver.jac(
                             _implicit_relation_f,
@@ -504,7 +560,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                             ),
                         )
                 else:
-                    assert self._calculate_jacobian == _CalculateJacobian.at_start
+                    assert self.calculate_jacobian == CalculateJacobian.every_step
                     _jac_f = jac_f
                     _jac_k = jac_k
                 # Solve nonlinear problem
@@ -713,24 +769,49 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
 
 class AbstractERK(AbstractRungeKutta):
-    _calculate_jacobian = _CalculateJacobian.never
+    """Abstract base class for all Explicit Runge--Kutta solvers.
+
+    Subclasses should include a class-level attribute `tableau`, an instance of
+    [`diffrax.ButcherTableau`][].
+    """
+
+    calculate_jacobian = CalculateJacobian.never
 
 
 class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver):
-    _calculate_jacobian = _CalculateJacobian.every_stage
+    """Abstract base class for all Diagonal Implicit Runge--Kutta solvers.
+
+    Subclasses should include a class-level attribute `tableau`, an instance of
+    [`diffrax.ButcherTableau`][].
+    """
+
+    calculate_jacobian = CalculateJacobian.every_stage
 
 
 class AbstractSDIRK(AbstractDIRK):
+    """Abstract base class for all Singular Diagonal Implict Runge--Kutta solvers.
+
+    Subclasses should include a class-level attribute `tableau`, an instance of
+    [`diffrax.ButcherTableau`][].
+    """
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if cls.tableau is not None:  # Abstract subclasses may not have a tableau.
             diagonal = cls.tableau.a_diagonal[0]
             assert (cls.tableau.a_diagonal == diagonal).all()
 
-    _calculate_jacobian = _CalculateJacobian.at_start
+    calculate_jacobian = CalculateJacobian.every_step
 
 
 class AbstractESDIRK(AbstractDIRK):
+    """Abstract base class for all Explicit Singular Diagonal Implicit Runge--Kutta
+    solvers.
+
+    Subclasses should include a class-level attribute `tableau`, an instance of
+    [`diffrax.ButcherTableau`][].
+    """
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if cls.tableau is not None:  # Abstract subclasses may not have a tableau.
@@ -738,4 +819,4 @@ class AbstractESDIRK(AbstractDIRK):
             diagonal = cls.tableau.a_diagonal[1]
             assert (cls.tableau.a_diagonal[1:] == diagonal).all()
 
-    _calculate_jacobian = _CalculateJacobian.at_start
+    calculate_jacobian = CalculateJacobian.every_step

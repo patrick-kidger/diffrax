@@ -31,7 +31,6 @@ from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import (
-    AbstractAdaptiveSDESolver,
     AbstractAdaptiveSolver,
     AbstractDIRK,
     AbstractERK,
@@ -45,6 +44,7 @@ from .solver import (
     AbstractWrappedSolver,
     Bosh3,
     ButcherTableau,
+    CalculateJacobian,
     Dopri5,
     Dopri8,
     Euler,

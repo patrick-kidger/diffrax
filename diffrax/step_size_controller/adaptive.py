@@ -61,6 +61,14 @@ class _gendocs_norm:
 
 
 class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
+    """Indicates an adaptive step size controller.
+
+    Accepts tolerances `rtol` and `atol`. When used in conjunction with an implicit
+    solver ([`diffrax.AbstractImplicitSolver`][]), then these tolerances will
+    automatically be used as the tolerances for the nonlinear solver passed to the
+    implicit solver, if they are not specified manually.
+    """
+
     rtol: Optional[Scalar] = None
     atol: Optional[Scalar] = None
 

@@ -1,4 +1,3 @@
-import typing
 from typing import Optional, Tuple
 
 import jax
@@ -29,11 +28,6 @@ def force_bitcast_convert_type(val, new_type):
 
 class ContainerMeta(type):
     def __new__(cls, name, bases, dict):
-
-        if getattr(typing, "GENERATING_DOCUMENTATION", False):
-            # Display containers as ints in documentation
-            return int
-
         assert "reverse_lookup" not in dict
         _dict = {}
         reverse_lookup = []

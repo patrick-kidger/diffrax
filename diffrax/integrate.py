@@ -26,13 +26,7 @@ from .misc import (
 )
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
-from .solver import (
-    AbstractAdaptiveSDESolver,
-    AbstractItoSolver,
-    AbstractSolver,
-    AbstractStratonovichSolver,
-    Euler,
-)
+from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -510,8 +504,7 @@ def diffeqsolve(
         (For non-ordinary differential equations (SDEs, CDEs), this also specifies the
         Brownian motion or the control.)
     - `solver`: The solver for the differential equation. See the guide on [how to
-        choose a solver](../usage/how-to-choose-a-solver.md), or the [complete list of
-        solvers](../api/solver.md).
+        choose a solver](../usage/how-to-choose-a-solver.md).
     - `t0`: The start of the region of integration.
     - `t1`: The end of the region of integration.
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
@@ -655,11 +648,6 @@ def diffeqsolve(
                 raise ValueError(
                     "An SDE should not be solved with adaptive step sizes with Euler's "
                     "method; it will not converge to the correct solution."
-                )
-            if not isinstance(solver, AbstractAdaptiveSDESolver):
-                raise ValueError(
-                    "An adaptive step size controller is being used with a solver "
-                    "that does not provide error estimates suitable for SDEs."
                 )
     if is_unsafe_sde(terms):
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
