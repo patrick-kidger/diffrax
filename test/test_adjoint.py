@@ -4,6 +4,7 @@ import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.random as jrandom
 import pytest
 
 from .helpers import shaped_allclose
@@ -141,3 +142,54 @@ def test_adjoint_seminorm():
         return jnp.sum(sol.ys)
 
     jax.grad(solve)(2.0)
+
+
+def test_closure_errors():
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
+
+    @eqx.filter_jit
+    @eqx.filter_value_and_grad
+    def run(model):
+        def f(t, y, args):
+            return model(y)
+
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(f),
+            diffrax.Euler(),
+            0,
+            1,
+            0.1,
+            jnp.array([1.0]),
+            adjoint=diffrax.BacksolveAdjoint(),
+        )
+        return jnp.sum(sol.ys)
+
+    with pytest.raises(jax.interpreters.ad.CustomVJPException):
+        run(mlp)
+
+
+def test_closure_fixed():
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
+
+    class VectorField(eqx.Module):
+        model: eqx.Module
+
+        def __call__(self, t, y, args):
+            return self.model(y)
+
+    @eqx.filter_jit
+    @eqx.filter_value_and_grad
+    def run(model):
+        f = VectorField(model)
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(f),
+            diffrax.Euler(),
+            0,
+            1,
+            0.1,
+            jnp.array([1.0]),
+            adjoint=diffrax.BacksolveAdjoint(),
+        )
+        return jnp.sum(sol.ys)
+
+    run(mlp)
