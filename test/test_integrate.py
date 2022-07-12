@@ -104,8 +104,8 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_ode_order(solver_ctr):
+@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
+def test_ode_order(solver_ctr, solver_kwargs):
     key = jrandom.PRNGKey(5678)
     akey, ykey = jrandom.split(key, 2)
 
@@ -115,7 +115,7 @@ def test_ode_order(solver_ctr):
         return A @ y
 
     term = diffrax.ODETerm(f)
-    solver = solver_ctr()
+    solver = solver_ctr(**solver_kwargs)
     t0 = 0
     t1 = 4
     y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
