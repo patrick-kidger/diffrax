@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import pytest
 
-from helpers import all_ode_solvers, shaped_allclose
+from .helpers import all_ode_solvers, shaped_allclose
 
 
 @pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])

@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import pytest
 import scipy.integrate as integrate
 
-from helpers import all_ode_solvers, shaped_allclose
+from .helpers import all_ode_solvers, shaped_allclose
 
 
 #

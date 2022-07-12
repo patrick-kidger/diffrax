@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
-from helpers import shaped_allclose
+from .helpers import shaped_allclose
 
 
 # Basic test
