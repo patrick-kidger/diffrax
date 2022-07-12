@@ -14,7 +14,7 @@ from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 _SolverState = Tuple[PyTree, PyTree]
 
 
-class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
+class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for

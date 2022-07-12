@@ -7,14 +7,14 @@ from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver, AbstractStratonovichSolver
+from .base import AbstractStratonovichSolver
 
 
 _ErrorEstimate = None
 _SolverState = None
 
 
-class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
+class EulerHeun(AbstractStratonovichSolver):
     """Euler-Heun method.
 
     Used to solve SDEs, and converges to the Stratonovich solution.

@@ -1,5 +1,9 @@
 # FAQ
 
+### Compilation is taking a long time.
+
+If you're using a Runge--Kutta method like [`diffrax.Dopri5`][] etc., then try setting `scan_stages=True` when initialisating the solver, for example `Dopri5(scan_stages=True)`. This will substantially reduce compile time at the expense of a slightly slower run time.
+
 ### The solve is taking loads of steps / I'm getting NaN gradients / other weird behaviour.
 
 Try switching to 64-bit precision. (Instead of the 32-bit that is the default in JAX.) [See here](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision).
