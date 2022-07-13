@@ -391,14 +391,9 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # `scaled_error = norm(y_error) / (atol + norm(y) * rtol)`  (2)
         # We do (1). torchdiffeq and torchsde do (1). Soderlind's papers and
         # OrdinaryDiffEq.jl do (2).
-        # We choose to do (1) by considering what were to happen if we were to increase
-        # the dimensionality of `y` and `y_error` with zeros. (i.e. append as many
-        # `dy/dt=0` problems as we please, and then solve them perfectly) Assuming that
-        # `norm` normalises by the number of dimensions (e.g. like an RMS norm) then
-        # (2) will see `norm(y_error) -> 0`, `norm(y) -> 0`, and therefore `atol`
-        # playing a larger and larger role. In contrast (2) simply scales things down
-        # without `atol` taking on extra importance. (This is quite thin justification
-        # though.)
+        # We choose to do (1) by considering what if `y` were to contain different
+        # components at very different scales. The errors in the small components may
+        # be drowned out by the errors in the big components if we were using (2).
         #
         # Some will put the multiplication by `safety` outside the `coeff/error_order`
         # exponent. (1) Some will put it inside. (2)

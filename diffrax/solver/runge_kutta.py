@@ -10,7 +10,7 @@ import numpy as np
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..misc import ContainerMeta, ω
-from ..solution import RESULTS
+from ..solution import is_okay, RESULTS, update_result
 from ..term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
 
@@ -607,9 +607,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         _ki = _nonlinear_sol.root
                     else:
                         assert False
-                _result = jnp.where(
-                    _result == RESULTS.successful, _nonlinear_sol.result, _result
-                )
+                _result = update_result(_result, _nonlinear_sol.result)
                 del _nonlinear_sol
             else:
                 # Explicit stage
@@ -740,7 +738,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         else:
             y_error = vector_tree_dot(self.tableau.b_error, ks)
         y_error = jax.tree_map(
-            lambda _y_error: jnp.where(result == RESULTS.successful, _y_error, jnp.inf),
+            lambda _y_error: jnp.where(is_okay(result), _y_error, jnp.inf),
             y_error,
         )  # i.e. an implicit step failed to converge
 
