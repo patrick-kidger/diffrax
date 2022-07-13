@@ -20,7 +20,7 @@ def _fn2(x, args):
     return a - b, b
 
 
-# Nontrivial nteractions between inputs
+# Nontrivial interactions between inputs
 @jax.jit
 def _fn3(x, args):
     mlp = eqx.nn.MLP(4, 4, 256, 2, key=jrandom.PRNGKey(678))
