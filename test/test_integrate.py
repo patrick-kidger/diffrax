@@ -32,16 +32,20 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver_ctr,t_dtype,treedef,stepsize_controller",
+    "solver,t_dtype,treedef,stepsize_controller",
     _all_pairs(
         dict(
-            default=diffrax.Euler,
+            default=diffrax.Euler(),
             opts=(
-                diffrax.LeapfrogMidpoint,
-                diffrax.ReversibleHeun,
-                diffrax.Tsit5,
-                diffrax.ImplicitEuler,
-                diffrax.Kvaerno3,
+                diffrax.LeapfrogMidpoint(),
+                diffrax.ReversibleHeun(),
+                diffrax.Tsit5(),
+                diffrax.ImplicitEuler(
+                    nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+                ),
+                diffrax.Kvaerno3(
+                    nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+                ),
             ),
         ),
         dict(default=jnp.float32, opts=(int, float, jnp.int32)),
@@ -52,8 +56,8 @@ def _all_pairs(*args):
         ),
     ),
 )
-def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
-    if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver) and isinstance(
+def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
+    if not isinstance(solver, diffrax.AbstractAdaptiveSolver) and isinstance(
         stepsize_controller, diffrax.PIDController
     ):
         return
@@ -83,7 +87,7 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     try:
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(f),
-            solver_ctr(),
+            solver,
             t0,
             t1,
             dt0,
@@ -522,7 +526,17 @@ def test_compile_time_steps():
     assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
 
 
-@pytest.mark.parametrize("solver", [diffrax.ImplicitEuler(), diffrax.Kvaerno5()])
+@pytest.mark.parametrize(
+    "solver",
+    [
+        diffrax.ImplicitEuler(
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+        ),
+        diffrax.Kvaerno5(
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+        ),
+    ],
+)
 def test_grad_implicit_solve(solver):
     # Check that we work around JAX issue #9374
     # Whilst we're at -- for efficiency -- check the use of PyTree-valued state with

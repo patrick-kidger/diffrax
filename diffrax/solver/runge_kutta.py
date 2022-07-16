@@ -205,14 +205,14 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     def calculate_jacobian(self) -> CalculateJacobian:
         pass
 
-    def func_for_init(
+    def func(
         self,
         terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
+        return terms.vf(t0, y0, args)
 
     def init(
         self,

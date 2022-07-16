@@ -72,11 +72,11 @@ class LeapfrogMidpoint(AbstractSolver):
         solver_state = (t0, y0)
         return y1, None, dense_info, solver_state, RESULTS.successful
 
-    def func_for_init(
+    def func(
         self,
         terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
+        return terms.vf(t0, y0, args)

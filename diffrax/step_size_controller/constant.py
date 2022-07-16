@@ -28,10 +28,10 @@ class ConstantStepSize(AbstractStepSizeController):
         y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        func: Callable[[Scalar, PyTree, PyTree], PyTree],
         error_order: Optional[Scalar],
     ) -> Tuple[Scalar, Scalar]:
-        del terms, t1, y0, args, func_for_init, error_order
+        del terms, t1, y0, args, func, error_order
         if dt0 is None:
             raise ValueError(
                 "Constant step size solvers cannot select step size automatically; "
@@ -108,10 +108,10 @@ class StepTo(AbstractStepSizeController):
         y0: PyTree,
         dt0: None,
         args: PyTree,
-        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        func: Callable[[Scalar, PyTree, PyTree], PyTree],
         error_order: Optional[Scalar],
     ) -> Tuple[Scalar, int]:
-        del y0, args, func_for_init, error_order
+        del y0, args, func, error_order
         if dt0 is not None:
             raise ValueError(
                 "`dt0` should be `None`. Step location is already determined "
