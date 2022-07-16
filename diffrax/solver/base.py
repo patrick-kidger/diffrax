@@ -144,30 +144,23 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
             happened successfully, or if (unusually) it failed for some reason.
         """
 
-    def func_for_init(
+    @abc.abstractmethod
+    def func(
         self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
     ) -> PyTree:
-        """Provides vector field evaluations to select the initial step size.
+        """Evaluate the vector field at a point. (This is unlike
+        [`diffrax.AbstractSolver.step`][], which operates over an interval.)
 
-        This is used to make a point evaluation. This is unlike
-        [`diffrax.AbstractSolver.step`][], which operates over an interval.
-
-        In general differential equation solvers are interval-based. There is precisely
-        one place where point evaluations are needed: selecting the initial step size
-        automatically in an ODE solve. And that is what this function is for.
+        For most operations differential equation solvers are interval-based, so this
+        opertion should be used sparingly. This operation is needed for things like
+        selecting an initial step size.
 
         **Arguments:** As [`diffrax.diffeqsolve`][]
 
         **Returns:**
 
-        The evaluation of the vector field at `t0`.
+        The evaluation of the vector field at `t0`, `y0`.
         """
-
-        raise ValueError(
-            "An initial step size cannot be selected automatically. The most common "
-            "scenario for this error to occur is when trying to use adaptive step "
-            "size solvers with SDEs. Please specify an initial `dt0` instead."
-        )
 
 
 class AbstractImplicitSolver(AbstractSolver):
@@ -306,10 +299,8 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
 
         return y1, y_error, dense_info, solver_state, result
 
-    def func_for_init(
-        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
-    ):
-        return self.solver.func_for_init(terms, t0, y0, args)
+    def func(self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree):
+        return self.solver.func(terms, t0, y0, args)
 
 
 HalfSolver.__init__.__doc__ = """**Arguments:**

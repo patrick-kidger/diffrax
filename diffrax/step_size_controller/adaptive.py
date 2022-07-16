@@ -19,13 +19,13 @@ def _select_initial_step(
     t0: Scalar,
     y0: PyTree,
     args: PyTree,
-    func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+    func: Callable[[Scalar, PyTree, PyTree], PyTree],
     error_order: Scalar,
     rtol: Scalar,
     atol: Scalar,
     norm: Callable[[PyTree], Scalar],
 ) -> Scalar:
-    f0 = func_for_init(terms, t0, y0, args)
+    f0 = func(terms, t0, y0, args)
     scale = (atol + ω(y0).call(jnp.abs) * rtol).ω
     d0 = norm((y0**ω / scale**ω).ω)
     d1 = norm((f0**ω / scale**ω).ω)
@@ -36,7 +36,7 @@ def _select_initial_step(
 
     t1 = t0 + h0
     y1 = (y0**ω + h0 * f0**ω).ω
-    f1 = func_for_init(terms, t1, y1, args)
+    f1 = func(terms, t1, y1, args)
     d2 = norm(((f1**ω - f0**ω) / scale**ω).ω) / h0
 
     max_d = jnp.maximum(d1, d2)
@@ -305,7 +305,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        func: Callable[[Scalar, PyTree, PyTree], PyTree],
         error_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         del t1
@@ -316,7 +316,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
                 t0,
                 y0,
                 args,
-                func_for_init,
+                func,
                 error_order,
                 self.rtol,
                 self.atol,

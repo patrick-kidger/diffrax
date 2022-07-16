@@ -27,13 +27,52 @@ all_ode_solvers = (
     (diffrax.ReversibleHeun, {}),
     (diffrax.Tsit5, dict(scan_stages=False)),
     (diffrax.Tsit5, dict(scan_stages=True)),
-    (diffrax.ImplicitEuler, {}),
-    (diffrax.Kvaerno3, dict(scan_stages=False)),
-    (diffrax.Kvaerno3, dict(scan_stages=True)),
-    (diffrax.Kvaerno4, dict(scan_stages=False)),
-    (diffrax.Kvaerno4, dict(scan_stages=True)),
-    (diffrax.Kvaerno5, dict(scan_stages=False)),
-    (diffrax.Kvaerno5, dict(scan_stages=True)),
+    (
+        diffrax.ImplicitEuler,
+        dict(nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)),
+    ),
+    (
+        diffrax.Kvaerno3,
+        dict(
+            scan_stages=False,
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6),
+        ),
+    ),
+    (
+        diffrax.Kvaerno3,
+        dict(
+            scan_stages=True,
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6),
+        ),
+    ),
+    (
+        diffrax.Kvaerno4,
+        dict(
+            scan_stages=False,
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6),
+        ),
+    ),
+    (
+        diffrax.Kvaerno4,
+        dict(
+            scan_stages=True,
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6),
+        ),
+    ),
+    (
+        diffrax.Kvaerno5,
+        dict(
+            scan_stages=False,
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6),
+        ),
+    ),
+    (
+        diffrax.Kvaerno5,
+        dict(
+            scan_stages=True,
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6),
+        ),
+    ),
 )
 
 

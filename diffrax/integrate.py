@@ -743,12 +743,12 @@ def diffeqsolve(
     error_order = solver.error_order(terms)
     if controller_state is None:
         (tnext, controller_state) = stepsize_controller.init(
-            terms, t0, t1, y0, dt0, args, solver.func_for_init, error_order
+            terms, t0, t1, y0, dt0, args, solver.func, error_order
         )
     else:
         if dt0 is None:
             (tnext, _) = stepsize_controller.init(
-                terms, t0, t1, y0, dt0, args, solver.func_for_init, error_order
+                terms, t0, t1, y0, dt0, args, solver.func, error_order
             )
         else:
             tnext = t0 + dt0

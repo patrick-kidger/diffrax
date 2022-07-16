@@ -18,7 +18,7 @@ In addition [`diffrax.AbstractSolver`][] has several subclasses that you can use
             - error_order
             - init
             - step
-            - func_for_init
+            - func
 
 ---
 
