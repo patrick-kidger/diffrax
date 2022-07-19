@@ -355,47 +355,46 @@ def _e5():
     return diffeq, init
 
 
-@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
-def test_a(solver_ctr, solver_kwargs):
-    if solver_ctr in (diffrax.Euler, diffrax.ImplicitEuler):
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_a(solver):
+    if isinstance(solver, (diffrax.Euler, diffrax.ImplicitEuler)):
         # Euler is pretty bad at solving things, so only do some simple tests.
-        _test(solver_ctr, solver_kwargs, [_a1, _a2], higher=False)
+        _test(solver, [_a1, _a2], higher=False)
     else:
-        _test(solver_ctr, solver_kwargs, [_a1, _a2, _a3, _a4, _a5], higher=False)
+        _test(solver, [_a1, _a2, _a3, _a4, _a5], higher=False)
 
 
-@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
-def test_b(solver_ctr, solver_kwargs):
-    _test(solver_ctr, solver_kwargs, [_b1, _b2, _b3, _b4, _b5], higher=True)
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_b(solver):
+    _test(solver, [_b1, _b2, _b3, _b4, _b5], higher=True)
 
 
-@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
-def test_c(solver_ctr, solver_kwargs):
-    _test(solver_ctr, solver_kwargs, [_c1, _c2, _c3, _c4, _c5], higher=True)
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_c(solver):
+    _test(solver, [_c1, _c2, _c3, _c4, _c5], higher=True)
 
 
-@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
-def test_d(solver_ctr, solver_kwargs):
-    _test(solver_ctr, solver_kwargs, [_d1, _d2, _d3, _d4, _d5], higher=True)
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_d(solver):
+    _test(solver, [_d1, _d2, _d3, _d4, _d5], higher=True)
 
 
-@pytest.mark.parametrize("solver_ctr,solver_kwargs", all_ode_solvers)
-def test_e(solver_ctr, solver_kwargs):
-    _test(solver_ctr, solver_kwargs, [_e1, _e2, _e3, _e4, _e5], higher=True)
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_e(solver):
+    _test(solver, [_e1, _e2, _e3, _e4, _e5], higher=True)
 
 
-def _test(solver_ctr, solver_kwargs, problems, higher):
+def _test(solver, problems, higher):
     for problem in problems:
         vector_field, init = problem()
         term = diffrax.ODETerm(vector_field)
-        solver = solver_ctr(**solver_kwargs)
         if higher and solver.order(term) < 4:
             # Too difficult to get accurate solutions with a low-order solver
             return
         max_steps = 16**4
-        if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver):
+        if not isinstance(solver, diffrax.AbstractAdaptiveSolver):
             dt0 = 0.01
-            if solver_ctr is diffrax.LeapfrogMidpoint:
+            if type(solver) is diffrax.LeapfrogMidpoint:
                 # This is an *awful* long-time-horizon solver.
                 # It gets decent results to begin with, but then the oscillations
                 # build up by t=20.
@@ -403,7 +402,7 @@ def _test(solver_ctr, solver_kwargs, problems, higher):
                 dt0 = 0.000001
                 max_steps = 20_000_001
             stepsize_controller = diffrax.ConstantStepSize()
-        elif solver_ctr is diffrax.ReversibleHeun and problem is _a1:
+        elif type(solver) is diffrax.ReversibleHeun and problem is _a1:
             # ReversibleHeun is a bit like LeapfrogMidpoint, and therefore bad over
             # long time horizons. (It develops very large oscillations over long time
             # horizons.)
