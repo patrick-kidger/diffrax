@@ -22,6 +22,18 @@ class NonlinearSolution(eqx.Module):
     result: RESULTS
 
 
+def _primal(diff_args, closure):
+    self, fn, x, jac, nondiff_args = closure
+    nsol = self._solve(fn, x, jac, nondiff_args, diff_args)
+    return nsol.root, eqx.tree_at(lambda s: s.root, nsol, None)
+
+
+def _rewrite(root, _, diff_args, closure):
+    _, fn, _, _, nondiff_args = closure
+    args = eqx.combine(diff_args, nondiff_args)
+    return fn(root, args)
+
+
 class AbstractNonlinearSolver(eqx.Module):
     """Abstract base class for all nonlinear root-finding algorithms.
 
@@ -76,16 +88,8 @@ class AbstractNonlinearSolver(eqx.Module):
 
         x = lax.stop_gradient(x)
         diff_args, nondiff_args = eqx.partition(args, eqx.is_inexact_array)
-
-        def _primal(_diff_args):
-            nsol = self._solve(fn, x, jac, nondiff_args, _diff_args)
-            return nsol.root, eqx.tree_at(lambda s: s.root, nsol, None)
-
-        def _rewrite(_root, _, _diff_args):
-            _args = eqx.combine(_diff_args, nondiff_args)
-            return fn(_root, _args)
-
-        root, nsol_no_root = implicit_jvp(_primal, _rewrite, diff_args)
+        closure = (self, fn, x, jac, nondiff_args)
+        root, nsol_no_root = implicit_jvp(_primal, _rewrite, diff_args, closure)
         return eqx.tree_at(
             lambda s: s.root, nsol_no_root, root, is_leaf=lambda z: z is None
         )

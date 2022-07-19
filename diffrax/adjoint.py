@@ -93,6 +93,35 @@ class NoAdjoint(AbstractAdjoint):
         return final_state, aux_stats
 
 
+def _vf(ys, residual, args__terms, closure):
+    state_no_y, _ = residual
+    t = state_no_y.tprev
+    (y,) = ys  # unpack length-1 dimension
+    args, terms = args__terms
+    _, _, solver, _, _ = closure
+    return solver.func(terms, t, y, args)
+
+
+def _solve(args__terms, closure):
+    args, terms = args__terms
+    self, kwargs, solver, saveat, init_state = closure
+    final_state, aux_stats = self._loop_fn(
+        **kwargs,
+        args=args,
+        terms=terms,
+        solver=solver,
+        saveat=saveat,
+        init_state=init_state,
+        is_bounded=False,
+    )
+    # Note that we use .ys not .y here. The former is what is actually returned
+    # by diffeqsolve, so it is the thing we want to attach the tangent to.
+    return final_state.ys, (
+        eqx.tree_at(lambda s: s.ys, final_state, None),
+        aux_stats,
+    )
+
+
 class ImplicitAdjoint(AbstractAdjoint):
     r"""Backpropagate via the [implicit function theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem#Statement_of_the_theorem).
 
@@ -119,33 +148,8 @@ class ImplicitAdjoint(AbstractAdjoint):
             init_state,
             replace_fn=lax.stop_gradient,
         )
-
-        def _vf(_ys, _residual, _args__terms):
-            _state_no_y, _ = _residual
-            _t = _state_no_y.tprev
-            (_y,) = _ys  # unpack length-1 dimension
-            _args, _terms = _args__terms
-            return solver.func(_terms, _t, _y, _args)
-
-        def _solve(_args__terms):
-            _args, _terms = _args__terms
-            _final_state, _aux_stats = self._loop_fn(
-                **kwargs,
-                args=_args,
-                terms=_terms,
-                solver=solver,
-                saveat=saveat,
-                init_state=init_state,
-                is_bounded=False,
-            )
-            # Note that we use .ys not .y here. The former is what is actually returned
-            # by diffeqsolve, so it is the thing we want to attach the tangent to.
-            return _final_state.ys, (
-                eqx.tree_at(lambda s: s.ys, _final_state, None),
-                _aux_stats,
-            )
-
-        ys, residual = implicit_jvp(_solve, _vf, (args, terms))
+        closure = (self, kwargs, solver, saveat, init_state)
+        ys, residual = implicit_jvp(_solve, _vf, (args, terms), closure)
 
         final_state_no_ys, aux_stats = residual
         return (
