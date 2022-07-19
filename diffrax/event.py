@@ -81,7 +81,9 @@ class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
                 "manually."
             )
 
-        vf = solver.vf(terms, state.tprev, state.y, args)
+        # TODO: this makes an additional function evaluation that in practice has
+        # probably already been made by the solver.
+        vf = solver.func(terms, state.tprev, state.y, args)
         return self.norm(vf) < _atol + _rtol * self.norm(state.y)
 
 

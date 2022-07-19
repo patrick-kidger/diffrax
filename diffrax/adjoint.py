@@ -125,7 +125,7 @@ class ImplicitAdjoint(AbstractAdjoint):
             _t = _state_no_y.tprev
             (_y,) = _ys  # unpack length-1 dimension
             _args, _terms = _args__terms
-            return solver.vf(_terms, _t, _y, _args)
+            return solver.func(_terms, _t, _y, _args)
 
         def _solve(_args__terms):
             _args, _terms = _args__terms
