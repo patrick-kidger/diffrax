@@ -35,7 +35,7 @@ from .nonlinear_solver import (
 )
 from .path import AbstractPath
 from .saveat import SaveAt
-from .solution import RESULTS, Solution
+from .solution import is_event, is_okay, is_successful, RESULTS, Solution
 from .solver import (
     AbstractAdaptiveSolver,
     AbstractDIRK,
