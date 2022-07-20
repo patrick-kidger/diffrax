@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import pytest
 import scipy.integrate as integrate
 
-from .helpers import all_ode_solvers, shaped_allclose
+from .helpers import all_ode_solvers, implicit_tol, shaped_allclose
 
 
 #
@@ -393,6 +393,7 @@ def _test(solver, problems, higher):
             return
         max_steps = 16**4
         if not isinstance(solver, diffrax.AbstractAdaptiveSolver):
+            solver = implicit_tol(solver)
             dt0 = 0.01
             if type(solver) is diffrax.LeapfrogMidpoint:
                 # This is an *awful* long-time-horizon solver.
