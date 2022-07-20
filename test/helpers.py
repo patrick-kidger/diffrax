@@ -39,11 +39,12 @@ all_ode_solvers = (
 
 
 def implicit_tol(solver):
-    if isinstance(solver, diffrax.AbstractAdaptiveSolver):
+    if isinstance(solver, diffrax.AbstractImplicitSolver):
         return eqx.tree_at(
             lambda s: (s.nonlinear_solver.rtol, s.nonlinear_solver.atol),
             solver,
             (1e-3, 1e-6),
+            is_leaf=lambda x: x is None,
         )
     return solver
 
