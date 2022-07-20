@@ -4,37 +4,49 @@ import operator
 import time
 
 import diffrax
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
 
 all_ode_solvers = (
-    (diffrax.Bosh3, dict(scan_stages=False)),
-    (diffrax.Bosh3, dict(scan_stages=True)),
-    (diffrax.Dopri5, dict(scan_stages=False)),
-    (diffrax.Dopri5, dict(scan_stages=True)),
-    (diffrax.Dopri8, dict(scan_stages=False)),
-    (diffrax.Dopri8, dict(scan_stages=True)),
-    (diffrax.Euler, {}),
-    (diffrax.Ralston, dict(scan_stages=False)),
-    (diffrax.Ralston, dict(scan_stages=True)),
-    (diffrax.Midpoint, dict(scan_stages=False)),
-    (diffrax.Midpoint, dict(scan_stages=True)),
-    (diffrax.Heun, dict(scan_stages=False)),
-    (diffrax.Heun, dict(scan_stages=True)),
-    (diffrax.LeapfrogMidpoint, {}),
-    (diffrax.ReversibleHeun, {}),
-    (diffrax.Tsit5, dict(scan_stages=False)),
-    (diffrax.Tsit5, dict(scan_stages=True)),
-    (diffrax.ImplicitEuler, {}),
-    (diffrax.Kvaerno3, dict(scan_stages=False)),
-    (diffrax.Kvaerno3, dict(scan_stages=True)),
-    (diffrax.Kvaerno4, dict(scan_stages=False)),
-    (diffrax.Kvaerno4, dict(scan_stages=True)),
-    (diffrax.Kvaerno5, dict(scan_stages=False)),
-    (diffrax.Kvaerno5, dict(scan_stages=True)),
+    diffrax.Bosh3(scan_stages=False),
+    diffrax.Bosh3(scan_stages=True),
+    diffrax.Dopri5(scan_stages=False),
+    diffrax.Dopri5(scan_stages=True),
+    diffrax.Dopri8(scan_stages=False),
+    diffrax.Dopri8(scan_stages=True),
+    diffrax.Euler(),
+    diffrax.Ralston(scan_stages=False),
+    diffrax.Ralston(scan_stages=True),
+    diffrax.Midpoint(scan_stages=False),
+    diffrax.Midpoint(scan_stages=True),
+    diffrax.Heun(scan_stages=False),
+    diffrax.Heun(scan_stages=True),
+    diffrax.LeapfrogMidpoint(),
+    diffrax.ReversibleHeun(),
+    diffrax.Tsit5(scan_stages=False),
+    diffrax.Tsit5(scan_stages=True),
+    diffrax.ImplicitEuler(),
+    diffrax.Kvaerno3(scan_stages=False),
+    diffrax.Kvaerno3(scan_stages=True),
+    diffrax.Kvaerno4(scan_stages=False),
+    diffrax.Kvaerno4(scan_stages=True),
+    diffrax.Kvaerno5(scan_stages=False),
+    diffrax.Kvaerno5(scan_stages=True),
 )
+
+
+def implicit_tol(solver):
+    if isinstance(solver, diffrax.AbstractImplicitSolver):
+        return eqx.tree_at(
+            lambda s: (s.nonlinear_solver.rtol, s.nonlinear_solver.atol),
+            solver,
+            (1e-3, 1e-6),
+            is_leaf=lambda x: x is None,
+        )
+    return solver
 
 
 def random_pytree(key, treedef):

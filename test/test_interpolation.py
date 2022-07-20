@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
-from .helpers import all_ode_solvers, shaped_allclose
+from .helpers import all_ode_solvers, implicit_tol, shaped_allclose
 
 
 def _test_path_derivative(path, name):
@@ -54,13 +54,12 @@ def test_derivative(getkey):
     )
     paths.append((local_linear_interp, "local linear", ys[0], ys[-1]))
 
-    for solver_ctr, solver_kwargs in all_ode_solvers:
-        if solver_ctr is diffrax.Tsit5:
-            continue
+    for solver in all_ode_solvers:
+        solver = implicit_tol(solver)
         y0 = jrandom.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
             diffrax.ODETerm(lambda t, y, p: -y),
-            solver_ctr(**solver_kwargs),
+            solver,
             0,
             1,
             0.01,
@@ -68,7 +67,7 @@ def test_derivative(getkey):
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
         y1 = solution.ys[-1]
-        paths.append((solution, solver_ctr.__name__, y0, y1))
+        paths.append((solution, type(solver).__name__, y0, y1))
 
     # actually do tests
 

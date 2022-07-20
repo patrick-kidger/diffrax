@@ -1,10 +1,12 @@
 import math
+from typing import Any
 
 import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import optax
 import pytest
 
 from .helpers import shaped_allclose
@@ -193,3 +195,56 @@ def test_closure_fixed():
         return jnp.sum(sol.ys)
 
     run(mlp)
+
+
+def test_implicit():
+    class ExponentialDecayToSteadyState(eqx.Module):
+        steady_state: float
+        non_jax_type: Any
+
+        def __call__(self, t, y, args):
+            return self.steady_state - y
+
+    def loss(model, target_steady_state):
+        term = diffrax.ODETerm(model)
+        solver = diffrax.Tsit5()
+        t0 = 0
+        t1 = jnp.inf
+        dt0 = None
+        y0 = 1.0
+        max_steps = None
+        controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
+        event = diffrax.SteadyStateEvent()
+        adjoint = diffrax.ImplicitAdjoint()
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y0,
+            max_steps=max_steps,
+            stepsize_controller=controller,
+            discrete_terminating_event=event,
+            adjoint=adjoint,
+        )
+        (y1,) = sol.ys
+        return (y1 - target_steady_state) ** 2
+
+    model = ExponentialDecayToSteadyState(jnp.array(0.0), object())
+    target_steady_state = jnp.array(0.76)
+    optim = optax.sgd(1e-2, momentum=0.7, nesterov=True)
+    opt_state = optim.init(eqx.filter(model, eqx.is_array))
+
+    @eqx.filter_jit
+    def make_step(model, opt_state, target_steady_state):
+        grads = eqx.filter_grad(loss)(model, target_steady_state)
+        updates, opt_state = optim.update(grads, opt_state)
+        model = eqx.apply_updates(model, updates)
+        return model, opt_state
+
+    for step in range(100):
+        model, opt_state = make_step(model, opt_state, target_steady_state)
+    assert shaped_allclose(
+        model.steady_state, target_steady_state, rtol=1e-2, atol=1e-2
+    )

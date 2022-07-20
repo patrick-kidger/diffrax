@@ -6,7 +6,7 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 
-from .misc import nondifferentiable_output, ω
+from .misc import implicit_jvp, nondifferentiable_output, ω
 from .saveat import SaveAt
 from .term import AbstractTerm, AdjointTerm
 
@@ -22,6 +22,7 @@ class AbstractAdjoint(eqx.Module):
         terms,
         solver,
         stepsize_controller,
+        discrete_terminating_event,
         saveat,
         t0,
         t1,
@@ -92,6 +93,73 @@ class NoAdjoint(AbstractAdjoint):
         return final_state, aux_stats
 
 
+def _vf(ys, residual, args__terms, closure):
+    state_no_y, _ = residual
+    t = state_no_y.tprev
+    (y,) = ys  # unpack length-1 dimension
+    args, terms = args__terms
+    _, _, solver, _, _ = closure
+    return solver.func(terms, t, y, args)
+
+
+def _solve(args__terms, closure):
+    args, terms = args__terms
+    self, kwargs, solver, saveat, init_state = closure
+    final_state, aux_stats = self._loop_fn(
+        **kwargs,
+        args=args,
+        terms=terms,
+        solver=solver,
+        saveat=saveat,
+        init_state=init_state,
+        is_bounded=False,
+    )
+    # Note that we use .ys not .y here. The former is what is actually returned
+    # by diffeqsolve, so it is the thing we want to attach the tangent to.
+    return final_state.ys, (
+        eqx.tree_at(lambda s: s.ys, final_state, None),
+        aux_stats,
+    )
+
+
+class ImplicitAdjoint(AbstractAdjoint):
+    r"""Backpropagate via the [implicit function theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem#Statement_of_the_theorem).
+
+    This is used when solving towards a steady state, typically using
+    [`diffrax.SteadyStateEvent`][]. In this case, the output of the solver is $y(θ)$
+    for which $f(t, y(θ), θ) = 0$. (Where $θ$ corresponds to all parameters found
+    through `terms` and `args`, but not `y0`.) Then we can skip backpropagating through
+    the solver and instead directly compute
+    $\frac{\mathrm{d}y}{\mathrm{d}θ} = - (\frac{\mathrm{d}f}{\mathrm{d}y})^{-1}\frac{\mathrm{d}f}{\mathrm{d}θ}$
+    via the implicit function theorem.
+    """  # noqa: E501
+
+    def loop(self, *, args, terms, solver, saveat, throw, init_state, **kwargs):
+        del throw
+
+        # `is` check because this may return a Tracer from SaveAt(ts=<array>)
+        if eqx.tree_equal(saveat, SaveAt(t1=True)) is not True:
+            raise ValueError(
+                "Can only use `adjoint=ImplicitAdjoint()` with `SaveAt(t1=True)`."
+            )
+
+        init_state = eqx.tree_at(
+            lambda s: (s.y, s.solver_state, s.controller_state),
+            init_state,
+            replace_fn=lax.stop_gradient,
+        )
+        closure = (self, kwargs, solver, saveat, init_state)
+        ys, residual = implicit_jvp(_solve, _vf, (args, terms), closure)
+
+        final_state_no_ys, aux_stats = residual
+        return (
+            eqx.tree_at(
+                lambda s: s.ys, final_state_no_ys, ys, is_leaf=lambda x: x is None
+            ),
+            aux_stats,
+        )
+
+
 # Compute derivatives with respect to the first argument:
 # - y, corresponding to the initial state;
 # - args, corresponding to explicit parameters;
@@ -116,7 +184,6 @@ def _loop_backsolve_fwd(y__args__terms, **kwargs):
     return (final_state, aux_stats), (ts, ys)
 
 
-# TODO: implement this as a single diffeqsolve with events, once events are supported.
 def _loop_backsolve_bwd(
     residuals,
     grad_final_state__aux_stats,
@@ -125,6 +192,7 @@ def _loop_backsolve_bwd(
     self,
     solver,
     stepsize_controller,
+    discrete_terminating_event,
     saveat,
     t0,
     t1,
@@ -162,6 +230,7 @@ def _loop_backsolve_bwd(
         adjoint=self,
         solver=solver,
         stepsize_controller=stepsize_controller,
+        discrete_terminating_event=discrete_terminating_event,
         terms=adjoint_terms,
         dt0=None if dt0 is None else -dt0,
         max_steps=max_steps,

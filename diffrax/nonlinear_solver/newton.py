@@ -93,9 +93,21 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         diff_args: PyTree,
     ) -> Tuple[PyTree, RESULTS]:
         args = eqx.combine(nondiff_args, diff_args)
-        rtol = 1e-3 if self.rtol is None else self.rtol
-        atol = 1e-6 if self.atol is None else self.atol
-        scale = atol + rtol * self.norm(x)
+        if self.rtol is None or self.atol is None:
+            raise ValueError(
+                "The `rtol` and `atol` tolerances for `NewtonNonlinearSolver` default "
+                "to the `rtol` and `atol` used with an adaptive step size "
+                "controller (such as `diffrax.PIDController`). Either use an "
+                "adaptive step size controller, or specify these tolerances "
+                "manually.\n"
+                "Note that this changed in Diffrax version 0.2.0. If you want to match "
+                "the previous defaults then specify `rtol=1e-3`, `atol=1e-6`. For "
+                "example:\n"
+                "```\n"
+                "diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)\n"
+                "```\n"
+            )
+        scale = self.atol + self.rtol * self.norm(x)
         flat, unflatten = fu.ravel_pytree(x)
         if flat.size == 0:
             return NonlinearSolution(root=x, num_steps=0, result=RESULTS.successful)
@@ -153,12 +165,12 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
 NewtonNonlinearSolver.__init__.__doc__ = """
 **Arguments:**
 
+- `rtol`: The relative tolerance for determining convergence. Defaults to the same
+    `rtol` as passed to an adaptive step controller if one is used.
+- `atol`: The absolute tolerance for determining convergence. Defaults to the same
+    `atol` as passed to an adaptive step controller if one is used.
 - `max_steps`: The maximum number of steps allowed. If more than this are required then
     the iteration fails. Set to `None` to allow an arbitrary number of steps.
-- `rtol`: The relative tolerance for determining convergence. If using an adaptive step
-    size controller, will default to the same `rtol`. Else defaults to `1e-3`.
-- `atol`: The absolute tolerance for determining convergence. If using an adaptive step
-    size controller, will default to the same `atol`. Else defaults to `1e-6`.
 - `kappa`: The kappa value for determining convergence.
 - `norm`: A function `PyTree -> Scalar`, which is called to determine the size of the
     current value. (Used in determining convergence.)

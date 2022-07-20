@@ -7,14 +7,14 @@ from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractSolver, AbstractStratonovichSolver
+from .base import AbstractStratonovichSolver
 
 
 _ErrorEstimate = None
 _SolverState = None
 
 
-class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
+class EulerHeun(AbstractStratonovichSolver):
     """Euler-Heun method.
 
     Used to solve SDEs, and converges to the Stratonovich solution.
@@ -55,3 +55,13 @@ class EulerHeun(AbstractStratonovichSolver, AbstractSolver):
 
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
+
+    def func(
+        self,
+        terms: Tuple[AbstractTerm, AbstractTerm],
+        t0: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> PyTree:
+        drift, diffusion = terms
+        return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)

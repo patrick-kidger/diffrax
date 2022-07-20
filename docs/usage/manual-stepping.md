@@ -12,7 +12,7 @@ In the following example, we solve an ODE using [`diffrax.Tsit5`][], and print o
 
 !!! note
 
-    See the [Solvers](../api/solver.md) page for a reference on the solver methods (`init`, `step`) used here.
+    See the [Abstract solvers](../api/solvers/abstract_solvers.md) page for a reference on the solver methods (`init`, `step`) used here.
 
 ```python
 from diffrax import ODETerm, Tsit5

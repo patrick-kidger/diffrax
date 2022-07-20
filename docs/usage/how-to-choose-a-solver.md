@@ -1,8 +1,8 @@
 # How to choose a solver
 
-The full list of solvers is available on the [Solvers](../api/solver.md) page.
-
 ## Ordinary differential equations
+
+The full list of ODE solvers is available on the [ODE solvers](../api/solvers/ode_solvers.md) page.
 
 !!! info
 

@@ -1,10 +1,16 @@
 from .adjoint import (
     AbstractAdjoint,
     BacksolveAdjoint,
+    ImplicitAdjoint,
     NoAdjoint,
     RecursiveCheckpointAdjoint,
 )
 from .brownian import AbstractBrownianPath, UnsafeBrownianPath, VirtualBrownianTree
+from .event import (
+    AbstractDiscreteTerminatingEvent,
+    DiscreteTerminatingEvent,
+    SteadyStateEvent,
+)
 from .global_interpolation import (
     AbstractGlobalInterpolation,
     backward_hermite_coefficients,
@@ -31,7 +37,6 @@ from .path import AbstractPath
 from .saveat import SaveAt
 from .solution import RESULTS, Solution
 from .solver import (
-    AbstractAdaptiveSDESolver,
     AbstractAdaptiveSolver,
     AbstractDIRK,
     AbstractERK,
@@ -45,6 +50,7 @@ from .solver import (
     AbstractWrappedSolver,
     Bosh3,
     ButcherTableau,
+    CalculateJacobian,
     Dopri5,
     Dopri8,
     Euler,
@@ -81,4 +87,4 @@ from .term import (
 )
 
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"

@@ -59,7 +59,7 @@ class AbstractStepSizeController(eqx.Module):
         y0: PyTree,
         dt0: Optional[Scalar],
         args: PyTree,
-        func_for_init: Callable[[Scalar, PyTree, PyTree], PyTree],
+        func: Callable[[Scalar, PyTree, PyTree], PyTree],
         error_order: Optional[Scalar],
     ) -> Tuple[Scalar, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
@@ -67,7 +67,7 @@ class AbstractStepSizeController(eqx.Module):
 
         **Arguments:** As `diffeqsolve`.
 
-        - `func_for_init`: The value of `solver.func_for_init`.
+        - `func`: The value of `solver.func`.
         - `error_order`: The order of the error estimate. If solving an ODE this will
             typically be `solver.order()`. If solving an SDE this will typically be
             `solver.strong_order() + 0.5`.

@@ -136,39 +136,6 @@ class AbstractTerm(eqx.Module):
         """
         return self.prod(self.vf(t, y, args), control)
 
-    # This is a pinhole break in our vector-field/control abstraction.
-    # Everywhere else we get to evaluate over some interval, which allows us to
-    # evaluate our control over that interval. However to select the initial point in
-    # an adaptive step size scheme, the standard heuristic is to start by making
-    # evaluations at just the initial point -- no intervals involved.
-    def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        """This is a special-cased version of [`diffrax.AbstractTerm.vf`][].
-
-        If it so happens that the PyTree structures $T$ and $S$ are the same, then a
-        subclass of `AbstractTerm` shoud set `func_for_init = vf`.
-
-        This case is used when selecting the initial step size of an ODE solve
-        automatically.
-
-        See [`diffrax.AbstractSolver.func_for_init`][].
-        """
-
-        # Heuristic for whether it's safe to select an initial step automatically.
-        vf = self.vf(t, y, args)
-        flat_vf, tree_vf = jax.tree_flatten(vf)
-        flat_y, tree_y = jax.tree_flatten(y)
-        if tree_vf != tree_y or any(
-            jnp.shape(x) != jnp.shape(y) for x, y in zip(flat_vf, flat_y)
-        ):
-            raise ValueError(
-                "An initial step size cannot be selected automatically. The most "
-                "common scenario for this error to occur is when trying to use "
-                "adaptive step size solvers with SDEs, or with CDEs without "
-                "`ControlTerm(...).to_ode()`. Please specify an initial `dt0` instead."
-            )
-        else:
-            return vf
-
     def is_vf_expensive(
         self,
         t0: Scalar,

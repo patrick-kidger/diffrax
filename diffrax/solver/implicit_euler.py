@@ -56,11 +56,11 @@ class ImplicitEuler(AbstractImplicitSolver):
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, nonlinear_sol.result
 
-    def func_for_init(
+    def func(
         self,
         terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
+        return terms.vf(t0, y0, args)

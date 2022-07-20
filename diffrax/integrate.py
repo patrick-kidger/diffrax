@@ -14,6 +14,7 @@ from .adjoint import (
     RecursiveCheckpointAdjoint,
 )
 from .custom_types import Array, Bool, Int, PyTree, Scalar
+from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
 from .misc import (
@@ -25,14 +26,8 @@ from .misc import (
     unvmap_max,
 )
 from .saveat import SaveAt
-from .solution import RESULTS, Solution
-from .solver import (
-    AbstractAdaptiveSDESolver,
-    AbstractItoSolver,
-    AbstractSolver,
-    AbstractStratonovichSolver,
-    Euler,
-)
+from .solution import is_okay, is_successful, RESULTS, Solution
+from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -89,6 +84,9 @@ def _save(state: _State, t: Scalar) -> _State:
 
 
 def _clip_to_end(tprev, tnext, t1, keep_step):
+    # The tolerance means that we don't end up with too-small intervals for
+    # dense output, which then gives numerically unstable answers due to floating
+    # point errors.
     if tnext.dtype is jnp.dtype("float64"):
         tol = 1e-10
     else:
@@ -102,6 +100,7 @@ def loop(
     *,
     solver,
     stepsize_controller,
+    discrete_terminating_event,
     saveat,
     t0,
     t1,
@@ -121,7 +120,7 @@ def loop(
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
 
     def cond_fun(state):
-        return (state.tprev < t1) & (state.result == RESULTS.successful)
+        return (state.tprev < t1) & is_successful(state.result)
 
     def body_fun(state, inplace):
 
@@ -164,9 +163,6 @@ def loop(
         # Do some book-keeping.
         #
 
-        # The 1e-6 tolerance means that we don't end up with too-small intervals for
-        # dense output, which then gives numerically unstable answers due to floating
-        # point errors.
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
 
@@ -179,7 +175,7 @@ def loop(
         made_jump = keep(made_jump, state.made_jump)
         solver_result = keep(solver_result, RESULTS.successful)
 
-        # TODO: if we ever support events, then they should go in here.
+        # TODO: if we ever support non-terminating events, then they should go in here.
         # In particular the thing to be careful about is in the `if saveat.steps`
         # branch below, where we want to make sure that it is the value of `y` at
         # `tprev` that is actually saved. (And not just the value of `y` at the
@@ -187,10 +183,8 @@ def loop(
 
         # Store the first unsuccessful result we get whilst iterating (if any).
         result = state.result
-        result = jnp.where(result == RESULTS.successful, solver_result, result)
-        result = jnp.where(
-            result == RESULTS.successful, stepsize_controller_result, result
-        )
+        result = jnp.where(is_okay(result), solver_result, result)
+        result = jnp.where(is_okay(result), stepsize_controller_result, result)
 
         # Count the number of steps, just for statistical purposes.
         num_steps = state.num_steps + 1
@@ -366,6 +360,26 @@ def loop(
             dense_save_index=dense_save_index,
         )
 
+        if discrete_terminating_event is not None:
+            discrete_terminating_event_occurred = discrete_terminating_event(
+                new_state,
+                solver=solver,
+                stepsize_controller=stepsize_controller,
+                saveat=saveat,
+                t0=t0,
+                t1=t1,
+                dt0=dt0,
+                max_steps=max_steps,
+                terms=terms,
+                args=args,
+            )
+            result = jnp.where(
+                discrete_terminating_event_occurred,
+                RESULTS.discrete_terminating_event_occurred,
+                result,
+            )
+            new_state = eqx.tree_at(lambda s: s.result, new_state, result)
+
         return new_state
 
     if is_bounded:
@@ -466,7 +480,9 @@ def loop(
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.
-        final_state = _save(final_state, t1)
+        # Using `tprev` instead of `t1` in case of an event terminating the solve
+        # early. (And absent such an event then `tprev == t1`.)
+        final_state = _save(final_state, final_state.tprev)
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
@@ -487,6 +503,7 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
+    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 16**3,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
@@ -510,8 +527,7 @@ def diffeqsolve(
         (For non-ordinary differential equations (SDEs, CDEs), this also specifies the
         Brownian motion or the control.)
     - `solver`: The solver for the differential equation. See the guide on [how to
-        choose a solver](../usage/how-to-choose-a-solver.md), or the [complete list of
-        solvers](../api/solver.md).
+        choose a solver](../usage/how-to-choose-a-solver.md).
     - `t0`: The start of the region of integration.
     - `t1`: The end of the region of integration.
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
@@ -538,13 +554,15 @@ def diffeqsolve(
         checkpointing, which is usually the best option for most problems. See the page
         on [Adjoints](./adjoints.md) for more information.
 
+    - `discrete_terminating_event`: A discrete event at which to terminate the solve
+        early. See the page on [Events](./events.md) for more information.
+
     - `max_steps`: The maximum number of steps to take before quitting the computation
         unconditionally.
 
         Can also be set to `None` to allow an arbitrary number of steps, although this
-        will disable backpropagation via discretise-then-optimise (backpropagation via
-        optimise-then-discretise will still work), and also disables
-        `saveat.steps=True` and `saveat.dense=True`.
+        is incompatible with `adjoint=RecursiveCheckpointAdjoint()` (the default) and
+        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`.
 
         Note that (a) compile times; and (b) backpropagation run times; will increase
         as `max_steps` increases. (Specifically, each time `max_steps` passes a power
@@ -571,16 +589,15 @@ def diffeqsolve(
             of the returned solution object, to determine which batch elements
             succeeded and which failed.
 
-    - `solver_state`: Some initial state for the solver. Can be useful when for example
-        using a reversible solver to recompute a solution. Generally obtained by
-        `SaveAt(solver_state=True)`. It is unlikely you will need to use this option.
+    - `solver_state`: Some initial state for the solver. Generally obtained by
+        `SaveAt(solver_state=True)` from a previous solve.
 
     - `controller_state`: Some initial state for the step size controller. Generally
-        obtained by `SaveAt(controller_state=True)`. It is unlikely you will need to
-        use this option.
+        obtained by `SaveAt(controller_state=True)` from a previous solve.
 
     - `made_jump`: Whether a jump has just been made at `t0`. Used to update
-        `solver_state` (if passed). It is unlikely you will need to use this option.
+        `solver_state` (if passed). Generally obtained by `SaveAt(made_jump=True)`
+        from a previous solve.
 
     **Returns:**
 
@@ -656,11 +673,6 @@ def diffeqsolve(
                     "An SDE should not be solved with adaptive step sizes with Euler's "
                     "method; it will not converge to the correct solution."
                 )
-            if not isinstance(solver, AbstractAdaptiveSDESolver):
-                raise ValueError(
-                    "An adaptive step size controller is being used with a solver "
-                    "that does not provide error estimates suitable for SDEs."
-                )
     if is_unsafe_sde(terms):
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             raise ValueError(
@@ -731,12 +743,12 @@ def diffeqsolve(
     error_order = solver.error_order(terms)
     if controller_state is None:
         (tnext, controller_state) = stepsize_controller.init(
-            terms, t0, t1, y0, dt0, args, solver.func_for_init, error_order
+            terms, t0, t1, y0, dt0, args, solver.func, error_order
         )
     else:
         if dt0 is None:
             (tnext, _) = stepsize_controller.init(
-                terms, t0, t1, y0, dt0, args, solver.func_for_init, error_order
+                terms, t0, t1, y0, dt0, args, solver.func, error_order
             )
         else:
             tnext = t0 + dt0
@@ -822,6 +834,7 @@ def diffeqsolve(
         terms=terms,
         solver=solver,
         stepsize_controller=stepsize_controller,
+        discrete_terminating_event=discrete_terminating_event,
         saveat=saveat,
         t0=t0,
         t1=t1,
@@ -883,7 +896,7 @@ def diffeqsolve(
     result = final_state.result
     error_index = unvmap_max(result)
     branched_error_if(
-        throw & (result != RESULTS.successful),
+        throw & jnp.invert(is_okay(result)),
         error_index,
         RESULTS.reverse_lookup,
     )
