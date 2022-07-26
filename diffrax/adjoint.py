@@ -96,7 +96,8 @@ class NoAdjoint(AbstractAdjoint):
 def _vf(ys, residual, args__terms, closure):
     state_no_y, _ = residual
     t = state_no_y.tprev
-    (y,) = ys  # unpack length-1 dimension
+    # unpack length-1 dimension
+    y = jax.tree_map(lambda _y: _y[0], ys)
     args, terms = args__terms
     _, _, solver, _, _ = closure
     return solver.func(terms, t, y, args)
