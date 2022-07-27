@@ -130,4 +130,4 @@ else:
 DenseInfo = Dict[str, PyTree[Array]]
 DenseInfos = Dict[str, PyTree[Array["times", ...]]]  # noqa: F821
 
-PyTreeDef = type(jax.tree_structure(0))
+PyTreeDef = type(jax.tree_util.tree_structure(0))

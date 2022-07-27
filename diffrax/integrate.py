@@ -73,7 +73,7 @@ def _save(state: _State, t: Scalar) -> _State:
     y = state.y
 
     ts = ts.at[save_index].set(t)
-    ys = jax.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
+    ys = jax.tree_util.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
     save_index = save_index + 1
 
     return eqx.tree_at(
@@ -170,8 +170,8 @@ def loop(
         # step was accepted) by the stepsize controller. But it doesn't get access to
         # these parts, so we do them here.
         keep = lambda a, b: jnp.where(keep_step, a, b)
-        y = jax.tree_map(keep, y, state.y)
-        solver_state = jax.tree_map(keep, solver_state, state.solver_state)
+        y = jax.tree_util.tree_map(keep, y, state.y)
+        solver_state = jax.tree_util.tree_map(keep, solver_state, state.solver_state)
         made_jump = keep(made_jump, state.made_jump)
         solver_result = keep(solver_result, RESULTS.successful)
 
@@ -247,7 +247,7 @@ def loop(
                 #
                 #  _inplace = _inplace.merge(inplace)
                 #  _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
-                #  _ys = jax.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
+                #  _ys = jax.tree_util.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
                 #
                 # Seems reasonable, right? Just updating a value.
                 #
@@ -258,7 +258,7 @@ def loop(
                 _ts = _ts.at[_save_index].set(
                     jnp.where(_pred, _saveat_t, _ts[_save_index])
                 )
-                _ys = jax.tree_map(
+                _ys = jax.tree_util.tree_map(
                     lambda __ys, __saveat_y: __ys.at[_save_index].set(
                         jnp.where(_pred, __saveat_y, __ys[_save_index])
                     ),
@@ -293,7 +293,7 @@ def loop(
                 _save_index = _save_index + 1
 
                 _ts = HadInplaceUpdate(_ts)
-                _ys = jax.tree_map(HadInplaceUpdate, _ys)
+                _ys = jax.tree_util.tree_map(HadInplaceUpdate, _ys)
 
                 return _InnerState(
                     saveat_ts_index=_saveat_ts_index,
@@ -321,13 +321,13 @@ def loop(
         if saveat.steps:
             made_inplace_update = True
             ts = maybe_inplace(save_index, ts, tprev)
-            ys = jax.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
+            ys = jax.tree_util.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
             save_index = save_index + keep_step
 
         if saveat.dense:
             made_inplace_update = True
             dense_ts = maybe_inplace(dense_save_index + 1, dense_ts, tprev)
-            dense_infos = jax.tree_map(
+            dense_infos = jax.tree_util.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
                 dense_infos,
                 dense_info,
@@ -336,9 +336,9 @@ def loop(
 
         if made_inplace_update:
             ts = HadInplaceUpdate(ts)
-            ys = jax.tree_map(HadInplaceUpdate, ys)
+            ys = jax.tree_util.tree_map(HadInplaceUpdate, ys)
             dense_ts = HadInplaceUpdate(dense_ts)
-            dense_infos = jax.tree_map(HadInplaceUpdate, dense_infos)
+            dense_infos = jax.tree_util.tree_map(HadInplaceUpdate, dense_infos)
 
         new_state = _State(
             y=y,
@@ -631,7 +631,7 @@ def diffeqsolve(
         error_if((t1 - t0) * dt0 < 0, msg)
 
     # Error checking
-    term_leaves, term_structure = jax.tree_flatten(
+    term_leaves, term_structure = jax.tree_util.tree_flatten(
         terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
     raises = False
@@ -703,7 +703,7 @@ def diffeqsolve(
         _dtype = jnp.result_type(yi, *timelikes)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
-    y0 = jax.tree_map(_promote, y0)
+    y0 = jax.tree_util.tree_map(_promote, y0)
     del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
@@ -717,7 +717,7 @@ def diffeqsolve(
         if saveat.ts is not None:
             saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
     stepsize_controller = stepsize_controller.wrap(direction)
-    terms = jax.tree_map(
+    terms = jax.tree_util.tree_map(
         lambda t: WrapTerm(t, direction),
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm),
@@ -780,7 +780,7 @@ def diffeqsolve(
     save_index = 0
     made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.inf)
-    ys = jax.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
+    ys = jax.tree_util.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         error_if(t0 == t1, "Cannot save dense output if t0 == t1")
@@ -797,7 +797,7 @@ def diffeqsolve(
         ) = solver.step(terms, tprev, tnext, y0, args, solver_state, made_jump)
         dense_ts = jnp.full(max_steps + 1, jnp.inf)
         _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.inf)
-        dense_infos = jax.tree_map(_make_full, dense_info)
+        dense_infos = jax.tree_util.tree_map(_make_full, dense_info)
         dense_save_index = 0
     else:
         dense_ts = None

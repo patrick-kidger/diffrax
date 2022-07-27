@@ -71,7 +71,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
                     "number of entries along the timelike dimension."
                 )
 
-        jax.tree_map(_check, self.ys)
+        jax.tree_util.tree_map(_check, self.ys)
 
     @eqx.filter_jit
     def evaluate(
@@ -117,7 +117,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         def _index(_ys):
             return _ys[index]
 
-        prev_ys = jax.tree_map(_index, self.ys)
+        prev_ys = jax.tree_util.tree_map(_index, self.ys)
         next_ys = (self.ys**ω)[index + 1].ω
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
@@ -190,7 +190,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
             if a.shape[0] + 1 != self.ts.shape[0]:
                 raise ValueError(error_msg)
 
-        jax.tree_map(_check, *self.coeffs)
+        jax.tree_util.tree_map(_check, *self.coeffs)
 
     @eqx.filter_jit
     def evaluate(
@@ -291,7 +291,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         def _check(_infos):
             assert _infos.shape[0] + 1 == self.ts.shape[0]
 
-        jax.tree_map(_check, self.infos)
+        jax.tree_util.tree_map(_check, self.infos)
 
     # DenseInterpolations typically get `ts` and `infos` that are way longer than they
     # need to be, and padded with `nan`s. This means the normal way of measuring how
@@ -450,9 +450,9 @@ def linear_interpolation(
     _check_ts(ts)
     fn = ft.partial(_linear_interpolation, fill_forward_nans_at_end, ts)
     if replace_nans_at_start is None:
-        return jax.tree_map(fn, ys)
+        return jax.tree_util.tree_map(fn, ys)
     else:
-        return jax.tree_map(fn, ys, replace_nans_at_start)
+        return jax.tree_util.tree_map(fn, ys, replace_nans_at_start)
 
 
 def _rectilinear_interpolation(
@@ -540,12 +540,12 @@ def rectilinear_interpolation(
     _check_ts(ts)
     if replace_nans_at_start is None:
         fn = ft.partial(_rectilinear_interpolation, ts, None)
-        out = jax.tree_map(fn, ys)
+        out = jax.tree_util.tree_map(fn, ys)
     else:
         fn = ft.partial(_rectilinear_interpolation, ts)
-        out = jax.tree_map(fn, replace_nans_at_start, ys)
-    ys_treedef = jax.tree_structure(ys)
-    interp_treedef = jax.tree_structure((0, 0))
+        out = jax.tree_util.tree_map(fn, replace_nans_at_start, ys)
+    ys_treedef = jax.tree_util.tree_structure(ys)
+    interp_treedef = jax.tree_util.tree_structure((0, 0))
     return jax.tree_transpose(ys_treedef, interp_treedef, out)
 
 
@@ -713,15 +713,15 @@ def backward_hermite_coefficients(
     fn = ft.partial(_backward_hermite_coefficients, fill_forward_nans_at_end, ts)
     if deriv0 is None:
         if replace_nans_at_start is None:
-            coeffs = jax.tree_map(fn, ys)
+            coeffs = jax.tree_util.tree_map(fn, ys)
         else:
             _fn = lambda ys, replace_nans_at_start: fn(ys, None, replace_nans_at_start)
-            coeffs = jax.tree_map(_fn, ys, replace_nans_at_start)
+            coeffs = jax.tree_util.tree_map(_fn, ys, replace_nans_at_start)
     else:
         if replace_nans_at_start is None:
-            coeffs = jax.tree_map(fn, ys, deriv0)
+            coeffs = jax.tree_util.tree_map(fn, ys, deriv0)
         else:
-            coeffs = jax.tree_map(fn, ys, deriv0, replace_nans_at_start)
-    ys_treedef = jax.tree_structure(ys)
-    coeffs_treedef = jax.tree_structure((0, 0, 0, 0))
+            coeffs = jax.tree_util.tree_map(fn, ys, deriv0, replace_nans_at_start)
+    ys_treedef = jax.tree_util.tree_structure(ys)
+    coeffs_treedef = jax.tree_util.tree_structure((0, 0, 0, 0))
     return jax.tree_transpose(ys_treedef, coeffs_treedef, coeffs)

@@ -18,11 +18,11 @@ from .term import AbstractTerm
 # they know what they're doing and can handle both of these cases appropriately.
 def is_sde(terms: PyTree[AbstractTerm]) -> bool:
     is_brownian = lambda x: isinstance(x, AbstractBrownianPath)
-    leaves, _ = jax.tree_flatten(terms, is_leaf=is_brownian)
+    leaves, _ = jax.tree_util.tree_flatten(terms, is_leaf=is_brownian)
     return any(is_brownian(leaf) for leaf in leaves)
 
 
 def is_unsafe_sde(terms: PyTree[AbstractTerm]) -> bool:
     is_brownian = lambda x: isinstance(x, UnsafeBrownianPath)
-    leaves, _ = jax.tree_flatten(terms, is_leaf=is_brownian)
+    leaves, _ = jax.tree_util.tree_flatten(terms, is_leaf=is_brownian)
     return any(is_brownian(leaf) for leaf in leaves)

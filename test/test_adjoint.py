@@ -110,8 +110,8 @@ def test_backsolve(getkey):
                 backsolve_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.BacksolveAdjoint()
                 )
-                true_grads = jax.tree_map(_convert_float0, true_grads)
-                backsolve_grads = jax.tree_map(_convert_float0, backsolve_grads)
+                true_grads = jax.tree_util.tree_map(_convert_float0, true_grads)
+                backsolve_grads = jax.tree_util.tree_map(_convert_float0, backsolve_grads)
                 assert shaped_allclose(true_grads, backsolve_grads)
 
                 true_grads = _run_grad(

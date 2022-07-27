@@ -110,7 +110,7 @@ class fixed_custom_jvp:
         nondiff_args_tracer, nondiff_args_nontracer = eqx.partition(
             nondiff_args, is_tracer
         )
-        nondiff_args_tracer = jax.tree_map(lax.stop_gradient, nondiff_args_tracer)
+        nondiff_args_tracer = jax.tree_util.tree_map(lax.stop_gradient, nondiff_args_tracer)
         return self.fn(nondiff_args_nontracer, nondiff_args_tracer, diff_args)
 
 
@@ -137,7 +137,7 @@ def implicit_jvp(fn_primal, fn_rewrite, args, closure):
         fn_primal, fn_rewrite, nondiff_args, closure, diff_args
     )
     # Trim off the zero tangents we added to `residual`.
-    return root, jax.tree_map(lax.stop_gradient, residual)
+    return root, jax.tree_util.tree_map(lax.stop_gradient, residual)
 
 
 @ft.partial(fixed_custom_jvp, nondiff_argnums=(0, 1, 2, 3))
@@ -182,5 +182,5 @@ def _implicit_backprop_jvp(
 
     tang_root = -jnp.linalg.solve(jac_flat_root, jvp_flat_diff_args)
     tang_root = unflatten_root(tang_root)
-    tang_residual = jax.tree_map(jnp.zeros_like, residual)
+    tang_residual = jax.tree_util.tree_map(jnp.zeros_like, residual)
     return (root, residual), (tang_root, tang_residual)

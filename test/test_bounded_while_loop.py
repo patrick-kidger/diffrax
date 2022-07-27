@@ -210,7 +210,7 @@ def _make_update(i, u, v):
 def _body_fun(body_fun):
     def __body_fun(val):
         update, index = body_fun(val)
-        return jax.tree_map(_make_update, index, update, val)
+        return jax.tree_util.tree_map(_make_update, index, update, val)
 
     return __body_fun
 

@@ -17,7 +17,7 @@ _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
 
 
 def vector_tree_dot(a, b):
-    return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
+    return jax.tree_util.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
 
 
 class _MetaAbstractSolver(type(eqx.Module)):

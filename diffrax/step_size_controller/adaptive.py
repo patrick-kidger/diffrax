@@ -465,7 +465,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
             _y = jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate))
             return _y_error / (self.atol + _y * self.rtol)
 
-        scaled_error = self.norm(jax.tree_map(_scale, y0, y1_candidate, y_error))
+        scaled_error = self.norm(jax.tree_util.tree_map(_scale, y0, y1_candidate, y_error))
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin

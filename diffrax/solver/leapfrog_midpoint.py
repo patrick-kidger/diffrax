@@ -41,7 +41,7 @@ class LeapfrogMidpoint(AbstractSolver):
         ```
     """
 
-    term_structure = jax.tree_structure(0)
+    term_structure = jax.tree_util.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):

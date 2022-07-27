@@ -27,7 +27,7 @@ class _AugDrift(eqx.Module):
         drift1 = self.drift1(t, aug_y, args)
         drift2 = self.drift2(t, y, args)
         diffusion = self.diffusion(t, y, args)
-        kl_divergence = jax.tree_map(_kl, drift1, drift2, diffusion)
+        kl_divergence = jax.tree_util.tree_map(_kl, drift1, drift2, diffusion)
         kl_divergence = jax.tree_util.tree_reduce(operator.add, kl_divergence)
         return drift1, kl_divergence
 

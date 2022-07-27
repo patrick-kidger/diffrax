@@ -122,7 +122,7 @@ def test_cde_adjoint_term(getkey):
     a_y = (jrandom.normal(getkey(), (2,)),)
     a_args = (jrandom.normal(getkey(), (1,)), jrandom.normal(getkey(), (1,)))
     randlike = lambda a: jrandom.normal(getkey(), a.shape)
-    a_term = jax.tree_map(randlike, eqx.filter(term, eqx.is_array))
+    a_term = jax.tree_util.tree_map(randlike, eqx.filter(term, eqx.is_array))
     aug = (y, a_y, a_args, a_term)
     dt = adjoint_term.contr(t, t + 1)
 

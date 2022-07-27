@@ -193,7 +193,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     scan_stages: bool = False
 
-    term_structure = jax.tree_structure(0)
+    term_structure = jax.tree_util.tree_structure(0)
 
     @property
     @abc.abstractmethod
@@ -379,11 +379,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         num_stages = len(self.tableau.c) + 1
         if use_fs:
-            fs = jax.tree_map(lambda f: jnp.empty((num_stages,) + f.shape), f0_struct)
+            fs = jax.tree_util.tree_map(lambda f: jnp.empty((num_stages,) + f.shape), f0_struct)
             ks = None
         else:
             fs = None
-            ks = jax.tree_map(lambda k: jnp.empty((num_stages,) + jnp.shape(k)), y0)
+            ks = jax.tree_util.tree_map(lambda k: jnp.empty((num_stages,) + jnp.shape(k)), y0)
 
         #
         # First stage. Defines `result`, `scan_first_stage`. Places `f0` and `k0` into
@@ -675,7 +675,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             else:
                 y_dummy = None
             if fsal:
-                f_dummy = jax.tree_map(
+                f_dummy = jax.tree_util.tree_map(
                     lambda x: jnp.zeros(x.shape, dtype=x.dtype), f0_struct
                 )
             else:
@@ -737,7 +737,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             y_error = terms.prod(y_error, control)
         else:
             y_error = vector_tree_dot(self.tableau.b_error, ks)
-        y_error = jax.tree_map(
+        y_error = jax.tree_util.tree_map(
             lambda _y_error: jnp.where(is_okay(result), _y_error, jnp.inf),
             y_error,
         )  # i.e. an implicit step failed to converge

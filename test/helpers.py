@@ -62,7 +62,7 @@ def random_pytree(key, treedef):
 
 
 treedefs = [
-    jax.tree_structure(x)
+    jax.tree_util.tree_structure(x)
     for x in (
         0,
         None,
@@ -80,10 +80,10 @@ def shaped_allclose(x, y, **kwargs):
     - It also supports PyTree arguments.
     - It mandates that shapes match as well (no broadcasting)
     """
-    same_structure = jax.tree_structure(x) == jax.tree_structure(y)
+    same_structure = jax.tree_util.tree_structure(x) == jax.tree_util.tree_structure(y)
     allclose = ft.partial(_shaped_allclose, **kwargs)
     return same_structure and jax.tree_util.tree_reduce(
-        operator.and_, jax.tree_map(allclose, x, y), True
+        operator.and_, jax.tree_util.tree_map(allclose, x, y), True
     )
 
 
