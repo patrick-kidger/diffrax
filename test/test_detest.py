@@ -12,9 +12,9 @@
 import math
 
 import diffrax
-import jax
 import jax.flatten_util as fu
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import pytest
 import scipy.integrate as integrate
 
@@ -434,7 +434,7 @@ def _test(solver, problems, higher):
             stepsize_controller=stepsize_controller,
             max_steps=max_steps,
         )
-        y1 = jax.tree_util.tree_map(lambda yi: yi[0], sol.ys)
+        y1 = jtu.tree_map(lambda yi: yi[0], sol.ys)
 
         scipy_y0, unravel = fu.ravel_pytree(init)
         scipy_y0 = scipy_y0.to_py()

@@ -1,8 +1,8 @@
 import operator
 from typing import Optional
 
-import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 
 class _Metaω(type):
@@ -36,7 +36,8 @@ class ω(metaclass=_Metaω):
         **Arguments:**
 
         - `value`: The PyTree to wrap.
-        - `is_leaf`: An optional value for the `is_leaf` argument to `jax.tree_util.tree_map`.
+        - `is_leaf`: An optional value for the `is_leaf` argument to
+          `jax.tree_util.tree_map`.
 
         !!! note
 
@@ -48,12 +49,15 @@ class ω(metaclass=_Metaω):
 
     def __getitem__(self, item):
         return ω(
-            jax.tree_util.tree_map(lambda x: x[item], self.ω, is_leaf=self.is_leaf),
+            jtu.tree_map(lambda x: x[item], self.ω, is_leaf=self.is_leaf),
             is_leaf=self.is_leaf,
         )
 
     def call(self, fn):
-        return ω(jax.tree_util.tree_map(fn, self.ω, is_leaf=self.is_leaf), is_leaf=self.is_leaf)
+        return ω(
+            jtu.tree_map(fn, self.ω, is_leaf=self.is_leaf),
+            is_leaf=self.is_leaf,
+        )
 
     @property
     def at(self):
@@ -78,17 +82,17 @@ def _equal_code(fn1: Optional[callable], fn2: Optional[callable]):
 def _set_binary(base, name: str, op: callable) -> callable:
     def fn(self, other):
         if isinstance(other, ω):
-            if jax.tree_util.tree_structure(self.ω) != jax.tree_util.tree_structure(other.ω):
+            if jtu.tree_structure(self.ω) != jtu.tree_structure(other.ω):
                 raise ValueError("PyTree structures must match.")
             if not _equal_code(self.is_leaf, other.is_leaf):
                 raise ValueError("`is_leaf` must match.")
             return ω(
-                jax.tree_util.tree_map(op, self.ω, other.ω, is_leaf=self.is_leaf),
+                jtu.tree_map(op, self.ω, other.ω, is_leaf=self.is_leaf),
                 is_leaf=self.is_leaf,
             )
         elif isinstance(other, (bool, complex, float, int, jnp.ndarray)):
             return ω(
-                jax.tree_util.tree_map(lambda x: op(x, other), self.ω, is_leaf=self.is_leaf),
+                jtu.tree_map(lambda x: op(x, other), self.ω, is_leaf=self.is_leaf),
                 is_leaf=self.is_leaf,
             )
         else:
@@ -101,7 +105,10 @@ def _set_binary(base, name: str, op: callable) -> callable:
 
 def _set_unary(base, name: str, op: callable) -> callable:
     def fn(self):
-        return ω(jax.tree_util.tree_map(op, self.ω, is_leaf=self.is_leaf), is_leaf=self.is_leaf)
+        return ω(
+            jtu.tree_map(op, self.ω, is_leaf=self.is_leaf),
+            is_leaf=self.is_leaf,
+        )
 
     fn.__name__ = name
     fn.__qualname__ = base.__qualname__ + "." + name
@@ -184,12 +191,12 @@ class _ωUpdateRef:
 def _set_binary_at(base, name: str, op: callable) -> callable:
     def fn(self, other):
         if isinstance(other, ω):
-            if jax.tree_util.tree_structure(self.value) != jax.tree_util.tree_structure(other.ω):
+            if jtu.tree_structure(self.value) != jtu.tree_structure(other.ω):
                 raise ValueError("PyTree structures must match.")
             if not _equal_code(self.is_leaf, other.is_leaf):
                 raise ValueError("is_leaf specifications must match.")
             return ω(
-                jax.tree_util.tree_map(
+                jtu.tree_map(
                     lambda x, y: op(x, self.item, y),
                     self.value,
                     other.ω,
@@ -199,7 +206,7 @@ def _set_binary_at(base, name: str, op: callable) -> callable:
             )
         elif isinstance(other, (bool, complex, float, int, jnp.ndarray)):
             return ω(
-                jax.tree_util.tree_map(
+                jtu.tree_map(
                     lambda x: op(x, self.item, other), self.value, is_leaf=self.is_leaf
                 ),
                 is_leaf=self.is_leaf,

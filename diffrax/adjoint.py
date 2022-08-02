@@ -5,6 +5,7 @@ import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from .misc import implicit_jvp, nondifferentiable_output, ω
 from .saveat import SaveAt
@@ -89,7 +90,7 @@ class NoAdjoint(AbstractAdjoint):
     def loop(self, *, throw, **kwargs):
         del throw
         final_state, aux_stats = self._loop_fn(**kwargs, is_bounded=False)
-        final_state = jax.tree_util.tree_map(nondifferentiable_output, final_state)
+        final_state = jtu.tree_map(nondifferentiable_output, final_state)
         return final_state, aux_stats
 
 
@@ -97,7 +98,7 @@ def _vf(ys, residual, args__terms, closure):
     state_no_y, _ = residual
     t = state_no_y.tprev
     # unpack length-1 dimension
-    y = jax.tree_util.tree_map(lambda _y: _y[0], ys)
+    y = jtu.tree_map(lambda _y: _y[0], ys)
     args, terms = args__terms
     _, _, solver, _, _ = closure
     return solver.func(terms, t, y, args)
@@ -218,11 +219,11 @@ def _loop_backsolve_bwd(
     del y__args__terms
     diff_args = eqx.filter(args, eqx.is_inexact_array)
     diff_terms = eqx.filter(terms, eqx.is_inexact_array)
-    zeros_like_y = jax.tree_util.tree_map(jnp.zeros_like, y)
-    zeros_like_diff_args = jax.tree_util.tree_map(jnp.zeros_like, diff_args)
-    zeros_like_diff_terms = jax.tree_util.tree_map(jnp.zeros_like, diff_terms)
+    zeros_like_y = jtu.tree_map(jnp.zeros_like, y)
+    zeros_like_diff_args = jtu.tree_map(jnp.zeros_like, diff_args)
+    zeros_like_diff_terms = jtu.tree_map(jnp.zeros_like, diff_terms)
     del diff_args, diff_terms
-    adjoint_terms = jax.tree_util.tree_map(
+    adjoint_terms = jtu.tree_map(
         AdjointTerm, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
     diffeqsolve = self._diffeqsolve
@@ -418,7 +419,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         # We only allow backpropagation through `ys`; in particular not through
         # `solver_state` etc.
         ys = final_state.ys
-        final_state = jax.tree_util.tree_map(nondifferentiable_output, final_state)
+        final_state = jtu.tree_map(nondifferentiable_output, final_state)
         final_state = eqx.tree_at(
             lambda s: jax.tree_leaves(s.ys), final_state, jax.tree_leaves(ys)
         )

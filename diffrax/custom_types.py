@@ -2,7 +2,7 @@ import inspect
 import typing
 from typing import Dict, Generic, Tuple, TypeVar, Union
 
-import jax
+import jax.tree_util as jtu
 
 
 # Custom flag we set when generating documentation.
@@ -110,7 +110,7 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     # types that have similar defined-in-one-place, exported-in-another behaviour.
     #
 
-    jax.tree_util.Partial.__module__ = "jax.tree_util"
+    jtu.Partial.__module__ = "jax.tree_util"
 
 else:
 
@@ -130,4 +130,4 @@ else:
 DenseInfo = Dict[str, PyTree[Array]]
 DenseInfos = Dict[str, PyTree[Array["times", ...]]]  # noqa: F821
 
-PyTreeDef = type(jax.tree_util.tree_structure(0))
+PyTreeDef = type(jtu.tree_structure(0))

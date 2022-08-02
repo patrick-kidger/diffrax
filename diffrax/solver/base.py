@@ -2,8 +2,8 @@ import abc
 from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
 from ..heuristics import is_sde
@@ -17,7 +17,7 @@ _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
 
 
 def vector_tree_dot(a, b):
-    return jax.tree_util.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
+    return jtu.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
 
 
 class _MetaAbstractSolver(type(eqx.Module)):

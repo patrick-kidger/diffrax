@@ -1,6 +1,6 @@
 from typing import Tuple
 
-import jax
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -22,7 +22,7 @@ class Euler(AbstractItoSolver):
     When used to solve SDEs, converges to the Itô solution.
     """
 
-    term_structure = jax.tree_util.tree_structure(0)
+    term_structure = jtu.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):

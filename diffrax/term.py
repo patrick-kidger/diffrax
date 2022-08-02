@@ -5,6 +5,7 @@ from typing import Callable, Tuple
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import numpy as np
 
 from .custom_types import Array, PyTree, Scalar
@@ -177,7 +178,7 @@ class ODETerm(AbstractTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: Scalar) -> PyTree:
-        return jax.tree_util.tree_map(lambda v: control * v, vf)
+        return jtu.tree_map(lambda v: control * v, vf)
 
 
 ODETerm.__init__.__doc__ = """**Arguments:**
@@ -270,7 +271,7 @@ class ControlTerm(_ControlTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: PyTree) -> PyTree:
-        return jax.tree_util.tree_map(_prod, vf, control)
+        return jtu.tree_map(_prod, vf, control)
 
 
 class WeaklyDiagonalControlTerm(_ControlTerm):
@@ -297,7 +298,7 @@ class WeaklyDiagonalControlTerm(_ControlTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: PyTree) -> PyTree:
-        return jax.tree_util.tree_map(operator.mul, vf, control)
+        return jtu.tree_map(operator.mul, vf, control)
 
 
 class _ControlToODE(eqx.Module):
@@ -351,7 +352,7 @@ class MultiTerm(AbstractTerm):
             term.prod(vf_, control_)
             for term, vf_, control_ in zip(self.terms, vf, control)
         ]
-        return jax.tree_util.tree_map(_sum, *out)
+        return jtu.tree_map(_sum, *out)
 
 
 class WrapTerm(AbstractTerm):
@@ -421,12 +422,12 @@ class AdjointTerm(AbstractTerm):
         # Find the tree structure of vf_prod by smuggling it out as an additional
         # result from the Jacobian calculation.
         sentinel = vf_prod_tree = object()
-        control_tree = jax.tree_util.tree_structure(control)
+        control_tree = jtu.tree_structure(control)
 
         def _fn(_control):
             _out = self.vf_prod(t, y, args, _control)
             nonlocal vf_prod_tree
-            structure = jax.tree_util.tree_structure(_out)
+            structure = jtu.tree_structure(_out)
             if vf_prod_tree is sentinel:
                 vf_prod_tree = structure
             else:
@@ -435,7 +436,7 @@ class AdjointTerm(AbstractTerm):
 
         jac = make_jac(_fn)(control)
         assert vf_prod_tree is not sentinel
-        if jax.tree_util.tree_structure(None) in (vf_prod_tree, control_tree):
+        if jtu.tree_structure(None) in (vf_prod_tree, control_tree):
             # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
                 "`AdjointTerm.vf` not implemented for `None` controls or states."
@@ -453,17 +454,17 @@ class AdjointTerm(AbstractTerm):
 
         # Calculate vf_prod_tree by smuggling it out.
         sentinel = vf_prod_tree = object()
-        control_tree = jax.tree_util.tree_structure(control)
+        control_tree = jtu.tree_structure(control)
 
         def _get_vf_tree(_, tree):
             nonlocal vf_prod_tree
-            structure = jax.tree_util.tree_structure(tree)
+            structure = jtu.tree_structure(tree)
             if vf_prod_tree is sentinel:
                 vf_prod_tree = structure
             else:
                 assert vf_prod_tree == structure
 
-        jax.tree_util.tree_map(_get_vf_tree, control, vf)
+        jtu.tree_map(_get_vf_tree, control, vf)
         assert vf_prod_tree is not sentinel
 
         vf = jax.tree_transpose(control_tree, vf_prod_tree, vf)
@@ -473,11 +474,11 @@ class AdjointTerm(AbstractTerm):
         )
 
         def _contract(_, vf_piece):
-            assert jax.tree_util.tree_structure(vf_piece) == control_tree
-            _contracted = jax.tree_util.tree_map(_prod, vf_piece, control)
+            assert jtu.tree_structure(vf_piece) == control_tree
+            _contracted = jtu.tree_map(_prod, vf_piece, control)
             return sum(jax.tree_leaves(_contracted), 0)
 
-        return jax.tree_util.tree_map(_contract, example_vf_prod, vf)
+        return jtu.tree_map(_contract, example_vf_prod, vf)
 
     def vf_prod(
         self,
