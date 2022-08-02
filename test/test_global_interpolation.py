@@ -5,6 +5,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import pytest
 
 from .helpers import all_ode_solvers, implicit_tol, shaped_allclose
@@ -50,7 +51,7 @@ def test_interpolation_coeffs(mode, unsqueeze):
             assert jnp.array_equal(_lef, _rig)
             return jnp.where(jnp.isnan(rig), lef, rig)
 
-        return jax.tree_map(_merge, left, right)
+        return jtu.tree_map(_merge, left, right)
 
     interp_ys = _interp(tree=False, duplicate=False)
     true_ys = ys.at[jnp.array([0, 9])].set(jnp.nan)
@@ -285,8 +286,8 @@ def test_interpolation_classes(mode, getkey):
                 for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
                     if t0 == t1:
                         continue
-                    y0 = jax.tree_map(operator.itemgetter(i), ys)
-                    y1 = jax.tree_map(operator.itemgetter(i + 1), ys)
+                    y0 = jtu.tree_map(operator.itemgetter(i), ys)
+                    y1 = jtu.tree_map(operator.itemgetter(i + 1), ys)
                     points = jnp.linspace(t0, t1, 10)
                     firstval = interp.evaluate(t0, left=False)
                     vals = jax.vmap(interp.evaluate)(points[1:])
@@ -298,7 +299,7 @@ def test_interpolation_classes(mode, getkey):
                         )
                         assert shaped_allclose(vals, true_vals)
 
-                    jax.tree_map(_test, firstval, vals, y0, y1)
+                    jtu.tree_map(_test, firstval, vals, y0, y1)
                     firstderiv = interp.derivative(t0, left=False)
                     derivs = jax.vmap(interp.derivative)(points[1:])
 
@@ -308,7 +309,7 @@ def test_interpolation_classes(mode, getkey):
                         true_derivs = jnp.broadcast_to(true_derivs, derivs.shape)
                         assert shaped_allclose(derivs, true_derivs)
 
-                    jax.tree_map(_test, firstderiv, derivs, y0, y1)
+                    jtu.tree_map(_test, firstderiv, derivs, y0, y1)
 
 
 def _test_dense_interpolation(solver, key, t1):

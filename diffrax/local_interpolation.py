@@ -2,8 +2,8 @@ import abc
 from dataclasses import field
 from typing import Optional
 
-import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import numpy as np
 
 from .custom_types import Array, PyTree, Scalar
@@ -51,7 +51,7 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
             _b = -2 * _f0 - _f1 - 3 * _y0 + 3 * _y1
             return jnp.stack([_a, _b, _f0, _y0])
 
-        self.coeffs = jax.tree_map(_calculate, y0, y1, f0, f1)
+        self.coeffs = jtu.tree_map(_calculate, y0, y1, f0, f1)
 
     @classmethod
     def from_k(
@@ -76,7 +76,7 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
         def _eval(_coeffs):
             return jnp.polyval(_coeffs, t)
 
-        return jax.tree_map(_eval, self.coeffs)
+        return jtu.tree_map(_eval, self.coeffs)
 
 
 class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
@@ -102,7 +102,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
             _c = _f1 - 4 * _f0 - 11 * _y0 - 5 * _y1 + 16 * _ymid
             return jnp.stack([_a, _b, _c, _f0, _y0])
 
-        self.coeffs = jax.tree_map(_calculate, y0, y1, k)
+        self.coeffs = jtu.tree_map(_calculate, y0, y1, k)
 
     @property
     @abc.abstractmethod
@@ -121,4 +121,4 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         def _eval(_coeffs):
             return jnp.polyval(_coeffs, t)
 
-        return jax.tree_map(_eval, self.coeffs)
+        return jtu.tree_map(_eval, self.coeffs)

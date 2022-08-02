@@ -4,6 +4,7 @@ import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Array
 from .unvmap import unvmap_any
@@ -100,7 +101,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
       increases.)
     """
 
-    init_val = jax.tree_map(jnp.asarray, init_val)
+    init_val = jtu.tree_map(jnp.asarray, init_val)
 
     if max_steps is None:
 
@@ -114,7 +115,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
             inplace = lambda x: x
             inplace.pred = True
             _new_val = body_fun(_val, inplace)
-            return jax.tree_map(
+            return jtu.tree_map(
                 _make_update,
                 _new_val,
                 is_leaf=lambda x: isinstance(x, HadInplaceUpdate),
@@ -214,7 +215,7 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
             else:
                 return lax.select(pred, _new_val, _val)
 
-        new_val = jax.tree_map(
+        new_val = jtu.tree_map(
             _make_update,
             new_val,
             val,

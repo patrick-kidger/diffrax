@@ -14,7 +14,7 @@ which is just a different (fewer-bracket-using) syntax.
 
 The above are equivalent to just:
 ```python
-jax.tree_map(lambda a, b: a + b, x, y)
+jax.tree_util.tree_map(lambda a, b: a + b, x, y)
 ```
 and are designed just to be a convenient syntax for broadcasting operations over a PyTree.
 
@@ -32,7 +32,7 @@ Other operations are of course defined: `ω` understands several of the built-in
 
 ### Non-goals
 
-Making anything like `jax.numpy.maximum(x**ω, y**ω)` work is not a goal for `ω`. Just use a regular `jax.tree_map` in these situtions. `ω` only aims to support overloadable Python operations, and as a convenience single-argument functions via e.g. `ω(x).call(jax.numpy.abs)`.
+Making anything like `jax.numpy.maximum(x**ω, y**ω)` work is not a goal for `ω`. Just use a regular `jax.tree_util.tree_map` in these situtions. `ω` only aims to support overloadable Python operations, and as a convenience single-argument functions via e.g. `ω(x).call(jax.numpy.abs)`.
 
 ### On syntax
 

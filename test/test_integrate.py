@@ -6,6 +6,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import pytest
 import scipy.stats
 from diffrax.misc import ω
@@ -69,7 +70,7 @@ def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
         return
 
     def f(t, y, args):
-        return jax.tree_map(operator.neg, y)
+        return jtu.tree_map(operator.neg, y)
 
     if t_dtype is int:
         t0 = 0
@@ -110,7 +111,7 @@ def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
         else:
             raise
     y1 = sol.ys
-    true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
+    true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
     assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
@@ -204,7 +205,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     bm = diffrax.VirtualBrownianTree(
         t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
-    if solver_ctr.term_structure == jax.tree_structure(0):
+    if solver_ctr.term_structure == jtu.tree_structure(0):
         terms = diffrax.MultiTerm(
             diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
         )
