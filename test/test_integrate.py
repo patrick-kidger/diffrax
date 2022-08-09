@@ -566,3 +566,12 @@ def test_grad_implicit_solve(solver):
     val_eps = f(1.0 + eps)
     numerical_grads = (val_eps - val) / eps
     assert shaped_allclose(grads, numerical_grads)
+
+
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_complex_dtype_ode_solver(solver):
+    term = diffrax.ODETerm(lambda t, y, args: -1.0j * y)
+    y0 = jnp.array([1.0, 1.0j])
+    sol = diffrax.diffeqsolve(term, solver, t0=0, t1=1, dt0=0.1, y0=y0)
+    assert jnp.allclose(sol.ys[0], jnp.exp(-1.0j) * y0)
+
