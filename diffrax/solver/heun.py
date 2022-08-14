@@ -23,8 +23,7 @@ class Heun(AbstractERK, AbstractStratonovichSolver):
     or "explicit trapezoidal rule".
 
     Should not be confused with Heun's third order method, which is a different (higher
-    order) method occasionally also just referred to as "Heun's method". (Which is
-    available in Diffrax as [`diffrax.Bosh3`][].)
+    order) method occasionally also just referred to as "Heun's method".
 
     When used to solve SDEs, converges to the Stratonovich solution.
     """
