@@ -29,7 +29,7 @@ def is_perturbed(x: Any) -> bool:
 
 
 def nondifferentiable_input(x: PyTree, name: str) -> None:
-    if any(is_perturbed(xi) for xi in jax.tree_leaves(x)):
+    if any(is_perturbed(xi) for xi in jtu.tree_leaves(x)):
         raise ValueError(f"Cannot differentiate {name}.")
 
 
