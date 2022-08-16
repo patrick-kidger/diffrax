@@ -547,7 +547,7 @@ def rectilinear_interpolation(
         out = jtu.tree_map(fn, replace_nans_at_start, ys)
     ys_treedef = jtu.tree_structure(ys)
     interp_treedef = jtu.tree_structure((0, 0))
-    return jax.tree_transpose(ys_treedef, interp_treedef, out)
+    return jtu.tree_transpose(ys_treedef, interp_treedef, out)
 
 
 def _hermite_forward(
@@ -725,4 +725,4 @@ def backward_hermite_coefficients(
             coeffs = jtu.tree_map(fn, ys, deriv0, replace_nans_at_start)
     ys_treedef = jtu.tree_structure(ys)
     coeffs_treedef = jtu.tree_structure((0, 0, 0, 0))
-    return jax.tree_transpose(ys_treedef, coeffs_treedef, coeffs)
+    return jtu.tree_transpose(ys_treedef, coeffs_treedef, coeffs)

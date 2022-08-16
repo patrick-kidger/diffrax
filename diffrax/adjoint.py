@@ -171,7 +171,7 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
     del throw
     y, args, terms = y__args__terms
     init_state = eqx.tree_at(
-        lambda s: jax.tree_leaves(s.y), init_state, jax.tree_leaves(y)
+        lambda s: jtu.tree_leaves(s.y), init_state, jtu.tree_leaves(y)
     )
     del y
     return self._loop_fn(
@@ -409,7 +409,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         y = init_state.y
         sentinel = object()
         init_state = eqx.tree_at(
-            lambda s: jax.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
+            lambda s: jtu.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
         )
 
         final_state, aux_stats = _loop_backsolve(
@@ -421,7 +421,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         ys = final_state.ys
         final_state = jtu.tree_map(nondifferentiable_output, final_state)
         final_state = eqx.tree_at(
-            lambda s: jax.tree_leaves(s.ys), final_state, jax.tree_leaves(ys)
+            lambda s: jtu.tree_leaves(s.ys), final_state, jtu.tree_leaves(ys)
         )
 
         return final_state, aux_stats

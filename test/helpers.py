@@ -59,7 +59,7 @@ def random_pytree(key, treedef):
         dim_sizes = jrandom.randint(sizekey, (num_dims,), 0, 5)
         value = jrandom.normal(valuekey, dim_sizes)
         leaves.append(value)
-    return jax.tree_unflatten(treedef, leaves)
+    return jtu.tree_unflatten(treedef, leaves)
 
 
 treedefs = [

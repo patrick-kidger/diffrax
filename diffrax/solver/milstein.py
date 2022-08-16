@@ -183,7 +183,7 @@ class ItoMilstein(AbstractItoSolver):
                     leaf = leaf - Δt * eye
                 leaves_ΔwΔw.append(leaf)
         tree_ΔwΔw = tree_Δw.compose(tree_Δw)
-        ΔwΔw = jax.tree_unflatten(tree_ΔwΔw, leaves_ΔwΔw)
+        ΔwΔw = jtu.tree_unflatten(tree_ΔwΔw, leaves_ΔwΔw)
         # ΔwΔw has structure (tree(Δw), tree(Δw), leaf(Δw), leaf(Δw))
 
         #
@@ -250,11 +250,11 @@ class ItoMilstein(AbstractItoSolver):
         # Which we now transform into its isomorphic matrix form, as above.
         g0_matrix = jax.jacfwd(lambda _Δw: diffusion.prod(g0, _Δw))(Δw)
         # g0_matrix has structure (tree(y0), tree(Δw), leaf(y0), leaf(Δw))
-        g0_matrix = jax.tree_transpose(y_treedef, Δw_treedef, g0_matrix)
+        g0_matrix = jtu.tree_transpose(y_treedef, Δw_treedef, g0_matrix)
         # g0_matrix has structure (tree(Δw), tree(y0), leaf(y0), leaf(Δw))
         v0_matrix = jtu.tree_map(_to_treemap, Δw, g0_matrix)
         # v0_matrix has structure (tree(Δw), tree(y0), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
-        v0_matrix = jax.tree_transpose(
+        v0_matrix = jtu.tree_transpose(
             Δw_treedef, y_treedef.compose(Δw_treedef), v0_matrix
         )
         # v0_matrix has structure (tree(y0), tree(Δw), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
@@ -275,7 +275,7 @@ class ItoMilstein(AbstractItoSolver):
             # ΔwΔw has structure (tree(Δw), tree(Δw), leaf(Δw), leaf(Δw))
             _dotted = jtu.tree_map(__dot, _v0, ΔwΔw)
             # _dotted has structure (tree(Δw), tree(Δw), leaf(y0))
-            _out = sum(jax.tree_leaves(_dotted))
+            _out = sum(jtu.tree_leaves(_dotted))
             # _out has structure (leaf(y0),)
             return _out
 
