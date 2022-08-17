@@ -78,9 +78,9 @@ def _save(state: _State, t: Scalar) -> _State:
     save_index = save_index + 1
 
     return eqx.tree_at(
-        lambda s: [s.ts, s.save_index] + jax.tree_leaves(s.ys),
+        lambda s: [s.ts, s.save_index] + jtu.tree_leaves(s.ys),
         state,
-        [ts, save_index] + jax.tree_leaves(ys),
+        [ts, save_index] + jtu.tree_leaves(ys),
     )
 
 

@@ -383,7 +383,7 @@ class AdjointTerm(AbstractTerm):
         args: PyTree,
     ) -> bool:
         control = self.contr(t0, t1)
-        if sum(c.size for c in jax.tree_leaves(control)) in (0, 1):
+        if sum(c.size for c in jtu.tree_leaves(control)) in (0, 1):
             return False
         else:
             return True
@@ -412,8 +412,8 @@ class AdjointTerm(AbstractTerm):
         # PyTree structure. (This is because `self.vf_prod` is linear in `control`.)
         control = self.contr(t, t)
 
-        y_size = sum(np.size(yi) for yi in jax.tree_leaves(y))
-        control_size = sum(np.size(ci) for ci in jax.tree_leaves(control))
+        y_size = sum(np.size(yi) for yi in jtu.tree_leaves(y))
+        control_size = sum(np.size(ci) for ci in jtu.tree_leaves(control))
         if y_size > control_size:
             make_jac = jax.jacfwd
         else:
@@ -441,7 +441,7 @@ class AdjointTerm(AbstractTerm):
             raise NotImplementedError(
                 "`AdjointTerm.vf` not implemented for `None` controls or states."
             )
-        return jax.tree_transpose(vf_prod_tree, control_tree, jac)
+        return jtu.tree_transpose(vf_prod_tree, control_tree, jac)
 
     def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
         return self.term.contr(t0, t1)
@@ -467,16 +467,16 @@ class AdjointTerm(AbstractTerm):
         jtu.tree_map(_get_vf_tree, control, vf)
         assert vf_prod_tree is not sentinel
 
-        vf = jax.tree_transpose(control_tree, vf_prod_tree, vf)
+        vf = jtu.tree_transpose(control_tree, vf_prod_tree, vf)
 
-        example_vf_prod = jax.tree_unflatten(
+        example_vf_prod = jtu.tree_unflatten(
             vf_prod_tree, [0 for _ in range(vf_prod_tree.num_leaves)]
         )
 
         def _contract(_, vf_piece):
             assert jtu.tree_structure(vf_piece) == control_tree
             _contracted = jtu.tree_map(_prod, vf_piece, control)
-            return sum(jax.tree_leaves(_contracted), 0)
+            return sum(jtu.tree_leaves(_contracted), 0)
 
         return jtu.tree_map(_contract, example_vf_prod, vf)
 

@@ -5,7 +5,6 @@ import time
 
 import diffrax
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
@@ -59,7 +58,7 @@ def random_pytree(key, treedef):
         dim_sizes = jrandom.randint(sizekey, (num_dims,), 0, 5)
         value = jrandom.normal(valuekey, dim_sizes)
         leaves.append(value)
-    return jax.tree_unflatten(treedef, leaves)
+    return jtu.tree_unflatten(treedef, leaves)
 
 
 treedefs = [
