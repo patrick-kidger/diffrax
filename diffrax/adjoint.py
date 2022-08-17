@@ -2,7 +2,6 @@ import abc
 from typing import Any, Dict
 
 import equinox as eqx
-import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
