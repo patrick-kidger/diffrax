@@ -40,8 +40,8 @@ class AbstractNonlinearSolver(eqx.Module):
     Subclasses will be differentiable via the implicit function theorem.
     """
 
-    rtol: Optional[Scalar] = None
-    atol: Optional[Scalar] = None
+    rtol: Scalar
+    atol: Scalar
 
     @abc.abstractmethod
     def _solve(

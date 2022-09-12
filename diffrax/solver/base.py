@@ -163,12 +163,22 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         """
 
 
+class UseControllerAtol(eqx.Module):
+    pass
+
+
+class UseControllerRtol(eqx.Module):
+    pass
+
+
 class AbstractImplicitSolver(AbstractSolver):
     """Indicates that this is an implicit differential equation solver, and as such
     that it should take a nonlinear solver as an argument.
     """
 
-    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
+    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver(
+        atol=UseControllerAtol(), rtol=UseControllerRtol()
+    )
 
 
 AbstractImplicitSolver.__init__.__doc__ = """**Arguments:**

@@ -6,6 +6,8 @@ from .base import (
     AbstractStratonovichSolver,
     AbstractWrappedSolver,
     HalfSolver,
+    UseControllerAtol,
+    UseControllerRtol,
 )
 from .bosh3 import Bosh3
 from .dopri5 import Dopri5

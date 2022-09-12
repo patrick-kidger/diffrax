@@ -28,7 +28,15 @@ from .misc import (
 )
 from .saveat import SaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
-from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
+from .solver import (
+    AbstractAdaptiveSolver,
+    AbstractItoSolver,
+    AbstractSolver,
+    AbstractStratonovichSolver,
+    Euler,
+    UseControllerAtol,
+    UseControllerRtol,
+)
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -724,10 +732,51 @@ def diffeqsolve(
         is_leaf=lambda x: isinstance(x, AbstractTerm),
     )
 
-    # Stepsize controller gets an opportunity to modify the solver.
-    # Note that at this point the solver could be anything so we must check any
-    # abstract base classes of the solver before this.
-    solver = stepsize_controller.wrap_solver(solver)
+    if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+
+        def _replace_tol(x):
+            if isinstance(x, UseControllerAtol):
+                return stepsize_controller.atol
+            elif isinstance(x, UseControllerRtol):
+                return stepsize_controller.rtol
+            else:
+                return x
+
+        solver = jtu.tree_map(_replace_tol, solver)
+
+    else:
+
+        def _has_tol(x):
+            if isinstance(x, (UseControllerAtol, UseControllerRtol)):
+                if isinstance(solver, AbstractAdaptiveSolver):
+                    msg = (
+                        "The `rtol` and `atol` used for the `solver` -- typically an "
+                        "implicit solver -- default to the `rtol` and `atol` used with "
+                        "the `stepsize_controller`. Either use an adaptive step size "
+                        "controller, or specify these tolerances manually.\n"
+                        "Note that this changed in Diffrax version 0.2.0. If you want "
+                        "to match the previous defaults then specify `rtol=1e-3`, "
+                        "`atol=1e-6`. For example:\n"
+                        "```\n"
+                        "Kvaerno5(nonlinear_solver=NewtonNonlinearSolver(rtol=1e-3, "
+                        "atol=1e-6))\n"
+                        "```\n"
+                    )
+                else:
+                    msg = (
+                        "The `rtol` and `atol` used for the `solver` -- typically an "
+                        "implicit solver -- must be specified."
+                        "Note that this changed in Diffrax version 0.2.0. If you want "
+                        "to match the previous defaults then specify `rtol=1e-3`, "
+                        "`atol=1e-6`. For example:\n"
+                        "```\n"
+                        "ImplicitEuler(nonlinear_solver=NewtonNonlinearSolver("
+                        "rtol=1e-3, atol=1e-6))\n"
+                        "```\n"
+                    )
+                raise ValueError(msg)
+
+        jtu.tree_map(_has_tol, solver)
 
     # Error checking
     if saveat.ts is not None:

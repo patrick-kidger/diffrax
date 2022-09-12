@@ -10,7 +10,6 @@ import jax.tree_util as jtu
 from ..custom_types import Array, Bool, PyTree, Scalar
 from ..misc import nextafter, prevbefore, rms_norm, ω
 from ..solution import RESULTS
-from ..solver import AbstractImplicitSolver, AbstractSolver
 from ..term import AbstractTerm
 from .base import AbstractStepSizeController
 
@@ -86,25 +85,6 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
                 "diffrax.PIDController(rtol=1e-3, atol=1e-6)\n"
                 "```\n"
             )
-
-    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
-        # Poor man's multiple dispatch
-        if isinstance(solver, AbstractImplicitSolver):
-            if solver.nonlinear_solver.rtol is None:
-                solver = eqx.tree_at(
-                    lambda s: s.nonlinear_solver.rtol,
-                    solver,
-                    self.rtol,
-                    is_leaf=lambda x: x is None,
-                )
-            if solver.nonlinear_solver.atol is None:
-                solver = eqx.tree_at(
-                    lambda s: s.nonlinear_solver.atol,
-                    solver,
-                    self.atol,
-                    is_leaf=lambda x: x is None,
-                )
-        return solver
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/

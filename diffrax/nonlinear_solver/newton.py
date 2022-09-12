@@ -93,20 +93,6 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         diff_args: PyTree,
     ) -> Tuple[PyTree, RESULTS]:
         args = eqx.combine(nondiff_args, diff_args)
-        if self.rtol is None or self.atol is None:
-            raise ValueError(
-                "The `rtol` and `atol` tolerances for `NewtonNonlinearSolver` default "
-                "to the `rtol` and `atol` used with an adaptive step size "
-                "controller (such as `diffrax.PIDController`). Either use an "
-                "adaptive step size controller, or specify these tolerances "
-                "manually.\n"
-                "Note that this changed in Diffrax version 0.2.0. If you want to match "
-                "the previous defaults then specify `rtol=1e-3`, `atol=1e-6`. For "
-                "example:\n"
-                "```\n"
-                "diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)\n"
-                "```\n"
-            )
         scale = self.atol + self.rtol * self.norm(x)
         flat, unflatten = fu.ravel_pytree(x)
         if flat.size == 0:
