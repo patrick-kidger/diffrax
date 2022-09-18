@@ -15,7 +15,6 @@ class RESULTS(metaclass=ContainerMeta):
         "The maximum number of solver steps was reached. Try increasing `max_steps`."
     )
     dt_min_reached = "The minimum step size was reached."
-    nan_time = "NaN time encountered during timestepping."
     implicit_divergence = "Implicit method diverged."
     implicit_nonconvergence = (
         "Implicit method did not converge within the required number of iterations."
