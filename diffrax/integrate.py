@@ -140,6 +140,11 @@ def loop(
             state.made_jump,
         )
 
+        # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
+        # we get a negative value for y, and then get a NaN vector field. (And then
+        # everything breaks.) See #143.
+        y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
+
         error_order = solver.error_order(terms)
         (
             keep_step,
