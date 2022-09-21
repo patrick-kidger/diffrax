@@ -35,9 +35,9 @@ def _kl_full_matrix(drift: Array, diffusion: Array):
 
 
 def _assert_array(x: Any):
-    assert isinstance(x, jnp.ndarray), (
-        "`sde_kl_divergence` can only " + "handle array-value  drifts and diffusions"
-    )
+    assert isinstance(
+        x, jnp.ndarray
+    ), "`sde_kl_divergence` can only handle array-value  drifts and diffusions"
 
 
 def _handle(drift: Array, diffusion: Array):
@@ -74,7 +74,7 @@ class _AugDrift(AbstractTerm):
     diffusion: AbstractTerm
 
     def vf(self, t: Scalar, y: PyTree, args) -> PyTree:
-        # In this implementation, we may restricted our case where the
+        # In this implementation, we may restricte our case where the
         # diffusion can be a block matrix. Each block can follow
         # different `vf_prod`
         #   - PyTree of drift: (*, *, ..., *) :
