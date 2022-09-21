@@ -6,11 +6,18 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import pytest
 import scipy.stats
 from diffrax.misc import ω
 
-from helpers import all_ode_solvers, random_pytree, shaped_allclose, treedefs
+from .helpers import (
+    all_ode_solvers,
+    implicit_tol,
+    random_pytree,
+    shaped_allclose,
+    treedefs,
+)
 
 
 def _all_pairs(*args):
@@ -32,16 +39,20 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver_ctr,t_dtype,treedef,stepsize_controller",
+    "solver,t_dtype,treedef,stepsize_controller",
     _all_pairs(
         dict(
-            default=diffrax.Euler,
+            default=diffrax.Euler(),
             opts=(
-                diffrax.LeapfrogMidpoint,
-                diffrax.ReversibleHeun,
-                diffrax.Tsit5,
-                diffrax.ImplicitEuler,
-                diffrax.Kvaerno3,
+                diffrax.LeapfrogMidpoint(),
+                diffrax.ReversibleHeun(),
+                diffrax.Tsit5(),
+                diffrax.ImplicitEuler(
+                    nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+                ),
+                diffrax.Kvaerno3(
+                    nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+                ),
             ),
         ),
         dict(default=jnp.float32, opts=(int, float, jnp.int32)),
@@ -52,14 +63,14 @@ def _all_pairs(*args):
         ),
     ),
 )
-def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
-    if not issubclass(solver_ctr, diffrax.AbstractAdaptiveSolver) and isinstance(
+def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
+    if not isinstance(solver, diffrax.AbstractAdaptiveSolver) and isinstance(
         stepsize_controller, diffrax.PIDController
     ):
         return
 
     def f(t, y, args):
-        return jax.tree_map(operator.neg, y)
+        return jtu.tree_map(operator.neg, y)
 
     if t_dtype is int:
         t0 = 0
@@ -83,7 +94,7 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
     try:
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(f),
-            solver_ctr(),
+            solver,
             t0,
             t1,
             dt0,
@@ -100,12 +111,13 @@ def test_basic(solver_ctr, t_dtype, treedef, stepsize_controller, getkey):
         else:
             raise
     y1 = sol.ys
-    true_y1 = jax.tree_map(lambda x: (x * math.exp(-1))[None], y0)
+    true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
     assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_ode_order(solver_ctr):
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_ode_order(solver):
+    solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)
     akey, ykey = jrandom.split(key, 2)
 
@@ -115,7 +127,6 @@ def test_ode_order(solver_ctr):
         return A @ y
 
     term = diffrax.ODETerm(f)
-    solver = solver_ctr()
     t0 = 0
     t1 = 4
     y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
@@ -194,7 +205,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     bm = diffrax.VirtualBrownianTree(
         t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
-    if solver_ctr.term_structure == jax.tree_structure(0):
+    if solver_ctr.term_structure == jtu.tree_structure(0):
         terms = diffrax.MultiTerm(
             diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
         )
@@ -522,7 +533,17 @@ def test_compile_time_steps():
     assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
 
 
-@pytest.mark.parametrize("solver", [diffrax.ImplicitEuler(), diffrax.Kvaerno5()])
+@pytest.mark.parametrize(
+    "solver",
+    [
+        diffrax.ImplicitEuler(
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+        ),
+        diffrax.Kvaerno5(
+            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+        ),
+    ],
+)
 def test_grad_implicit_solve(solver):
     # Check that we work around JAX issue #9374
     # Whilst we're at -- for efficiency -- check the use of PyTree-valued state with

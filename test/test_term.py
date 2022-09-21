@@ -2,11 +2,11 @@ import types
 
 import diffrax
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 
-from helpers import shaped_allclose
+from .helpers import shaped_allclose
 
 
 def test_ode_term():
@@ -122,7 +122,7 @@ def test_cde_adjoint_term(getkey):
     a_y = (jrandom.normal(getkey(), (2,)),)
     a_args = (jrandom.normal(getkey(), (1,)), jrandom.normal(getkey(), (1,)))
     randlike = lambda a: jrandom.normal(getkey(), a.shape)
-    a_term = jax.tree_map(randlike, eqx.filter(term, eqx.is_array))
+    a_term = jtu.tree_map(randlike, eqx.filter(term, eqx.is_array))
     aug = (y, a_y, a_args, a_term)
     dt = adjoint_term.contr(t, t + 1)
 

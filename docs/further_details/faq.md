@@ -1,10 +1,14 @@
 # FAQ
 
+### Compilation is taking a long time.
+
+If you're using a Runge--Kutta method like [`diffrax.Dopri5`][] etc., then try setting `scan_stages=True` when initialisating the solver, for example `Dopri5(scan_stages=True)`. This will substantially reduce compile time at the expense of a slightly slower run time.
+
 ### The solve is taking loads of steps / I'm getting NaN gradients / other weird behaviour.
 
 Try switching to 64-bit precision. (Instead of the 32-bit that is the default in JAX.) [See here](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision).
 
-### I'm getting zero gradient for one of my model parameters.
+### I'm getting a `CustomVJPException`.
 
 This can happen if you use [`diffrax.BacksolveAdjoint`][] incorrectly.
 
@@ -14,39 +18,56 @@ Gradients will be computed for:
 - Everything in the `y0` PyTree passed to `diffeqsolve(..., y0=y0)`.
 - Everything in the `terms` PyTree passed to `diffeqsolve(terms, ...)`.
 
+Attempting to compute gradients with respect to anything else will result in this exception.
 
 !!! example
 
-    Gradients through `args` and `y0` are self-explanatory. Meanwhile, a common example of computing gradients through `terms` is if using an [Equinox](https://github.com/patrick-kidger/equinox) module to represent a parameterised vector field. For example:
+    Here is a minimal example of **wrong** code that will raise this exception.
 
     ```python
+    from diffrax import BacksolveAdjoint, diffeqsolve, Euler, ODETerm
     import equinox as eqx
-    import diffrax
+    import jax.numpy as jnp
+    import jax.random as jr
 
-    class Func(eqx.Module):
-        mlp: eqx.nn.MLP
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jr.PRNGKey(0))
 
-        def __call__(self, t, y, args):
-            return self.mlp(y)
+    @eqx.filter_jit
+    @eqx.filter_value_and_grad
+    def run(model):
+      def f(t, y, args):  # `model` captured via closure; is not part of the `terms` PyTree.
+        return model(y)
+      sol = diffeqsolve(ODETerm(f), Euler(), 0, 1, 0.1, jnp.array([1.0]),
+                        adjoint=BacksolveAdjoint())
+      return jnp.sum(sol.ys)
 
-    mlp = eqx.nn.MLP(...)
-    func = Func(mlp)
-    term = diffrax.ODETerm(func)
-    diffrax.diffeqsolve(term, ..., adjoint=diffrax.BacksolveAdjoint())
+    run(mlp)
     ```
 
-    In this case `diffrax.ODETerm`, `Func` and `eqx.nn.MLP` are all PyTrees, so all of the parameters inside `mlp` are visible to `diffeqsolve` and it can compute gradients with respect to them.
+!!! example
 
-However if you were to do:
+    The corrected version of the previous example is as follows. In this case, the model is properly part of the PyTree structure of `terms`.
 
-```python
-model = ...
+    ```python
+    from diffrax import BacksolveAdjoint, diffeqsolve, Euler, ODETerm
+    import equinox as eqx
+    import jax.numpy as jnp
+    import jax.random as jr
 
-def func(t, y, args):
-    return model(y)
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jr.PRNGKey(0))
 
-term = diffrax.ODETerm(func)
-diffrax.diffeqsolve(term, ..., adjoint=diffrax.BacksolveAdjoint())
-```
+    class VectorField(eqx.Module):
+        model: eqx.Module
 
-then the parameters of `model` are not visible to `diffeqsolve` so gradients will not be computed with respect to them.
+        def __call__(self, t, y, args):
+            return self.model(y)
+
+    @eqx.filter_jit
+    @eqx.filter_value_and_grad
+    def run(model):
+      f = VectorField(model)
+      sol = diffeqsolve(ODETerm(f), Euler(), 0, 1, 0.1, jnp.array([1.0]), adjoint=BacksolveAdjoint())
+      return jnp.sum(sol.ys)
+
+    run(mlp)
+    ```

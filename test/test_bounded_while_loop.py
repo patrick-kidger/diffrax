@@ -11,9 +11,10 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import numpy as np
 
-from helpers import shaped_allclose, time_fn
+from .helpers import shaped_allclose, time_fn
 
 
 def test_functional_no_vmap_no_inplace():
@@ -210,7 +211,7 @@ def _make_update(i, u, v):
 def _body_fun(body_fun):
     def __body_fun(val):
         update, index = body_fun(val)
-        return jax.tree_map(_make_update, index, update, val)
+        return jtu.tree_map(_make_update, index, update, val)
 
     return __body_fun
 

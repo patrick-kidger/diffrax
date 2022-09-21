@@ -5,9 +5,10 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import pytest
 
-from helpers import all_ode_solvers, shaped_allclose
+from .helpers import all_ode_solvers, implicit_tol, shaped_allclose
 
 
 @pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])
@@ -50,7 +51,7 @@ def test_interpolation_coeffs(mode, unsqueeze):
             assert jnp.array_equal(_lef, _rig)
             return jnp.where(jnp.isnan(rig), lef, rig)
 
-        return jax.tree_map(_merge, left, right)
+        return jtu.tree_map(_merge, left, right)
 
     interp_ys = _interp(tree=False, duplicate=False)
     true_ys = ys.at[jnp.array([0, 9])].set(jnp.nan)
@@ -285,8 +286,8 @@ def test_interpolation_classes(mode, getkey):
                 for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
                     if t0 == t1:
                         continue
-                    y0 = jax.tree_map(operator.itemgetter(i), ys)
-                    y1 = jax.tree_map(operator.itemgetter(i + 1), ys)
+                    y0 = jtu.tree_map(operator.itemgetter(i), ys)
+                    y1 = jtu.tree_map(operator.itemgetter(i + 1), ys)
                     points = jnp.linspace(t0, t1, 10)
                     firstval = interp.evaluate(t0, left=False)
                     vals = jax.vmap(interp.evaluate)(points[1:])
@@ -298,7 +299,7 @@ def test_interpolation_classes(mode, getkey):
                         )
                         assert shaped_allclose(vals, true_vals)
 
-                    jax.tree_map(_test, firstval, vals, y0, y1)
+                    jtu.tree_map(_test, firstval, vals, y0, y1)
                     firstderiv = interp.derivative(t0, left=False)
                     derivs = jax.vmap(interp.derivative)(points[1:])
 
@@ -308,15 +309,15 @@ def test_interpolation_classes(mode, getkey):
                         true_derivs = jnp.broadcast_to(true_derivs, derivs.shape)
                         assert shaped_allclose(derivs, true_derivs)
 
-                    jax.tree_map(_test, firstderiv, derivs, y0, y1)
+                    jtu.tree_map(_test, firstderiv, derivs, y0, y1)
 
 
-def _test_dense_interpolation(solver_ctr, key, t1):
+def _test_dense_interpolation(solver, key, t1):
     y0 = jrandom.uniform(key, (), minval=0.4, maxval=2)
     dt0 = t1 / 1e3
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: -y),
-        solver=solver_ctr(),
+        solver=solver,
         t0=0,
         t1=t1,
         dt0=dt0,
@@ -333,16 +334,17 @@ def _test_dense_interpolation(solver_ctr, key, t1):
     return vals, true_vals, derivs, true_derivs
 
 
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_dense_interpolation(solver_ctr, getkey):
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_dense_interpolation(solver, getkey):
+    solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)
-    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver_ctr, key, 1)
+    vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver, key, 1)
     assert jnp.array_equal(vals[0], true_vals[0])
     val_tol = {
         diffrax.Euler: 1e-3,
         diffrax.ImplicitEuler: 1e-3,
         diffrax.LeapfrogMidpoint: 1e-5,
-    }.get(solver_ctr, 1e-6)
+    }.get(type(solver), 1e-6)
     assert shaped_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
     deriv_tol = {
         diffrax.ReversibleHeun: 1e-2,
@@ -351,17 +353,18 @@ def test_dense_interpolation(solver_ctr, getkey):
         diffrax.Euler: 1e-3,
         diffrax.ImplicitEuler: 1e-3,
         diffrax.Ralston: 1e-3,
-    }.get(solver_ctr, 1e-6)
+    }.get(type(solver), 1e-6)
     assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
 
 
 # When vmap'ing then it can happen that some batch elements take more steps to solve
 # than others. This means some padding is used to make things line up; here we test
 # that all of this works as intended.
-@pytest.mark.parametrize("solver_ctr", all_ode_solvers)
-def test_dense_interpolation_vmap(solver_ctr, getkey):
+@pytest.mark.parametrize("solver", all_ode_solvers)
+def test_dense_interpolation_vmap(solver, getkey):
+    solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)
-    _test_dense = ft.partial(_test_dense_interpolation, solver_ctr, key)
+    _test_dense = ft.partial(_test_dense_interpolation, solver, key)
     _test_dense_vmap = jax.vmap(_test_dense)
     vals, true_vals, derivs, true_derivs = _test_dense_vmap(jnp.array([0.5, 1.0]))
     assert jnp.array_equal(vals[:, 0], true_vals[:, 0])
@@ -369,7 +372,7 @@ def test_dense_interpolation_vmap(solver_ctr, getkey):
         diffrax.Euler: 1e-3,
         diffrax.ImplicitEuler: 1e-3,
         diffrax.LeapfrogMidpoint: 1e-5,
-    }.get(solver_ctr, 1e-6)
+    }.get(type(solver), 1e-6)
     assert shaped_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
     deriv_tol = {
         diffrax.ReversibleHeun: 1e-2,
@@ -378,5 +381,5 @@ def test_dense_interpolation_vmap(solver_ctr, getkey):
         diffrax.Euler: 1e-3,
         diffrax.ImplicitEuler: 1e-3,
         diffrax.Ralston: 1e-3,
-    }.get(solver_ctr, 1e-6)
+    }.get(type(solver), 1e-6)
     assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)

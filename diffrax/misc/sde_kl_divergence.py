@@ -3,6 +3,7 @@ from typing import Any, Tuple
 
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
 from ..term import (
@@ -53,13 +54,13 @@ def _handle(drift: Array, diffusion: Array):
 
 def _kl_block_diffusion(drift: PyTree, diffusion: PyTree):
     """The case where diffusion matrix is a block diagonal matrix"""
-    kl = jax.tree_util.tree_map(
+    kl = jtu.tree_map(
         _handle,
         drift,
         diffusion,
     )
 
-    kl = jax.tree_util.tree_reduce(
+    kl = jtu.tree_reduce(
         operator.add,
         kl,
     )
@@ -100,12 +101,12 @@ class _AugDrift(AbstractTerm):
         drift1 = self.drift1.vf(t, aug_y, args)
         drift2 = self.drift2.vf(t, y, args)
 
-        drift = jax.tree_map(operator.sub, drift1, drift2)
+        drift = jtu.tree_map(operator.sub, drift1, drift2)
         diffusion = self.diffusion.vf(t, y, args)
 
         # get tree structure of drift and diffusion
-        drift_tree_structure = jax.tree_util.tree_structure(drift)
-        diffusion_tree_structure = jax.tree_util.tree_structure(diffusion)
+        drift_tree_structure = jtu.tree_structure(drift)
+        diffusion_tree_structure = jtu.tree_structure(diffusion)
 
         if drift_tree_structure == diffusion_tree_structure:
             # drift and diffusion has the same tree structure
@@ -143,7 +144,7 @@ class _AugDrift(AbstractTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: Scalar) -> PyTree:
-        return jax.tree_map(lambda v: control * v, vf)
+        return jtu.tree_map(lambda v: control * v, vf)
 
 
 class _AugControlTerm(AbstractTerm):

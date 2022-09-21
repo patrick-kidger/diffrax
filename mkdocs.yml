@@ -106,15 +106,20 @@ nav:
         - Continuous Normalising Flow: 'examples/continuous_normalising_flow.ipynb'
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
+        - Steady State: 'examples/steady_state.ipynb'
     - Basic API:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
-        - 'api/solver.md'
+        - Solvers:
+          - 'api/solvers/ode_solvers.md'
+          - 'api/solvers/sde_solvers.md'
+          - 'api/solvers/abstract_solvers.md'
         - 'api/saveat.md'
         - 'api/stepsize_controller.md'
         - 'api/solution.md'
     - Advanced API:
         - 'api/adjoints.md'
+        - 'api/events.md'
         - 'api/terms.md'
         - 'api/path.md'
         - 'api/interpolation.md'

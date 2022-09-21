@@ -1,20 +1,20 @@
 from typing import Tuple
 
-import jax
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractItoSolver, AbstractSolver
+from .base import AbstractItoSolver
 
 
 _ErrorEstimate = None
 _SolverState = None
 
 
-class Euler(AbstractItoSolver, AbstractSolver):
+class Euler(AbstractItoSolver):
     """Euler's method.
 
     1st order explicit Runge--Kutta method. Does not support adaptive step sizing.
@@ -22,7 +22,7 @@ class Euler(AbstractItoSolver, AbstractSolver):
     When used to solve SDEs, converges to the Itô solution.
     """
 
-    term_structure = jax.tree_structure(0)
+    term_structure = jtu.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -47,11 +47,11 @@ class Euler(AbstractItoSolver, AbstractSolver):
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
 
-    def func_for_init(
+    def func(
         self,
         terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
+        return terms.vf(t0, y0, args)

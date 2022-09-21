@@ -31,6 +31,10 @@ There are multiple ways to backpropagate through a differential equation (to com
     selection:
         members: false
 
+::: diffrax.ImplicitAdjoint
+    selection:
+        members: false
+
 ::: diffrax.BacksolveAdjoint
     selection:
         members:

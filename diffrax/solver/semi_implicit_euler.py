@@ -1,6 +1,6 @@
 from typing import Tuple
 
-import jax
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -20,7 +20,7 @@ class SemiImplicitEuler(AbstractSolver):
     Symplectic method. Does not support adaptive step sizing.
     """
 
-    term_structure = jax.tree_structure((0, 0))
+    term_structure = jtu.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -50,7 +50,7 @@ class SemiImplicitEuler(AbstractSolver):
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
 
-    def func_for_init(
+    def func(
         self,
         terms: Tuple[AbstractTerm, AbstractTerm],
         t0: Scalar,
@@ -60,6 +60,6 @@ class SemiImplicitEuler(AbstractSolver):
 
         term_1, term_2 = terms
         y0_1, y0_2 = y0
-        f1 = term_1.func_for_init(t0, y0_2, args)
-        f2 = term_2.func_for_init(t0, y0_1, args)
+        f1 = term_1.func(t0, y0_2, args)
+        f2 = term_2.func(t0, y0_1, args)
         return (f1, f2)

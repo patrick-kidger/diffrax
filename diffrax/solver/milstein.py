@@ -2,6 +2,7 @@ from typing import Tuple
 
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -35,7 +36,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = jax.tree_structure((0, 0))
+    term_structure = jtu.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -71,6 +72,16 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
 
+    def func(
+        self,
+        terms: Tuple[AbstractTerm, AbstractTerm],
+        t0: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> PyTree:
+        drift, diffusion = terms
+        return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
+
 
 class ItoMilstein(AbstractItoSolver):
     r"""Milstein's method; Itô version.
@@ -83,7 +94,7 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = jax.tree_structure((0, 0))
+    term_structure = jtu.tree_structure((0, 0))
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -162,7 +173,7 @@ class ItoMilstein(AbstractItoSolver):
         #
         # We're going to use this notation extensively.
         #
-        leaves_Δw, tree_Δw = jax.tree_flatten(Δw)
+        leaves_Δw, tree_Δw = jtu.tree_flatten(Δw)
         leaves_ΔwΔw = []
         for i1, l1 in enumerate(leaves_Δw):
             for i2, l2 in enumerate(leaves_Δw):
@@ -172,7 +183,7 @@ class ItoMilstein(AbstractItoSolver):
                     leaf = leaf - Δt * eye
                 leaves_ΔwΔw.append(leaf)
         tree_ΔwΔw = tree_Δw.compose(tree_Δw)
-        ΔwΔw = jax.tree_unflatten(tree_ΔwΔw, leaves_ΔwΔw)
+        ΔwΔw = jtu.tree_unflatten(tree_ΔwΔw, leaves_ΔwΔw)
         # ΔwΔw has structure (tree(Δw), tree(Δw), leaf(Δw), leaf(Δw))
 
         #
@@ -233,17 +244,17 @@ class ItoMilstein(AbstractItoSolver):
             # _out has structure (tree(y0), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))
             return out
 
-        y_treedef = jax.tree_structure(y0)
-        Δw_treedef = jax.tree_structure(Δw)
+        y_treedef = jtu.tree_structure(y0)
+        Δw_treedef = jtu.tree_structure(Δw)
         # g0 has structure (tree(g0), leaf(g0))
         # Which we now transform into its isomorphic matrix form, as above.
         g0_matrix = jax.jacfwd(lambda _Δw: diffusion.prod(g0, _Δw))(Δw)
         # g0_matrix has structure (tree(y0), tree(Δw), leaf(y0), leaf(Δw))
-        g0_matrix = jax.tree_transpose(y_treedef, Δw_treedef, g0_matrix)
+        g0_matrix = jtu.tree_transpose(y_treedef, Δw_treedef, g0_matrix)
         # g0_matrix has structure (tree(Δw), tree(y0), leaf(y0), leaf(Δw))
-        v0_matrix = jax.tree_map(_to_treemap, Δw, g0_matrix)
+        v0_matrix = jtu.tree_map(_to_treemap, Δw, g0_matrix)
         # v0_matrix has structure (tree(Δw), tree(y0), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
-        v0_matrix = jax.tree_transpose(
+        v0_matrix = jtu.tree_transpose(
             Δw_treedef, y_treedef.compose(Δw_treedef), v0_matrix
         )
         # v0_matrix has structure (tree(y0), tree(Δw), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
@@ -262,14 +273,14 @@ class ItoMilstein(AbstractItoSolver):
         def _dot(_, _v0):
             # _v0 has structure (tree(Δw), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))
             # ΔwΔw has structure (tree(Δw), tree(Δw), leaf(Δw), leaf(Δw))
-            _dotted = jax.tree_map(__dot, _v0, ΔwΔw)
+            _dotted = jtu.tree_map(__dot, _v0, ΔwΔw)
             # _dotted has structure (tree(Δw), tree(Δw), leaf(y0))
-            _out = sum(jax.tree_leaves(_dotted))
+            _out = sum(jtu.tree_leaves(_dotted))
             # _out has structure (leaf(y0),)
             return _out
 
         # v0_matrix has structure (tree(y0), tree(Δw), tree(Δw), leaf(y0), leaf(Δw), leaf(Δw))  # noqa: E501
-        v0_prod = jax.tree_map(_dot, y0, v0_matrix)
+        v0_prod = jtu.tree_map(_dot, y0, v0_matrix)
         # v0_prod has structure (tree(y0), leaf(y0))
 
         #
@@ -312,3 +323,13 @@ class ItoMilstein(AbstractItoSolver):
 
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
+
+    def func(
+        self,
+        terms: Tuple[AbstractTerm, AbstractTerm],
+        t0: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> PyTree:
+        drift, diffusion = terms
+        return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)

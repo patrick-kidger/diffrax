@@ -6,6 +6,7 @@ import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from .adjoint import (
     AbstractAdjoint,
@@ -14,6 +15,7 @@ from .adjoint import (
     RecursiveCheckpointAdjoint,
 )
 from .custom_types import Array, Bool, Int, PyTree, Scalar
+from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
 from .misc import (
@@ -25,14 +27,8 @@ from .misc import (
     unvmap_max,
 )
 from .saveat import SaveAt
-from .solution import RESULTS, Solution
-from .solver import (
-    AbstractAdaptiveSDESolver,
-    AbstractItoSolver,
-    AbstractSolver,
-    AbstractStratonovichSolver,
-    Euler,
-)
+from .solution import is_okay, is_successful, RESULTS, Solution
+from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -78,17 +74,20 @@ def _save(state: _State, t: Scalar) -> _State:
     y = state.y
 
     ts = ts.at[save_index].set(t)
-    ys = jax.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
+    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
     save_index = save_index + 1
 
     return eqx.tree_at(
-        lambda s: [s.ts, s.save_index] + jax.tree_leaves(s.ys),
+        lambda s: [s.ts, s.save_index] + jtu.tree_leaves(s.ys),
         state,
-        [ts, save_index] + jax.tree_leaves(ys),
+        [ts, save_index] + jtu.tree_leaves(ys),
     )
 
 
 def _clip_to_end(tprev, tnext, t1, keep_step):
+    # The tolerance means that we don't end up with too-small intervals for
+    # dense output, which then gives numerically unstable answers due to floating
+    # point errors.
     if tnext.dtype is jnp.dtype("float64"):
         tol = 1e-10
     else:
@@ -102,6 +101,7 @@ def loop(
     *,
     solver,
     stepsize_controller,
+    discrete_terminating_event,
     saveat,
     t0,
     t1,
@@ -121,7 +121,7 @@ def loop(
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
 
     def cond_fun(state):
-        return (state.tprev < t1) & (state.result == RESULTS.successful)
+        return (state.tprev < t1) & is_successful(state.result)
 
     def body_fun(state, inplace):
 
@@ -139,6 +139,11 @@ def loop(
             state.solver_state,
             state.made_jump,
         )
+
+        # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
+        # we get a negative value for y, and then get a NaN vector field. (And then
+        # everything breaks.) See #143.
+        y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
 
         error_order = solver.error_order(terms)
         (
@@ -164,9 +169,6 @@ def loop(
         # Do some book-keeping.
         #
 
-        # The 1e-6 tolerance means that we don't end up with too-small intervals for
-        # dense output, which then gives numerically unstable answers due to floating
-        # point errors.
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
 
@@ -174,12 +176,12 @@ def loop(
         # step was accepted) by the stepsize controller. But it doesn't get access to
         # these parts, so we do them here.
         keep = lambda a, b: jnp.where(keep_step, a, b)
-        y = jax.tree_map(keep, y, state.y)
-        solver_state = jax.tree_map(keep, solver_state, state.solver_state)
+        y = jtu.tree_map(keep, y, state.y)
+        solver_state = jtu.tree_map(keep, solver_state, state.solver_state)
         made_jump = keep(made_jump, state.made_jump)
         solver_result = keep(solver_result, RESULTS.successful)
 
-        # TODO: if we ever support events, then they should go in here.
+        # TODO: if we ever support non-terminating events, then they should go in here.
         # In particular the thing to be careful about is in the `if saveat.steps`
         # branch below, where we want to make sure that it is the value of `y` at
         # `tprev` that is actually saved. (And not just the value of `y` at the
@@ -187,10 +189,8 @@ def loop(
 
         # Store the first unsuccessful result we get whilst iterating (if any).
         result = state.result
-        result = jnp.where(result == RESULTS.successful, solver_result, result)
-        result = jnp.where(
-            result == RESULTS.successful, stepsize_controller_result, result
-        )
+        result = jnp.where(is_okay(result), solver_result, result)
+        result = jnp.where(is_okay(result), stepsize_controller_result, result)
 
         # Count the number of steps, just for statistical purposes.
         num_steps = state.num_steps + 1
@@ -253,7 +253,7 @@ def loop(
                 #
                 #  _inplace = _inplace.merge(inplace)
                 #  _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
-                #  _ys = jax.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
+                #  _ys = jtu.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
                 #
                 # Seems reasonable, right? Just updating a value.
                 #
@@ -264,7 +264,7 @@ def loop(
                 _ts = _ts.at[_save_index].set(
                     jnp.where(_pred, _saveat_t, _ts[_save_index])
                 )
-                _ys = jax.tree_map(
+                _ys = jtu.tree_map(
                     lambda __ys, __saveat_y: __ys.at[_save_index].set(
                         jnp.where(_pred, __saveat_y, __ys[_save_index])
                     ),
@@ -299,7 +299,7 @@ def loop(
                 _save_index = _save_index + 1
 
                 _ts = HadInplaceUpdate(_ts)
-                _ys = jax.tree_map(HadInplaceUpdate, _ys)
+                _ys = jtu.tree_map(HadInplaceUpdate, _ys)
 
                 return _InnerState(
                     saveat_ts_index=_saveat_ts_index,
@@ -327,13 +327,13 @@ def loop(
         if saveat.steps:
             made_inplace_update = True
             ts = maybe_inplace(save_index, ts, tprev)
-            ys = jax.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
+            ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
             save_index = save_index + keep_step
 
         if saveat.dense:
             made_inplace_update = True
             dense_ts = maybe_inplace(dense_save_index + 1, dense_ts, tprev)
-            dense_infos = jax.tree_map(
+            dense_infos = jtu.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
                 dense_infos,
                 dense_info,
@@ -342,9 +342,9 @@ def loop(
 
         if made_inplace_update:
             ts = HadInplaceUpdate(ts)
-            ys = jax.tree_map(HadInplaceUpdate, ys)
+            ys = jtu.tree_map(HadInplaceUpdate, ys)
             dense_ts = HadInplaceUpdate(dense_ts)
-            dense_infos = jax.tree_map(HadInplaceUpdate, dense_infos)
+            dense_infos = jtu.tree_map(HadInplaceUpdate, dense_infos)
 
         new_state = _State(
             y=y,
@@ -365,6 +365,26 @@ def loop(
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
         )
+
+        if discrete_terminating_event is not None:
+            discrete_terminating_event_occurred = discrete_terminating_event(
+                new_state,
+                solver=solver,
+                stepsize_controller=stepsize_controller,
+                saveat=saveat,
+                t0=t0,
+                t1=t1,
+                dt0=dt0,
+                max_steps=max_steps,
+                terms=terms,
+                args=args,
+            )
+            result = jnp.where(
+                discrete_terminating_event_occurred,
+                RESULTS.discrete_terminating_event_occurred,
+                result,
+            )
+            new_state = eqx.tree_at(lambda s: s.result, new_state, result)
 
         return new_state
 
@@ -466,7 +486,9 @@ def loop(
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.
-        final_state = _save(final_state, t1)
+        # Using `tprev` instead of `t1` in case of an event terminating the solve
+        # early. (And absent such an event then `tprev == t1`.)
+        final_state = _save(final_state, final_state.tprev)
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
@@ -487,6 +509,7 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
+    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 16**3,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
@@ -510,8 +533,7 @@ def diffeqsolve(
         (For non-ordinary differential equations (SDEs, CDEs), this also specifies the
         Brownian motion or the control.)
     - `solver`: The solver for the differential equation. See the guide on [how to
-        choose a solver](../usage/how-to-choose-a-solver.md), or the [complete list of
-        solvers](../api/solver.md).
+        choose a solver](../usage/how-to-choose-a-solver.md).
     - `t0`: The start of the region of integration.
     - `t1`: The end of the region of integration.
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
@@ -538,13 +560,15 @@ def diffeqsolve(
         checkpointing, which is usually the best option for most problems. See the page
         on [Adjoints](./adjoints.md) for more information.
 
+    - `discrete_terminating_event`: A discrete event at which to terminate the solve
+        early. See the page on [Events](./events.md) for more information.
+
     - `max_steps`: The maximum number of steps to take before quitting the computation
         unconditionally.
 
         Can also be set to `None` to allow an arbitrary number of steps, although this
-        will disable backpropagation via discretise-then-optimise (backpropagation via
-        optimise-then-discretise will still work), and also disables
-        `saveat.steps=True` and `saveat.dense=True`.
+        is incompatible with `adjoint=RecursiveCheckpointAdjoint()` (the default) and
+        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`.
 
         Note that (a) compile times; and (b) backpropagation run times; will increase
         as `max_steps` increases. (Specifically, each time `max_steps` passes a power
@@ -571,16 +595,15 @@ def diffeqsolve(
             of the returned solution object, to determine which batch elements
             succeeded and which failed.
 
-    - `solver_state`: Some initial state for the solver. Can be useful when for example
-        using a reversible solver to recompute a solution. Generally obtained by
-        `SaveAt(solver_state=True)`. It is unlikely you will need to use this option.
+    - `solver_state`: Some initial state for the solver. Generally obtained by
+        `SaveAt(solver_state=True)` from a previous solve.
 
     - `controller_state`: Some initial state for the step size controller. Generally
-        obtained by `SaveAt(controller_state=True)`. It is unlikely you will need to
-        use this option.
+        obtained by `SaveAt(controller_state=True)` from a previous solve.
 
     - `made_jump`: Whether a jump has just been made at `t0`. Used to update
-        `solver_state` (if passed). It is unlikely you will need to use this option.
+        `solver_state` (if passed). Generally obtained by `SaveAt(made_jump=True)`
+        from a previous solve.
 
     **Returns:**
 
@@ -614,7 +637,7 @@ def diffeqsolve(
         error_if((t1 - t0) * dt0 < 0, msg)
 
     # Error checking
-    term_leaves, term_structure = jax.tree_flatten(
+    term_leaves, term_structure = jtu.tree_flatten(
         terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
     raises = False
@@ -656,11 +679,6 @@ def diffeqsolve(
                     "An SDE should not be solved with adaptive step sizes with Euler's "
                     "method; it will not converge to the correct solution."
                 )
-            if not isinstance(solver, AbstractAdaptiveSDESolver):
-                raise ValueError(
-                    "An adaptive step size controller is being used with a solver "
-                    "that does not provide error estimates suitable for SDEs."
-                )
     if is_unsafe_sde(terms):
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             raise ValueError(
@@ -691,7 +709,7 @@ def diffeqsolve(
         _dtype = jnp.result_type(yi, *timelikes)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
-    y0 = jax.tree_map(_promote, y0)
+    y0 = jtu.tree_map(_promote, y0)
     del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
@@ -705,7 +723,7 @@ def diffeqsolve(
         if saveat.ts is not None:
             saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
     stepsize_controller = stepsize_controller.wrap(direction)
-    terms = jax.tree_map(
+    terms = jtu.tree_map(
         lambda t: WrapTerm(t, direction),
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm),
@@ -731,12 +749,12 @@ def diffeqsolve(
     error_order = solver.error_order(terms)
     if controller_state is None:
         (tnext, controller_state) = stepsize_controller.init(
-            terms, t0, t1, y0, dt0, args, solver.func_for_init, error_order
+            terms, t0, t1, y0, dt0, args, solver.func, error_order
         )
     else:
         if dt0 is None:
             (tnext, _) = stepsize_controller.init(
-                terms, t0, t1, y0, dt0, args, solver.func_for_init, error_order
+                terms, t0, t1, y0, dt0, args, solver.func, error_order
             )
         else:
             tnext = t0 + dt0
@@ -768,7 +786,7 @@ def diffeqsolve(
     save_index = 0
     made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.inf)
-    ys = jax.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
+    ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         error_if(t0 == t1, "Cannot save dense output if t0 == t1")
@@ -785,7 +803,7 @@ def diffeqsolve(
         ) = solver.step(terms, tprev, tnext, y0, args, solver_state, made_jump)
         dense_ts = jnp.full(max_steps + 1, jnp.inf)
         _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.inf)
-        dense_infos = jax.tree_map(_make_full, dense_info)
+        dense_infos = jtu.tree_map(_make_full, dense_info)
         dense_save_index = 0
     else:
         dense_ts = None
@@ -822,6 +840,7 @@ def diffeqsolve(
         terms=terms,
         solver=solver,
         stepsize_controller=stepsize_controller,
+        discrete_terminating_event=discrete_terminating_event,
         saveat=saveat,
         t0=t0,
         t1=t1,
@@ -883,7 +902,7 @@ def diffeqsolve(
     result = final_state.result
     error_index = unvmap_max(result)
     branched_error_if(
-        throw & (result != RESULTS.successful),
+        throw & jnp.invert(is_okay(result)),
         error_index,
         RESULTS.reverse_lookup,
     )

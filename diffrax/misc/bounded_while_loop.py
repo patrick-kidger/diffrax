@@ -4,6 +4,7 @@ import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Array
 from .unvmap import unvmap_any
@@ -100,7 +101,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
       increases.)
     """
 
-    init_val = jax.tree_map(jnp.asarray, init_val)
+    init_val = jtu.tree_map(jnp.asarray, init_val)
 
     if max_steps is None:
 
@@ -114,7 +115,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
             inplace = lambda x: x
             inplace.pred = True
             _new_val = body_fun(_val, inplace)
-            return jax.tree_map(
+            return jtu.tree_map(
                 _make_update,
                 _new_val,
                 is_leaf=lambda x: isinstance(x, HadInplaceUpdate),
@@ -181,6 +182,7 @@ class HadInplaceUpdate(eqx.Module):
 
 
 # There's several tricks happening here to work around various limitations of JAX.
+# (Also see https://github.com/google/jax/issues/2139#issuecomment-1039293633)
 # 1. `unvmap_any` prior to using `lax.cond`. JAX has a problem in that vmap-of-cond
 #    is converted to a `lax.select`, which executes both branches unconditionally.
 #    Thus writing this naively, using a plain `lax.cond`, will mean the loop always
@@ -193,20 +195,13 @@ class HadInplaceUpdate(eqx.Module):
 #    This is done through the extra `inplace` argument provided to `body_fun`.
 # 3. The use of the `@jax.checkpoint` decorator. Backpropagating through a
 #    `bounded_while_loop` will otherwise run in θ(max_steps) time, rather than
-#    θ(number of steps actually taken). I've not tracked the issue down exactly but
-#    my best guess is that this is something to do with storing the forward pass prior
-#    to the backward pass (which has always been difficult in while loops in XLA, what
-#    with XLA's need for fixed/bounded memory requirements). It was on that hypothesis
-#    that I decided to try checkpointing, and was pleased to see that it worked. c.f.
-#    JAX issue #8239.
+#    θ(number of steps actually taken). See
+#    https://docs.kidger.site/diffrax/devdocs/bounded_while_loop/
 # 4. The use of `base`. In theory `base=2` is optimal at run time, as it implies the
 #    fewest superfluous operations. In practice this implies quite deep recursion in
 #    the construction of the bounded while loop, and this slows down the jaxpr
 #    creation and the XLA compilation. We choose `base=16` as a reasonable-looking
 #    compromise between compilation time and run time.
-# 5. The monkey-patching of JAX internals. This works around JAX issues #8184 and
-#    #8193, which are compilation speed bugs. We use a few judiciously placed LRU
-#    caches to hack around this.
 def _while_loop(cond_fun, body_fun, data, max_steps, base):
     if max_steps == 1:
         pred, val, step = data
@@ -220,7 +215,7 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
             else:
                 return lax.select(pred, _new_val, _val)
 
-        new_val = jax.tree_map(
+        new_val = jtu.tree_map(
             _make_update,
             new_val,
             val,

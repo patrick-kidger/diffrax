@@ -1,7 +1,7 @@
 from typing import Tuple
 
-import jax
 import jax.lax as lax
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -14,7 +14,7 @@ from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 _SolverState = Tuple[PyTree, PyTree]
 
 
-class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
+class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for
@@ -34,7 +34,7 @@ class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
         ```
     """
 
-    term_structure = jax.tree_structure(0)
+    term_structure = jtu.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
 
     def order(self, terms):
@@ -75,11 +75,11 @@ class ReversibleHeun(AbstractStratonovichSolver, AbstractAdaptiveSolver):
         solver_state = (yhat1, vf1)
         return y1, y1_error, dense_info, solver_state, RESULTS.successful
 
-    def func_for_init(
+    def func(
         self,
         terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
+        return terms.vf(t0, y0, args)

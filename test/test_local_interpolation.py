@@ -2,7 +2,7 @@ import diffrax.local_interpolation
 import jax
 import jax.numpy as jnp
 
-from helpers import shaped_allclose
+from .helpers import shaped_allclose
 
 
 def test_local_linear_interpolation():

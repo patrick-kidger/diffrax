@@ -1,6 +1,8 @@
 from dataclasses import field
 from typing import Any, Dict, Optional
 
+import jax.numpy as jnp
+
 from .custom_types import Array, Bool, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
 from .misc import ContainerMeta
@@ -13,11 +15,42 @@ class RESULTS(metaclass=ContainerMeta):
         "The maximum number of solver steps was reached. Try increasing `max_steps`."
     )
     dt_min_reached = "The minimum step size was reached."
-    nan_time = "NaN time encountered during timestepping."
     implicit_divergence = "Implicit method diverged."
     implicit_nonconvergence = (
         "Implicit method did not converge within the required number of iterations."
     )
+    discrete_terminating_event_occurred = (
+        "Terminating solve because a discrete event occurred."
+    )
+
+
+def is_okay(result: RESULTS) -> Bool:
+    return is_successful(result) | is_event(result)
+
+
+def is_successful(result: RESULTS) -> Bool:
+    return result == RESULTS.successful
+
+
+# TODO: In the future we may support other event types, in which case this function
+# should be updated.
+def is_event(result: RESULTS) -> Bool:
+    return result == RESULTS.discrete_terminating_event_occurred
+
+
+def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
+    """
+    Returns:
+
+        old | success event_o error_o
+    new     |
+    --------+-------------------------
+    success | success event_o error_o
+    event_n | event_n event_o error_o
+    error_n | error_n error_n error_o
+    """
+    out_result = jnp.where(is_okay(old_result), new_result, old_result)
+    return jnp.where(is_okay(new_result) & is_event(old_result), old_result, out_result)
 
 
 class Solution(AbstractPath):

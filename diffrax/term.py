@@ -5,6 +5,7 @@ from typing import Callable, Tuple
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import numpy as np
 
 from .custom_types import Array, PyTree, Scalar
@@ -136,39 +137,6 @@ class AbstractTerm(eqx.Module):
         """
         return self.prod(self.vf(t, y, args), control)
 
-    # This is a pinhole break in our vector-field/control abstraction.
-    # Everywhere else we get to evaluate over some interval, which allows us to
-    # evaluate our control over that interval. However to select the initial point in
-    # an adaptive step size scheme, the standard heuristic is to start by making
-    # evaluations at just the initial point -- no intervals involved.
-    def func_for_init(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        """This is a special-cased version of [`diffrax.AbstractTerm.vf`][].
-
-        If it so happens that the PyTree structures $T$ and $S$ are the same, then a
-        subclass of `AbstractTerm` shoud set `func_for_init = vf`.
-
-        This case is used when selecting the initial step size of an ODE solve
-        automatically.
-
-        See [`diffrax.AbstractSolver.func_for_init`][].
-        """
-
-        # Heuristic for whether it's safe to select an initial step automatically.
-        vf = self.vf(t, y, args)
-        flat_vf, tree_vf = jax.tree_flatten(vf)
-        flat_y, tree_y = jax.tree_flatten(y)
-        if tree_vf != tree_y or any(
-            jnp.shape(x) != jnp.shape(y) for x, y in zip(flat_vf, flat_y)
-        ):
-            raise ValueError(
-                "An initial step size cannot be selected automatically. The most "
-                "common scenario for this error to occur is when trying to use "
-                "adaptive step size solvers with SDEs, or with CDEs without "
-                "`ControlTerm(...).to_ode()`. Please specify an initial `dt0` instead."
-            )
-        else:
-            return vf
-
     def is_vf_expensive(
         self,
         t0: Scalar,
@@ -210,7 +178,7 @@ class ODETerm(AbstractTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: Scalar) -> PyTree:
-        return jax.tree_map(lambda v: control * v, vf)
+        return jtu.tree_map(lambda v: control * v, vf)
 
 
 ODETerm.__init__.__doc__ = """**Arguments:**
@@ -303,7 +271,7 @@ class ControlTerm(_ControlTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: PyTree) -> PyTree:
-        return jax.tree_map(_prod, vf, control)
+        return jtu.tree_map(_prod, vf, control)
 
 
 class WeaklyDiagonalControlTerm(_ControlTerm):
@@ -330,7 +298,7 @@ class WeaklyDiagonalControlTerm(_ControlTerm):
 
     @staticmethod
     def prod(vf: PyTree, control: PyTree) -> PyTree:
-        return jax.tree_map(operator.mul, vf, control)
+        return jtu.tree_map(operator.mul, vf, control)
 
 
 class _ControlToODE(eqx.Module):
@@ -384,7 +352,7 @@ class MultiTerm(AbstractTerm):
             term.prod(vf_, control_)
             for term, vf_, control_ in zip(self.terms, vf, control)
         ]
-        return jax.tree_map(_sum, *out)
+        return jtu.tree_map(_sum, *out)
 
 
 class WrapTerm(AbstractTerm):
@@ -415,7 +383,7 @@ class AdjointTerm(AbstractTerm):
         args: PyTree,
     ) -> bool:
         control = self.contr(t0, t1)
-        if sum(c.size for c in jax.tree_leaves(control)) in (0, 1):
+        if sum(c.size for c in jtu.tree_leaves(control)) in (0, 1):
             return False
         else:
             return True
@@ -444,8 +412,8 @@ class AdjointTerm(AbstractTerm):
         # PyTree structure. (This is because `self.vf_prod` is linear in `control`.)
         control = self.contr(t, t)
 
-        y_size = sum(np.size(yi) for yi in jax.tree_leaves(y))
-        control_size = sum(np.size(ci) for ci in jax.tree_leaves(control))
+        y_size = sum(np.size(yi) for yi in jtu.tree_leaves(y))
+        control_size = sum(np.size(ci) for ci in jtu.tree_leaves(control))
         if y_size > control_size:
             make_jac = jax.jacfwd
         else:
@@ -454,12 +422,12 @@ class AdjointTerm(AbstractTerm):
         # Find the tree structure of vf_prod by smuggling it out as an additional
         # result from the Jacobian calculation.
         sentinel = vf_prod_tree = object()
-        control_tree = jax.tree_structure(control)
+        control_tree = jtu.tree_structure(control)
 
         def _fn(_control):
             _out = self.vf_prod(t, y, args, _control)
             nonlocal vf_prod_tree
-            structure = jax.tree_structure(_out)
+            structure = jtu.tree_structure(_out)
             if vf_prod_tree is sentinel:
                 vf_prod_tree = structure
             else:
@@ -468,12 +436,12 @@ class AdjointTerm(AbstractTerm):
 
         jac = make_jac(_fn)(control)
         assert vf_prod_tree is not sentinel
-        if jax.tree_structure(None) in (vf_prod_tree, control_tree):
+        if jtu.tree_structure(None) in (vf_prod_tree, control_tree):
             # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
                 "`AdjointTerm.vf` not implemented for `None` controls or states."
             )
-        return jax.tree_transpose(vf_prod_tree, control_tree, jac)
+        return jtu.tree_transpose(vf_prod_tree, control_tree, jac)
 
     def contr(self, t0: Scalar, t1: Scalar) -> PyTree:
         return self.term.contr(t0, t1)
@@ -486,31 +454,31 @@ class AdjointTerm(AbstractTerm):
 
         # Calculate vf_prod_tree by smuggling it out.
         sentinel = vf_prod_tree = object()
-        control_tree = jax.tree_structure(control)
+        control_tree = jtu.tree_structure(control)
 
         def _get_vf_tree(_, tree):
             nonlocal vf_prod_tree
-            structure = jax.tree_structure(tree)
+            structure = jtu.tree_structure(tree)
             if vf_prod_tree is sentinel:
                 vf_prod_tree = structure
             else:
                 assert vf_prod_tree == structure
 
-        jax.tree_map(_get_vf_tree, control, vf)
+        jtu.tree_map(_get_vf_tree, control, vf)
         assert vf_prod_tree is not sentinel
 
-        vf = jax.tree_transpose(control_tree, vf_prod_tree, vf)
+        vf = jtu.tree_transpose(control_tree, vf_prod_tree, vf)
 
-        example_vf_prod = jax.tree_unflatten(
+        example_vf_prod = jtu.tree_unflatten(
             vf_prod_tree, [0 for _ in range(vf_prod_tree.num_leaves)]
         )
 
         def _contract(_, vf_piece):
-            assert jax.tree_structure(vf_piece) == control_tree
-            _contracted = jax.tree_map(_prod, vf_piece, control)
-            return sum(jax.tree_leaves(_contracted), 0)
+            assert jtu.tree_structure(vf_piece) == control_tree
+            _contracted = jtu.tree_map(_prod, vf_piece, control)
+            return sum(jtu.tree_leaves(_contracted), 0)
 
-        return jax.tree_map(_contract, example_vf_prod, vf)
+        return jtu.tree_map(_contract, example_vf_prod, vf)
 
     def vf_prod(
         self,

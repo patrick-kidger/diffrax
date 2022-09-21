@@ -2,8 +2,8 @@ import abc
 from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, PyTreeDef, Scalar
 from ..heuristics import is_sde
@@ -17,18 +17,26 @@ _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
 
 
 def vector_tree_dot(a, b):
-    return jax.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
+    return jtu.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
 
 
 class _MetaAbstractSolver(type(eqx.Module)):
     def __instancecheck__(cls, obj):
         if super(_MetaAbstractSolver, AbstractWrappedSolver).__instancecheck__(obj):
-            obj = obj.solver
-        return super().__instancecheck__(obj)
+            # Either one will suffice.
+            return super().__instancecheck__(obj) or super().__instancecheck__(
+                obj.solver
+            )
+        else:
+            return super().__instancecheck__(obj)
 
 
 class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
-    """Abstract base class for all differential equation solvers."""
+    """Abstract base class for all differential equation solvers.
+
+    Subclasses should have a class-level attribute `terms`, specifying the PyTree
+    structure of `terms` in `diffeqsolve(terms, ...)`.
+    """
 
     @property
     @abc.abstractmethod
@@ -136,57 +144,76 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
             happened successfully, or if (unusually) it failed for some reason.
         """
 
-    def func_for_init(
+    @abc.abstractmethod
+    def func(
         self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
     ) -> PyTree:
-        """Provides vector field evaluations to select the initial step size.
+        """Evaluate the vector field at a point. (This is unlike
+        [`diffrax.AbstractSolver.step`][], which operates over an interval.)
 
-        This is used to make a point evaluation. This is unlike
-        [`diffrax.AbstractSolver.step`][], which operates over an interval.
-
-        In general differential equation solvers are interval-based. There is precisely
-        one place where point evaluations are needed: selecting the initial step size
-        automatically in an ODE solve. And that is what this function is for.
+        For most operations differential equation solvers are interval-based, so this
+        opertion should be used sparingly. This operation is needed for things like
+        selecting an initial step size.
 
         **Arguments:** As [`diffrax.diffeqsolve`][]
 
         **Returns:**
 
-        The evaluation of the vector field at `t0`.
+        The evaluation of the vector field at `t0`, `y0`.
         """
-
-        raise ValueError(
-            "An initial step size cannot be selected automatically. The most common "
-            "scenario for this error to occur is when trying to use adaptive step "
-            "size solvers with SDEs. Please specify an initial `dt0` instead."
-        )
 
 
 class AbstractImplicitSolver(AbstractSolver):
+    """Indicates that this is an implicit differential equation solver, and as such
+    that it should take a nonlinear solver as an argument.
+    """
+
     nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
 
 
+AbstractImplicitSolver.__init__.__doc__ = """**Arguments:**
+
+- `nonlinear_solver`: The nonlinear solver to use. Defaults to a Newton solver.
+"""
+
+
 class AbstractItoSolver(AbstractSolver):
-    pass
+    """Indicates that when used as an SDE solver that this solver will converge to the
+    Itô solution.
+    """
 
 
 class AbstractStratonovichSolver(AbstractSolver):
-    pass
+    """Indicates that when used as an SDE solver that this solver will converge to the
+    Stratonovich solution.
+    """
 
 
 class AbstractAdaptiveSolver(AbstractSolver):
-    pass
-
-
-class AbstractAdaptiveSDESolver(AbstractAdaptiveSolver):
-    pass
+    """Indicates that this solver provides error estimates, and that as such it may be
+    used with an adaptive step size controller.
+    """
 
 
 class AbstractWrappedSolver(AbstractSolver):
+    """Wraps another solver "transparently", in the sense that all `isinstance` checks
+    will be forwarded on to the wrapped solver, e.g. when testing whether the solver is
+    implicit/adaptive/SDE-compatible/etc.
+
+    Inherit from this class if that is desired behaviour. (Do not inherit from this
+    class if that is not desired behaviour.)
+    """
+
     solver: AbstractSolver
 
 
-class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
+AbstractWrappedSolver.__init__.__doc__ = """**Arguments:**
+
+- `solver`: The solver to wrap.
+"""
+
+
+class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
     """Wraps another solver, trading cost in order to provide error estimates. (That
     is, it means the solver can be used with an adaptive step size controller,
     regardless of whether the underlying solver supports adaptive step sizing.)
@@ -195,13 +222,15 @@ class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
     and comparing the results between the full step and the two half steps. Hence the
     name "HalfSolver".
 
-    As such each step costs 3 times the computational cost of the wrapped solver.
+    As such each step costs 3 times the computational cost of the wrapped solver,
+    whilst producing results that are roughly twice as accurate, in addition to
+    producing error estimates.
 
     !!! tip
 
         Many solvers already provide error estimates, making `HalfSolver` primarily
         useful when using a solver that doesn't provide error estimates -- e.g.
-        [`diffrax.Euler`][] -- such solvers are most common when solving SDEs.
+        [`diffrax.Euler`][]. Such solvers are most common when solving SDEs.
     """
 
     @property
@@ -270,10 +299,8 @@ class HalfSolver(AbstractWrappedSolver, AbstractAdaptiveSDESolver):
 
         return y1, y_error, dense_info, solver_state, result
 
-    def func_for_init(
-        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
-    ):
-        return self.solver.func_for_init(terms, t0, y0, args)
+    def func(self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree):
+        return self.solver.func(terms, t0, y0, args)
 
 
 HalfSolver.__init__.__doc__ = """**Arguments:**

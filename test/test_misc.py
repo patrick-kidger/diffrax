@@ -1,9 +1,10 @@
 import diffrax
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import pytest
 
-from helpers import random_pytree, shaped_allclose, treedefs
+from .helpers import random_pytree, shaped_allclose, treedefs
 
 
 def test_fill_forward():
@@ -26,7 +27,7 @@ def test_ω_add_mul(getkey):
         a = b = c = random_pytree(getkey(), treedef)
 
         e1 = (a**ω * 2 + b**ω * c**ω - 3).ω
-        e2 = jax.tree_map(lambda ai, bi, ci: ai * 2 + bi * ci - 3, a, b, c)
+        e2 = jtu.tree_map(lambda ai, bi, ci: ai * 2 + bi * ci - 3, a, b, c)
         assert shaped_allclose(e1, e2)
 
 
@@ -35,13 +36,13 @@ def test_ω_inplace(getkey):
     for treedef in treedefs:
         a = random_pytree(getkey(), treedef)
         b1 = ω(a).at[()].set(3).ω
-        b2 = jax.tree_map(lambda ai: ai.at[()].set(3), a)
+        b2 = jtu.tree_map(lambda ai: ai.at[()].set(3), a)
         assert shaped_allclose(b1, b2)
 
-        a2 = jax.tree_map(lambda x: x + 1, a)
+        a2 = jtu.tree_map(lambda x: x + 1, a)
 
         b3 = ω(a).at[()].set(ω(a2)).ω
-        b4 = jax.tree_map(lambda ai, a2i: ai.at[()].set(a2i[()]), a, a2)
+        b4 = jtu.tree_map(lambda ai, a2i: ai.at[()].set(a2i[()]), a, a2)
         assert shaped_allclose(b3, b4)
 
 
@@ -68,7 +69,7 @@ def test_ω_is_leaf(getkey):
         assert out.is_leaf(4)
         assert not out.is_leaf("hi")
 
-        a2 = jax.tree_map(lambda x: x + 1, a)
+        a2 = jtu.tree_map(lambda x: x + 1, a)
 
         c = (
             ω(a, is_leaf=lambda x: isinstance(x, int))

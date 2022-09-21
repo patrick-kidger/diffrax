@@ -2,11 +2,11 @@ import abc
 from typing import Any, Dict
 
 import equinox as eqx
-import jax
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
-from .misc import nondifferentiable_output, ω
+from .misc import implicit_jvp, nondifferentiable_output, ω
 from .saveat import SaveAt
 from .term import AbstractTerm, AdjointTerm
 
@@ -22,6 +22,7 @@ class AbstractAdjoint(eqx.Module):
         terms,
         solver,
         stepsize_controller,
+        discrete_terminating_event,
         saveat,
         t0,
         t1,
@@ -88,8 +89,76 @@ class NoAdjoint(AbstractAdjoint):
     def loop(self, *, throw, **kwargs):
         del throw
         final_state, aux_stats = self._loop_fn(**kwargs, is_bounded=False)
-        final_state = jax.tree_map(nondifferentiable_output, final_state)
+        final_state = jtu.tree_map(nondifferentiable_output, final_state)
         return final_state, aux_stats
+
+
+def _vf(ys, residual, args__terms, closure):
+    state_no_y, _ = residual
+    t = state_no_y.tprev
+    # unpack length-1 dimension
+    y = jtu.tree_map(lambda _y: _y[0], ys)
+    args, terms = args__terms
+    _, _, solver, _, _ = closure
+    return solver.func(terms, t, y, args)
+
+
+def _solve(args__terms, closure):
+    args, terms = args__terms
+    self, kwargs, solver, saveat, init_state = closure
+    final_state, aux_stats = self._loop_fn(
+        **kwargs,
+        args=args,
+        terms=terms,
+        solver=solver,
+        saveat=saveat,
+        init_state=init_state,
+        is_bounded=False,
+    )
+    # Note that we use .ys not .y here. The former is what is actually returned
+    # by diffeqsolve, so it is the thing we want to attach the tangent to.
+    return final_state.ys, (
+        eqx.tree_at(lambda s: s.ys, final_state, None),
+        aux_stats,
+    )
+
+
+class ImplicitAdjoint(AbstractAdjoint):
+    r"""Backpropagate via the [implicit function theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem#Statement_of_the_theorem).
+
+    This is used when solving towards a steady state, typically using
+    [`diffrax.SteadyStateEvent`][]. In this case, the output of the solver is $y(θ)$
+    for which $f(t, y(θ), θ) = 0$. (Where $θ$ corresponds to all parameters found
+    through `terms` and `args`, but not `y0`.) Then we can skip backpropagating through
+    the solver and instead directly compute
+    $\frac{\mathrm{d}y}{\mathrm{d}θ} = - (\frac{\mathrm{d}f}{\mathrm{d}y})^{-1}\frac{\mathrm{d}f}{\mathrm{d}θ}$
+    via the implicit function theorem.
+    """  # noqa: E501
+
+    def loop(self, *, args, terms, solver, saveat, throw, init_state, **kwargs):
+        del throw
+
+        # `is` check because this may return a Tracer from SaveAt(ts=<array>)
+        if eqx.tree_equal(saveat, SaveAt(t1=True)) is not True:
+            raise ValueError(
+                "Can only use `adjoint=ImplicitAdjoint()` with `SaveAt(t1=True)`."
+            )
+
+        init_state = eqx.tree_at(
+            lambda s: (s.y, s.solver_state, s.controller_state),
+            init_state,
+            replace_fn=lax.stop_gradient,
+        )
+        closure = (self, kwargs, solver, saveat, init_state)
+        ys, residual = implicit_jvp(_solve, _vf, (args, terms), closure)
+
+        final_state_no_ys, aux_stats = residual
+        return (
+            eqx.tree_at(
+                lambda s: s.ys, final_state_no_ys, ys, is_leaf=lambda x: x is None
+            ),
+            aux_stats,
+        )
 
 
 # Compute derivatives with respect to the first argument:
@@ -101,7 +170,7 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
     del throw
     y, args, terms = y__args__terms
     init_state = eqx.tree_at(
-        lambda s: jax.tree_leaves(s.y), init_state, jax.tree_leaves(y)
+        lambda s: jtu.tree_leaves(s.y), init_state, jtu.tree_leaves(y)
     )
     del y
     return self._loop_fn(
@@ -116,7 +185,6 @@ def _loop_backsolve_fwd(y__args__terms, **kwargs):
     return (final_state, aux_stats), (ts, ys)
 
 
-# TODO: implement this as a single diffeqsolve with events, once events are supported.
 def _loop_backsolve_bwd(
     residuals,
     grad_final_state__aux_stats,
@@ -125,6 +193,7 @@ def _loop_backsolve_bwd(
     self,
     solver,
     stepsize_controller,
+    discrete_terminating_event,
     saveat,
     t0,
     t1,
@@ -149,11 +218,11 @@ def _loop_backsolve_bwd(
     del y__args__terms
     diff_args = eqx.filter(args, eqx.is_inexact_array)
     diff_terms = eqx.filter(terms, eqx.is_inexact_array)
-    zeros_like_y = jax.tree_map(jnp.zeros_like, y)
-    zeros_like_diff_args = jax.tree_map(jnp.zeros_like, diff_args)
-    zeros_like_diff_terms = jax.tree_map(jnp.zeros_like, diff_terms)
+    zeros_like_y = jtu.tree_map(jnp.zeros_like, y)
+    zeros_like_diff_args = jtu.tree_map(jnp.zeros_like, diff_args)
+    zeros_like_diff_terms = jtu.tree_map(jnp.zeros_like, diff_terms)
     del diff_args, diff_terms
-    adjoint_terms = jax.tree_map(
+    adjoint_terms = jtu.tree_map(
         AdjointTerm, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
     diffeqsolve = self._diffeqsolve
@@ -162,6 +231,7 @@ def _loop_backsolve_bwd(
         adjoint=self,
         solver=solver,
         stepsize_controller=stepsize_controller,
+        discrete_terminating_event=discrete_terminating_event,
         terms=adjoint_terms,
         dt0=None if dt0 is None else -dt0,
         max_steps=max_steps,
@@ -276,9 +346,16 @@ class BacksolveAdjoint(AbstractAdjoint):
     "optimise-then-discretise", the "continuous adjoint method" or simply the "adjoint
     method".
 
-    This method implies very low memory usage, but is usually relatively slow, and the
+    This method implies very low memory usage, but the
     computed gradients will only be approximate. As such other methods are generally
     preferred unless exceeding memory is a concern.
+
+    This will compute gradients with respect to the `terms`, `y0` and `args` arguments
+    passed to [`diffrax.diffeqsolve`][]. If you attempt to compute gradients with
+    respect to anything else (for example `t0`, or arguments passed via closure), then
+    a `CustomVJPException` will be raised. See also
+    [this FAQ](../../further_details/faq/#im-getting-a-customvjpexception)
+    entry.
 
     !!! note
 
@@ -290,7 +367,7 @@ class BacksolveAdjoint(AbstractAdjoint):
 
         Using this method prevents computing forward-mode autoderivatives of
         [`diffrax.diffeqsolve`][]. (That is to say, `jax.jvp` will not work.)
-    """
+    """  # noqa: E501
 
     kwargs: Dict[str, Any]
 
@@ -331,7 +408,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         y = init_state.y
         sentinel = object()
         init_state = eqx.tree_at(
-            lambda s: jax.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
+            lambda s: jtu.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
         )
 
         final_state, aux_stats = _loop_backsolve(
@@ -341,9 +418,9 @@ class BacksolveAdjoint(AbstractAdjoint):
         # We only allow backpropagation through `ys`; in particular not through
         # `solver_state` etc.
         ys = final_state.ys
-        final_state = jax.tree_map(nondifferentiable_output, final_state)
+        final_state = jtu.tree_map(nondifferentiable_output, final_state)
         final_state = eqx.tree_at(
-            lambda s: jax.tree_leaves(s.ys), final_state, jax.tree_leaves(ys)
+            lambda s: jtu.tree_leaves(s.ys), final_state, jtu.tree_leaves(ys)
         )
 
         return final_state, aux_stats

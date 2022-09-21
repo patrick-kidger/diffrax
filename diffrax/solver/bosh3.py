@@ -21,6 +21,8 @@ class Bosh3(AbstractERK):
 
     3rd order explicit Runge--Kutta method. Has an embedded 2nd order method for
     adaptive step sizing.
+
+    Also sometimes known as "Ralston's third order method".
     """
 
     tableau = _bosh3_tableau

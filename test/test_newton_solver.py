@@ -5,8 +5,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 
-from helpers import shaped_allclose
+from .helpers import shaped_allclose
 
 
 # Basic test
@@ -20,7 +21,7 @@ def _fn2(x, args):
     return a - b, b
 
 
-# Nontrivial nteractions between inputs
+# Nontrivial interactions between inputs
 @jax.jit
 def _fn3(x, args):
     mlp = eqx.nn.MLP(4, 4, 256, 2, key=jrandom.PRNGKey(678))
@@ -72,15 +73,15 @@ def test_newton_solver():
     ):
         # Make sure the test is valid
         out = fn(x, args)
-        assert jax.tree_structure(out) == jax.tree_structure(x)
+        assert jtu.tree_structure(out) == jtu.tree_structure(x)
 
         def _assert_shape(a, b):
             assert jnp.shape(a) == jnp.shape(b)
 
-        jax.tree_map(_assert_shape, out, x)
+        jtu.tree_map(_assert_shape, out, x)
 
         # Newton's method
-        zero = jax.tree_map(jnp.zeros_like, x)
+        zero = jtu.tree_map(jnp.zeros_like, x)
         sol = solver(fn, x, args)
         assert sol.result == 0
         assert shaped_allclose(fn(sol.root, args), zero, rtol=tol, atol=tol)
@@ -97,8 +98,8 @@ def test_newton_solver():
 
         def _fn(y, a):
             sol = solver(fn, y, a)
-            root = jax.tree_map(jnp.sum, sol.root)
-            return jax.tree_util.tree_reduce(operator.add, root)
+            root = jtu.tree_map(jnp.sum, sol.root)
+            return jtu.tree_reduce(operator.add, root)
 
         x_grads, args_grads = jax.grad(_fn, argnums=(0, 1))(x, args)
         assert shaped_allclose(x_grads, zero, rtol=tol, atol=tol)

@@ -1,6 +1,6 @@
 from typing import Tuple
 
-import jax
+import jax.tree_util as jtu
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
@@ -23,7 +23,8 @@ class LeapfrogMidpoint(AbstractSolver):
     Note that this is referred to as the "leapfrog/midpoint method" as this is the name
     used by Shampine in the reference below. It should not be confused with any of the
     many other "leapfrog methods" (there are several), or with the "midpoint method"
-    (which is usually taken to refer to an explicit Runge--Kutta method).
+    (which is usually taken to refer to the explicit Runge--Kutta method
+    [`diffrax.Midpoint`][]).
 
     ??? cite "Reference"
 
@@ -40,7 +41,7 @@ class LeapfrogMidpoint(AbstractSolver):
         ```
     """
 
-    term_structure = jax.tree_structure(0)
+    term_structure = jtu.tree_structure(0)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -71,11 +72,11 @@ class LeapfrogMidpoint(AbstractSolver):
         solver_state = (t0, y0)
         return y1, None, dense_info, solver_state, RESULTS.successful
 
-    def func_for_init(
+    def func(
         self,
         terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return terms.func_for_init(t0, y0, args)
+        return terms.vf(t0, y0, args)
