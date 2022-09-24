@@ -23,6 +23,7 @@ class AbstractAdjoint(eqx.Module):
         solver,
         stepsize_controller,
         discrete_terminating_event,
+        delays,
         saveat,
         t0,
         t1,
@@ -194,6 +195,7 @@ def _loop_backsolve_bwd(
     solver,
     stepsize_controller,
     discrete_terminating_event,
+    delays,
     saveat,
     t0,
     t1,
@@ -232,6 +234,7 @@ def _loop_backsolve_bwd(
         solver=solver,
         stepsize_controller=stepsize_controller,
         discrete_terminating_event=discrete_terminating_event,
+        delays=delays,
         terms=adjoint_terms,
         dt0=None if dt0 is None else -dt0,
         max_steps=max_steps,
@@ -398,11 +401,15 @@ class BacksolveAdjoint(AbstractAdjoint):
             )
         self.kwargs = kwargs
 
-    def loop(self, *, args, terms, saveat, init_state, **kwargs):
+    def loop(self, *, args, terms, saveat, init_state, delays, **kwargs):
         if saveat.steps or saveat.dense:
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
                 "`saveat=Steps(steps=True)` or `saveat=Steps(dense=True)`."
+            )
+        if delays is not None:
+            raise NotImplementedError(
+                "Cannot use `delays` with `adjoint=BacksolveAdjoint()`"
             )
 
         y = init_state.y
@@ -412,7 +419,12 @@ class BacksolveAdjoint(AbstractAdjoint):
         )
 
         final_state, aux_stats = _loop_backsolve(
-            (y, args, terms), self=self, saveat=saveat, init_state=init_state, **kwargs
+            (y, args, terms),
+            self=self,
+            saveat=saveat,
+            init_state=init_state,
+            delays=delays,
+            **kwargs,
         )
 
         # We only allow backpropagation through `ys`; in particular not through

@@ -152,6 +152,13 @@ class AbstractTerm(eqx.Module):
         return False
 
 
+class VectorFieldWrapper(eqx.Module):
+    vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
+
+    def __call__(self, t, y, args):
+        return self.vector_field(t, y, args)
+
+
 class ODETerm(AbstractTerm):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
@@ -168,6 +175,9 @@ class ODETerm(AbstractTerm):
         ```
     """
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
+
+    def __init__(self, vector_field):
+        self.vector_field = VectorFieldWrapper(vector_field)
 
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         return self.vector_field(t, y, args)
@@ -199,6 +209,10 @@ def _prod(
 class _ControlTerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
     control: AbstractPath
+
+    def __init__(self, vector_field, control):
+        self.vector_field = VectorFieldWrapper(vector_field)
+        self.control = control
 
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
         return self.vector_field(t, y, args)

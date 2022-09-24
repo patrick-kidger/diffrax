@@ -1,6 +1,6 @@
 import functools as ft
 import warnings
-from typing import Optional
+from typing import Callable, Optional, Sequence
 
 import equinox as eqx
 import jax
@@ -35,7 +35,7 @@ from .step_size_controller import (
     ConstantStepSize,
     StepTo,
 )
-from .term import AbstractTerm, WrapTerm
+from .term import AbstractTerm, VectorFieldWrapper, WrapTerm
 
 
 class _State(eqx.Module):
@@ -102,6 +102,7 @@ def loop(
     solver,
     stepsize_controller,
     discrete_terminating_event,
+    delays,
     saveat,
     t0,
     t1,
@@ -130,21 +131,52 @@ def loop(
         # step sizes, all that jazz.
         #
 
-        (y, y_error, dense_info, solver_state, solver_result) = solver.step(
-            terms,
-            state.tprev,
-            state.tnext,
-            state.y,
-            args,
-            state.solver_state,
-            state.made_jump,
-        )
+        if delays is None:
+            (y, y_error, dense_info, solver_state, solver_result) = solver.step(
+                terms,
+                state.tprev,
+                state.tnext,
+                state.y,
+                args,
+                state.solver_state,
+                state.made_jump,
+            )
+        else:
+            # TODO: double-check that these are the correct `ts_size` and
+            # `direction`.
+            history = DenseInterpolation(
+                ts=state.dense_ts,
+                ts_size=state.dense_save_index + 1,
+                interpolation_cls=solver.interpolation_cls,
+                infos=state.dense_infos,
+                direction=1,
+            )
+            history_vals = []
+            for delay in delays:
+                delay_val = delay(state.tprev, state.y, args)
+                history_val = history.evaluate(delay_val)
+                history_val.append(history_val)
+            history_vals = tuple(history_vals)
+
+            is_vf_wrapper = lambda x: isinstance(x, VectorFieldWrapper)
+
+            def _apply_history(x):
+                if is_vf_wrapper(x):
+                    vector_field = jtu.Partial(x.vector_field, history=history_vals)
+                    return VectorFieldWrapper(vector_field)
+                else:
+                    return x
+
+            terms_ = jtu.tree_map(_apply_history, terms, is_leaf=is_vf_wrapper)
+            # TODO: write down implicit problem wrt dense_info, using `terms_`
+            (y, y_error, dense_info, solver_state, solver_result) = terms_  # ...
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
         # we get a negative value for y, and then get a NaN vector field. (And then
         # everything breaks.) See #143.
         y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
 
+        # TODO: handle discontinuity detection for delays
         error_order = solver.error_order(terms)
         (
             keep_step,
@@ -510,6 +542,7 @@ def diffeqsolve(
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
+    delays: Optional[Sequence[Callable]] = None,
     max_steps: Optional[int] = 16**3,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
@@ -562,6 +595,10 @@ def diffeqsolve(
 
     - `discrete_terminating_event`: A discrete event at which to terminate the solve
         early. See the page on [Events](./events.md) for more information.
+
+    - `delays`: A tuple of functions, which describe the delays used in a delay
+        differential equation. See the page on [Delays](./delays.md) for more
+        information.
 
     - `max_steps`: The maximum number of steps to take before quitting the computation
         unconditionally.
@@ -625,6 +662,9 @@ def diffeqsolve(
     #
     # Initial set-up
     #
+
+    if delays is not None and not saveat.dense:
+        raise ValueError("Delay differential equations require saving dense output")
 
     # Error checking
     if dt0 is not None:
@@ -728,6 +768,8 @@ def diffeqsolve(
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm),
     )
+    if delays is not None:
+        delays = [lambda t, y, args, fn=fn: fn(t, y, args) * direction for fn in delays]
 
     # Stepsize controller gets an opportunity to modify the solver.
     # Note that at this point the solver could be anything so we must check any
@@ -841,6 +883,7 @@ def diffeqsolve(
         solver=solver,
         stepsize_controller=stepsize_controller,
         discrete_terminating_event=discrete_terminating_event,
+        delays=delays,
         saveat=saveat,
         t0=t0,
         t1=t1,
