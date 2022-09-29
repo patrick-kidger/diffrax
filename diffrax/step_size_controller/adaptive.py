@@ -128,14 +128,14 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
         If you're not sure, then a good default for easy ("non-stiff") problems is
         often something like `rtol=1e-3`, `atol=1e-6`. When more accurate solutions
-        are required then something like `rtol=1e-7`, `atol=`1e-9` are typical (along
+        are required then something like `rtol=1e-7`, `atol=1e-9` are typical (along
         with using `float64` instead of `float32`).
 
         (Note that technically speaking, the meaning of `rtol` and `atol` is entirely
-        dependent on the choice of `solver`. In practice, however, most solvers tend to
-        provide similar behaviour for similar values of `rtol`, `atol`, so it is common
-        to refer to solving an equation to specificy tolerances, without necessarily
-        stating about the solver used.)
+        dependent on the choice of `solver`. In practice however, most solvers tend to
+        provide similar behaviour for similar values of `rtol`, `atol`. As such it is
+        common to refer to solving an equation to specific tolerances, without
+        necessarily stating which solver was used.)
 
     ??? tip "Choosing PID coefficients"
 
@@ -624,15 +624,12 @@ PIDController.__init__.__doc__ = """**Arguments:**
     error raised if the step size decreases below this, depending on `force_dtmin`.
 - `dtmax`: Maximum step size; the step size is clipped to this value.
 - `force_dtmin`: How to handle the step size hitting the minimum. If `True` then the
-    step size is clipped to `dtmin`. If `False` then the step fails and the integration
-    errors. (Which will in turn either set an error flag, or raise an exception,
-    depending on the `throw` value for `diffeqsolve(..., throw=...).)
-- `step_ts`: Denotes *extra* times that must be stepped to. This can be used to help
-    deal with a vector field that has a known derivative discontinuity, by stepping
-    to exactly the derivative discontinuity.
-- `jump_ts`: Denotes times at which the vector field has a known discontinuity. This
-    can be used to step exactly to the discontinuity. (And any other appropriate action
-    taken, like FSAL algorithms re-evaluating the vector field.)
+    step size is clipped to `dtmin`. If `False` then the differential equation solve
+    halts with an error.
+- `step_ts`: Denotes extra times that must be stepped to.
+- `jump_ts`: Denotes extra times that must be stepped to, and at which the vector field
+    has a known discontinuity. (This is used to force FSAL solvers so re-evaluate the
+    vector field.)
 - `factormin`: Minimum amount a step size can be decreased relative to the previous
     step.
 - `factormax`: Maximum amount a step size can be increased relative to the previous
