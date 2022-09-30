@@ -8,6 +8,21 @@ If you're using a Runge--Kutta method like [`diffrax.Dopri5`][] etc., then try s
 
 Try switching to 64-bit precision. (Instead of the 32-bit that is the default in JAX.) [See here](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision).
 
+### How does this compare to `jax.experimental.ode.odeint`?
+
+The equivalent solver in Diffrax is:
+```python
+diffeqsolve(
+    ...,
+    solver=Dopri5(scan_stages=True),
+    stepsize_controller=PIDController(rtol=1.4e-8, atol=1.4e-8),
+    adjoint=BacksolveAdjoint(),
+    max_steps=None,
+)
+```
+
+In practice, `TSit5` is usually a better solver than `Dopri5`. And the default adjoint method (`RecursiveCheckpointAdjoint`) is usually a better choice than `BacksolveAdjoint`.
+
 ### I'm getting a `CustomVJPException`.
 
 This can happen if you use [`diffrax.BacksolveAdjoint`][] incorrectly.
