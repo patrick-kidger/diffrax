@@ -23,7 +23,7 @@ diffeqsolve(
 )
 ```
 
-In practice, `TSit5` is usually a better solver than `Dopri5`. And the default adjoint method (`RecursiveCheckpointAdjoint`) is usually a better choice than `BacksolveAdjoint`.
+In practice, `Tsit5` is usually a better solver than `Dopri5`. And the default adjoint method (`RecursiveCheckpointAdjoint`) is usually a better choice than `BacksolveAdjoint`.
 
 ### I'm getting a `CustomVJPException`.
 
