@@ -2,7 +2,8 @@
 
 ### Compilation is taking a long time.
 
-If you're using a Runge--Kutta method like [`diffrax.Dopri5`][] etc., then try setting `scan_stages=True` when initialisating the solver, for example `Dopri5(scan_stages=True)`. This will substantially reduce compile time at the expense of a slightly slower run time.
+- Use `scan_stages=True`, e.g. `Tsit5(scan_stages=True)`. This is supported for all Runge--Kutta methods. This will substantially reduce compile time at the expense of a slightly slower run time.
+- Set `dt0=<not None>`, e.g. `diffeqsolve(..., dt0=0.01)`. In contrast `dt0=None` will determine the initial step size automatically, but will increase compilation time.
 
 ### The solve is taking loads of steps / I'm getting NaN gradients / other weird behaviour.
 
@@ -14,6 +15,7 @@ The equivalent solver in Diffrax is:
 ```python
 diffeqsolve(
     ...,
+    dt0=None,
     solver=Dopri5(scan_stages=True),
     stepsize_controller=PIDController(rtol=1.4e-8, atol=1.4e-8),
     adjoint=BacksolveAdjoint(),
