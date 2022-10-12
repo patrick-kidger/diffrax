@@ -373,9 +373,12 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         #
 
         if use_fs or (fsal and self.scan_stages):
-            # Only perform this trace if we have to; tracing can actually be a bit
-            # expensive.
-            f0_struct = eqx.filter_eval_shape(terms.vf, t0, y0, args)
+            if f0 is None:
+                # Only perform this trace if we have to; tracing can actually be
+                # a bit expensive.
+                f0_struct = eqx.filter_eval_shape(terms.vf, t0, y0, args)
+            else:
+                f0_struct = jax.eval_shape(lambda: f0)
         # else f0_struct deliberately left undefined, and is unused.
 
         num_stages = len(self.tableau.c) + 1
