@@ -378,7 +378,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 # a bit expensive.
                 f0_struct = eqx.filter_eval_shape(terms.vf, t0, y0, args)
             else:
-                f0_struct = jax.eval_shape(lambda: f0)
+                f0_struct = jax.eval_shape(lambda: f0)  # noqa: F821
         # else f0_struct deliberately left undefined, and is unused.
 
         num_stages = len(self.tableau.c) + 1
