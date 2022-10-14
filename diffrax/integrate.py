@@ -794,13 +794,9 @@ def diffeqsolve(
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
-        (
-            _,
-            _,
-            dense_info,
-            _,
-            _,
-        ) = solver.step(terms, tprev, tnext, y0, args, solver_state, made_jump)
+        (_, _, dense_info, _, _,) = eqx.filter_eval_shape(
+            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
+        )
         dense_ts = jnp.full(max_steps + 1, jnp.inf)
         _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.inf)
         dense_infos = jtu.tree_map(_make_full, dense_info)
