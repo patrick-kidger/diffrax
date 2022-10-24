@@ -2,6 +2,7 @@ import gc
 import random
 import sys
 
+import jax
 import jax.config
 import jax.random as jrandom
 import psutil
@@ -29,10 +30,15 @@ def getkey():
 def clear_caches():
     process = psutil.Process()
     if process.memory_info().vms > 4 * 2**30:  # >4GB memory usage
+        jax.clear_backends()
         for module_name, module in sys.modules.items():
             if module_name.startswith("jax"):
-                for obj_name in dir(module):
-                    obj = getattr(module, obj_name)
-                    if hasattr(obj, "cache_clear"):
-                        obj.cache_clear()
+                if module_name not in ["jax.interpreters.partial_eval"]:
+                    for obj_name in dir(module):
+                        obj = getattr(module, obj_name)
+                        if hasattr(obj, "cache_clear"):
+                            try:
+                                obj.cache_clear()
+                            except Exception:
+                                pass
         gc.collect()

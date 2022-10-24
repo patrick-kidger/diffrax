@@ -11,17 +11,16 @@ from .path import AbstractPath
 
 class RESULTS(metaclass=ContainerMeta):
     successful = ""
+    discrete_terminating_event_occurred = (
+        "Terminating solve because a discrete event occurred."
+    )
     max_steps_reached = (
         "The maximum number of solver steps was reached. Try increasing `max_steps`."
     )
     dt_min_reached = "The minimum step size was reached."
-    nan_time = "NaN time encountered during timestepping."
     implicit_divergence = "Implicit method diverged."
     implicit_nonconvergence = (
         "Implicit method did not converge within the required number of iterations."
-    )
-    discrete_terminating_event_occurred = (
-        "Terminating solve because a discrete event occurred."
     )
 
 
