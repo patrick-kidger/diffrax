@@ -1,5 +1,7 @@
 import diffrax
+import equinox as eqx
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 
 def test_step_ts():
@@ -65,3 +67,26 @@ def test_jump_ts():
     assert sol.result == 0
     assert 3.5 in sol.ts
     assert 8 in sol.ts
+
+
+def test_backprop():
+    @eqx.filter_jit
+    @eqx.filter_grad
+    def run(ys, controller, state):
+        y0, y1_candidate, y_error = ys
+        _, tprev, tnext, _, state, _ = controller.adapt_step_size(
+            0, 1, y0, y1_candidate, None, y_error, 5, state
+        )
+        return tprev + tnext + sum(jnp.sum(x) for x in jtu.tree_leaves(state))
+
+    y0 = jnp.array(1.0)
+    y1_candidate = jnp.array(2.0)
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = diffrax.Tsit5()
+    stepsize_controller = diffrax.PIDController(rtol=1e-4, atol=1e-4)
+    _, state = stepsize_controller.init(term, 0, 1, y0, 0.1, None, solver.func, 5)
+
+    for y_error in (jnp.array(0.0), jnp.array(3.0), jnp.array(jnp.inf)):
+        ys = (y0, y1_candidate, y_error)
+        grads = run(ys, stepsize_controller, state)
+        assert not any(jnp.isnan(grad).any() for grad in grads)

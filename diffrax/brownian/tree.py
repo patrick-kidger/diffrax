@@ -2,13 +2,13 @@ from dataclasses import field
 from typing import Optional, Tuple
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jrandom
 
 from ..custom_types import Array, Scalar
-from ..misc import error_if
 from .base import AbstractBrownianPath
 
 
@@ -82,11 +82,15 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t0 = jnp.where(cond, self.t0, self.t1)
         t1 = jnp.where(cond, self.t1, self.t0)
 
-        error_if(
-            τ < t0, "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1]."
+        t0 = eqxi.error_if(
+            t0,
+            τ < t0,
+            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
         )
-        error_if(
-            τ > t1, "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1]."
+        t1 = eqxi.error_if(
+            t1,
+            τ > t1,
+            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
         )
         # Clip because otherwise the while loop below won't terminate, and the above
         # errors are only raised after everything has finished executing.

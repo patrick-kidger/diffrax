@@ -3,10 +3,11 @@ from typing import Optional
 import jax
 import jax.numpy as jnp
 import numpy as np
+from equinox.internal import ω
 
 from ..custom_types import Array, PyTree, Scalar
 from ..local_interpolation import AbstractLocalInterpolation
-from ..misc import linear_rescale, ω
+from ..misc import linear_rescale
 from .base import vector_tree_dot
 from .runge_kutta import AbstractERK, ButcherTableau
 

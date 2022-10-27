@@ -22,7 +22,7 @@ _vals = {
 def test_shape(ctr, getkey):
     t0 = 0
     t1 = 2
-    for shape in ((0,), (1, 0), (2,), (3, 4), (1, 2, 3, 4)):
+    for shape in ((), (0,), (1, 0), (2,), (3, 4), (1, 2, 3, 4)):
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape, getkey())
             assert path.t0 is None
