@@ -7,9 +7,9 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+from equinox.internal import ω
 
 from .custom_types import Array, PyTree, Scalar
-from .misc import ω
 from .path import AbstractPath
 
 

@@ -25,10 +25,11 @@ def test_shape_and_dtype(ctr, getkey):
     t1 = 2
 
     shapes = (
+        (),
         (0,),
         (
             1,
-            0,
+            0
         ),
         (2,),
         (3, 4),
@@ -37,28 +38,29 @@ def test_shape_and_dtype(ctr, getkey):
             "a": (1,),
             "b": (
                 2,
-                3,
+                3
             ),
         },
         (
             (
                 1,
-                2,
+                2
             ),
             (
                 (
                     3,
-                    4,
+                    4
                 ),
                 (
                     5,
-                    6,
+                    6
                 ),
             ),
         ),
     )
 
     dtypes = (
+        None,
         None,
         None,
         jnp.float16,

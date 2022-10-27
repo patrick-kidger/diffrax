@@ -10,7 +10,7 @@ There are multiple ways to backpropagate through a differential equation (to com
 
     on $[t_0, t_1]$, with initial condition $y(0) = y_0$. So $y(t)$ is the (unknown) exact solution, to which we will compute some numerical approxiation $y_N \approx y(t_1)$.
 
-    We may directly apply autodifferentiation to calculate $\frac{\mathrm{d}y_N}{\mathrm{d}y_0}$, by backpropagating through the internals of the solver. This is known a "discretise then optimise", is the default in Diffrax, and corresponds to [`diffrax.RecursiveCheckpointAdjoint`][] below.
+    We may directly apply autodifferentiation to calculate $\frac{\mathrm{d}y_N}{\mathrm{d}y_0}$, by backpropagating through the internals of the solver. This is known a "discretise then optimise", is the default in Diffrax, and corresponds to [`diffrax.DirectAdjoint`][] below.
 
     Alternatively we may compute $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y_0}$ analytically. In doing so we obtain a backwards-in-time ODE that we must numerically solve to obtain the desired gradients. This is known as "optimise then discretise", and corresponds to [`diffrax.BacksolveAdjoint`][] below.
 
@@ -23,15 +23,11 @@ There are multiple ways to backpropagate through a differential equation (to com
 
 ---
 
+::: diffrax.DirectAdjoint
+    selection:
+        members: false
+
 ::: diffrax.RecursiveCheckpointAdjoint
-    selection:
-        members: false
-
-::: diffrax.NoAdjoint
-    selection:
-        members: false
-
-::: diffrax.ImplicitAdjoint
     selection:
         members: false
 
@@ -39,6 +35,10 @@ There are multiple ways to backpropagate through a differential equation (to com
     selection:
         members:
             - __init__
+
+::: diffrax.ImplicitAdjoint
+    selection:
+        members: false
 
 ---
 

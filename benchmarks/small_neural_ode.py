@@ -9,6 +9,7 @@ import jax.experimental.ode as experimental
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jrandom
+import numpy as np
 import torch
 import torchdiffeq
 
@@ -173,10 +174,10 @@ def main(batch_size=64, t1=100, multiple=False, grad=False):
     with torch.no_grad():
         func_jax = neural_ode_diffrax.func.func
         func_torch = neural_ode_torch.func.func
-        func_torch[0].weight.copy_(torch.tensor(func_jax.layers[0].weight.to_py()))
-        func_torch[0].bias.copy_(torch.tensor(func_jax.layers[0].bias.to_py()))
-        func_torch[2].weight.copy_(torch.tensor(func_jax.layers[1].weight.to_py()))
-        func_torch[2].bias.copy_(torch.tensor(func_jax.layers[1].bias.to_py()))
+        func_torch[0].weight.copy_(torch.tensor(np.asarray(func_jax.layers[0].weight)))
+        func_torch[0].bias.copy_(torch.tensor(np.asarray(func_jax.layers[0].bias)))
+        func_torch[2].weight.copy_(torch.tensor(np.asarray(func_jax.layers[1].weight)))
+        func_torch[2].bias.copy_(torch.tensor(np.asarray(func_jax.layers[1].bias)))
 
     y0_jax = jrandom.normal(jrandom.PRNGKey(1), (batch_size, 4))
     y0_torch = torch.tensor(y0_jax.to_py())

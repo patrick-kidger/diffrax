@@ -3,14 +3,15 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
-from ..misc import ContainerMeta, ω
 from ..solution import is_okay, RESULTS, update_result
 from ..term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
@@ -130,7 +131,7 @@ automatically.
 """
 
 
-class CalculateJacobian(metaclass=ContainerMeta):
+class CalculateJacobian(metaclass=eqxi.ContainerMeta):
     """An enumeration of possible ways a Runga--Kutta method may wish to calculate a
     Jacobian.
 
@@ -206,6 +207,46 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     def calculate_jacobian(self) -> CalculateJacobian:
         pass
 
+    def _first(self, terms, t0, t1, y0, args):
+        vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
+        implicit_first_stage = (
+            self.tableau.a_diagonal is not None and self.tableau.a_diagonal[0] != 0
+        )
+        # The gamut of conditions under which we need to evaluate `f0` or `k0`.
+        #
+        # If we're computing the Jacobian at the start of the step, then we
+        # need this as a linearisation point.
+        #
+        # If the first stage is implicit, then we need this as a predictor for
+        # where to start iterating from.
+        #
+        # If we're not scanning stages then we're definitely not deferring this
+        # evaluation to the scan loop, so get it done now.
+        need_f0_or_k0 = (
+            self.calculate_jacobian == CalculateJacobian.every_step
+            or implicit_first_stage
+            or not self.scan_stages
+        )
+        fsal = self.tableau.fsal
+        if fsal and vf_expensive:
+            # If the vector field is expensive then we want to use vf_prods instead.
+            # FSAL implies evaluating just the vector field, since we need to contract
+            # the same vector field evaluation against two different controls.
+            #
+            # But "evaluating just the vector field" is, as just established, expensive.
+            fsal = False
+        if fsal and self.scan_stages and not need_f0_or_k0:
+            # If we're scanning stages then we'd like to disable FSAL.
+            # FSAL implies evaluating the vector field in `init` as well as in `step`.
+            # But `scan_stages` is a please-compile-faster flag, so we should avoid the
+            # extra tracing.
+            #
+            # However we disable-the-disabling if `need_f0_or_k0`, since in this case
+            # we evaluate `f0` or `k0` anyway, so it wouldn't help. So we might as well
+            # take advantage of the runtime benefits of FSAL.
+            fsal = False
+        return vf_expensive, implicit_first_stage, need_f0_or_k0, fsal
+
     def func(
         self,
         terms: AbstractTerm,
@@ -223,8 +264,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
-        vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
-        fsal = self.tableau.fsal and not vf_expensive
+        _, _, _, fsal = self._first(terms, t0, t1, y0, args)
         if fsal:
             return terms.vf(t0, y0, args)
         else:
@@ -277,14 +317,12 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # e.g. we need `ks` to perform dense interpolation if needed.
         #
 
-        _vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
         _implicit_later_stages = self.tableau.a_diagonal is not None and any(
             self.tableau.a_diagonal[1:] != 0
         )
-        implicit_first_stage = (
-            self.tableau.a_diagonal is not None and self.tableau.a_diagonal[0] != 0
+        _vf_expensive, implicit_first_stage, need_f0_or_k0, fsal = self._first(
+            terms, t0, t1, y0, args
         )
-        fsal = self.tableau.fsal and not _vf_expensive
         ssal = self.tableau.ssal
         if _implicit_later_stages and fsal:
             use_fs = True
@@ -308,28 +346,18 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         if fsal:
             f0 = solver_state
             if not use_fs:
-                k0 = lax.cond(
-                    made_jump,
-                    lambda _: terms.vf_prod(t0, y0, args, control),
-                    lambda _: terms.prod(f0, control),  # noqa: F821
-                    None,
-                )
+                # `made_jump` can be a tracer, hence the `is`.
+                if made_jump is False:
+                    # Fast-path for compilation in the common case.
+                    k0 = terms.prod(f0, control)
+                else:
+                    k0 = lax.cond(
+                        made_jump,
+                        lambda: terms.vf_prod(t0, y0, args, control),
+                        lambda: terms.prod(f0, control),  # noqa: F821
+                    )
         else:
-            if (
-                self.calculate_jacobian == CalculateJacobian.every_step
-                or implicit_first_stage
-                or not self.scan_stages
-            ):
-                # The gamut of conditions under which we need to evaluate `f0` or `k0`.
-                #
-                # If we're computing the Jacobian at the start of the step, then we
-                # need this as a linearisation point.
-                #
-                # If the first stage is implicit, then we need this as a predictor for
-                # where to start iterating from.
-                #
-                # If we're not scanning stages then we're definitely not deferring this
-                # evaluation to the scan loop, so get it done now.
+            if need_f0_or_k0:
                 if use_fs:
                     f0 = terms.vf(t0, y0, args)
                 else:

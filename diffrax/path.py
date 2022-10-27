@@ -36,8 +36,8 @@ class AbstractPath(eqx.Module):
         ```
     """
 
-    t0: Scalar = field(init=False)
-    t1: Scalar = field(init=False)
+    t0: Scalar = field(init=False, repr=False)
+    t1: Scalar = field(init=False, repr=False)
 
     @abc.abstractmethod
     def evaluate(

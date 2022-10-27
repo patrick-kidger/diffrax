@@ -1,10 +1,10 @@
 from typing import Tuple
 
 import jax.tree_util as jtu
+from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
-from ..misc import ω
 from ..solution import RESULTS
 from ..term import AbstractTerm
 from .base import AbstractImplicitSolver

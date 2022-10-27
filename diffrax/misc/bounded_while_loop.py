@@ -1,16 +1,18 @@
 import math
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
 from ..custom_types import Array
-from .unvmap import unvmap_any
 
 
-def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
+def bounded_while_loop(
+    cond_fun, body_fun, init_val, max_steps, base=16, checkpoint="recursive"
+):
     """Reverse-mode autodifferentiable while loop.
 
     Mostly as `lax.while_loop`, with a few small changes.
@@ -103,7 +105,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
 
     init_val = jtu.tree_map(jnp.asarray, init_val)
 
-    if max_steps is None:
+    if max_steps is None or checkpoint == "none":
 
         def _make_update(_new_val):
             if isinstance(_new_val, HadInplaceUpdate):
@@ -114,6 +116,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
         def _body_fun(_val):
             inplace = lambda x: x
             inplace.pred = True
+            inplace.merge = lambda x: x
             _new_val = body_fun(_val, inplace)
             return jtu.tree_map(
                 _make_update,
@@ -121,7 +124,9 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
                 is_leaf=lambda x: isinstance(x, HadInplaceUpdate),
             )
 
-        return lax.while_loop(cond_fun, _body_fun, init_val)
+        return lax.while_loop(cond_fun, _body_fun, init_val, max_steps)
+
+    assert checkpoint == "recursive"
 
     if not isinstance(max_steps, int) or max_steps < 0:
         raise ValueError("max_steps must be a non-negative integer")
@@ -230,7 +235,7 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
 
         def _scan_fn(_data, _):
             _pred, _, _ = _data
-            _unvmap_pred = unvmap_any(_pred)
+            _unvmap_pred = eqxi.unvmap_any(_pred)
             return lax.cond(_unvmap_pred, _call, lambda x: x, _data), None
 
         # Don't put checkpointing on the lowest level

@@ -2,13 +2,15 @@ import typing
 from typing import Callable, Optional, Tuple
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox.internal import ω
 
 from ..custom_types import Array, Bool, PyTree, Scalar
-from ..misc import nextafter, prevbefore, rms_norm, ω
+from ..misc import rms_norm
 from ..solution import RESULTS
 from ..solver import AbstractImplicitSolver, AbstractSolver
 from ..term import AbstractTerm
@@ -368,7 +370,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin, dt0, jnp.inf, jnp.inf)
+        return t1, (jump_next_step, at_dtmin, dt0, 1.0, 1.0)
 
     def adapt_step_size(
         self,
@@ -470,45 +472,45 @@ class PIDController(AbstractAdaptiveStepSizeController):
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin
-        # Double-where trick to avoid NaN gradients.
-        # See JAX issues #5039 and #1052.
-        _cond = scaled_error == 0
-        _scaled_error = jnp.where(_cond, 1, scaled_error)
-        _inv_scaled_error = 1 / _scaled_error
-        inv_scaled_error = jnp.where(_cond, jnp.inf, _inv_scaled_error)
+        inv_scaled_error = 1 / scaled_error
+        inv_scaled_error = lax.stop_gradient(
+            inv_scaled_error
+        )  # See note in init above.
+        # Note: if you ever remove this lax.stop_gradient, then you'll need to do a lot
+        # of work to get safe gradients through these operations.
+        # When `inv_scaled_error` has a (non-symbolic) zero cotangent, and `y_error`
+        # is either zero or inf, then we get a `0 * inf = nan` on the backward pass.
 
         #
         # Adjust next step size
         #
 
-        # The [prev_]prev_inv_scaled_error can be inf from `self.init(...)`.
-        # In this case we shouldn't let the extra factors kick in until we've made
-        # some more steps, so we set the factor to one.
-        # They can also be inf from the previous `self.adapt_step_size(...)`. In this
-        # case we had zero estimated error on the previous step and will have already
-        # increased stepsize by `self.factormax` then. So set the factor to one now.
-        _inf_to_one = lambda x: jnp.where(x == jnp.inf, 1, x)
         _zero_coeff = lambda c: isinstance(c, (int, float)) and c == 0
         coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / error_order
         coeff2 = -(self.pcoeff + 2 * self.dcoeff) / error_order
         coeff3 = self.dcoeff / error_order
         factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
-        factor2 = (
-            1 if _zero_coeff(coeff2) else _inf_to_one(prev_inv_scaled_error) ** coeff2
-        )
-        factor3 = (
-            1
-            if _zero_coeff(coeff3)
-            else _inf_to_one(prev_prev_inv_scaled_error) ** coeff3
-        )
+        factor2 = 1 if _zero_coeff(coeff2) else prev_inv_scaled_error ** coeff2
+        factor3 = 1 if _zero_coeff(coeff3) else prev_prev_inv_scaled_error ** coeff3
         factormin = jnp.where(keep_step, 1, self.factormin)
         factor = jnp.clip(
             self.safety * factor1 * factor2 * factor3,
             a_min=factormin,
             a_max=self.factormax,
         )
-        factor = lax.stop_gradient(factor)  # See note in init above.
+        # Once again, see above. In case we have gradients on {i,p,d}coeff.
+        # (Probably quite common for them to have zero tangents if passed across
+        # a grad API boundary as part of a larger model.)
+        factor = lax.stop_gradient(factor)
+        factor = eqxi.nondifferentiable(factor)
         dt = prev_dt * factor
+
+        # E.g. we failed an implicit step, so y_error=inf, so inv_scaled_error=0,
+        # so factor=factormin, and we shrunk our step.
+        # If we're using a PI or PID controller we shouldn't then force shrinking on
+        # the next or next two steps as well!
+        pred = (inv_scaled_error == 0) | jnp.isinf(inv_scaled_error)
+        inv_scaled_error = jnp.where(pred, 1, inv_scaled_error)
 
         #
         # Clip next step size based on dtmin/dtmax
@@ -529,13 +531,13 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # Clip next step size based on step_ts/jump_ts
         #
 
-        if jnp.issubdtype(t1.dtype, jnp.inexact):
+        if jnp.issubdtype(jnp.result_type(t1), jnp.inexact):
             # Two nextafters. If made_jump then t1 = prevbefore(jump location)
             # so now _t1 = nextafter(jump location)
             # This is important because we don't know whether or not the jump is as a
             # result of a left- or right-discontinuity, so we have to skip the jump
             # location altogether.
-            _t1 = jnp.where(made_jump, nextafter(nextafter(t1)), t1)
+            _t1 = jnp.where(made_jump, eqxi.nextafter(eqxi.nextafter(t1)), t1)
         else:
             _t1 = t1
         next_t0 = jnp.where(keep_step, _t1, t0)
@@ -597,7 +599,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
             raise ValueError(
                 f"jump_ts must be floating point, not {self.jump_ts.dtype}"
             )
-        if not jnp.issubdtype(t1.dtype, jnp.inexact):
+        if not jnp.issubdtype(jnp.result_type(t1), jnp.inexact):
             raise ValueError(
                 "t0, t1, dt0 must be floating point when specifying jump_t. Got "
                 f"{t1.dtype}."
@@ -607,7 +609,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         next_made_jump = t0_index < t1_index
         t1 = jnp.where(
             next_made_jump,
-            prevbefore(self.jump_ts[jnp.minimum(t0_index, len(self.jump_ts) - 1)]),
+            eqxi.prevbefore(self.jump_ts[jnp.minimum(t0_index, len(self.jump_ts) - 1)]),
             t1,
         )
         return t1, next_made_jump

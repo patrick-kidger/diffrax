@@ -2,11 +2,13 @@ import abc
 from typing import Any, Dict
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox.internal import ω
 
-from .misc import implicit_jvp, nondifferentiable_output, ω
+from .misc import implicit_jvp
 from .saveat import SaveAt
 from .term import AbstractTerm, AdjointTerm
 
@@ -30,6 +32,8 @@ class AbstractAdjoint(eqx.Module):
         max_steps,
         throw,
         init_state,
+        passed_solver_state,
+        passed_controller_state,
     ):
         """Runs the main solve loop. Subclasses can override this to provide custom
         backpropagation behaviour; see for example the implementation of
@@ -61,36 +65,30 @@ class AbstractAdjoint(eqx.Module):
         return diffeqsolve
 
 
-class RecursiveCheckpointAdjoint(AbstractAdjoint):
+class DirectAdjoint(AbstractAdjoint):
     """Backpropagate through [`diffrax.diffeqsolve`][] by differentiating the numerical
     solution directly. This is sometimes known as "discretise-then-optimise", or
     described as "backpropagation through the solver".
 
     For most problems this is the preferred technique for backpropagating through a
     differential equation.
-
-    A binomial checkpointing scheme is used so that memory usage is low.
     """
 
-    def loop(self, *, throw, **kwargs):
-        del throw
-        return self._loop_fn(**kwargs, is_bounded=True)
+    def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):
+        del throw, passed_solver_state, passed_controller_state
+        return self._loop_fn(**kwargs, checkpoint="none")
 
 
-class NoAdjoint(AbstractAdjoint):
-    """Disable backpropagation through [`diffrax.diffeqsolve`][].
+class RecursiveCheckpointAdjoint(AbstractAdjoint):
+    """As [`diffrax.DirectAdjoint`][].
 
-    Forward-mode autodifferentiation (`jax.jvp`) will continue to work as normal.
-
-    If you do not need to differentiate the results of [`diffrax.diffeqsolve`][] then
-    this may sometimes improve the speed at which the differential equation is solved.
+    In addition a binomial checkpointing scheme is used so that memory usage is low.
+    (This checkpointing can increase compile time a bit, though.)
     """
 
-    def loop(self, *, throw, **kwargs):
-        del throw
-        final_state, aux_stats = self._loop_fn(**kwargs, is_bounded=False)
-        final_state = jtu.tree_map(nondifferentiable_output, final_state)
-        return final_state, aux_stats
+    def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):
+        del throw, passed_solver_state, passed_controller_state
+        return self._loop_fn(**kwargs, checkpoint="recursive")
 
 
 def _vf(ys, residual, args__terms, closure):
@@ -113,7 +111,7 @@ def _solve(args__terms, closure):
         solver=solver,
         saveat=saveat,
         init_state=init_state,
-        is_bounded=False,
+        checkpoint="none",
     )
     # Note that we use .ys not .y here. The former is what is actually returned
     # by diffeqsolve, so it is the thing we want to attach the tangent to.
@@ -121,6 +119,10 @@ def _solve(args__terms, closure):
         eqx.tree_at(lambda s: s.ys, final_state, None),
         aux_stats,
     )
+
+
+def _is_none(x):
+    return x is None
 
 
 class ImplicitAdjoint(AbstractAdjoint):
@@ -135,7 +137,19 @@ class ImplicitAdjoint(AbstractAdjoint):
     via the implicit function theorem.
     """  # noqa: E501
 
-    def loop(self, *, args, terms, solver, saveat, throw, init_state, **kwargs):
+    def loop(
+        self,
+        *,
+        args,
+        terms,
+        solver,
+        saveat,
+        throw,
+        init_state,
+        passed_solver_state,
+        passed_controller_state,
+        **kwargs,
+    ):
         del throw
 
         # `is` check because this may return a Tracer from SaveAt(ts=<array>)
@@ -144,11 +158,21 @@ class ImplicitAdjoint(AbstractAdjoint):
                 "Can only use `adjoint=ImplicitAdjoint()` with `SaveAt(t1=True)`."
             )
 
-        init_state = eqx.tree_at(
-            lambda s: (s.y, s.solver_state, s.controller_state),
-            init_state,
-            replace_fn=lax.stop_gradient,
-        )
+        if not passed_solver_state:
+            init_state = eqx.tree_at(
+                lambda s: s.solver_state,
+                init_state,
+                replace_fn=lax.stop_gradient,
+                is_leaf=_is_none,
+            )
+        if not passed_controller_state:
+            init_state = eqx.tree_at(
+                lambda s: s.controller_state,
+                init_state,
+                replace_fn=lax.stop_gradient,
+                is_leaf=_is_none,
+            )
+
         closure = (self, kwargs, solver, saveat, init_state)
         ys, residual = implicit_jvp(_solve, _vf, (args, terms), closure)
 
@@ -174,7 +198,7 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
     )
     del y
     return self._loop_fn(
-        args=args, terms=terms, init_state=init_state, **kwargs, is_bounded=False
+        args=args, terms=terms, init_state=init_state, checkpoint="none", **kwargs
     )
 
 
@@ -398,7 +422,18 @@ class BacksolveAdjoint(AbstractAdjoint):
             )
         self.kwargs = kwargs
 
-    def loop(self, *, args, terms, saveat, init_state, **kwargs):
+    def loop(
+        self,
+        *,
+        args,
+        terms,
+        saveat,
+        init_state,
+        passed_solver_state,
+        passed_controller_state,
+        **kwargs,
+    ):
+        del passed_solver_state, passed_controller_state
         if saveat.steps or saveat.dense:
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
@@ -417,10 +452,51 @@ class BacksolveAdjoint(AbstractAdjoint):
 
         # We only allow backpropagation through `ys`; in particular not through
         # `solver_state` etc.
+        y = eqxi.nondifferentiable_backward(final_state.y, name="y")
+        tprev = eqxi.nondifferentiable_backward(final_state.tprev, name="tprev")
+        tnext = eqxi.nondifferentiable_backward(final_state.tnext, name="tnext")
+        solver_state = eqxi.nondifferentiable_backward(
+            final_state.solver_state, name="solver_state"
+        )
+        controller_state = eqxi.nondifferentiable_backward(
+            final_state.controller_state, name="controller_state"
+        )
+        ts = eqxi.nondifferentiable_backward(final_state.ts, name="ts")
         ys = final_state.ys
-        final_state = jtu.tree_map(nondifferentiable_output, final_state)
+        dense_ts = eqxi.nondifferentiable_backward(
+            final_state.dense_ts, name="dense_ts"
+        )
+        dense_infos = eqxi.nondifferentiable_backward(
+            final_state.dense_infos, name="dense_infos"
+        )
+        final_state = eqxi.nondifferentiable_backward(
+            final_state
+        )  # no more specific name
         final_state = eqx.tree_at(
-            lambda s: jtu.tree_leaves(s.ys), final_state, jtu.tree_leaves(ys)
+            lambda s: (
+                s.y,
+                s.tprev,
+                s.tnext,
+                s.solver_state,
+                s.controller_state,
+                s.ts,
+                s.ys,
+                s.dense_ts,
+                s.dense_infos,
+            ),
+            final_state,
+            (
+                y,
+                tprev,
+                tnext,
+                solver_state,
+                controller_state,
+                ts,
+                ys,
+                dense_ts,
+                dense_infos,
+            ),
+            is_leaf=_is_none,
         )
 
         return final_state, aux_stats
