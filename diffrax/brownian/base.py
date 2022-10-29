@@ -1,6 +1,6 @@
 import abc
 
-from ..custom_types import Array, Scalar
+from ..custom_types import Array, PyTree, Scalar
 from ..path import AbstractPath
 
 
@@ -8,7 +8,7 @@ class AbstractBrownianPath(AbstractPath):
     "Abstract base class for all Brownian paths."
 
     @abc.abstractmethod
-    def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> Array:
+    def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> PyTree[Array]:
         r"""Samples a Brownian increment $w(t_1) - w(t_0)$.
 
         Each increment has distribution $\mathcal{N}(0, t_1 - t_0)$.
