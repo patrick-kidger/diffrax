@@ -183,8 +183,12 @@ VirtualBrownianTree.__init__.__doc__ = """
 - `t0`: The start of the interval the Brownian motion is defined over.
 - `t1`: The start of the interval the Brownian motion is defined over.
 - `tol`: The discretisation that `[t0, t1]` is discretised to.
-- `shape`: What shape each individual Brownian sample should be.
+- `shape`: What shape each individual Brownian sample should be. Can be 
+specified by a pytree.
 - `key`: A random key.
+- `dtype`: What dtype each individual Brownian sample should be. Can be 
+specified by a pytree, and should be
+a prefix tree of `shape`.
 
 !!! info
 

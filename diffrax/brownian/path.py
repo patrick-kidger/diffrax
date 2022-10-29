@@ -67,6 +67,10 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 UnsafeBrownianPath.__init__.__doc__ = """
 **Arguments:**
 
-- `shape`: What shape each individual Brownian sample should be.
+- `shape`: What shape each individual Brownian sample should be. Can be 
+specified by a pytree.
 - `key`: A random key.
+- `dtype`: What dtype each individual Brownian sample should be. Can be 
+specified by a pytree, and should be
+a prefix tree of `shape`.
 """
