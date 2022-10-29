@@ -4,6 +4,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
 
@@ -19,17 +20,68 @@ _vals = {
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-def test_shape(ctr, getkey):
+def test_shape_and_dtype(ctr, getkey):
     t0 = 0
     t1 = 2
-    for shape in ((0,), (1, 0), (2,), (3, 4), (1, 2, 3, 4)):
+
+    shapes = (
+        (0,),
+        (
+            1,
+            0,
+        ),
+        (2,),
+        (3, 4),
+        (1, 2, 3, 4),
+        {
+            "a": (1,),
+            "b": (
+                2,
+                3,
+            ),
+        },
+        (
+            (
+                1,
+                2,
+            ),
+            (
+                (
+                    3,
+                    4,
+                ),
+                (
+                    5,
+                    6,
+                ),
+            ),
+        ),
+    )
+
+    dtypes = (
+        None,
+        None,
+        jnp.float16,
+        jnp.float32,
+        jnp.float64,
+        {"a": None, "b": jnp.float64},
+        (jnp.float16, (jnp.float32, jnp.float64)),
+    )
+
+    for shape, dtype in zip(shapes, dtypes):
         if ctr is diffrax.UnsafeBrownianPath:
-            path = ctr(shape, getkey())
+            if dtype is None:
+                path = ctr(shape, getkey())
+            else:
+                path = ctr(shape, getkey(), dtype=dtype)
             assert path.t0 is None
             assert path.t1 is None
         elif ctr is diffrax.VirtualBrownianTree:
             tol = 2**-5
-            path = ctr(t0, t1, tol, shape, getkey())
+            if dtype is None:
+                path = ctr(t0, t1, tol, shape, getkey())
+            else:
+                path = ctr(t0, t1, tol, shape, getkey(), dtype=dtype)
             assert path.t0 == 0
             assert path.t1 == 2
         else:
@@ -39,7 +91,15 @@ def test_shape(ctr, getkey):
                 t0, _ = _t0
                 _, t1 = _t1
                 out = path.evaluate(t0, t1)
-                assert out.shape == shape
+                out_shape = jtu.tree_map(lambda leaf: leaf.shape, out)
+                out_dtype = jtu.tree_map(
+                    lambda leaf: jax.dtypes.canonicalize_dtype(leaf.dtype), out
+                )
+                in_dtype = jtu.tree_map(
+                    lambda leaf: jax.dtypes.canonicalize_dtype(leaf), dtype
+                )
+                assert out_shape == shape
+                assert in_dtype == out_dtype
 
 
 @pytest.mark.parametrize(
