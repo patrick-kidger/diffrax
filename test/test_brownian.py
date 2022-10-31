@@ -68,38 +68,43 @@ def test_shape_and_dtype(ctr, getkey):
         (jnp.float16, (jnp.float32, jnp.float64)),
     )
 
+    def is_tuple_of_ints(obj):
+        return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
+
     for shape, dtype in zip(shapes, dtypes):
+        # Shape to pass as input
+        if dtype is not None:
+            shape = jtu.tree_map(
+                jax.ShapeDtypeStruct, shape, dtype, is_leaf=is_tuple_of_ints
+            )
+
         if ctr is diffrax.UnsafeBrownianPath:
-            if dtype is None:
-                path = ctr(shape, getkey())
-            else:
-                path = ctr(shape, getkey(), dtype=dtype)
+            path = ctr(shape, getkey())
             assert path.t0 is None
             assert path.t1 is None
         elif ctr is diffrax.VirtualBrownianTree:
             tol = 2**-5
-            if dtype is None:
-                path = ctr(t0, t1, tol, shape, getkey())
-            else:
-                path = ctr(t0, t1, tol, shape, getkey(), dtype=dtype)
+            path = ctr(t0, t1, tol, shape, getkey())
             assert path.t0 == 0
             assert path.t1 == 2
         else:
             assert False
+
+        # Expected output shape
+        if dtype is None:
+            shape = jtu.tree_map(
+                jax.ShapeDtypeStruct, shape, dtype, is_leaf=is_tuple_of_ints
+            )
+
         for _t0 in _vals.values():
             for _t1 in _vals.values():
                 t0, _ = _t0
                 _, t1 = _t1
                 out = path.evaluate(t0, t1)
-                out_shape = jtu.tree_map(lambda leaf: leaf.shape, out)
-                out_dtype = jtu.tree_map(
-                    lambda leaf: jax.dtypes.canonicalize_dtype(leaf.dtype), out
-                )
-                in_dtype = jtu.tree_map(
-                    lambda leaf: jax.dtypes.canonicalize_dtype(leaf), dtype
+                out_shape = jtu.tree_map(
+                    lambda leaf: jax.ShapeDtypeStruct(leaf.shape, leaf.dtype), out
                 )
                 assert out_shape == shape
-                assert in_dtype == out_dtype
 
 
 @pytest.mark.parametrize(

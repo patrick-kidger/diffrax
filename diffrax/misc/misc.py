@@ -4,7 +4,6 @@ import jax
 import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
-import jax.random as jrandom
 import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
@@ -173,35 +172,5 @@ def split_by_tree(key, tree, is_leaf: Optional[Callable[PyTree, bool]] = None):
     return jtu.tree_unflatten(treedef, jax.random.split(key, treedef.num_leaves))
 
 
-def broadcast_prefix(
-    prefix_tree: PyTree,
-    full_tree: PyTree,
-    is_leaf: Optional[Callable[[PyTree], bool]] = None,
-) -> PyTree:
-    """Similar to the jax/_src/tree_util.py:broadcast_prefix but returns a pytree
-    instead of a list and is_leaf corresponds to full_tree structure.
-    """
-    treedef = jtu.tree_structure(full_tree, is_leaf=is_leaf)
-    leaves = []
-    num_leaves = lambda t: jtu.tree_structure(t, is_leaf=is_leaf).num_leaves
-    add_leaves = lambda x, subtree: leaves.extend([x] * num_leaves(subtree))
-    jtu.tree_map(
-        add_leaves, prefix_tree, full_tree, is_leaf=lambda x: x is None
-    )  # None treated as leaves
-    return jtu.tree_unflatten(treedef, leaves)
-
-
 def is_tuple_of_ints(obj):
     return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
-
-
-def normal_tree(
-    key, shape: PyTree[Tuple[int, ...]], dtype: Optional[PyTree[jnp.dtype]] = None
-):
-    """Similar to jax.random.normal but accepts a pytree for the shape and dtype
-    arguments. dtype has to be a prefix of shape.
-    """
-    dtype = broadcast_prefix(dtype, shape, is_leaf=is_tuple_of_ints)
-    key = split_by_tree(key, shape, is_leaf=is_tuple_of_ints)
-
-    return jtu.tree_map(jrandom.normal, key, shape, dtype)

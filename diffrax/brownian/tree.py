@@ -1,5 +1,5 @@
 from dataclasses import field
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import equinox as eqx
 import jax
@@ -9,7 +9,7 @@ import jax.random as jrandom
 import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import broadcast_prefix, error_if, is_tuple_of_ints, split_by_tree
+from ..misc import error_if, is_tuple_of_ints, split_by_tree
 from .base import AbstractBrownianPath
 
 
@@ -59,17 +59,30 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     tol: Scalar
-    shape: PyTree[Tuple[int, ...]] = eqx.static_field()
+    shape: PyTree[jax.ShapeDtypeStruct] = eqx.static_field()
     key: "jax.random.PRNGKey"  # noqa: F821
-    dtype: Optional[PyTree[Tuple[jnp.dtype]]] = eqx.static_field()
 
-    def __init__(self, t0, t1, tol, shape, key, dtype=None):
+    def __init__(
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        tol: Scalar,
+        shape: Union[Tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        key: "jax.random.PRNGKey",
+    ):
         self.t0 = t0
         self.t1 = t1
         self.tol = tol
-        self.shape = shape
-        self.key = split_by_tree(key, shape, is_leaf=is_tuple_of_ints)
-        self.dtype = broadcast_prefix(dtype, self.key)
+        self.shape = (
+            jax.ShapeDtypeStruct(shape, None) if is_tuple_of_ints(shape) else shape
+        )
+        error_if(
+            not jtu.tree_all(
+                jtu.tree_map(lambda x: jnp.issubdtype(x.dtype, jnp.inexact), self.shape)
+            ),
+            "VirtualBrownianTree dtypes all have to be floating-point.",
+        )
+        self.key = split_by_tree(key, self.shape)
 
     @eqx.filter_jit
     def evaluate(
@@ -83,12 +96,11 @@ class VirtualBrownianTree(AbstractBrownianPath):
                 lambda x, y: x - y,
                 self._evaluate(t1),
                 self._evaluate(t0),
-                is_leaf=is_tuple_of_ints,
             )
 
     def _evaluate(self, τ: Scalar) -> PyTree[Array]:
-        τ = broadcast_prefix(τ, self.key)
-        return jtu.tree_map(self._evaluate_leaf, self.key, τ, self.shape, self.dtype)
+        map_func = lambda key, shape: self._evaluate_leaf(key, τ, shape)
+        return jtu.tree_map(map_func, self.key, self.shape)
 
     def _brownian_bridge(self, s, t, u, w_s, w_u, key, shape, dtype):
         mean = w_s + (w_u - w_s) * ((t - s) / (u - s))
@@ -97,8 +109,13 @@ class VirtualBrownianTree(AbstractBrownianPath):
         return mean + std * jrandom.normal(key, shape, dtype)
 
     def _evaluate_leaf(
-        self, key, τ: Scalar, shape: Tuple[int, ...], dtype: jnp.dtype
+        self,
+        key,
+        τ: Scalar,
+        shape: jax.ShapeDtypeStruct,
     ) -> Array:
+        shape, dtype = shape.shape, shape.dtype
+
         cond = self.t0 < self.t1
         t0 = jnp.where(cond, self.t0, self.t1).astype(dtype)
         t1 = jnp.where(cond, self.t1, self.t0).astype(dtype)
@@ -186,9 +203,6 @@ VirtualBrownianTree.__init__.__doc__ = """
 - `shape`: What shape each individual Brownian sample should be. Can be 
 specified by a pytree.
 - `key`: A random key.
-- `dtype`: What dtype each individual Brownian sample should be. Can be 
-specified by a pytree, and should be
-a prefix tree of `shape`.
 
 !!! info
 

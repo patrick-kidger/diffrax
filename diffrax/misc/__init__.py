@@ -8,14 +8,12 @@ from .bounded_while_loop import bounded_while_loop, HadInplaceUpdate
 from .errors import branched_error_if, error_if
 from .misc import (
     adjoint_rms_seminorm,
-    broadcast_prefix,
     ContainerMeta,
     fill_forward,
     force_bitcast_convert_type,
     is_tuple_of_ints,
     left_broadcast_to,
     linear_rescale,
-    normal_tree,
     rms_norm,
     split_by_tree,
 )
