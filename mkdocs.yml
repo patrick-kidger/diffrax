@@ -106,6 +106,7 @@ nav:
         - Symbolic Regression: 'examples/symbolic_regression.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Steady State: 'examples/steady_state.ipynb'
+        - Kalman Filter: 'examples/kalman_filter.ipynb'
     - Basic API:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
