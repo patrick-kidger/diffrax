@@ -201,8 +201,11 @@ VirtualBrownianTree.__init__.__doc__ = """
 - `t0`: The start of the interval the Brownian motion is defined over.
 - `t1`: The start of the interval the Brownian motion is defined over.
 - `tol`: The discretisation that `[t0, t1]` is discretised to.
-- `shape`: What shape each individual Brownian sample should be. Can be 
-specified by a pytree.
+- `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the shape, 
+dtype, and PyTree structure of the output. For simplicity, `shape` can also just 
+be a tuple of integers, describing the shape of a single JAX array. In that case
+the dtype is chosen to be `float64` if `JAX_ENABLE_X64=True` and `float32` 
+otherwise.
 - `key`: A random key.
 
 !!! info
