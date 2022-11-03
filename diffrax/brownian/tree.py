@@ -76,12 +76,13 @@ class VirtualBrownianTree(AbstractBrownianPath):
         self.shape = (
             jax.ShapeDtypeStruct(shape, None) if is_tuple_of_ints(shape) else shape
         )
-        error_if(
-            not jtu.tree_all(
-                jtu.tree_map(lambda x: jnp.issubdtype(x.dtype, jnp.inexact), self.shape)
-            ),
-            "VirtualBrownianTree dtypes all have to be floating-point.",
-        )
+        if any(
+            not jnp.issubdtype(x.dtype, jnp.inexact)
+            for x in jtu.tree_leaves(self.shape)
+        ):
+            raise ValueError(
+                "VirtualBrownianTree dtypes all have to be floating-point."
+            )
         self.key = split_by_tree(key, self.shape)
 
     @eqx.filter_jit

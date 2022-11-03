@@ -8,7 +8,6 @@ import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
 from ..misc import (
-    error_if,
     force_bitcast_convert_type,
     is_tuple_of_ints,
     nondifferentiable_input,
@@ -50,14 +49,12 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         self.shape = (
             jax.ShapeDtypeStruct(shape, None) if is_tuple_of_ints(shape) else shape
         )
-        error_if(
-            not jtu.tree_all(
-                jtu.tree_map(lambda x: jnp.issubdtype(x.dtype, jnp.inexact), self.shape)
-            ),
-            "UnsafeBrownianPath dtypes all have to be floating-point.",
-        )
-
         self.key = key
+        if any(
+            not jnp.issubdtype(x.dtype, jnp.inexact)
+            for x in jtu.tree_leaves(self.shape)
+        ):
+            raise ValueError("UnsafeBrownianPath dtypes all have to be floating-point.")
 
     @property
     def t0(self):
