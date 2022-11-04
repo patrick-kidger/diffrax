@@ -164,7 +164,7 @@ def left_broadcast_to(arr, shape):
     return jnp.broadcast_to(arr[indices], shape)
 
 
-def split_by_tree(key, tree, is_leaf: Optional[Callable[PyTree, bool]] = None):
+def split_by_tree(key, tree, is_leaf: Optional[Callable[[PyTree], bool]] = None):
     """Like jax.random.split but accepts tree as a second argument and produces
     a tree of keys with the same structure.
     """
