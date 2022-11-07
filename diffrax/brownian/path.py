@@ -88,9 +88,8 @@ UnsafeBrownianPath.__init__.__doc__ = """
 **Arguments:**
 
 - `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the shape, 
-dtype, and PyTree structure of the output. For simplicity, `shape` can also just 
-be a tuple of integers, describing the shape of a single JAX array. In that case
-the dtype is chosen to be `float64` if `JAX_ENABLE_X64=True` and `float32` 
-otherwise.
+    dtype, and PyTree structure of the output. For simplicity, `shape` can also just 
+    be a tuple of integers, describing the shape of a single JAX array. In that case
+    the dtype is chosen to be the default floating-point dtype.
 - `key`: A random key.
 """
