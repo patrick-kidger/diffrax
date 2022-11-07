@@ -1,9 +1,10 @@
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import jax
 import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
 
@@ -161,3 +162,15 @@ def left_broadcast_to(arr, shape):
 
     indices = tuple(slice(None) if i < arr.ndim else None for i in range(len(shape)))
     return jnp.broadcast_to(arr[indices], shape)
+
+
+def split_by_tree(key, tree, is_leaf: Optional[Callable[[PyTree], bool]] = None):
+    """Like jax.random.split but accepts tree as a second argument and produces
+    a tree of keys with the same structure.
+    """
+    treedef = jtu.tree_structure(tree, is_leaf=is_leaf)
+    return jtu.tree_unflatten(treedef, jax.random.split(key, treedef.num_leaves))
+
+
+def is_tuple_of_ints(obj):
+    return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)

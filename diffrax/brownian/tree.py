@@ -1,14 +1,15 @@
 from dataclasses import field
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import equinox as eqx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 
-from ..custom_types import Array, Scalar
-from ..misc import error_if
+from ..custom_types import Array, PyTree, Scalar
+from ..misc import error_if, is_tuple_of_ints, split_by_tree
 from .base import AbstractBrownianPath
 
 
@@ -58,29 +59,67 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     tol: Scalar
-    shape: Tuple[int] = eqx.static_field()
+    shape: PyTree[jax.ShapeDtypeStruct] = eqx.static_field()
     key: "jax.random.PRNGKey"  # noqa: F821
+
+    def __init__(
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        tol: Scalar,
+        shape: Union[Tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        key: "jax.random.PRNGKey",
+    ):
+        self.t0 = t0
+        self.t1 = t1
+        self.tol = tol
+        self.shape = (
+            jax.ShapeDtypeStruct(shape, None) if is_tuple_of_ints(shape) else shape
+        )
+        if any(
+            not jnp.issubdtype(x.dtype, jnp.inexact)
+            for x in jtu.tree_leaves(self.shape)
+        ):
+            raise ValueError(
+                "VirtualBrownianTree dtypes all have to be floating-point."
+            )
+        self.key = split_by_tree(key, self.shape)
 
     @eqx.filter_jit
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> Array:
+    ) -> PyTree[Array]:
         del left
         if t1 is None:
             return self._evaluate(t0)
         else:
-            return self._evaluate(t1) - self._evaluate(t0)
+            return jtu.tree_map(
+                lambda x, y: x - y,
+                self._evaluate(t1),
+                self._evaluate(t0),
+            )
 
-    def _brownian_bridge(self, s, t, u, w_s, w_u, key):
+    def _evaluate(self, τ: Scalar) -> PyTree[Array]:
+        map_func = lambda key, shape: self._evaluate_leaf(key, τ, shape)
+        return jtu.tree_map(map_func, self.key, self.shape)
+
+    def _brownian_bridge(self, s, t, u, w_s, w_u, key, shape, dtype):
         mean = w_s + (w_u - w_s) * ((t - s) / (u - s))
         var = (u - t) * (t - s) / (u - s)
         std = jnp.sqrt(var)
-        return mean + std * jrandom.normal(key, self.shape)
+        return mean + std * jrandom.normal(key, shape, dtype)
 
-    def _evaluate(self, τ: Scalar) -> Array:
+    def _evaluate_leaf(
+        self,
+        key,
+        τ: Scalar,
+        shape: jax.ShapeDtypeStruct,
+    ) -> Array:
+        shape, dtype = shape.shape, shape.dtype
+
         cond = self.t0 < self.t1
-        t0 = jnp.where(cond, self.t0, self.t1)
-        t1 = jnp.where(cond, self.t1, self.t0)
+        t0 = jnp.where(cond, self.t0, self.t1).astype(dtype)
+        t1 = jnp.where(cond, self.t1, self.t0).astype(dtype)
 
         error_if(
             τ < t0, "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1]."
@@ -90,12 +129,12 @@ class VirtualBrownianTree(AbstractBrownianPath):
         )
         # Clip because otherwise the while loop below won't terminate, and the above
         # errors are only raised after everything has finished executing.
-        τ = jnp.clip(τ, t0, t1)
+        τ = jnp.clip(τ, t0, t1).astype(dtype)
 
-        key, init_key = jrandom.split(self.key, 2)
+        key, init_key = jrandom.split(key, 2)
         thalf = t0 + 0.5 * (t1 - t0)
-        w_t1 = jrandom.normal(init_key, self.shape) * jnp.sqrt(t1 - t0)
-        w_thalf = self._brownian_bridge(t0, thalf, t1, 0, w_t1, key)
+        w_t1 = jrandom.normal(init_key, shape, dtype) * jnp.sqrt(t1 - t0)
+        w_thalf = self._brownian_bridge(t0, thalf, t1, 0, w_t1, key, shape, dtype)
         init_state = _State(
             s=t0,
             t=thalf,
@@ -124,7 +163,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             _w_u = jnp.where(_cond, _state.w_u, _state.w_t)
             _key = jnp.where(_cond, _key1, _key2)
             _t = _s + 0.5 * (_u - _s)
-            _w_t = self._brownian_bridge(_s, _t, _u, _w_s, _w_u, _key)
+            _w_t = self._brownian_bridge(_s, _t, _u, _w_s, _w_u, _key, shape, dtype)
             return _State(s=_s, t=_t, u=_u, w_s=_w_s, w_t=_w_t, w_u=_w_u, key=_key)
 
         final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
@@ -162,7 +201,11 @@ VirtualBrownianTree.__init__.__doc__ = """
 - `t0`: The start of the interval the Brownian motion is defined over.
 - `t1`: The start of the interval the Brownian motion is defined over.
 - `tol`: The discretisation that `[t0, t1]` is discretised to.
-- `shape`: What shape each individual Brownian sample should be.
+- `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the shape, 
+dtype, and PyTree structure of the output. For simplicity, `shape` can also just 
+be a tuple of integers, describing the shape of a single JAX array. In that case
+the dtype is chosen to be `float64` if `JAX_ENABLE_X64=True` and `float32` 
+otherwise.
 - `key`: A random key.
 
 !!! info
