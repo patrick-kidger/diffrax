@@ -336,6 +336,206 @@ def test_semi_implicit_euler():
     assert shaped_allclose(sol1.ys, sol2.ys)
 
 
+def test_compile_time_steps():
+    terms = diffrax.ODETerm(lambda t, y, args: -y)
+    y0 = jnp.array([1.0])
+    solver = diffrax.Tsit5()
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        None,
+        y0,
+        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+    )
+    assert sol.stats["compiled_num_steps"] is None
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        0.1,
+        y0,
+        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+    )
+    assert sol.stats["compiled_num_steps"] is None
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        0.1,
+        y0,
+        stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
+    )
+    assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        0.1,
+        y0,
+        stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
+    )
+    assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        0.1,
+        y0,
+        stepsize_controller=diffrax.ConstantStepSize(compile_steps=False),
+    )
+    assert sol.stats["compiled_num_steps"] is None
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        None,
+        y0,
+        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=True),
+    )
+    assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        None,
+        y0,
+        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=None),
+    )
+    assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
+
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        0,
+        1,
+        None,
+        y0,
+        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=False),
+    )
+    assert sol.stats["compiled_num_steps"] is None
+
+    with pytest.raises(ValueError):
+        sol = jax.jit(
+            lambda t0: diffrax.diffeqsolve(
+                terms,
+                solver,
+                t0,
+                1,
+                0.1,
+                y0,
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
+            )
+        )(0)
+
+    sol = jax.jit(
+        lambda t0: diffrax.diffeqsolve(
+            terms,
+            solver,
+            t0,
+            1,
+            0.1,
+            y0,
+            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
+        )
+    )(0)
+    assert sol.stats["compiled_num_steps"] is None
+
+    sol = jax.jit(
+        lambda t1: diffrax.diffeqsolve(
+            terms,
+            solver,
+            0,
+            t1,
+            0.1,
+            y0,
+            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
+        )
+    )(1)
+    assert sol.stats["compiled_num_steps"] is None
+
+    sol = jax.jit(
+        lambda dt0: diffrax.diffeqsolve(
+            terms,
+            solver,
+            0,
+            1,
+            dt0,
+            y0,
+            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
+        )
+    )(0.1)
+    assert sol.stats["compiled_num_steps"] is None
+
+    # Work around JAX issue #9298
+    diffeqsolve_nojit = diffrax.diffeqsolve.__wrapped__
+    import sys
+
+    sys.foo = True
+
+    _t0 = jnp.array([0, 0])
+    sol = jax.jit(
+        lambda: jax.vmap(
+            lambda t0: diffeqsolve_nojit(
+                terms,
+                solver,
+                t0,
+                1,
+                0.1,
+                y0,
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
+            )
+        )(_t0)
+    )()
+    assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([10, 10]))
+
+    _t1 = jnp.array([1, 2])
+    sol = jax.jit(
+        lambda: jax.vmap(
+            lambda t1: diffeqsolve_nojit(
+                terms,
+                solver,
+                0,
+                t1,
+                0.1,
+                y0,
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
+            )
+        )(_t1)
+    )()
+    assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
+
+    _dt0 = jnp.array([0.1, 0.05])
+    sol = jax.jit(
+        lambda: jax.vmap(
+            lambda dt0: diffeqsolve_nojit(
+                terms,
+                solver,
+                0,
+                1,
+                dt0,
+                y0,
+                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
+            )
+        )(_dt0)
+    )()
+    assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
+
+
 @pytest.mark.parametrize(
     "solver",
     [

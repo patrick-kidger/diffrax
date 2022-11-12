@@ -472,7 +472,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
         keep_step = scaled_error < 1
         if self.dtmin is not None:
             keep_step = keep_step | at_dtmin
-        inv_scaled_error = 1 / scaled_error
+        # Make sure it's not a Python scalar and thus getting a ZeroDivisionError.
+        inv_scaled_error = 1 / jnp.asarray(scaled_error)
         inv_scaled_error = lax.stop_gradient(
             inv_scaled_error
         )  # See note in init above.

@@ -32,7 +32,7 @@ class VectorField(eqx.Module):
 
 
 def main(inline: bool, scan_stages: bool, grad: bool, adjoint: str):
-    if adjoint == "none":
+    if adjoint == "direct":
         adjoint = dfx.DirectAdjoint()
     elif adjoint == "recursive":
         adjoint = dfx.RecursiveCheckpointAdjoint()

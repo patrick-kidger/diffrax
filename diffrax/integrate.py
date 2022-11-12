@@ -4,10 +4,17 @@ from typing import Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
+import jax
+import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
-from .adjoint import AbstractAdjoint, BacksolveAdjoint, DirectAdjoint
+from .adjoint import (
+    AbstractAdjoint,
+    BacksolveAdjoint,
+    NoAdjoint,
+    RecursiveCheckpointAdjoint,
+)
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
@@ -98,7 +105,7 @@ def loop(
     terms,
     args,
     init_state,
-    checkpoint,
+    is_bounded,
 ):
 
     if saveat.t0:
@@ -167,8 +174,8 @@ def loop(
                 made_jump,
                 made_jump,
                 (
-                    "Internal error in Diffrax. Please report an issue at "
-                    "https://github.com/patrick-kidger/diffrax/issues"
+                    "Internal error in Diffrax: made unexpected jump. Please report an "
+                    "issue at https://github.com/patrick-kidger/diffrax/issues"
                 ),
             )
 
@@ -320,11 +327,7 @@ def loop(
             )
 
             final_inner_state = bounded_while_loop(
-                _cond_fun,
-                _body_fun,
-                init_inner_state,
-                max_steps=len(saveat.ts),
-                checkpoint=checkpoint,
+                _cond_fun, _body_fun, init_inner_state, max_steps=len(saveat.ts)
             )
 
             saveat_ts_index = final_inner_state.saveat_ts_index
@@ -399,9 +402,101 @@ def loop(
 
         return new_state
 
-    final_state = bounded_while_loop(
-        cond_fun, body_fun, init_state, max_steps, checkpoint=checkpoint
-    )
+    if is_bounded:
+        # Some privileged optimisations, but for common use cases.
+        # TODO: make these a method on an AbstractFixedStepSizeController?
+        #
+        # These optimisations depend on implementations details of `ConstantStepSize`,
+        # `StepTo`, and `bounded_while_loop`.
+        #
+        # We try to determine the exact number of integration steps that will be made.
+        # If this is possible then we can use a single `lax.scan`, rather than the
+        # recursive construction of `bounded_while_loop`. This primarily reduces
+        # compilation times.
+        if max_steps is None:
+            # `bounded_while_loop(..., max_steps=None)` lowers to `lax.while_loop`
+            # anyway; this is already fast. Don't try to determine the number of steps
+            # needed.
+            compiled_num_steps = None
+        elif isinstance(stepsize_controller, ConstantStepSize) and (
+            stepsize_controller.compile_steps is None
+            or stepsize_controller.compile_steps is True
+        ):
+            # We can determine the number of steps quite easily with constant step
+            # size.
+            #
+            # We do so using a `lax.while_loop`.
+            # - Not just a (t1 - t0)/dt0 division, to avoid floating point errors.
+            # - lax.while_loop, not just a Python one, to ensure that we match the
+            #   behaviour at runtime; no funny edge cases.
+            with jax.ensure_compile_time_eval():
+
+                def _is_finite(_t):
+                    all_finite = eqxi.unvmap_all(jnp.isfinite(_t))
+                    return not isinstance(all_finite, jax.core.Tracer) and all_finite
+
+                if _is_finite(t0) and _is_finite(t1) and _is_finite(dt0):
+
+                    def _cond_fun(_state):
+                        _, _t = _state
+                        return _t < t1
+
+                    def _body_fun(_state):
+                        _step, _t = _state
+                        return _step + 1, _clip_to_end(_t, _t + dt0, t1, True)
+
+                    compiled_num_steps, _ = lax.while_loop(
+                        _cond_fun, _body_fun, (0, t0)
+                    )
+                    compiled_num_steps = eqxi.unvmap_max(compiled_num_steps)
+                else:
+                    if stepsize_controller.compile_steps is None:
+                        compiled_num_steps = None
+                    else:
+                        assert stepsize_controller.compile_steps is True
+                        raise ValueError(
+                            "Could not determine exact number of steps, but "
+                            "`stepsize_controller.compile_steps=True`"
+                        )
+        elif isinstance(stepsize_controller, StepTo) and (
+            stepsize_controller.compile_steps is None
+            or stepsize_controller.compile_steps is True
+        ):
+            # The user has explicitly specified the number of steps.
+            compiled_num_steps = len(stepsize_controller.ts) - 1
+        else:
+            # Else we can't determine the number of steps.
+            compiled_num_steps = None
+
+        if compiled_num_steps is None or isinstance(
+            compiled_num_steps, jax.core.Tracer
+        ):
+            # If we couldn't determine the number of steps then use the default
+            # recursive construction.
+            compiled_num_steps = None
+            base = 16
+        else:
+            if isinstance(compiled_num_steps, jnp.ndarray):
+                compiled_num_steps = compiled_num_steps.item()
+            base = compiled_num_steps
+            max_steps = min(max_steps, compiled_num_steps)
+
+        final_state = bounded_while_loop(
+            cond_fun, body_fun, init_state, max_steps, base=base
+        )
+    else:
+        compiled_num_steps = None
+
+        if max_steps is None:
+            _cond_fun = cond_fun
+        else:
+
+            def _cond_fun(state):
+                return cond_fun(state) & (state.num_steps < max_steps)
+
+        final_state = bounded_while_loop(
+            _cond_fun, body_fun, init_state, max_steps=None
+        )
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.
@@ -411,7 +506,7 @@ def loop(
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
-    aux_stats = dict()
+    aux_stats = dict(compiled_num_steps=compiled_num_steps)
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
 
 
@@ -427,7 +522,7 @@ def diffeqsolve(
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
-    adjoint: AbstractAdjoint = DirectAdjoint(),
+    adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 16**3,
     throw: bool = True,
@@ -490,6 +585,11 @@ def diffeqsolve(
         and can only be backpropagated through if using `adjoint=BacksolveAdjoint()` or
         `adjoint=ImplicitAdjoint()`.
 
+        Note that (a) compile times; and (b) backpropagation run times; will increase
+        as `max_steps` increases. (Specifically, each time `max_steps` passes a power
+        of 16.) You can reduce these times by using the smallest value of `max_steps`
+        that is reasonable for your problem.
+
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
         If `True` then an integration failure will raise an error. Note that the errors
@@ -550,7 +650,9 @@ def diffeqsolve(
             f"t0 with value {t0} and type {type(t0)}, "
             f"dt0 with value {dt0} and type {type(dt0)}"
         )
-        dt0 = eqxi.error_if(dt0, (t1 - t0) * dt0 < 0, msg)
+        with jax.ensure_compile_time_eval():
+            pred = (t1 - t0) * dt0 < 0
+        dt0 = eqxi.error_if(dt0, pred, msg)
 
     # Error checking
     term_leaves, term_structure = jtu.tree_flatten(
@@ -600,26 +702,23 @@ def diffeqsolve(
             raise ValueError(
                 "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
             )
-        if not isinstance(adjoint, DirectAdjoint):
+        if not isinstance(adjoint, NoAdjoint):
             raise ValueError(
-                "`UnsafeBrownianPath` can only be used with `adjoint=DirectAdjoint()`."
-            )
-        if max_steps is not None:
-            raise ValueError(
-                "`UnsafeBrownianPath` can only be used with `max_steps=None`."
+                "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()`."
             )
 
     # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
     # types for JAX to be happy with the bounded_while_loop below.)
-    timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
-    timelikes = [x for x in timelikes if x is not None]
-    dtype = jnp.result_type(*timelikes)
-    t0 = jnp.asarray(t0, dtype=dtype)
-    t1 = jnp.asarray(t1, dtype=dtype)
-    if dt0 is not None:
-        dt0 = jnp.asarray(dt0, dtype=dtype)
-    if saveat.ts is not None:
-        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
+    with jax.ensure_compile_time_eval():
+        timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
+        timelikes = [x for x in timelikes if x is not None]
+        dtype = jnp.result_type(*timelikes)
+        t0 = jnp.asarray(t0, dtype=dtype)
+        t1 = jnp.asarray(t1, dtype=dtype)
+        if dt0 is not None:
+            dt0 = jnp.asarray(dt0, dtype=dtype)
+        if saveat.ts is not None:
+            saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
     def _promote(yi):
@@ -630,13 +729,14 @@ def diffeqsolve(
     del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
-    direction = jnp.where(t0 < t1, 1, -1)
-    t0 = t0 * direction
-    t1 = t1 * direction
-    if dt0 is not None:
-        dt0 = dt0 * direction
-    if saveat.ts is not None:
-        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
+    with jax.ensure_compile_time_eval():
+        direction = jnp.where(t0 < t1, 1, -1)
+        t0 = t0 * direction
+        t1 = t1 * direction
+        if dt0 is not None:
+            dt0 = dt0 * direction
+        if saveat.ts is not None:
+            saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
     stepsize_controller = stepsize_controller.wrap(direction)
     terms = jtu.tree_map(
         lambda t: WrapTerm(t, direction),
@@ -766,8 +866,8 @@ def diffeqsolve(
         t1=t1,
         dt0=dt0,
         max_steps=max_steps,
-        throw=throw,
         init_state=init_state,
+        throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
     )
@@ -818,6 +918,7 @@ def diffeqsolve(
         "num_accepted_steps": final_state.num_accepted_steps,
         "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
+        "compiled_num_steps": aux_stats["compiled_num_steps"],
     }
     result = final_state.result
     sol = Solution(

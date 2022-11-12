@@ -10,9 +10,7 @@ import jax.tree_util as jtu
 from ..custom_types import Array
 
 
-def bounded_while_loop(
-    cond_fun, body_fun, init_val, max_steps, base=16, checkpoint="recursive"
-):
+def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
     """Reverse-mode autodifferentiable while loop.
 
     Mostly as `lax.while_loop`, with a few small changes.
@@ -105,7 +103,7 @@ def bounded_while_loop(
 
     init_val = jtu.tree_map(jnp.asarray, init_val)
 
-    if max_steps is None or checkpoint == "none":
+    if max_steps is None:
 
         def _make_update(_new_val):
             if isinstance(_new_val, HadInplaceUpdate):
@@ -124,9 +122,7 @@ def bounded_while_loop(
                 is_leaf=lambda x: isinstance(x, HadInplaceUpdate),
             )
 
-        return lax.while_loop(cond_fun, _body_fun, init_val, max_steps)
-
-    assert checkpoint == "recursive"
+        return lax.while_loop(cond_fun, _body_fun, init_val)
 
     if not isinstance(max_steps, int) or max_steps < 0:
         raise ValueError("max_steps must be a non-negative integer")
