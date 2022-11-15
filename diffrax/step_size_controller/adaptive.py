@@ -465,6 +465,10 @@ class PIDController(AbstractAdaptiveStepSizeController):
         #
 
         def _scale(_y0, _y1_candidate, _y_error):
+            # In case the solver steps into a region for which the vector field isn't
+            # defined.
+            _nan = jnp.isnan(_y1_candidate).any()
+            _y1_candidate = jnp.where(_nan, _y0, _y1_candidate)
             _y = jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate))
             return _y_error / (self.atol + _y * self.rtol)
 
