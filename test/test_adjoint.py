@@ -24,7 +24,7 @@ def test_no_adjoint():
         sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, adjoint=adjoint)
         return jnp.sum(sol.ys)
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         jax.grad(fn)(1.0)
 
     primal, dual = jax.jvp(fn, (1.0,), (1.0,))
@@ -45,7 +45,7 @@ class _VectorField(eqx.Module):
         return jnp.stack([dya, dyb])
 
 
-def test_backsolve(getkey):
+def test_against(getkey):
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
     term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
@@ -105,21 +105,22 @@ def test_backsolve(getkey):
                 if t0 is False and t1 is False and ts is None:
                     continue
                 saveat = diffrax.SaveAt(t0=t0, t1=t1, ts=ts)
-                true_grads = _run_grad_int(
+
+                recursive_grads = _run_grad(
+                    diff, saveat, diffrax.RecursiveCheckpointAdjoint()
+                )
+                backsolve_grads = _run_grad(diff, saveat, diffrax.BacksolveAdjoint())
+                assert shaped_allclose(recursive_grads, backsolve_grads, atol=1e-5)
+
+                recursive_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.BacksolveAdjoint()
                 )
-                true_grads = jtu.tree_map(_convert_float0, true_grads)
+                recursive_grads = jtu.tree_map(_convert_float0, recursive_grads)
                 backsolve_grads = jtu.tree_map(_convert_float0, backsolve_grads)
-                assert shaped_allclose(true_grads, backsolve_grads)
-
-                true_grads = _run_grad(
-                    diff, saveat, diffrax.RecursiveCheckpointAdjoint()
-                )
-                backsolve_grads = _run_grad(diff, saveat, diffrax.BacksolveAdjoint())
-                assert shaped_allclose(true_grads, backsolve_grads)
+                assert shaped_allclose(recursive_grads, backsolve_grads, atol=1e-5)
 
 
 def test_adjoint_seminorm():

@@ -1,10 +1,10 @@
 from typing import Callable, Optional, Sequence, Tuple, Union
 
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 
 from ..custom_types import Array, Int, PyTree, Scalar
-from ..misc import error_if
 from ..solution import RESULTS
 from ..term import AbstractTerm
 from .base import AbstractStepSizeController
@@ -93,7 +93,8 @@ class StepTo(AbstractStepSizeController):
     def wrap(self, direction: Scalar):
         ts = self.ts * direction
         # Only tested after we've set the direction.
-        error_if(
+        ts = eqxi.error_if(
+            ts,
             ts[1:] <= ts[:-1],
             "`StepTo(ts=...)` must be strictly increasing (or strictly decreasing if "
             "t0 > t1).",
@@ -117,11 +118,12 @@ class StepTo(AbstractStepSizeController):
                 "`dt0` should be `None`. Step location is already determined "
                 f"by {type(self).__name__}(ts=...).",
             )
-        error_if(
+        ts = eqxi.error_if(
+            self.ts,
             (t0 != self.ts[0]) | (t1 != self.ts[-1]),
             "Must have `t0==ts[0]` and `t1==ts[-1]`.",
         )
-        return self.ts[1], 2
+        return ts[1], 2
 
     def adapt_step_size(
         self,

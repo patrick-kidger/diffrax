@@ -1,13 +1,13 @@
 import math
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
 from ..custom_types import Array
-from .unvmap import unvmap_any
 
 
 def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
@@ -114,6 +114,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, max_steps, base=16):
         def _body_fun(_val):
             inplace = lambda x: x
             inplace.pred = True
+            inplace.merge = lambda x: x
             _new_val = body_fun(_val, inplace)
             return jtu.tree_map(
                 _make_update,
@@ -230,7 +231,7 @@ def _while_loop(cond_fun, body_fun, data, max_steps, base):
 
         def _scan_fn(_data, _):
             _pred, _, _ = _data
-            _unvmap_pred = unvmap_any(_pred)
+            _unvmap_pred = eqxi.unvmap_any(_pred)
             return lax.cond(_unvmap_pred, _call, lambda x: x, _data), None
 
         # Don't put checkpointing on the lowest level

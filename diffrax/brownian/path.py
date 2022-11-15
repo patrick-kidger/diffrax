@@ -1,18 +1,14 @@
 from typing import Tuple, Union
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import (
-    force_bitcast_convert_type,
-    is_tuple_of_ints,
-    nondifferentiable_input,
-    split_by_tree,
-)
+from ..misc import force_bitcast_convert_type, is_tuple_of_ints, split_by_tree
 from .base import AbstractBrownianPath
 
 
@@ -67,8 +63,8 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     @eqx.filter_jit
     def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> PyTree[Array]:
         del left
-        nondifferentiable_input(t0, "t0")
-        nondifferentiable_input(t1, "t1")
+        t0 = eqxi.nondifferentiable(t0, name="t0")
+        t1 = eqxi.nondifferentiable(t1, name="t0")
         t0_ = force_bitcast_convert_type(t0, jnp.int32)
         t1_ = force_bitcast_convert_type(t1, jnp.int32)
         key = jrandom.fold_in(self.key, t0_)

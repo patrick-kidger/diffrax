@@ -2,14 +2,16 @@ import functools as ft
 from typing import Optional, Tuple, Type
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox.internal import ω
 
 from .custom_types import Array, DenseInfos, Int, PyTree, Scalar
 from .local_interpolation import AbstractLocalInterpolation
-from .misc import error_if, fill_forward, left_broadcast_to, ω
+from .misc import fill_forward, left_broadcast_to
 from .path import AbstractPath
 
 
@@ -347,7 +349,10 @@ def _check_ts(ts: Array["times"]) -> None:  # noqa: F821
     if ts.shape[0] < 2:
         raise ValueError(f"`ts` must be of length at least 2; got {ts.shape[0]}")
     # Also catches any NaN times.
-    error_if(ts[:-1] >= ts[1:], "`ts` must be monotonically strictly increasing.")
+    ts = eqxi.error_if(
+        ts, ts[:-1] >= ts[1:], "`ts` must be monotonically strictly increasing."
+    )
+    return ts
 
 
 def _interpolation_reverse(
@@ -448,7 +453,7 @@ def linear_interpolation(
     As `ys`, but with `NaN` values filled in.
     """
 
-    _check_ts(ts)
+    ts = _check_ts(ts)
     fn = ft.partial(_linear_interpolation, fill_forward_nans_at_end, ts)
     if replace_nans_at_start is None:
         return jtu.tree_map(fn, ys)
@@ -538,7 +543,7 @@ def rectilinear_interpolation(
         are something we are free to pick.
     """
 
-    _check_ts(ts)
+    ts = _check_ts(ts)
     if replace_nans_at_start is None:
         fn = ft.partial(_rectilinear_interpolation, ts, None)
         out = jtu.tree_map(fn, ys)
@@ -710,7 +715,7 @@ def backward_hermite_coefficients(
     to `ts[1]`, and `ts[1]` to `ts[2]` etc.
     """
 
-    _check_ts(ts)
+    ts = _check_ts(ts)
     fn = ft.partial(_backward_hermite_coefficients, fill_forward_nans_at_end, ts)
     if deriv0 is None:
         if replace_nans_at_start is None:

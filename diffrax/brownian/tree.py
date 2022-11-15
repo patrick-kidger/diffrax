@@ -2,6 +2,7 @@ from dataclasses import field
 from typing import Optional, Tuple, Union
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -9,7 +10,7 @@ import jax.random as jrandom
 import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
-from ..misc import error_if, is_tuple_of_ints, split_by_tree
+from ..misc import is_tuple_of_ints, split_by_tree
 from .base import AbstractBrownianPath
 
 
@@ -121,11 +122,15 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t0 = jnp.where(cond, self.t0, self.t1).astype(dtype)
         t1 = jnp.where(cond, self.t1, self.t0).astype(dtype)
 
-        error_if(
-            τ < t0, "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1]."
+        t0 = eqxi.error_if(
+            t0,
+            τ < t0,
+            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
         )
-        error_if(
-            τ > t1, "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1]."
+        t1 = eqxi.error_if(
+            t1,
+            τ > t1,
+            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
         )
         # Clip because otherwise the while loop below won't terminate, and the above
         # errors are only raised after everything has finished executing.

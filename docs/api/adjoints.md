@@ -29,7 +29,7 @@ There are multiple ways to backpropagate through a differential equation (to com
 
 ::: diffrax.NoAdjoint
     selection:
-        members: false
+      members: false
 
 ::: diffrax.ImplicitAdjoint
     selection:
