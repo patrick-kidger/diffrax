@@ -75,7 +75,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
         self.t1 = t1
         self.tol = tol
         self.shape = (
-            jax.ShapeDtypeStruct(shape, None) if is_tuple_of_ints(shape) else shape
+            jax.ShapeDtypeStruct(shape, jax.dtypes.canonicalize_dtype(None))
+            if is_tuple_of_ints(shape)
+            else shape
         )
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)

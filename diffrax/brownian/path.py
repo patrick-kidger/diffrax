@@ -43,7 +43,9 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         key: "jax.random.PRNGKey",
     ):
         self.shape = (
-            jax.ShapeDtypeStruct(shape, None) if is_tuple_of_ints(shape) else shape
+            jax.ShapeDtypeStruct(shape, jax.dtypes.canonicalize_dtype(None))
+            if is_tuple_of_ints(shape)
+            else shape
         )
         self.key = key
         if any(
