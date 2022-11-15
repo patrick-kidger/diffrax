@@ -9,7 +9,7 @@ import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
 import scipy.stats
-from diffrax.misc import ω
+from equinox.internal import ω
 
 from .helpers import (
     all_ode_solvers,

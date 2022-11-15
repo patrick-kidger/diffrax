@@ -5,15 +5,16 @@ from typing import Optional
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+from equinox.internal import ω
 
 from .custom_types import Array, PyTree, Scalar
-from .misc import linear_rescale, ω
+from .misc import linear_rescale
 from .path import AbstractPath
 
 
 class AbstractLocalInterpolation(AbstractPath):
-    t0: Scalar = field(init=True)
-    t1: Scalar = field(init=True)  # override init=False on AbstractPath
+    t0: Scalar = field(init=True, repr=True)
+    t1: Scalar = field(init=True, repr=True)  # override AbstractPath
 
 
 class LocalLinearInterpolation(AbstractLocalInterpolation):

@@ -1,9 +1,10 @@
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import jax
 import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from ..custom_types import Array, PyTree, Scalar
 
@@ -24,32 +25,6 @@ def force_bitcast_convert_type(val, new_type):
     intermediate_type = _itemsize_kind_type[new_type.dtype.itemsize, val.dtype.kind]
     val = val.astype(intermediate_type)
     return lax.bitcast_convert_type(val, new_type)
-
-
-class ContainerMeta(type):
-    def __new__(cls, name, bases, dict):
-        assert "reverse_lookup" not in dict
-        _dict = {}
-        reverse_lookup = []
-        i = 0
-        for key, value in dict.items():
-            if key.startswith("__") and key.endswith("__"):
-                _dict[key] = value
-            else:
-                _dict[key] = i
-                reverse_lookup.append(value)
-                i += 1
-        _dict["reverse_lookup"] = reverse_lookup
-        return super().__new__(cls, name, bases, _dict)
-
-    def __instancecheck__(cls, instance):
-        return isinstance(instance, int) or super().__instancecheck__(instance)
-
-    def __getitem__(cls, item):
-        return cls.reverse_lookup[item]
-
-    def __len__(cls):
-        return len(cls.reverse_lookup)
 
 
 def _fill_forward(
@@ -112,12 +87,26 @@ def rms_norm(x: PyTree) -> Scalar:
     x, _ = fu.ravel_pytree(x)
     if x.size == 0:
         return 0
-    sqnorm = jnp.mean(x**2)
-    cond = sqnorm == 0
-    # Double-where trick to avoid NaN gradients.
-    # See JAX issues #5039 and #1052.
-    _sqnorm = jnp.where(cond, 1.0, sqnorm)
-    return jnp.where(cond, 0.0, jnp.sqrt(_sqnorm))
+    return _rms_norm(x)
+
+
+@jax.custom_jvp
+def _rms_norm(x):
+    x_sq = jnp.real(x * jnp.conj(x))
+    return jnp.sqrt(jnp.mean(x_sq))
+
+
+@_rms_norm.defjvp
+def _rms_norm_jvp(x, tx):
+    (x,) = x
+    (tx,) = tx
+    out = _rms_norm(x)
+    # Get zero gradient, rather than NaN gradient, in these cases
+    pred = (out == 0) | jnp.isinf(out)
+    numerator = jnp.where(pred, 0, x)
+    denominator = jnp.where(pred, 1, out * x.size)
+    t_out = jnp.dot(numerator / denominator, tx)
+    return out, t_out
 
 
 def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> Scalar:
@@ -161,3 +150,15 @@ def left_broadcast_to(arr, shape):
 
     indices = tuple(slice(None) if i < arr.ndim else None for i in range(len(shape)))
     return jnp.broadcast_to(arr[indices], shape)
+
+
+def split_by_tree(key, tree, is_leaf: Optional[Callable[[PyTree], bool]] = None):
+    """Like jax.random.split but accepts tree as a second argument and produces
+    a tree of keys with the same structure.
+    """
+    treedef = jtu.tree_structure(tree, is_leaf=is_leaf)
+    return jtu.tree_unflatten(treedef, jax.random.split(key, treedef.num_leaves))
+
+
+def is_tuple_of_ints(obj):
+    return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)

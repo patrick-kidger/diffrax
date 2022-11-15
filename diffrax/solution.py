@@ -1,15 +1,15 @@
 from dataclasses import field
 from typing import Any, Dict, Optional
 
+import equinox.internal as eqxi
 import jax.numpy as jnp
 
 from .custom_types import Array, Bool, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
-from .misc import ContainerMeta
 from .path import AbstractPath
 
 
-class RESULTS(metaclass=ContainerMeta):
+class RESULTS(metaclass=eqxi.ContainerMeta):
     successful = ""
     discrete_terminating_event_occurred = (
         "Terminating solve because a discrete event occurred."
@@ -85,8 +85,8 @@ class Solution(AbstractPath):
         must allocate enough space for the maximum possible number of steps.
     """
 
-    t0: Scalar = field(init=True)
-    t1: Scalar = field(init=True)  # override init=False in AbstractPath
+    t0: Scalar = field(init=True, repr=True)
+    t1: Scalar = field(init=True, repr=True)  # override AbstractPath
     ts: Optional[Array["times"]]  # noqa: F821
     ys: Optional[PyTree["times", ...]]  # noqa: F821
     interpolation: Optional[DenseInterpolation]

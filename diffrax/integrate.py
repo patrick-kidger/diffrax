@@ -3,6 +3,7 @@ import warnings
 from typing import Optional
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -18,14 +19,7 @@ from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
-from .misc import (
-    bounded_while_loop,
-    branched_error_if,
-    error_if,
-    HadInplaceUpdate,
-    unvmap_all,
-    unvmap_max,
-)
+from .misc import bounded_while_loop, HadInplaceUpdate
 from .saveat import SaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
 from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
@@ -33,6 +27,7 @@ from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
     ConstantStepSize,
+    PIDController,
     StepTo,
 )
 from .term import AbstractTerm, WrapTerm
@@ -120,6 +115,15 @@ def loop(
         dense_ts = dense_ts.at[0].set(t0)
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
 
+    # Privileged optimisation for the common case of no jumps. We can reduce
+    # solver compile time with this.
+    # TODO: somehow make this a non-priviliged optimisation, i.e. detect when
+    # we can make jumps or not.
+    cannot_make_jump = isinstance(stepsize_controller, (ConstantStepSize, StepTo)) or (
+        isinstance(stepsize_controller, PIDController)
+        and stepsize_controller.jump_ts is None
+    )
+
     def cond_fun(state):
         return (state.tprev < t1) & is_successful(state.result)
 
@@ -137,7 +141,7 @@ def loop(
             state.y,
             args,
             state.solver_state,
-            state.made_jump,
+            False if cannot_make_jump else state.made_jump,
         )
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
@@ -164,6 +168,16 @@ def loop(
             state.controller_state,
         )
         assert jnp.result_type(keep_step) is jnp.dtype(bool)
+        if cannot_make_jump:
+            # Should hopefully get DCE'd out.
+            made_jump = eqxi.error_if(
+                made_jump,
+                made_jump,
+                (
+                    "Internal error in Diffrax: made unexpected jump. Please report an "
+                    "issue at https://github.com/patrick-kidger/diffrax/issues"
+                ),
+            )
 
         #
         # Do some book-keeping.
@@ -418,7 +432,7 @@ def loop(
             with jax.ensure_compile_time_eval():
 
                 def _is_finite(_t):
-                    all_finite = unvmap_all(jnp.isfinite(_t))
+                    all_finite = eqxi.unvmap_all(jnp.isfinite(_t))
                     return not isinstance(all_finite, jax.core.Tracer) and all_finite
 
                 if _is_finite(t0) and _is_finite(t1) and _is_finite(dt0):
@@ -434,7 +448,7 @@ def loop(
                     compiled_num_steps, _ = lax.while_loop(
                         _cond_fun, _body_fun, (0, t0)
                     )
-                    compiled_num_steps = unvmap_max(compiled_num_steps)
+                    compiled_num_steps = eqxi.unvmap_max(compiled_num_steps)
                 else:
                     if stepsize_controller.compile_steps is None:
                         compiled_num_steps = None
@@ -556,9 +570,9 @@ def diffeqsolve(
     understand these. All of these are keyword-only arguments.
 
     - `adjoint`: How to backpropagate (and compute forward-mode autoderivatives) of
-        `diffeqsolve`. Defaults to discretise-then-optimise with recursive
-        checkpointing, which is usually the best option for most problems. See the page
-        on [Adjoints](./adjoints.md) for more information.
+        `diffeqsolve`. Defaults to discretise-then-optimise, which is usually the best
+        option for most problems. See the page on [Adjoints](./adjoints.md) for more
+        information.
 
     - `discrete_terminating_event`: A discrete event at which to terminate the solve
         early. See the page on [Events](./events.md) for more information.
@@ -567,8 +581,9 @@ def diffeqsolve(
         unconditionally.
 
         Can also be set to `None` to allow an arbitrary number of steps, although this
-        is incompatible with `adjoint=RecursiveCheckpointAdjoint()` (the default) and
-        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`.
+        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`,
+        and can only be backpropagated through if using `adjoint=BacksolveAdjoint()` or
+        `adjoint=ImplicitAdjoint()`.
 
         Note that (a) compile times; and (b) backpropagation run times; will increase
         as `max_steps` increases. (Specifically, each time `max_steps` passes a power
@@ -577,8 +592,9 @@ def diffeqsolve(
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
-        If `True` then an integration failure will either raise a `ValueError` (when
-        not using `jax.jit`) or print a warning message (when using `jax.jit`).
+        If `True` then an integration failure will raise an error. Note that the errors
+        are only reliably raised on CPUs. If on GPUs then the error may only be
+        printed to stderr, whilst on TPUs then the behaviour is undefined.
 
         If `False` then the returned solution object will have a `result` field
         indicating whether any failures occurred.
@@ -634,7 +650,9 @@ def diffeqsolve(
             f"t0 with value {t0} and type {type(t0)}, "
             f"dt0 with value {dt0} and type {type(dt0)}"
         )
-        error_if((t1 - t0) * dt0 < 0, msg)
+        with jax.ensure_compile_time_eval():
+            pred = (t1 - t0) * dt0 < 0
+        dt0 = eqxi.error_if(dt0, pred, msg)
 
     # Error checking
     term_leaves, term_structure = jtu.tree_flatten(
@@ -677,7 +695,7 @@ def diffeqsolve(
             if isinstance(solver, Euler):
                 raise ValueError(
                     "An SDE should not be solved with adaptive step sizes with Euler's "
-                    "method; it will not converge to the correct solution."
+                    "method, as it may not converge to the correct solution."
                 )
     if is_unsafe_sde(terms):
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
@@ -691,8 +709,6 @@ def diffeqsolve(
 
     # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
     # types for JAX to be happy with the bounded_while_loop below.)
-    # Use compile-time-eval to avoid turning timelikes into spurious tracers, which
-    # inhibit optimisation via compile-time number-of-step inference.
     with jax.ensure_compile_time_eval():
         timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
         timelikes = [x for x in timelikes if x is not None]
@@ -713,7 +729,6 @@ def diffeqsolve(
     del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
-    # Once again use compile-time-eval to keep the timelikes non-tracer if possible.
     with jax.ensure_compile_time_eval():
         direction = jnp.where(t0 < t1, 1, -1)
         t0 = t0 * direction
@@ -736,22 +751,28 @@ def diffeqsolve(
 
     # Error checking
     if saveat.ts is not None:
-        error_if(
+        saveat_ts = eqxi.error_if(
+            saveat.ts,
             saveat.ts[1:] < saveat.ts[:-1],
             "saveat.ts must be increasing or decreasing.",
         )
-        error_if(
-            (saveat.ts > t1) | (saveat.ts < t0), "saveat.ts must lie between t0 and t1."
+        saveat_ts = eqxi.error_if(
+            saveat_ts,
+            (saveat.ts > t1) | (saveat.ts < t0),
+            "saveat.ts must lie between t0 and t1.",
         )
+        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat_ts)
 
     # Initialise states
     tprev = t0
     error_order = solver.error_order(terms)
     if controller_state is None:
+        passed_controller_state = False
         (tnext, controller_state) = stepsize_controller.init(
             terms, t0, t1, y0, dt0, args, solver.func, error_order
         )
     else:
+        passed_controller_state = True
         if dt0 is None:
             (tnext, _) = stepsize_controller.init(
                 terms, t0, t1, y0, dt0, args, solver.func, error_order
@@ -760,7 +781,10 @@ def diffeqsolve(
             tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
     if solver_state is None:
+        passed_solver_state = False
         solver_state = solver.init(terms, t0, tnext, y0, args)
+    else:
+        passed_solver_state = True
 
     # Allocate memory to store output.
     out_size = 0
@@ -789,7 +813,7 @@ def diffeqsolve(
     ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
-        error_if(t0 == t1, "Cannot save dense output if t0 == t1")
+        t0 = eqxi.error_if(t0, t0 == t1, "Cannot save dense output if t0 == t1")
         if max_steps is None:
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
@@ -842,8 +866,10 @@ def diffeqsolve(
         t1=t1,
         dt0=dt0,
         max_steps=max_steps,
-        throw=throw,
         init_state=init_state,
+        throw=throw,
+        passed_solver_state=passed_solver_state,
+        passed_controller_state=passed_controller_state,
     )
 
     #
@@ -887,23 +913,15 @@ def diffeqsolve(
     t1 = t1 * direction
 
     # Store metadata
-    compiled_num_steps = aux_stats["compiled_num_steps"]
     stats = {
         "num_steps": final_state.num_steps,
         "num_accepted_steps": final_state.num_accepted_steps,
         "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
-        "compiled_num_steps": compiled_num_steps,
+        "compiled_num_steps": aux_stats["compiled_num_steps"],
     }
     result = final_state.result
-    error_index = unvmap_max(result)
-    branched_error_if(
-        throw & jnp.invert(is_okay(result)),
-        error_index,
-        RESULTS.reverse_lookup,
-    )
-
-    return Solution(
+    sol = Solution(
         t0=t0,
         t1=t1,
         ts=ts,
@@ -915,3 +933,12 @@ def diffeqsolve(
         controller_state=controller_state,
         made_jump=made_jump,
     )
+
+    error_index = eqxi.unvmap_max(result)
+    sol = eqxi.branched_error_if(
+        sol,
+        throw & jnp.invert(is_okay(result)),
+        error_index,
+        RESULTS.reverse_lookup,
+    )
+    return sol

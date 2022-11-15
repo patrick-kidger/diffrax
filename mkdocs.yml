@@ -132,5 +132,4 @@ nav:
         - Developer Documentation:
             - 'devdocs/predictor_dirk.md'
             - 'devdocs/adjoint_commutative_noise.md'
-            - 'devdocs/omega.md'
             - 'devdocs/bounded_while_loop.md'

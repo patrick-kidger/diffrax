@@ -4,6 +4,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
 
@@ -19,10 +20,51 @@ _vals = {
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-def test_shape(ctr, getkey):
+def test_shape_and_dtype(ctr, getkey):
     t0 = 0
     t1 = 2
-    for shape in ((0,), (1, 0), (2,), (3, 4), (1, 2, 3, 4)):
+
+    shapes = (
+        (),
+        (0,),
+        (1, 0),
+        (2,),
+        (3, 4),
+        (1, 2, 3, 4),
+        {
+            "a": (1,),
+            "b": (2, 3),
+        },
+        (
+            (1, 2),
+            (
+                (3, 4),
+                (5, 6),
+            ),
+        ),
+    )
+
+    dtypes = (
+        None,
+        None,
+        None,
+        jnp.float16,
+        jnp.float32,
+        jnp.float64,
+        {"a": None, "b": jnp.float64},
+        (jnp.float16, (jnp.float32, jnp.float64)),
+    )
+
+    def is_tuple_of_ints(obj):
+        return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
+
+    for shape, dtype in zip(shapes, dtypes):
+        # Shape to pass as input
+        if dtype is not None:
+            shape = jtu.tree_map(
+                jax.ShapeDtypeStruct, shape, dtype, is_leaf=is_tuple_of_ints
+            )
+
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape, getkey())
             assert path.t0 is None
@@ -34,12 +76,22 @@ def test_shape(ctr, getkey):
             assert path.t1 == 2
         else:
             assert False
+
+        # Expected output shape
+        if dtype is None:
+            shape = jtu.tree_map(
+                jax.ShapeDtypeStruct, shape, dtype, is_leaf=is_tuple_of_ints
+            )
+
         for _t0 in _vals.values():
             for _t1 in _vals.values():
                 t0, _ = _t0
                 _, t1 = _t1
                 out = path.evaluate(t0, t1)
-                assert out.shape == shape
+                out_shape = jtu.tree_map(
+                    lambda leaf: jax.ShapeDtypeStruct(leaf.shape, leaf.dtype), out
+                )
+                assert out_shape == shape
 
 
 @pytest.mark.parametrize(
