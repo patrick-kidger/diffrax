@@ -65,4 +65,6 @@ Neural networks: [Equinox](https://github.com/patrick-kidger/equinox).
 
 Type annotations and runtime checking for PyTrees and shape/dtype of JAX arrays: [jaxtyping](https://github.com/google/jaxtyping).
 
+Computer vision models: [Eqxvision](https://github.com/paganpasta/eqxvision).
+
 SymPy<->JAX conversion; train symbolic expressions via gradient descent: [sympy2jax](https://github.com/google/sympy2jax).

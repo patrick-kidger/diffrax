@@ -125,6 +125,18 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
 
     In addition a binomial checkpointing scheme is used so that memory usage is low.
     (This checkpointing can increase compile time a bit, though.)
+
+    !!! Reference
+
+        Binomial checkpointing (also known as "treeverse") was introduced in:
+        ```bibtex
+        @article{griewank1998treeverse,
+            title = {Treeverse: An Implementation of Checkpointing for the Reverse or
+                     Adjoint Mode of Computational Differentiation}
+            author = {Griewank, Andreas and Walther, Andrea},
+            year = {1998},
+        }
+        ```
     """
 
     def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):

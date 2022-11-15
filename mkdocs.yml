@@ -117,6 +117,7 @@ nav:
         - 'api/saveat.md'
         - 'api/stepsize_controller.md'
         - 'api/solution.md'
+        - 'api/citation.md'
     - Advanced API:
         - 'api/adjoints.md'
         - 'api/events.md'
