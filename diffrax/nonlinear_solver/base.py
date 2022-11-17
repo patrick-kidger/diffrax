@@ -8,8 +8,8 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
 
+from ..ad import implicit_jvp
 from ..custom_types import Int, PyTree, Scalar
-from ..misc import implicit_jvp
 from ..solution import RESULTS
 
 

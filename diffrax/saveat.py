@@ -1,7 +1,6 @@
 from typing import Optional, Sequence, Union
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 
 from .custom_types import Array, Scalar
@@ -24,9 +23,12 @@ class SaveAt(eqx.Module):
     made_jump: bool = False
 
     def __post_init__(self):
-        with jax.ensure_compile_time_eval():
-            ts = None if self.ts is None else jnp.asarray(self.ts)
-        object.__setattr__(self, "ts", ts)
+        if self.ts is not None:
+            if len(self.ts) == 0:
+                ts = None
+            else:
+                ts = jnp.asarray(self.ts)
+            object.__setattr__(self, "ts", ts)
         if (
             not self.t0
             and not self.t1

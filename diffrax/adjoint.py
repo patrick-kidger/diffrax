@@ -1,5 +1,7 @@
 import abc
-from typing import Any, Dict
+import functools as ft
+import math
+from typing import Any, Dict, Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -8,7 +10,8 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
 
-from .misc import implicit_jvp
+from .ad import implicit_jvp
+from .bounded_while_loop import bounded_while_loop
 from .saveat import SaveAt
 from .term import AbstractTerm, AdjointTerm
 
@@ -61,6 +64,23 @@ def _no_transpose_final_state(final_state):
         is_leaf=_is_none,
     )
     return final_state
+
+
+def _while_loop(cond_fun, body_fun, init_val, max_steps):
+    if max_steps is None:
+        return lax.while_loop(cond_fun, body_fun, init_val)
+    else:
+
+        def _cond_fun(carry):
+            step, val = carry
+            return (step < max_steps) & cond_fun(val)
+
+        def _body_fun(carry):
+            step, val = carry
+            return step + 1, body_fun(val)
+
+        _, final_val = lax.while_loop(_cond_fun, _body_fun, (0, init_val))
+        return final_val
 
 
 class AbstractAdjoint(eqx.Module):
@@ -120,28 +140,152 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
     solution directly. This is sometimes known as "discretise-then-optimise", or
     described as "backpropagation through the solver".
 
+    Uses a binomial checkpointing scheme to keep memory usage low.
+
     For most problems this is the preferred technique for backpropagating through a
     differential equation.
-
-    In addition a binomial checkpointing scheme is used so that memory usage is low.
-    (This checkpointing can increase compile time a bit, though.)
-
-    !!! Reference
-
-        Binomial checkpointing (also known as "treeverse") was introduced in:
-        ```bibtex
-        @article{griewank1998treeverse,
-            title = {Treeverse: An Implementation of Checkpointing for the Reverse or
-                     Adjoint Mode of Computational Differentiation}
-            author = {Griewank, Andreas and Walther, Andrea},
-            year = {1998},
-        }
-        ```
     """
 
     def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):
         del throw, passed_solver_state, passed_controller_state
-        return self._loop_fn(**kwargs, is_bounded=True)
+        return self._loop_fn(**kwargs, while_loop=bounded_while_loop)
+
+
+class RecursiveCheckpointAdjoint2(AbstractAdjoint):
+    """Backpropagate through [`diffrax.diffeqsolve`][] by differentiating the numerical
+    solution directly. This is sometimes known as "discretise-then-optimise", or
+    described as "backpropagation through the solver".
+
+    Uses a binomial checkpointing scheme to keep memory usage low.
+
+    For most problems this is the preferred technique for backpropagating through a
+    differential equation.
+
+    !!! info
+
+        Note that this cannot be forward-mode autodifferentiated. (E.g. using
+        `jax.jvp`.)
+
+    ??? cite "References"
+
+        Selecting which steps at which to save checkpoints (and when this is done, which
+        old checkpoint to evict) is important for minimising the amount of recomputation
+        performed.
+
+        The implementation here performs "online checkpointing", as the number of steps
+        is not known in advance. This was developed in:
+
+        ```bibtex
+        @article{stumm2010new,
+            author = {Stumm, Philipp and Walther, Andrea},
+            title = {New Algorithms for Optimal Online Checkpointing},
+            journal = {SIAM Journal on Scientific Computing},
+            volume = {32},
+            number = {2},
+            pages = {836--854},
+            year = {2010},
+            doi = {10.1137/080742439},
+        }
+
+        @article{wang2009minimal,
+            author = {Wang, Qiqi and Moin, Parviz and Iaccarino, Gianluca},
+            title = {Minimal Repetition Dynamic Checkpointing Algorithm for Unsteady
+                     Adjoint Calculation},
+            journal = {SIAM Journal on Scientific Computing},
+            volume = {31},
+            number = {4},
+            pages = {2549--2567},
+            year = {2009},
+            doi = {10.1137/080727890},
+        }
+        ```
+
+        For reference, the classical "offline checkpointing" (also known as "treeverse",
+        "recursive binary checkpointing", "revolve" etc.) was developed in:
+
+        ```bibtex
+        @article{griewank1992achieving,
+            author = {Griewank, Andreas},
+            title = {Achieving logarithmic growth of temporal and spatial complexity in
+                     reverse automatic differentiation},
+            journal = {Optimization Methods and Software},
+            volume = {1},
+            number = {1},
+            pages = {35--54},
+            year  = {1992},
+            publisher = {Taylor & Francis},
+            doi = {10.1080/10556789208805505},
+        }
+
+        @article{griewank2000revolve,
+            author = {Griewank, Andreas and Walther, Andrea},
+            title = {Algorithm 799: Revolve: An Implementation of Checkpointing for the
+                     Reverse or Adjoint Mode of Computational Differentiation},
+            year = {2000},
+            publisher = {Association for Computing Machinery},
+            volume = {26},
+            number = {1},
+            doi = {10.1145/347837.347846},
+            journal = {ACM Trans. Math. Softw.},
+            pages = {19--45},
+        }
+        ```
+    """
+
+    checkpoints: Optional[int] = None
+
+    def loop(
+        self,
+        *,
+        max_steps,
+        throw,
+        passed_solver_state,
+        passed_controller_state,
+        **kwargs,
+    ):
+        del throw, passed_solver_state, passed_controller_state
+        if self.checkpoints is None:
+            if max_steps is None:
+                raise ValueError(
+                    "Cannot use "
+                    "`diffeqsolve(..., max_steps=None, adjoint=RecursiveCheckpointAdjoint(checkpoints=None))` "  # noqa: E501
+                    "Either specify the number of `checkpoints` to use, or specify the "
+                    "maximum number of steps (and `checkpoints` is chosen "
+                    "automatically as `log2(max_steps)``.)"
+                )
+            # Binomial logarithmic growth is what is needed in classical treeverse.
+            #
+            # Moreover this is optimal even in the online case, as provided
+            # `max_steps >= 21`
+            # then
+            # `checkpoints = ceil(log2(max_steps))`
+            # satisfies
+            # `max_steps <= (checkpoints + 1)(checkpoints + 2)/2`
+            # which is the condition for optimality.
+            #
+            # Meanwhile if
+            # `max_steps <= 20`
+            # then we handle it as a special case, to once again ensure we satisfy
+            # `max_steps <= (checkpoints + 1)(checkpoints + 2)/2`
+            #
+            # The optimality condition is equation (2.2) of
+            # "New Algorithms for Optimal Online Checkpointing", Stumm and Walther 2010.
+            # https://tu-dresden.de/mn/math/wir/ressourcen/dateien/forschung/publikationen/pdf2010/new_algorithms_for_optimal_online_checkpointing.pdf
+            if max_steps <= 20:
+                checkpoints = 1
+                while (checkpoints + 1) * (checkpoints + 2) < 2 * max_steps:
+                    checkpoints += 1
+            else:
+                checkpoints = math.ceil(math.log2(max_steps))
+        else:
+            checkpoints = self.checkpoints
+        return self._loop_fn(
+            max_steps=max_steps,
+            while_loop=ft.partial(
+                eqxi.checkpointed_while_loop, checkpoints=checkpoints
+            ),
+            **kwargs,
+        )
 
 
 class NoAdjoint(AbstractAdjoint):
@@ -153,9 +297,7 @@ class NoAdjoint(AbstractAdjoint):
 
     def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):
         del throw, passed_solver_state, passed_controller_state
-        final_state, aux_stats = self._loop_fn(**kwargs, is_bounded=False)
-        final_state = eqxi.nondifferentiable_backward(final_state)
-        return final_state, aux_stats
+        return self._loop_fn(**kwargs, while_loop=_while_loop)
 
 
 def _vf(ys, residual, args__terms, closure):
@@ -178,7 +320,7 @@ def _solve(args__terms, closure):
         solver=solver,
         saveat=saveat,
         init_state=init_state,
-        is_bounded=False,
+        while_loop=_while_loop,
     )
     # Note that we use .ys not .y here. The former is what is actually returned
     # by diffeqsolve, so it is the thing we want to attach the tangent to.
@@ -260,7 +402,11 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
     )
     del y
     return self._loop_fn(
-        args=args, terms=terms, init_state=init_state, is_bounded=False, **kwargs
+        args=args,
+        terms=terms,
+        init_state=init_state,
+        while_loop=_while_loop,
+        **kwargs,
     )
 
 

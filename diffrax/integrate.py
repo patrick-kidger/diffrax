@@ -5,21 +5,21 @@ from typing import Optional
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
 from .adjoint import (
     AbstractAdjoint,
     BacksolveAdjoint,
+    ImplicitAdjoint,
     NoAdjoint,
     RecursiveCheckpointAdjoint,
 )
+from .bounded_while_loop import bounded_while_loop
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
-from .misc import bounded_while_loop, HadInplaceUpdate
 from .saveat import SaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
 from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
@@ -105,7 +105,7 @@ def loop(
     terms,
     args,
     init_state,
-    is_bounded,
+    while_loop,
 ):
 
     if saveat.t0:
@@ -127,7 +127,7 @@ def loop(
     def cond_fun(state):
         return (state.tprev < t1) & is_successful(state.result)
 
-    def body_fun(state, inplace):
+    def body_fun(state):
 
         #
         # Actually do some differential equation solving! Make numerical steps, adapt
@@ -215,11 +215,6 @@ def loop(
 
         #
         # Store the output produced from this numerical step.
-        # This is a bit involved, and uses the `inplace` function passed as an argument
-        # to this body function.
-        # This is because we need to make in-place updates to store our results, but
-        # doing is a bit of a hassle inside `bounded_while_loop`. (See its docstring
-        # for details.)
         #
 
         saveat_ts_index = state.saveat_ts_index
@@ -229,97 +224,34 @@ def loop(
         dense_ts = state.dense_ts
         dense_infos = state.dense_infos
         dense_save_index = state.dense_save_index
-        made_inplace_update = False
 
         if saveat.ts is not None:
-            made_inplace_update = True
 
             _interpolator = solver.interpolation_cls(
                 t0=state.tprev, t1=state.tnext, **dense_info
             )
 
-            def _saveat_get(_saveat_ts_index):
-                return saveat.ts[jnp.minimum(_saveat_ts_index, len(saveat.ts) - 1)]
-
             def _cond_fun(_state):
-                _saveat_ts_index = _state.saveat_ts_index
-                _saveat_t = _saveat_get(_saveat_ts_index)
                 return (
                     keep_step
-                    & (_saveat_t <= state.tnext)
-                    & (_saveat_ts_index < len(saveat.ts))
+                    & (saveat.ts[_state.saveat_ts_index] <= state.tnext)
+                    & (_state.saveat_ts_index < len(saveat.ts))
                 )
 
-            def _body_fun(_state, _inplace):
-                _saveat_ts_index = _state.saveat_ts_index
-                _ts = _state.ts
-                _ys = _state.ys
-                _save_index = _state.save_index
-
-                _saveat_t = _saveat_get(_saveat_ts_index)
+            def _body_fun(_state):
+                _saveat_t = saveat.ts[_state.saveat_ts_index]
                 _saveat_y = _interpolator.evaluate(_saveat_t)
-
-                # VOODOO MAGIC
-                #
-                # Okay, time for some voodoo that I absolutely don't understand.
-                #
-                # Shown in the comment is what I would to write:
-                #
-                #  _inplace = _inplace.merge(inplace)
-                #  _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
-                #  _ys = jtu.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
-                #
-                # Seems reasonable, right? Just updating a value.
-                #
-                # Below is what we actually run:
-
-                _inplace.merge(inplace)
-                _pred = cond_fun(state) & _cond_fun(_state)
-                _ts = _ts.at[_save_index].set(
-                    jnp.where(_pred, _saveat_t, _ts[_save_index])
-                )
+                _ts = _state.ts.at[_state.save_index].set(_saveat_t)
                 _ys = jtu.tree_map(
-                    lambda __ys, __saveat_y: __ys.at[_save_index].set(
-                        jnp.where(_pred, __saveat_y, __ys[_save_index])
-                    ),
-                    _ys,
+                    lambda __ys, __saveat_y: __ys.at[_state.save_index].set(__saveat_y),
+                    _state.ys,
                     _saveat_y,
                 )
-
-                # Some immediate questions you might have:
-                #
-                # - Isn't this essentially equivalent to the commented-out version?
-                #   - Nitpick: the commented-out version includes an enhanced cond_fun
-                #     that checks the step count, but it shouldn't matter here.
-                # - It looks like `_inplace.merge(inplace)` isn't even used?
-                #   - I think it will appear in the jaxpr, interestingly, based off of
-                #     the toy example:
-                #     >>> def f(x, y):
-                #     ...     x & y
-                #     ...     return x + 1
-                #     >>> jax.make_jaxpr(f)(1, 2)
-                #     Which is presumably how this manages to affect anything at all.
-                #
-                # And you are right. Those are both reasonable questions, at least as
-                # far as I can see.
-                #
-                # And yet for some reason this version will run substantially faster.
-                # (At time of writing: on the `small_neural_ode.py` benchmark, on the
-                # CPU.)
-                #
-                # ~VOODOO MAGIC
-
-                _saveat_ts_index = _saveat_ts_index + 1
-                _save_index = _save_index + 1
-
-                _ts = HadInplaceUpdate(_ts)
-                _ys = jtu.tree_map(HadInplaceUpdate, _ys)
-
                 return _InnerState(
-                    saveat_ts_index=_saveat_ts_index,
+                    saveat_ts_index=_state.saveat_ts_index + 1,
                     ts=_ts,
                     ys=_ys,
-                    save_index=_save_index,
+                    save_index=_state.save_index + 1,
                 )
 
             init_inner_state = _InnerState(
@@ -335,17 +267,16 @@ def loop(
             ys = final_inner_state.ys
             save_index = final_inner_state.save_index
 
+        # TODO: make while loop?
         def maybe_inplace(i, x, u):
-            return inplace(x).at[i].set(jnp.where(keep_step, u, x[i]))
+            return x.at[i].set(jnp.where(keep_step, u, x[i]))
 
         if saveat.steps:
-            made_inplace_update = True
             ts = maybe_inplace(save_index, ts, tprev)
             ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
             save_index = save_index + keep_step
 
         if saveat.dense:
-            made_inplace_update = True
             dense_ts = maybe_inplace(dense_save_index + 1, dense_ts, tprev)
             dense_infos = jtu.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
@@ -353,12 +284,6 @@ def loop(
                 dense_info,
             )
             dense_save_index = dense_save_index + keep_step
-
-        if made_inplace_update:
-            ts = HadInplaceUpdate(ts)
-            ys = jtu.tree_map(HadInplaceUpdate, ys)
-            dense_ts = HadInplaceUpdate(dense_ts)
-            dense_infos = jtu.tree_map(HadInplaceUpdate, dense_infos)
 
         new_state = _State(
             y=y,
@@ -402,101 +327,7 @@ def loop(
 
         return new_state
 
-    if is_bounded:
-        # Some privileged optimisations, but for common use cases.
-        # TODO: make these a method on an AbstractFixedStepSizeController?
-        #
-        # These optimisations depend on implementations details of `ConstantStepSize`,
-        # `StepTo`, and `bounded_while_loop`.
-        #
-        # We try to determine the exact number of integration steps that will be made.
-        # If this is possible then we can use a single `lax.scan`, rather than the
-        # recursive construction of `bounded_while_loop`. This primarily reduces
-        # compilation times.
-        if max_steps is None:
-            # `bounded_while_loop(..., max_steps=None)` lowers to `lax.while_loop`
-            # anyway; this is already fast. Don't try to determine the number of steps
-            # needed.
-            compiled_num_steps = None
-        elif isinstance(stepsize_controller, ConstantStepSize) and (
-            stepsize_controller.compile_steps is None
-            or stepsize_controller.compile_steps is True
-        ):
-            # We can determine the number of steps quite easily with constant step
-            # size.
-            #
-            # We do so using a `lax.while_loop`.
-            # - Not just a (t1 - t0)/dt0 division, to avoid floating point errors.
-            # - lax.while_loop, not just a Python one, to ensure that we match the
-            #   behaviour at runtime; no funny edge cases.
-            with jax.ensure_compile_time_eval():
-
-                def _is_finite(_t):
-                    all_finite = eqxi.unvmap_all(jnp.isfinite(_t))
-                    return not isinstance(all_finite, jax.core.Tracer) and all_finite
-
-                if _is_finite(t0) and _is_finite(t1) and _is_finite(dt0):
-
-                    def _cond_fun(_state):
-                        _, _t = _state
-                        return _t < t1
-
-                    def _body_fun(_state):
-                        _step, _t = _state
-                        return _step + 1, _clip_to_end(_t, _t + dt0, t1, True)
-
-                    compiled_num_steps, _ = lax.while_loop(
-                        _cond_fun, _body_fun, (0, t0)
-                    )
-                    compiled_num_steps = eqxi.unvmap_max(compiled_num_steps)
-                else:
-                    if stepsize_controller.compile_steps is None:
-                        compiled_num_steps = None
-                    else:
-                        assert stepsize_controller.compile_steps is True
-                        raise ValueError(
-                            "Could not determine exact number of steps, but "
-                            "`stepsize_controller.compile_steps=True`"
-                        )
-        elif isinstance(stepsize_controller, StepTo) and (
-            stepsize_controller.compile_steps is None
-            or stepsize_controller.compile_steps is True
-        ):
-            # The user has explicitly specified the number of steps.
-            compiled_num_steps = len(stepsize_controller.ts) - 1
-        else:
-            # Else we can't determine the number of steps.
-            compiled_num_steps = None
-
-        if compiled_num_steps is None or isinstance(
-            compiled_num_steps, jax.core.Tracer
-        ):
-            # If we couldn't determine the number of steps then use the default
-            # recursive construction.
-            compiled_num_steps = None
-            base = 16
-        else:
-            if isinstance(compiled_num_steps, jnp.ndarray):
-                compiled_num_steps = compiled_num_steps.item()
-            base = compiled_num_steps
-            max_steps = min(max_steps, compiled_num_steps)
-
-        final_state = bounded_while_loop(
-            cond_fun, body_fun, init_state, max_steps, base=base
-        )
-    else:
-        compiled_num_steps = None
-
-        if max_steps is None:
-            _cond_fun = cond_fun
-        else:
-
-            def _cond_fun(state):
-                return cond_fun(state) & (state.num_steps < max_steps)
-
-        final_state = bounded_while_loop(
-            _cond_fun, body_fun, init_state, max_steps=None
-        )
+    final_state = while_loop(cond_fun, body_fun, init_state, max_steps)
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.
@@ -506,7 +337,7 @@ def loop(
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
-    aux_stats = dict(compiled_num_steps=compiled_num_steps)
+    aux_stats = dict()
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
 
 
@@ -702,23 +533,22 @@ def diffeqsolve(
             raise ValueError(
                 "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
             )
-        if not isinstance(adjoint, NoAdjoint):
+        if not isinstance(adjoint, (NoAdjoint, ImplicitAdjoint)):
             raise ValueError(
-                "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()`."
+                "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()` or "
+                "`adjoint=ImplicitAdjoint()`."
             )
 
-    # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
-    # types for JAX to be happy with the bounded_while_loop below.)
-    with jax.ensure_compile_time_eval():
-        timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
-        timelikes = [x for x in timelikes if x is not None]
-        dtype = jnp.result_type(*timelikes)
-        t0 = jnp.asarray(t0, dtype=dtype)
-        t1 = jnp.asarray(t1, dtype=dtype)
-        if dt0 is not None:
-            dt0 = jnp.asarray(dt0, dtype=dtype)
-        if saveat.ts is not None:
-            saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
+    # Allow setting e.g. t0 as an int with dt0 as a float.
+    timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
+    timelikes = [x for x in timelikes if x is not None]
+    dtype = jnp.result_type(*timelikes)
+    t0 = jnp.asarray(t0, dtype=dtype)
+    t1 = jnp.asarray(t1, dtype=dtype)
+    if dt0 is not None:
+        dt0 = jnp.asarray(dt0, dtype=dtype)
+    if saveat.ts is not None:
+        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
     def _promote(yi):
@@ -729,14 +559,13 @@ def diffeqsolve(
     del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
-    with jax.ensure_compile_time_eval():
-        direction = jnp.where(t0 < t1, 1, -1)
-        t0 = t0 * direction
-        t1 = t1 * direction
-        if dt0 is not None:
-            dt0 = dt0 * direction
-        if saveat.ts is not None:
-            saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
+    direction = jnp.where(t0 < t1, 1, -1)
+    t0 = t0 * direction
+    t1 = t1 * direction
+    if dt0 is not None:
+        dt0 = dt0 * direction
+    if saveat.ts is not None:
+        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
     stepsize_controller = stepsize_controller.wrap(direction)
     terms = jtu.tree_map(
         lambda t: WrapTerm(t, direction),
@@ -918,7 +747,6 @@ def diffeqsolve(
         "num_accepted_steps": final_state.num_accepted_steps,
         "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
-        "compiled_num_steps": aux_stats["compiled_num_steps"],
     }
     result = final_state.result
     sol = Solution(

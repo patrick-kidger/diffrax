@@ -3,7 +3,6 @@ from typing import Callable, Optional, Tuple
 
 import equinox as eqx
 import equinox.internal as eqxi
-import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -284,9 +283,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
     def __post_init__(self):
         super().__post_init__()
-        with jax.ensure_compile_time_eval():
-            step_ts = None if self.step_ts is None else jnp.asarray(self.step_ts)
-            jump_ts = None if self.jump_ts is None else jnp.asarray(self.jump_ts)
+        step_ts = None if self.step_ts is None else jnp.asarray(self.step_ts)
+        jump_ts = None if self.jump_ts is None else jnp.asarray(self.jump_ts)
         object.__setattr__(self, "step_ts", step_ts)
         object.__setattr__(self, "jump_ts", jump_ts)
 

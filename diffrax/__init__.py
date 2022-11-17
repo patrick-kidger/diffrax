@@ -28,7 +28,7 @@ from .local_interpolation import (
     LocalLinearInterpolation,
     ThirdOrderHermitePolynomialInterpolation,
 )
-from .misc import adjoint_rms_seminorm, sde_kl_divergence
+from .misc import adjoint_rms_seminorm
 from .nonlinear_solver import (
     AbstractNonlinearSolver,
     NewtonNonlinearSolver,
@@ -87,4 +87,4 @@ from .term import (
 )
 
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
