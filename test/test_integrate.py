@@ -41,7 +41,7 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver,t_dtype,treedef,stepsize_controller",
+    "solver,t_dtype,y_dtype,treedef,stepsize_controller",
     _all_pairs(
         dict(
             default=diffrax.Euler(),
@@ -58,6 +58,7 @@ def _all_pairs(*args):
             ),
         ),
         dict(default=jnp.float32, opts=(int, float, jnp.int32)),
+        dict(default=jnp.float32, opts=(jnp.complex64,)),
         dict(default=treedefs[0], opts=treedefs[1:]),
         dict(
             default=diffrax.ConstantStepSize(),
@@ -65,14 +66,24 @@ def _all_pairs(*args):
         ),
     ),
 )
-def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
+def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
     if not isinstance(solver, diffrax.AbstractAdaptiveSolver) and isinstance(
         stepsize_controller, diffrax.PIDController
     ):
         return
 
-    def f(t, y, args):
-        return jtu.tree_map(operator.neg, y)
+    if jnp.iscomplexobj(y_dtype):
+
+        def f(t, y, args):
+            return jtu.tree_map(lambda _y: operator.mul(-1j, _y), y)
+
+        if isinstance(solver, diffrax.AbstractImplicitSolver):
+            return
+
+    else:
+
+        def f(t, y, args):
+            return jtu.tree_map(operator.neg, y)
 
     if t_dtype is int:
         t0 = 0
@@ -92,7 +103,7 @@ def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
         dt0 = jnp.array(0.01)
     else:
         raise ValueError
-    y0 = random_pytree(getkey(), treedef)
+    y0 = random_pytree(getkey(), treedef, dtype=y_dtype)
     try:
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(f),
@@ -113,7 +124,10 @@ def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
         else:
             raise
     y1 = sol.ys
-    true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
+    if jnp.iscomplexobj(y_dtype):
+        true_y1 = jtu.tree_map(lambda x: (x * jnp.exp(-1j))[None], y0)
+    else:
+        true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
     assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
