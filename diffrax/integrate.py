@@ -719,6 +719,7 @@ def diffeqsolve(
             dt0 = jnp.asarray(dt0, dtype=dtype)
         if saveat.ts is not None:
             saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
+        timelikes.append(dtype)
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
     def _promote(yi):
@@ -810,7 +811,9 @@ def diffeqsolve(
     save_index = 0
     made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.inf)
-    ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
+    ys = jtu.tree_map(
+        lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf, dtype=y.dtype), y0
+    )
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         t0 = eqxi.error_if(t0, t0 == t1, "Cannot save dense output if t0 == t1")
@@ -822,7 +825,9 @@ def diffeqsolve(
             solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
         )
         dense_ts = jnp.full(max_steps + 1, jnp.inf)
-        _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.inf)
+        _make_full = lambda x: jnp.full(
+            (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
+        )
         dense_infos = jtu.tree_map(_make_full, dense_info)
         dense_save_index = 0
     else:

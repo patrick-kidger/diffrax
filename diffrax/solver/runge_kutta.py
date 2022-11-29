@@ -411,11 +411,15 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         num_stages = len(self.tableau.c) + 1
         if use_fs:
-            fs = jtu.tree_map(lambda f: jnp.empty((num_stages,) + f.shape), f0_struct)
+            fs = jtu.tree_map(
+                lambda f: jnp.empty((num_stages,) + f.shape, dtype=f.dtype), f0_struct
+            )
             ks = None
         else:
             fs = None
-            ks = jtu.tree_map(lambda k: jnp.empty((num_stages,) + jnp.shape(k)), y0)
+            ks = jtu.tree_map(
+                lambda k: jnp.empty((num_stages,) + jnp.shape(k), dtype=k.dtype), y0
+            )
 
         #
         # First stage. Defines `result`, `scan_first_stage`. Places `f0` and `k0` into
