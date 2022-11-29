@@ -49,14 +49,14 @@ def implicit_tol(solver):
     return solver
 
 
-def random_pytree(key, treedef):
+def random_pytree(key, treedef, dtype=None):
     keys = jrandom.split(key, treedef.num_leaves)
     leaves = []
     for key in keys:
         dimkey, sizekey, valuekey = jrandom.split(key, 3)
         num_dims = jrandom.randint(dimkey, (), 0, 5)
         dim_sizes = jrandom.randint(sizekey, (num_dims,), 0, 5)
-        value = jrandom.normal(valuekey, dim_sizes)
+        value = jrandom.normal(valuekey, dim_sizes, dtype=dtype)
         leaves.append(value)
     return jtu.tree_unflatten(treedef, leaves)
 
