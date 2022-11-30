@@ -509,7 +509,7 @@ def rectilinear_interpolation(
         `new_ys = [y0, y0, y1, y1, y2, y2, y3]`.
 
         This can be thought of as advancing time whilst keeping the data fixed, then
-        keeping the data fixed whilst advancing time.
+        keeping time fixed whilst advancing the data.
 
     **Arguments:**
 
