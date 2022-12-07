@@ -56,7 +56,6 @@ from .solver import (
     Dopri8,
     Euler,
     EulerHeun,
-    Fehlberg2,
     HalfSolver,
     Heun,
     ImplicitEuler,
