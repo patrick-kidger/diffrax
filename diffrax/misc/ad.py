@@ -18,7 +18,7 @@ class fixed_custom_jvp:
             nondiff_args = eqx.combine(nondiff_args_nontracer, nondiff_args_tracer)
             return fn(*nondiff_args, *diff_args)
 
-        self.fn = jax.custom_jvp(fn_wrapper, nondiff_argnums=(0,))
+        self.fn = jax.custom_jvp(fn_wrapper, nondiff_argnums=(0,), symbolic_zeros=True)
         self.cutoff = max(nondiff_argnums, default=-1) + 1
         self.fn_jvp = None
 
@@ -96,12 +96,15 @@ def _implicit_backprop_jvp(
 
     jac_flat_root = jax.jacfwd(_for_jac)(flat_root)
 
+    has_tang = jtu.tree_map(lambda t: t is not None, tang_diff_args)
+    diff_args, nondiff_args2 = eqx.partition(diff_args, has_tang)
+    tang_diff_args = eqx.filter(tang_diff_args, has_tang)
     flat_diff_args, unflatten_diff_args = fu.ravel_pytree(diff_args)
     flat_tang_diff_args, _ = fu.ravel_pytree(tang_diff_args)
 
     def _for_jvp(_diff_args):
         _diff_args = unflatten_diff_args(_diff_args)
-        _args = eqx.combine(nondiff_args, _diff_args)
+        _args = eqx.combine(nondiff_args, nondiff_args2, _diff_args)
         _out = fn_rewrite(root, residual, _args, closure)
         _out, _ = fu.ravel_pytree(_out)
         return _out
