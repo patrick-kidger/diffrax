@@ -62,7 +62,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def t1(self):
         return None
 
-    @eqx.filter_jit
+    @eqx.filter_jit(donate="none")
     def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> PyTree[Array]:
         del left
         t0 = eqxi.nondifferentiable(t0, name="t0")

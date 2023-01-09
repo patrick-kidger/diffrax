@@ -53,7 +53,7 @@ def main(scan_stages):
     t1 = 1
     dt0 = None
 
-    @eqx.filter_jit
+    @eqx.filter_jit(donate="none")
     def solve(y0):
         return dfx.diffeqsolve(
             term, solver, t0, t1, dt0, y0, stepsize_controller=stepsize_controller

@@ -185,11 +185,11 @@ def main(batch_size=64, t1=100, multiple=False, grad=False):
     time_torch(neural_ode_torch, y0_torch, t1, grad)
     torch_time = time_torch(neural_ode_torch, y0_torch, t1, grad)
 
-    time_jax(neural_ode_diffrax, y0_jax, t1, grad)
-    diffrax_time = time_jax(neural_ode_diffrax, y0_jax, t1, grad)
+    time_jax(neural_ode_diffrax, jnp.copy(y0_jax), t1, grad)
+    diffrax_time = time_jax(neural_ode_diffrax, jnp.copy(y0_jax), t1, grad)
 
-    time_jax(neural_ode_experimental, y0_jax, t1, grad)
-    experimental_time = time_jax(neural_ode_experimental, y0_jax, t1, grad)
+    time_jax(neural_ode_experimental, jnp.copy(y0_jax), t1, grad)
+    experimental_time = time_jax(neural_ode_experimental, jnp.copy(y0_jax), t1, grad)
 
     print(
         f"""

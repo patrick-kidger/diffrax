@@ -84,9 +84,10 @@ def main(scan_stages, backsolve):
     mkey, dkey = jr.split(jr.PRNGKey(0), 2)
     model = eqx.nn.MLP(2, 2, 10, 2, activation=jnn.gelu, key=mkey)
     x = jr.normal(dkey, (256, 2))
-    solve_ = ft.partial(solve, model, x, scan_stages, backsolve)
-    print("Compile+run time", timeit.timeit(solve_, number=1))
-    print("Run time", timeit.timeit(solve_, number=1))
+    solve1 = ft.partial(solve, model, jnp.coyp(x), scan_stages, backsolve)
+    solve2 = ft.partial(solve, model, jnp.copy(x), scan_stages, backsolve)
+    print("Compile+run time", timeit.timeit(solve1, number=1))
+    print("Run time", timeit.timeit(solve2, number=1))
 
 
 fire.Fire(main)

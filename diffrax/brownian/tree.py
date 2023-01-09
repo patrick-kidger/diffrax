@@ -88,7 +88,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
         self.key = split_by_tree(key, self.shape)
 
-    @eqx.filter_jit
+    @eqx.filter_jit(donate="none")
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
     ) -> PyTree[Array]:

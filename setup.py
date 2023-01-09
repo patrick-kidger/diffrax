@@ -46,7 +46,7 @@ classifiers = [
 
 python_requires = "~=3.7"
 
-install_requires = ["jax>=0.3.4", "equinox>=0.9.1"]
+install_requires = ["jax>=0.3.4", "equinox>=0.10.0"]
 
 setuptools.setup(
     name=name,

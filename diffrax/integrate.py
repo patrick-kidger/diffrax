@@ -510,7 +510,7 @@ def loop(
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
 
 
-@eqx.filter_jit
+@eqx.filter_jit(donate="none")
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
     solver: AbstractSolver,
