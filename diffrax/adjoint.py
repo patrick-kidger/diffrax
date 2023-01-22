@@ -1,6 +1,5 @@
 import abc
 import functools as ft
-import math
 from typing import Any, Dict, Optional
 
 import equinox as eqx
@@ -244,45 +243,19 @@ class RecursiveCheckpointAdjoint2(AbstractAdjoint):
         **kwargs,
     ):
         del throw, passed_solver_state, passed_controller_state
-        if self.checkpoints is None:
-            if max_steps is None:
-                raise ValueError(
-                    "Cannot use "
-                    "`diffeqsolve(..., max_steps=None, adjoint=RecursiveCheckpointAdjoint(checkpoints=None))` "  # noqa: E501
-                    "Either specify the number of `checkpoints` to use, or specify the "
-                    "maximum number of steps (and `checkpoints` is chosen "
-                    "automatically as `log2(max_steps)``.)"
-                )
-            # Binomial logarithmic growth is what is needed in classical treeverse.
-            #
-            # Moreover this is optimal even in the online case, as provided
-            # `max_steps >= 21`
-            # then
-            # `checkpoints = ceil(log2(max_steps))`
-            # satisfies
-            # `max_steps <= (checkpoints + 1)(checkpoints + 2)/2`
-            # which is the condition for optimality.
-            #
-            # Meanwhile if
-            # `max_steps <= 20`
-            # then we handle it as a special case, to once again ensure we satisfy
-            # `max_steps <= (checkpoints + 1)(checkpoints + 2)/2`
-            #
-            # The optimality condition is equation (2.2) of
-            # "New Algorithms for Optimal Online Checkpointing", Stumm and Walther 2010.
-            # https://tu-dresden.de/mn/math/wir/ressourcen/dateien/forschung/publikationen/pdf2010/new_algorithms_for_optimal_online_checkpointing.pdf
-            if max_steps <= 20:
-                checkpoints = 1
-                while (checkpoints + 1) * (checkpoints + 2) < 2 * max_steps:
-                    checkpoints += 1
-            else:
-                checkpoints = math.ceil(math.log2(max_steps))
-        else:
-            checkpoints = self.checkpoints
+        if self.checkpoints is None and max_steps is None:
+            # Raise a more informative error than `checkpointed_while_loop` would.
+            raise ValueError(
+                "Cannot use "
+                "`diffeqsolve(..., max_steps=None, adjoint=RecursiveCheckpointAdjoint(checkpoints=None))` "  # noqa: E501
+                "Either specify the number of `checkpoints` to use, or specify the "
+                "maximum number of steps (and `checkpoints` is chosen "
+                "automatically as `log2(max_steps)``.)"
+            )
         return self._loop_fn(
             max_steps=max_steps,
             while_loop=ft.partial(
-                eqxi.checkpointed_while_loop, checkpoints=checkpoints
+                eqxi.checkpointed_while_loop, checkpoints=self.checkpoints
             ),
             **kwargs,
         )
