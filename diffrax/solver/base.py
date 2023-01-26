@@ -2,6 +2,7 @@ import abc
 from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
+import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
@@ -17,7 +18,9 @@ _SolverState = TypeVar("SolverState", bound=Optional[PyTree])
 
 
 def vector_tree_dot(a, b):
-    return jtu.tree_map(lambda bi: jnp.tensordot(a, bi, axes=1), b)
+    return jtu.tree_map(
+        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST), b
+    )
 
 
 class _MetaAbstractSolver(type(eqx.Module)):

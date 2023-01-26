@@ -21,7 +21,7 @@ _From a technical point of view, the internal structure of the library is pretty
 pip install diffrax
 ```
 
-Requires Python >=3.7 and JAX >=0.3.4.
+Requires Python >=3.8 and JAX >=0.4.1.
 
 ## Documentation
 
