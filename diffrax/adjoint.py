@@ -1,5 +1,6 @@
 import abc
 import functools as ft
+import warnings
 from typing import Any, Dict, Optional
 
 import equinox as eqx
@@ -11,7 +12,9 @@ from equinox.internal import ω
 
 from .ad import implicit_jvp
 from .bounded_while_loop import bounded_while_loop
+from .heuristics import is_unsafe_sde
 from .saveat import SaveAt
+from .solver import AbstractItoSolver, AbstractStratonovichSolver
 from .term import AbstractTerm, AdjointTerm
 
 
@@ -122,7 +125,7 @@ class AbstractAdjoint(eqx.Module):
     # `integrate.py`. For convenience we make them available as properties here so all
     # adjoint methods can access these.
     @property
-    def _loop_fn(self):
+    def _loop(self):
         from .integrate import loop
 
         return loop
@@ -134,23 +137,40 @@ class AbstractAdjoint(eqx.Module):
         return diffeqsolve
 
 
-class RecursiveCheckpointAdjoint(AbstractAdjoint):
-    """Backpropagate through [`diffrax.diffeqsolve`][] by differentiating the numerical
-    solution directly. This is sometimes known as "discretise-then-optimise", or
-    described as "backpropagation through the solver".
+class DirectAdjoint(AbstractAdjoint):
+    """A variant of [`diffrax.RecursiveCheckpointAdjoint`][]. The differences are that
+    `DirectAdjoint`:
 
-    Uses a binomial checkpointing scheme to keep memory usage low.
+    - Is less time+memory efficient at reverse-mode autodifferentiation (specifically,
+      these will increase every time `max_steps` increases passes a power of 16);
+    - Cannot be reverse-mode autodifferentated if `max_steps is None`;
+    - Supports forward-mode autodifferentiation.
 
-    For most problems this is the preferred technique for backpropagating through a
-    differential equation.
+    So unless you need forward-mode autodifferentiation then
+    [`diffrax.RecursiveCheckpointAdjoint`][] should be preferred.
     """
 
-    def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):
+    def loop(
+        self,
+        *,
+        max_steps,
+        terms,
+        throw,
+        passed_solver_state,
+        passed_controller_state,
+        **kwargs,
+    ):
         del throw, passed_solver_state, passed_controller_state
-        return self._loop_fn(**kwargs, while_loop=bounded_while_loop)
+        if is_unsafe_sde(terms) or max_steps is None:
+            while_loop = _while_loop
+        else:
+            while_loop = bounded_while_loop
+        return self._loop(
+            **kwargs, max_steps=max_steps, terms=terms, while_loop=while_loop
+        )
 
 
-class RecursiveCheckpointAdjoint2(AbstractAdjoint):
+class RecursiveCheckpointAdjoint(AbstractAdjoint):
     """Backpropagate through [`diffrax.diffeqsolve`][] by differentiating the numerical
     solution directly. This is sometimes known as "discretise-then-optimise", or
     described as "backpropagation through the solver".
@@ -163,7 +183,7 @@ class RecursiveCheckpointAdjoint2(AbstractAdjoint):
     !!! info
 
         Note that this cannot be forward-mode autodifferentiated. (E.g. using
-        `jax.jvp`.)
+        `jax.jvp`.) Try using [`diffrax.DirectAdjoint`][] if that is something you need.
 
     ??? cite "References"
 
@@ -236,6 +256,8 @@ class RecursiveCheckpointAdjoint2(AbstractAdjoint):
     def loop(
         self,
         *,
+        terms,
+        init_state,
         max_steps,
         throw,
         passed_solver_state,
@@ -249,10 +271,23 @@ class RecursiveCheckpointAdjoint2(AbstractAdjoint):
                 "Cannot use "
                 "`diffeqsolve(..., max_steps=None, adjoint=RecursiveCheckpointAdjoint(checkpoints=None))` "  # noqa: E501
                 "Either specify the number of `checkpoints` to use, or specify the "
-                "maximum number of steps (and `checkpoints` is chosen "
-                "automatically as `log2(max_steps)``.)"
+                "maximum number of steps (and `checkpoints` is then chosen "
+                "automatically as `log(max_steps)`)."
             )
-        return self._loop_fn(
+        if is_unsafe_sde(terms):
+            raise ValueError(
+                "`adjoint=RecursiveCheckpointAdjoint()` does not support "
+                "`UnsafeBrownianPath`. Consider using `adjoint=DirectAdjoint()` "
+                "instead."
+            )
+        init_state = eqx.tree_at(
+            lambda s: (s.ts, s.ys, s.dense_ts, s.dense_infos),
+            init_state,
+            replace_fn=eqxi.Buffer,
+        )
+        return self._loop(
+            terms=terms,
+            init_state=init_state,
             max_steps=max_steps,
             while_loop=ft.partial(
                 eqxi.checkpointed_while_loop, checkpoints=self.checkpoints
@@ -261,16 +296,17 @@ class RecursiveCheckpointAdjoint2(AbstractAdjoint):
         )
 
 
-class NoAdjoint(AbstractAdjoint):
-    """Disable backpropagation through [`diffrax.diffeqsolve`][].
-    Forward-mode autodifferentiation (`jax.jvp`) will continue to work as normal.
-    If you do not need to differentiate the results of [`diffrax.diffeqsolve`][] then
-    this may sometimes improve the speed at which the differential equation is solved.
-    """
+RecursiveCheckpointAdjoint.__init__.__doc__ = """
+**Arguments:**
 
-    def loop(self, *, throw, passed_solver_state, passed_controller_state, **kwargs):
-        del throw, passed_solver_state, passed_controller_state
-        return self._loop_fn(**kwargs, while_loop=_while_loop)
+- `checkpoints`: the number of checkpoints to save. The amount of memory used by the
+    differential equation solve will be roughly equal to the number of checkpoints
+    multiplied by the size of `y0`. You can speed up backpropagation by allocating more
+    checkpoints. (So it makes sense to set as many checkpoints as you have memory for.)
+    This value can also be set to `None` (the default), in which case it will be set to
+    `log(max_steps)`, for which a theoretical result is available guaranteeing that
+    backpropagation will take `O(n log n)` time in the number of steps `n <= max_steps`.
+"""
 
 
 def _vf(ys, residual, args__terms, closure):
@@ -333,7 +369,8 @@ class ImplicitAdjoint(AbstractAdjoint):
         # `is` check because this may return a Tracer from SaveAt(ts=<array>)
         if eqx.tree_equal(saveat, SaveAt(t1=True)) is not True:
             raise ValueError(
-                "Can only use `adjoint=ImplicitAdjoint()` with `SaveAt(t1=True)`."
+                "Can only use `adjoint=ImplicitAdjoint()` with "
+                "`saveat=SaveAt(t1=True)`."
             )
 
         if not passed_solver_state:
@@ -608,6 +645,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         *,
         args,
         terms,
+        solver,
         saveat,
         init_state,
         passed_solver_state,
@@ -620,6 +658,22 @@ class BacksolveAdjoint(AbstractAdjoint):
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
                 "`saveat=Steps(steps=True)` or `saveat=Steps(dense=True)`."
             )
+        if is_unsafe_sde(terms):
+            raise ValueError(
+                "`adjoint=BacksolveAdjoint()` does not support `UnsafeBrownianPath`. "
+                "Consider using `adjoint=DirectAdjoint()` instead."
+            )
+        if isinstance(solver, AbstractItoSolver):
+            raise NotImplementedError(
+                f"`{solver.__name__}` converges to the Itô solution. However "
+                "`BacksolveAdjoint` currently only supports Stratonovich SDEs."
+            )
+        elif not isinstance(solver, AbstractStratonovichSolver):
+            warnings.warn(
+                f"{solver.__name__} is not marked as converging to either the Itô "
+                "or the Stratonovich solution. Note that `BacksolveAdjoint` will "
+                "only produce the correct solution for Stratonovich SDEs."
+            )
 
         y = init_state.y
         sentinel = object()
@@ -628,7 +682,12 @@ class BacksolveAdjoint(AbstractAdjoint):
         )
 
         final_state, aux_stats = _loop_backsolve(
-            (y, args, terms), self=self, saveat=saveat, init_state=init_state, **kwargs
+            (y, args, terms),
+            self=self,
+            saveat=saveat,
+            init_state=init_state,
+            solver=solver,
+            **kwargs,
         )
         final_state = _no_transpose_final_state(final_state)
         return final_state, aux_stats

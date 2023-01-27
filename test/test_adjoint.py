@@ -86,9 +86,7 @@ def test_against(getkey):
                     continue
                 saveat = diffrax.SaveAt(t0=t0, t1=t1, ts=ts)
 
-                direct_grads = _run_grad(
-                    diff, saveat, diffrax.adjoint.RecursiveCheckpointAdjoint2()
-                )
+                direct_grads = _run_grad(diff, saveat, diffrax.DirectAdjoint())
                 recursive_grads = _run_grad(
                     diff, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
@@ -97,9 +95,7 @@ def test_against(getkey):
                 assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
                 direct_grads = _run_grad_int(
-                    y0__args__term,
-                    saveat,
-                    diffrax.adjoint.RecursiveCheckpointAdjoint2(),
+                    y0__args__term, saveat, diffrax.DirectAdjoint()
                 )
                 recursive_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.RecursiveCheckpointAdjoint()

@@ -8,13 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
-from .adjoint import (
-    AbstractAdjoint,
-    BacksolveAdjoint,
-    ImplicitAdjoint,
-    NoAdjoint,
-    RecursiveCheckpointAdjoint,
-)
+from .adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from .bounded_while_loop import bounded_while_loop
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
@@ -384,7 +378,7 @@ def diffeqsolve(
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
         this will also be the step size for all other steps. (Except the last one,
         which may be slightly smaller and clipped to `t1`.) If set as `None` then the
-        initial step size will be determined automatically if possible.
+        initial step size will be determined automatically.
     - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
         can be coerced to JAX arrays, like Python floats.)
     - `args`: Any additional arguments to pass to the vector field.
@@ -397,13 +391,12 @@ def diffeqsolve(
 
     **Other arguments:**
 
-    These arguments are infrequently used, and for most purposes you shouldn't need to
-    understand these. All of these are keyword-only arguments.
+    These arguments are less frequently used, and for most purposes you shouldn't need
+    to understand these. All of these are keyword-only arguments.
 
-    - `adjoint`: How to backpropagate (and compute forward-mode autoderivatives) of
-        `diffeqsolve`. Defaults to discretise-then-optimise, which is usually the best
-        option for most problems. See the page on [Adjoints](./adjoints.md) for more
-        information.
+    - `adjoint`: How to differentiate `diffeqsolve`. Defaults to
+        discretise-then-optimise, which is usually the best option for most problems.
+        See the page on [Adjoints](./adjoints.md) for more information.
 
     - `discrete_terminating_event`: A discrete event at which to terminate the solve
         early. See the page on [Events](./events.md) for more information.
@@ -412,14 +405,7 @@ def diffeqsolve(
         unconditionally.
 
         Can also be set to `None` to allow an arbitrary number of steps, although this
-        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`,
-        and can only be backpropagated through if using `adjoint=BacksolveAdjoint()` or
-        `adjoint=ImplicitAdjoint()`.
-
-        Note that (a) compile times; and (b) backpropagation run times; will increase
-        as `max_steps` increases. (Specifically, each time `max_steps` passes a power
-        of 16.) You can reduce these times by using the smallest value of `max_steps`
-        that is reasonable for your problem.
+        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`.
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
@@ -436,7 +422,7 @@ def diffeqsolve(
 
         !!! note
 
-            Note that when `jax.vmap`-ing a differential equation solve, then
+            When `jax.vmap`-ing a differential equation solve, then
             `throw=True` means that an exception will be raised if any batch element
             fails. You may prefer to set `throw=False` and inspect the `result` field
             of the returned solution object, to determine which batch elements
@@ -509,18 +495,6 @@ def diffeqsolve(
                 f"`{type(solver).__name__}` is not marked as converging to either the "
                 "Itô or the Stratonovich solution."
             )
-        if isinstance(adjoint, BacksolveAdjoint):
-            if isinstance(solver, AbstractItoSolver):
-                raise NotImplementedError(
-                    f"`{solver.__name__}` converges to the Itô solution. However "
-                    "`BacksolveAdjoint` currently only supports Stratonovich SDEs."
-                )
-            elif not isinstance(solver, AbstractStratonovichSolver):
-                warnings.warn(
-                    f"{solver.__name__} is not marked as converging to either the Itô "
-                    "or the Stratonovich solution. Note that BacksolveAdjoint will "
-                    "only produce the correct solution for Stratonovich SDEs."
-                )
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             # Specific check to not work even if using HalfSolver(Euler())
             if isinstance(solver, Euler):
@@ -532,11 +506,6 @@ def diffeqsolve(
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             raise ValueError(
                 "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
-            )
-        if not isinstance(adjoint, (NoAdjoint, ImplicitAdjoint)):
-            raise ValueError(
-                "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()` or "
-                "`adjoint=ImplicitAdjoint()`."
             )
 
     # Allow setting e.g. t0 as an int with dt0 as a float.
