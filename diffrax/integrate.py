@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 
 from .adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
-from .bounded_while_loop import bounded_while_loop
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
@@ -99,7 +98,8 @@ def loop(
     terms,
     args,
     init_state,
-    while_loop,
+    inner_while_loop,
+    outer_while_loop,
 ):
 
     if saveat.t0:
@@ -252,7 +252,7 @@ def loop(
                 saveat_ts_index=saveat_ts_index, ts=ts, ys=ys, save_index=save_index
             )
 
-            final_inner_state = bounded_while_loop(
+            final_inner_state = inner_while_loop(
                 _cond_fun, _body_fun, init_inner_state, max_steps=len(saveat.ts)
             )
 
@@ -321,7 +321,7 @@ def loop(
 
         return new_state
 
-    final_state = while_loop(cond_fun, body_fun, init_state, max_steps)
+    final_state = outer_while_loop(cond_fun, body_fun, init_state, max_steps)
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.

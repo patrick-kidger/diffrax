@@ -1,6 +1,7 @@
 import abc
 import functools as ft
 import warnings
+from dataclasses import fields
 from typing import Any, Dict, Optional
 
 import equinox as eqx
@@ -166,7 +167,11 @@ class DirectAdjoint(AbstractAdjoint):
         else:
             while_loop = bounded_while_loop
         return self._loop(
-            **kwargs, max_steps=max_steps, terms=terms, while_loop=while_loop
+            **kwargs,
+            max_steps=max_steps,
+            terms=terms,
+            inner_while_loop=while_loop,
+            outer_while_loop=while_loop,
         )
 
 
@@ -257,6 +262,7 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         self,
         *,
         terms,
+        saveat,
         init_state,
         max_steps,
         throw,
@@ -280,17 +286,35 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
                 "`UnsafeBrownianPath`. Consider using `adjoint=DirectAdjoint()` "
                 "instead."
             )
-        init_state = eqx.tree_at(
-            lambda s: (s.ts, s.ys, s.dense_ts, s.dense_infos),
-            init_state,
-            replace_fn=eqxi.Buffer,
-        )
+
+        def inner_buffers(state):
+            assert type(state).__name__ == "_InnerState"
+            assert {f.name for f in fields(state)} == {
+                "ts",
+                "ys",
+                "saveat_ts_index",
+                "saveat_index",
+            }
+            return state.ts, state.ys
+
+        def outer_buffers(state):
+            assert type(state).__name__ == "_State"
+            return state.ts, state.ys, state.dense_ts, state.dense_infos
+
         return self._loop(
             terms=terms,
+            saveat=saveat,
             init_state=init_state,
             max_steps=max_steps,
-            while_loop=ft.partial(
-                eqxi.checkpointed_while_loop, checkpoints=self.checkpoints
+            inner_while_loop=ft.partial(
+                eqxi.checkpointed_while_loop,
+                checkpoints=(len(saveat.ts),),
+                buffers=inner_buffers,
+            ),
+            outer_while_loop=ft.partial(
+                eqxi.checkpointed_while_loop,
+                checkpoints=self.checkpoints,
+                buffers=outer_buffers,
             ),
             **kwargs,
         )
@@ -322,14 +346,15 @@ def _vf(ys, residual, args__terms, closure):
 def _solve(args__terms, closure):
     args, terms = args__terms
     self, kwargs, solver, saveat, init_state = closure
-    final_state, aux_stats = self._loop_fn(
+    final_state, aux_stats = self._loop(
         **kwargs,
         args=args,
         terms=terms,
         solver=solver,
         saveat=saveat,
         init_state=init_state,
-        while_loop=_while_loop,
+        inner_while_loop=_while_loop,
+        outer_while_loop=_while_loop,
     )
     # Note that we use .ys not .y here. The former is what is actually returned
     # by diffeqsolve, so it is the thing we want to attach the tangent to.
@@ -411,12 +436,12 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
         lambda s: jtu.tree_leaves(s.y), init_state, jtu.tree_leaves(y)
     )
     del y
-    return self._loop_fn(
+    return self._loop(
         args=args,
         terms=terms,
         init_state=init_state,
-        while_loop=_while_loop,
-        **kwargs,
+        inner_while_loop=_while_loop,
+        outer_while_loop=_while_loop**kwargs,
     )
 
 
