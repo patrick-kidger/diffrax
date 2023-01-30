@@ -51,7 +51,7 @@ SaveAt.__init__.__doc__ = """**Main Arguments:**
 
 It is less likely you will need to use these options.
 
-- `func`: Pass a function that returns an arbitrary pytree of values computed 
+- `func`: A function that returns an arbitrary pytree of values computed 
      from `t, y, args`. Defaults to return the state
 - `solver_state`: If `True`, save the internal state of the numerical solver at
     `t1`.
