@@ -283,7 +283,7 @@ def loop(
                         jnp.where(_pred, __saveat_y, __ys[_save_index])
                     ),
                     _ys,
-                    _saveat_y,
+                    saveat.func(_ts[_save_index], _saveat_y, args)
                 )
 
                 # Some immediate questions you might have:
@@ -810,7 +810,8 @@ def diffeqsolve(
     save_index = 0
     made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.inf)
-    ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
+    _y0 = saveat.func(saveat.t0, y0, args)
+    ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), _y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
         t0 = eqxi.error_if(t0, t0 == t1, "Cannot save dense output if t0 == t1")
