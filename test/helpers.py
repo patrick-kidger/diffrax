@@ -61,6 +61,20 @@ def random_pytree(key, treedef):
     return jtu.tree_unflatten(treedef, leaves)
 
 
+def random_compex_pytree(key, treedef):
+    keys = jrandom.split(key, treedef.num_leaves)
+    leaves = []
+    for key in keys:
+        dimkey, sizekey, valuekey = jrandom.split(key, 3)
+        num_dims = jrandom.randint(dimkey, (), 0, 5)
+        dim_sizes = jrandom.randint(sizekey, (num_dims,), 0, 5)
+        value = jrandom.normal(valuekey, dim_sizes) + 1.0j * jrandom.normal(
+            valuekey, dim_sizes
+        )
+        leaves.append(value)
+    return jtu.tree_unflatten(treedef, leaves)
+
+
 treedefs = [
     jtu.tree_structure(x)
     for x in (

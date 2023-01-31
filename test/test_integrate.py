@@ -15,6 +15,7 @@ from .helpers import (
     all_ode_solvers,
     implicit_tol,
     random_pytree,
+    random_compex_pytree,
     shaped_allclose,
     treedefs,
 )
@@ -39,7 +40,7 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver,t_dtype,treedef,stepsize_controller",
+    "solver,t_dtype,y_dtype,treedef,stepsize_controller",
     _all_pairs(
         dict(
             default=diffrax.Euler(),
@@ -56,6 +57,7 @@ def _all_pairs(*args):
             ),
         ),
         dict(default=jnp.float32, opts=(int, float, jnp.int32)),
+        dict(default=jnp.float32, opts=(jnp.complex64,)),
         dict(default=treedefs[0], opts=treedefs[1:]),
         dict(
             default=diffrax.ConstantStepSize(),
@@ -63,7 +65,7 @@ def _all_pairs(*args):
         ),
     ),
 )
-def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
+def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
     if not isinstance(solver, diffrax.AbstractAdaptiveSolver) and isinstance(
         stepsize_controller, diffrax.PIDController
     ):
@@ -90,7 +92,12 @@ def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
         dt0 = jnp.array(0.01)
     else:
         raise ValueError
-    y0 = random_pytree(getkey(), treedef)
+    if y_dtype is jnp.float32:
+        y0 = random_pytree(getkey(), treedef)
+    elif y_dtype is jnp.complex64:
+        y0 = random_compex_pytree(getkey(), treedef)
+    else:
+        raise ValueError
     try:
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(f),

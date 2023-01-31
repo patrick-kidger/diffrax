@@ -106,4 +106,6 @@ class AbstractNonlinearSolver(eqx.Module):
         if not jnp.issubdtype(flat, jnp.inexact):
             # Handle integer arguments
             flat = flat.astype(jnp.float32)
-        return jsp.linalg.lu_factor(jax.jacfwd(curried)(flat))
+        return jsp.linalg.lu_factor(
+            jax.jacfwd(curried, holomorphic=jnp.iscomplexobj(flat))(flat)
+        )
