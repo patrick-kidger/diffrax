@@ -1,8 +1,8 @@
 from .adjoint import (
     AbstractAdjoint,
     BacksolveAdjoint,
+    DirectAdjoint,
     ImplicitAdjoint,
-    NoAdjoint,
     RecursiveCheckpointAdjoint,
 )
 from .autocitation import citation, citation_rules
