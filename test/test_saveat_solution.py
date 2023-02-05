@@ -37,12 +37,12 @@ def _integrate(saveat):
         stepsize_controller=stepsize_controller,
     )
 
-default_func = lambda t, y, args: y
-custom_func = lambda t, y, args: {"another_y": y, "another_t": t}
+default_kwargs = {}
+custom_func_kwargs = {"func": lambda t, y, args: {"another_y": y, "another_t": t}}
 
-@pytest.mark.parametrize("save_func", [custom_func, default_func])
-def test_saveat_solution(save_func):
-    saveat = diffrax.SaveAt(t0=True, func=save_func)
+@pytest.mark.parametrize("kw_args", [default_kwargs, custom_func_kwargs])
+def test_saveat_solution(kw_args):
+    saveat = diffrax.SaveAt(t0=True, **kw_args)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
@@ -65,7 +65,7 @@ def test_saveat_solution(save_func):
         for solver_state in (True, False):
             saveat = diffrax.SaveAt(
                 t1=True, solver_state=solver_state, controller_state=controller_state,
-                func=save_func
+                **kw_args
             )
             sol = _integrate(saveat)
             assert sol.t0 == _t0
@@ -92,14 +92,14 @@ def test_saveat_solution(save_func):
             assert sol.result == diffrax.RESULTS.successful
 
     # Outside [t0, t1]
-    saveat = diffrax.SaveAt(ts=[0], func=save_func)
+    saveat = diffrax.SaveAt(ts=[0], **kw_args)
     with pytest.raises(RuntimeError):
         sol = _integrate(saveat)
-    saveat = diffrax.SaveAt(ts=[3], func=save_func)
+    saveat = diffrax.SaveAt(ts=[3], **kw_args)
     with pytest.raises(RuntimeError):
         sol = _integrate(saveat)
 
-    saveat = diffrax.SaveAt(ts=[0.5, 0.8], func=save_func)
+    saveat = diffrax.SaveAt(ts=[0.5, 0.8], **kw_args)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
@@ -121,7 +121,7 @@ def test_saveat_solution(save_func):
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
-    saveat = diffrax.SaveAt(steps=True, func=save_func)
+    saveat = diffrax.SaveAt(steps=True, **kw_args)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
@@ -140,7 +140,7 @@ def test_saveat_solution(save_func):
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
-    saveat = diffrax.SaveAt(dense=True, func=save_func)
+    saveat = diffrax.SaveAt(dense=True, **kw_args)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
