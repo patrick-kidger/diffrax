@@ -1,3 +1,4 @@
+from typing import Dict
 import math
 
 import diffrax
@@ -36,16 +37,21 @@ def _integrate(saveat):
         stepsize_controller=stepsize_controller,
     )
 
+default_func = lambda t, y, args: y
+custom_func = lambda t, y, args: {"another_y": y, "another_t": t}
 
-def test_saveat_solution():
-    saveat = diffrax.SaveAt(t0=True)
+@pytest.mark.parametrize("save_func", [custom_func, default_func])
+def test_saveat_solution(save_func):
+    saveat = diffrax.SaveAt(t0=True, func=save_func)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
     assert sol.ts.shape == (1,)
-    assert sol.ys.shape == (1, 1)
+    assert (sol.ys["another_y"].shape if isinstance(sol.ys, Dict)
+            else sol.ys.shape) == (1, 1)
     assert sol.ts[0] == _t0
-    assert sol.ys[0, 0] == _y0
+    assert (sol.ys["another_y"][0, 0] if isinstance(sol.ys, Dict)
+            else sol.ys) == _y0
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -58,15 +64,18 @@ def test_saveat_solution():
     for controller_state in (True, False):
         for solver_state in (True, False):
             saveat = diffrax.SaveAt(
-                t1=True, solver_state=solver_state, controller_state=controller_state
+                t1=True, solver_state=solver_state, controller_state=controller_state,
+                func=save_func
             )
             sol = _integrate(saveat)
             assert sol.t0 == _t0
             assert sol.t1 == _t1
             assert sol.ts.shape == (1,)
-            assert sol.ys.shape == (1, 1)
+            assert (sol.ys["another_y"].shape if isinstance(sol.ys, Dict)
+                    else sol.ys.shape) == (1, 1)
             assert sol.ts[0] == _t1
-            assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.5))
+            assert shaped_allclose(sol.ys["another_y"][0] if isinstance(sol.ys, Dict)
+                                   else sol.ys[0], _y0 * math.exp(-0.5))
             if controller_state:
                 assert sol.controller_state is not None
             else:
@@ -83,23 +92,26 @@ def test_saveat_solution():
             assert sol.result == diffrax.RESULTS.successful
 
     # Outside [t0, t1]
-    saveat = diffrax.SaveAt(ts=[0])
+    saveat = diffrax.SaveAt(ts=[0], func=save_func)
     with pytest.raises(RuntimeError):
         sol = _integrate(saveat)
-    saveat = diffrax.SaveAt(ts=[3])
+    saveat = diffrax.SaveAt(ts=[3], func=save_func)
     with pytest.raises(RuntimeError):
         sol = _integrate(saveat)
 
-    saveat = diffrax.SaveAt(ts=[0.5, 0.8])
+    saveat = diffrax.SaveAt(ts=[0.5, 0.8], func=save_func)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
     assert sol.ts.shape == (2,)
-    assert sol.ys.shape == (2, 1)
+    assert (sol.ys["another_y"].shape if isinstance(sol.ys, Dict)
+            else sol.ys.shape) == (2, 1)
     assert sol.ts[0] == jnp.asarray(0.5)
     assert sol.ts[1] == jnp.asarray(0.8)
-    assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.2))
-    assert shaped_allclose(sol.ys[1], _y0 * math.exp(-0.35))
+    assert shaped_allclose(sol.ys["another_y"][0] if isinstance(sol.ys, Dict)
+                           else sol.ys[0], _y0 * math.exp(-0.2))
+    assert shaped_allclose(sol.ys["another_y"][1] if isinstance(sol.ys, Dict)
+                           else sol.ys[1], _y0 * math.exp(-0.35))
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -109,16 +121,16 @@ def test_saveat_solution():
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
-    saveat = diffrax.SaveAt(steps=True)
+    saveat = diffrax.SaveAt(steps=True, func=save_func)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
     assert sol.ts.shape == (4096,)
-    assert sol.ys.shape == (4096, 1)
+    assert (sol.ys["another_y"].shape if isinstance(sol.ys, Dict) else sol.ys.shape) == (4096, 1)
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
     _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
-    assert shaped_allclose(sol.ys, _ys)
+    assert shaped_allclose(sol.ys["another_y"] if isinstance(sol.ys, Dict) else sol.ys, _ys)
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -128,7 +140,7 @@ def test_saveat_solution():
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
-    saveat = diffrax.SaveAt(dense=True)
+    saveat = diffrax.SaveAt(dense=True, func=save_func)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1

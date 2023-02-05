@@ -1,6 +1,6 @@
 import functools as ft
 import warnings
-from typing import Optional
+from typing import Optional, Callable
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -62,14 +62,15 @@ class _InnerState(eqx.Module):
     save_index: Int
 
 
-def _save(state: _State, t: Scalar) -> _State:
+def _save(state: _State, t: Scalar, save_func: Callable, args: PyTree) -> _State:
     ts = state.ts
     ys = state.ys
     save_index = state.save_index
     y = state.y
 
     ts = ts.at[save_index].set(t)
-    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
+    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys,
+                      save_func(t, y, args))
     save_index = save_index + 1
 
     return eqx.tree_at(
@@ -109,7 +110,7 @@ def loop(
 ):
 
     if saveat.t0:
-        init_state = _save(init_state, t0)
+        init_state = _save(init_state, t0, save_func=saveat.func, args=args)
     if saveat.dense:
         dense_ts = init_state.dense_ts
         dense_ts = dense_ts.at[0].set(t0)
@@ -341,7 +342,7 @@ def loop(
         if saveat.steps:
             made_inplace_update = True
             ts = maybe_inplace(save_index, ts, tprev)
-            ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
+            ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), ys, saveat.func(tprev, y, args))
             save_index = save_index + keep_step
 
         if saveat.dense:
@@ -502,7 +503,7 @@ def loop(
         # if saveat.steps then the final value is already saved.
         # Using `tprev` instead of `t1` in case of an event terminating the solve
         # early. (And absent such an event then `tprev == t1`.)
-        final_state = _save(final_state, final_state.tprev)
+        final_state = _save(final_state, final_state.tprev, save_func=saveat.func, args=args)
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
@@ -810,7 +811,7 @@ def diffeqsolve(
     save_index = 0
     made_jump = False if made_jump is None else made_jump
     ts = jnp.full(out_size, jnp.inf)
-    _y0 = saveat.func(saveat.t0, y0, args)
+    _y0 = saveat.func(t0, y0, args)
     ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), _y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
