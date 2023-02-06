@@ -276,15 +276,15 @@ def loop(
 
                 _inplace.merge(inplace)
                 _pred = cond_fun(state) & _cond_fun(_state)
-                _ts = _ts.at[_save_index].set(
-                    jnp.where(_pred, _saveat_t, _ts[_save_index])
-                )
+
+                _tt_ = jnp.where(_pred, _saveat_t, _ts[_save_index])
+                _ts = _ts.at[_save_index].set(_tt_)
                 _ys = jtu.tree_map(
                     lambda __ys, __saveat_y: __ys.at[_save_index].set(
                         jnp.where(_pred, __saveat_y, __ys[_save_index])
                     ),
                     _ys,
-                    saveat.func(_ts[_save_index], _saveat_y, args)
+                    saveat.func(_tt_, _saveat_y, args)
                 )
 
                 # Some immediate questions you might have:
