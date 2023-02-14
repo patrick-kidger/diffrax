@@ -76,7 +76,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
         jtu.tree_map(_check, self.ys)
 
-    @eqx.filter_jit(donate="none")
+    @eqx.filter_jit
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
     ) -> PyTree:
@@ -130,7 +130,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
             prev_ys**ω + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t)
         ).ω
 
-    @eqx.filter_jit(donate="none")
+    @eqx.filter_jit
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         r"""Evaluate the derivative of the linear interpolation. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
@@ -195,7 +195,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
         jtu.tree_map(_check, *self.coeffs)
 
-    @eqx.filter_jit(donate="none")
+    @eqx.filter_jit
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
     ) -> PyTree:
@@ -239,7 +239,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
             + frac * (ω(b)[index] + frac * (ω(c)[index] + frac * ω(d)[index]))
         ).ω
 
-    @eqx.filter_jit(donate="none")
+    @eqx.filter_jit
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         r"""Evaluate the derivative of the cubic interpolation. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
@@ -309,7 +309,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         infos = ω(self.infos)[index].ω
         return self.interpolation_cls(t0=prev_t, t1=next_t, **infos)
 
-    @eqx.filter_jit(donate="none")
+    @eqx.filter_jit
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
     ) -> PyTree:
@@ -320,7 +320,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         # continuous.
         return self._get_local_interpolation(t0, left).evaluate(t0)
 
-    @eqx.filter_jit(donate="none")
+    @eqx.filter_jit
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         # Passing `left` doesn't matter on a local interpolation, which is globally
         # continuous.
@@ -420,7 +420,7 @@ def _linear_interpolation(
     return ys
 
 
-@eqx.filter_jit(donate="none")
+@eqx.filter_jit
 def linear_interpolation(
     ts: Array["times"],  # noqa: F821
     ys: PyTree["times", ...],  # noqa: F821
@@ -474,7 +474,7 @@ def _rectilinear_interpolation(
     return ts, ys
 
 
-@eqx.filter_jit(donate="none")
+@eqx.filter_jit
 def rectilinear_interpolation(
     ts: Array["times"],  # noqa: F821
     ys: PyTree["times", ...],  # noqa: F821
@@ -659,7 +659,7 @@ def _backward_hermite_coefficients(
     return ds, cs, bs, as_
 
 
-@eqx.filter_jit(donate="none")
+@eqx.filter_jit
 def backward_hermite_coefficients(
     ts: Array["times"],  # noqa: F821
     ys: PyTree["times", ...],  # noqa: F821

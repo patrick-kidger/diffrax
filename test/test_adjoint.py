@@ -55,10 +55,9 @@ def test_against(getkey):
     _run_grad = eqx.filter_jit(
         jax.grad(
             lambda d, saveat, adjoint: _run(eqx.combine(d, nondiff), saveat, adjoint)
-        ),
-        donate="none",
+        )
     )
-    _run_grad_int = eqx.filter_jit(jax.grad(_run, allow_int=True), donate="none")
+    _run_grad_int = eqx.filter_jit(jax.grad(_run, allow_int=True))
 
     # Yep, test that they're not implemented. We can remove these checks if we ever
     # do implement them.

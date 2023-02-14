@@ -1,9 +1,10 @@
+"""Benchmarks Diffrax vs torchdiffeq vs jax.experimental.ode.odeint"""
+
 import gc
 import time
 
 import diffrax
 import equinox as eqx
-import fire
 import jax
 import jax.experimental.ode as experimental
 import jax.nn as jnn
@@ -166,7 +167,7 @@ def time_jax(neural_ode_jax, y0, t1, grad):
         _eval_jax(neural_ode_jax, y0, t1)
 
 
-def main(batch_size=64, t1=100, multiple=False, grad=False):
+def run(multiple, grad, batch_size=64, t1=100):
     neural_ode_torch = NeuralODETorch(multiple)
     neural_ode_diffrax = NeuralODEDiffrax(multiple)
     neural_ode_experimental = NeuralODEExperimental(multiple)
@@ -180,7 +181,7 @@ def main(batch_size=64, t1=100, multiple=False, grad=False):
         func_torch[2].bias.copy_(torch.tensor(np.asarray(func_jax.layers[1].bias)))
 
     y0_jax = jrandom.normal(jrandom.PRNGKey(1), (batch_size, 4))
-    y0_torch = torch.tensor(y0_jax.to_py())
+    y0_torch = torch.tensor(np.asarray(y0_jax))
 
     time_torch(neural_ode_torch, y0_torch, t1, grad)
     torch_time = time_torch(neural_ode_torch, y0_torch, t1, grad)
@@ -192,13 +193,16 @@ def main(batch_size=64, t1=100, multiple=False, grad=False):
     experimental_time = time_jax(neural_ode_experimental, jnp.copy(y0_jax), t1, grad)
 
     print(
-        f"""
-           torch_time={torch_time}
-         diffrax_time={diffrax_time}
-    experimetnal_time={experimental_time}
+        f"""  multiple={multiple}, grad={grad}
+       torch_time={torch_time}
+     diffrax_time={diffrax_time}
+experimental_time={experimental_time}
     """
     )
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    run(multiple=False, grad=False)
+    run(multiple=True, grad=False)
+    run(multiple=False, grad=True)
+    run(multiple=True, grad=True)
