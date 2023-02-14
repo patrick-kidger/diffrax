@@ -21,7 +21,7 @@ There are multiple ways to backpropagate through a differential equation (to com
             members:
                 - loop
 
-Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.BacksolveAdjoint`][] can only be reverse-mode autodifferentiated. [`diffrax.DirectAdjoint`][] and [`diffrax.ImplicitAdjoint`][] support both forward and reverse-mode autodifferentiation.
+Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.BacksolveAdjoint`][] can only be reverse-mode autodifferentiated. [`diffrax.ImplicitAdjoint`][] and [`diffrax.DirectAdjoint`][] support both forward and reverse-mode autodifferentiation.
 
 ---
 
@@ -35,11 +35,11 @@ Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax
         members:
             - __init__
 
-::: diffrax.DirectAdjoint
+::: diffrax.ImplicitAdjoint
     selection:
         members: false
 
-::: diffrax.ImplicitAdjoint
+::: diffrax.DirectAdjoint
     selection:
         members: false
 

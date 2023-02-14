@@ -237,9 +237,9 @@ def loop(
                 _saveat_y = _interpolator.evaluate(_saveat_t)
                 _ts = _state.ts.at[_state.save_index].set(_saveat_t)
                 _ys = jtu.tree_map(
-                    lambda __ys, __saveat_y: __ys.at[_state.save_index].set(__saveat_y),
-                    _state.ys,
+                    lambda __saveat_y, __ys: __ys.at[_state.save_index].set(__saveat_y),
                     _saveat_y,
+                    _state.ys,
                 )
                 return _InnerState(
                     saveat_ts_index=_state.saveat_ts_index + 1,
@@ -261,21 +261,20 @@ def loop(
             ys = final_inner_state.ys
             save_index = final_inner_state.save_index
 
-        # TODO: make while loop?
-        def maybe_inplace(i, x, u):
-            return x.at[i].set(jnp.where(keep_step, u, x[i]))
+        def maybe_inplace(i, u, x):
+            return x.at[i].set(u, pred=keep_step)
 
         if saveat.steps:
-            ts = maybe_inplace(save_index, ts, tprev)
-            ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
+            ts = maybe_inplace(save_index, tprev, ts)
+            ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), y, ys)
             save_index = save_index + keep_step
 
         if saveat.dense:
-            dense_ts = maybe_inplace(dense_save_index + 1, dense_ts, tprev)
+            dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
             dense_infos = jtu.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
-                dense_infos,
                 dense_info,
+                dense_infos,
             )
             dense_save_index = dense_save_index + keep_step
 
@@ -321,7 +320,7 @@ def loop(
 
         return new_state
 
-    final_state = outer_while_loop(cond_fun, body_fun, init_state, max_steps)
+    final_state = outer_while_loop(cond_fun, body_fun, init_state, max_steps=max_steps)
 
     if saveat.t1 and not saveat.steps:
         # if saveat.steps then the final value is already saved.
