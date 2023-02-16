@@ -6,7 +6,7 @@ from typing import Callable, Optional, Sequence
 import jax
 import jax.tree_util as jtu
 
-from .adjoint import BacksolveAdjoint, RecursiveCheckpointAdjoint
+from .adjoint import BacksolveAdjoint, DirectAdjoint, RecursiveCheckpointAdjoint
 from .brownian import VirtualBrownianTree
 from .heuristics import is_cde, is_sde
 from .integrate import diffeqsolve
@@ -244,23 +244,13 @@ def _backsolve_adjoint(adjoint, terms=None):
 
 @citation_rules.append
 def _discrete_adjoint(adjoint):
-    if type(adjoint) in (RecursiveCheckpointAdjoint,):
+    if type(adjoint) in (RecursiveCheckpointAdjoint, DirectAdjoint):
         pieces = []
         pieces.append(
             r"""
-% You are differentiating using discretise-then-optimise. The following papers may be
-% relevant.
+% You are differentiating using discretise-then-optimise.
 """
         )
-        if type(adjoint) is RecursiveCheckpointAdjoint:
-            pieces.append(
-                r"""
-% If using reverse-mode autodifferentiation (backpropagation), then you are
-% using binomial checkpointing ("treeverse"), which was introduced in:
-"""
-                + _parse_reference(RecursiveCheckpointAdjoint)
-            )
-
         pieces.append(
             r"""
 % If using forward-mode autodifferentiation, then this was studied in:
@@ -276,6 +266,62 @@ def _discrete_adjoint(adjoint):
 }
 """
         )
+        if type(adjoint) is RecursiveCheckpointAdjoint:
+            pieces.append(
+                r"""
+% If using reverse-mode autodifferentiation (backpropagation), then you are using
+% online recursive checkpointing in order to minimise memory usage. This was developed
+% in:
+@article{stumm2010new,
+    author = {Stumm, Philipp and Walther, Andrea},
+    title = {New Algorithms for Optimal Online Checkpointing},
+    journal = {SIAM Journal on Scientific Computing},
+    volume = {32},
+    number = {2},
+    pages = {836--854},
+    year = {2010},
+    doi = {10.1137/080742439},
+}
+@article{wang2009minimal,
+    author = {Wang, Qiqi and Moin, Parviz and Iaccarino, Gianluca},
+    title = {Minimal Repetition Dynamic Checkpointing Algorithm for Unsteady
+             Adjoint Calculation},
+    journal = {SIAM Journal on Scientific Computing},
+    volume = {31},
+    number = {4},
+    pages = {2549--2567},
+    year = {2009},
+    doi = {10.1137/080727890},
+}
+
+% In addition, the equivalent offline recursive checkpointing scheme (also known as
+% "treeverse", "binary checkpointing", or "revolve") was developed in:
+@article{griewank1992achieving,
+    author = {Griewank, Andreas},
+    title = {Achieving logarithmic growth of temporal and spatial complexity in
+             reverse automatic differentiation},
+    journal = {Optimization Methods and Software},
+    volume = {1},
+    number = {1},
+    pages = {35--54},
+    year  = {1992},
+    publisher = {Taylor & Francis},
+    doi = {10.1080/10556789208805505},
+}
+@article{griewank2000revolve,
+    author = {Griewank, Andreas and Walther, Andrea},
+    title = {Algorithm 799: Revolve: An Implementation of Checkpointing for the
+             Reverse or Adjoint Mode of Computational Differentiation},
+    year = {2000},
+    publisher = {Association for Computing Machinery},
+    volume = {26},
+    number = {1},
+    doi = {10.1145/347837.347846},
+    journal = {ACM Trans. Math. Softw.},
+    pages = {19--45},
+}
+"""
+            )
         return "\n".join([p.strip() for p in pieces])
 
 

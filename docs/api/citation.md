@@ -1,4 +1,4 @@
-# Create citations
+# Autocitations
 
 Diffrax can autogenerate BibTeX citations for all the numerical methods you use.
 
