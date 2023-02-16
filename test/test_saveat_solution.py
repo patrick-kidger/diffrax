@@ -144,3 +144,21 @@ def test_saveat_solution():
     assert shaped_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
+
+
+def test_trivial_dense():
+    term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
+    y0 = jnp.array([2.1])
+    saveat = diffrax.SaveAt(dense=True)
+    stepsize_controller = diffrax.PIDController(rtol=1e-8, atol=1e-8)
+    sol = diffrax.diffeqsolve(
+        term,
+        t0=2.0,
+        t1=2.0,
+        y0=y0,
+        dt0=None,
+        solver=diffrax.Dopri5(),
+        saveat=saveat,
+        stepsize_controller=stepsize_controller,
+    )
+    assert shaped_allclose(sol.evaluate(2.0), y0)

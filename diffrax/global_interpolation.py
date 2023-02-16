@@ -288,6 +288,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     ts_size: Int
     infos: DenseInfos
     direction: Scalar
+    y0: PyTree[Array]
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
 
     def __post_init__(self):
@@ -315,18 +316,35 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     ) -> PyTree:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
-        t0 = t0 * self.direction
-        # Passing `left` doesn't matter on a local interpolation, which is globally
-        # continuous.
-        return self._get_local_interpolation(t0, left).evaluate(t0)
+        t = t0 * self.direction
+        ts_0 = self.ts[0]
+        ts_1 = self.ts[self.ts_size - 1]
+        _to_int = lambda x: jnp.where(x, 1, 0)
+        index = _to_int(t < ts_0) + _to_int(t <= ts_0) + _to_int(t <= ts_1)
+        _nan = self.__class__._nan
+        _y0 = lambda s: s.y0
+        _evaluate = ft.partial(self.__class__._evaluate, t=t0, left=left)
+        return lax.switch(index, [_nan, _evaluate, _y0, _nan], self)
 
     @eqx.filter_jit
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        # Passing `left` doesn't matter on a local interpolation, which is globally
-        # continuous.
         t = t * self.direction
-        out = self._get_local_interpolation(t, left).derivative(t)
+        ts_0 = self.ts[0]
+        ts_1 = self.ts[self.ts_size - 1]
+        pred = (t >= ts_0) & (t <= ts_1)
+        _derivative = ft.partial(self.__class__._derivative, t=t, left=left)
+        _nan = self.__class__._nan
+        return lax.cond(pred, _derivative, _nan, self)
+
+    def _evaluate(self, t, left):
+        return self._get_local_interpolation(t, left).evaluate(t, left=left)
+
+    def _derivative(self, t, left):
+        out = self._get_local_interpolation(t, left).derivative(t, left=left)
         return (self.direction * out**ω).ω
+
+    def _nan(self):
+        return jtu.tree_map(ft.partial(jnp.full_like, fill_value=jnp.nan), self.y0)
 
     @property
     def t0(self):
@@ -334,7 +352,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
 
     @property
     def t1(self):
-        return self.ts[-1] * self.direction
+        return self.ts[self.ts_size - 1] * self.direction
 
 
 #

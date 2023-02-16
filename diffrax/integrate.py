@@ -610,7 +610,6 @@ def diffeqsolve(
     ys = jtu.tree_map(lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf), y0)
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
-        t0 = eqxi.error_if(t0, t0 == t1, "Cannot save dense output if t0 == t1")
         if max_steps is None:
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
@@ -701,6 +700,7 @@ def diffeqsolve(
             ts_size=final_state.dense_save_index + 1,
             interpolation_cls=solver.interpolation_cls,
             infos=final_state.dense_infos,
+            y0=y0,
             direction=direction,
         )
     else:
