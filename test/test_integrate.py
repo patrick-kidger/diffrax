@@ -205,7 +205,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     bm = diffrax.VirtualBrownianTree(
         t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
-    if solver_ctr.term_structure == jtu.tree_structure(0):
+    if solver_ctr.term_structure == diffrax.AbstractTerm:
         terms = diffrax.MultiTerm(
             diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
         )
@@ -292,8 +292,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     t0 = -4
     t1 = -0.3
     negdt0 = None if dt0 is None else -dt0
-    if saveat.ts is not None:
-        saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.ts])
+    if saveat.subs is not None and saveat.subs.ts is not None:
+        saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.subs.ts])
     sol2 = diffrax.diffeqsolve(
         diffrax.ODETerm(f),
         solver_ctr(),
@@ -307,7 +307,12 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     assert shaped_allclose(sol2.t0, -4)
     assert shaped_allclose(sol2.t1, -0.3)
 
-    if saveat.t0 or saveat.t1 or saveat.ts is not None or saveat.steps:
+    if saveat.subs is not None and (
+        saveat.subs.t0
+        or saveat.subs.t1
+        or saveat.subs.ts is not None
+        or saveat.subs.steps
+    ):
         assert shaped_allclose(sol1.ts, -sol2.ts, equal_nan=True)
         assert shaped_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
