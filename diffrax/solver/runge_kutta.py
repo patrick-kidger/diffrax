@@ -195,7 +195,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     scan_stages: bool = False
 
-    term_structure = jtu.tree_structure(0)
+    term_structure = AbstractTerm
 
     @property
     @abc.abstractmethod

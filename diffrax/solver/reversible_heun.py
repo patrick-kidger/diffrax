@@ -1,7 +1,6 @@
 from typing import Tuple
 
 import jax.lax as lax
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
@@ -34,7 +33,7 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         ```
     """
 
-    term_structure = jtu.tree_structure(0)
+    term_structure = AbstractTerm
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
 
     def order(self, terms):

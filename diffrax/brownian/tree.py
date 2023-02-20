@@ -93,9 +93,11 @@ class VirtualBrownianTree(AbstractBrownianPath):
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
     ) -> PyTree[Array]:
         del left
+        t0 = eqxi.nondifferentiable(t0, name="t0")
         if t1 is None:
             return self._evaluate(t0)
         else:
+            t1 = eqxi.nondifferentiable(t1, name="t1")
             return jtu.tree_map(
                 lambda x, y: x - y,
                 self._evaluate(t1),

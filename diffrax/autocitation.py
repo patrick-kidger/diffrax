@@ -11,6 +11,7 @@ from .brownian import VirtualBrownianTree
 from .heuristics import is_cde, is_sde
 from .integrate import diffeqsolve
 from .misc import adjoint_rms_seminorm
+from .saveat import SubSaveAt
 from .solver import (
     AbstractImplicitSolver,
     Dopri5,
@@ -432,6 +433,9 @@ def _sde(terms):
 """
 
 
+_is_subsaveat = lambda x: isinstance(x, SubSaveAt)
+
+
 @citation_rules.append
 def _solvers(solver, saveat=None):
     if type(solver) in (
@@ -478,7 +482,13 @@ def _solvers(solver, saveat=None):
 """
             + ref1
         )
-        if saveat is not None and (saveat.ts or saveat.dense):
+        if saveat is not None and (
+            saveat.dense
+            or (
+                subsaveat.ts is not None
+                for subsaveat in jtu.tree_leaves(saveat, is_leaf=_is_subsaveat)
+            )
+        ):
             msg += (
                 r"""
 % Output via `SaveAt(ts=...)` or `SaveAt(dense=True)` is done using the

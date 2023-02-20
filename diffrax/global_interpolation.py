@@ -285,11 +285,12 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 
 
 class DenseInterpolation(AbstractGlobalInterpolation):
-    ts_size: Int
+    ts_size: Int  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
-    direction: Scalar
-    y0: PyTree[Array]
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
+    direction: Scalar
+    t0_if_trivial: Array
+    y0_if_trivial: PyTree[Array]
 
     def __post_init__(self):
         def _check(_infos):
@@ -319,22 +320,26 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         t = t0 * self.direction
         ts_0 = self.ts[0]
         ts_1 = self.ts[self.ts_size - 1]
-        _to_int = lambda x: jnp.where(x, 1, 0)
-        index = _to_int(t < ts_0) + _to_int(t <= ts_0) + _to_int(t <= ts_1)
-        _nan = self.__class__._nan
-        _y0 = lambda s: s.y0
-        _evaluate = ft.partial(self.__class__._evaluate, t=t0, left=left)
-        return lax.switch(index, [_nan, _evaluate, _y0, _nan], self)
+        pred = (self.ts_size > 1) & (t >= ts_0) & (t <= ts_1)
+        eval_fn = ft.partial(self.__class__._evaluate, t=t, left=left)
+        nan_fn = self.__class__._nan
+        # Use cond to avoid generating nans unless we have to.
+        out = lax.cond(pred, eval_fn, nan_fn, self)
+        keep = ft.partial(jnp.where, (t == self.t0_if_trivial) & (self.ts_size == 1))
+        return jtu.tree_map(keep, self.y0_if_trivial, out)
 
     @eqx.filter_jit
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
         t = t * self.direction
+        # Note that len(self.ts) == max_steps + 1 > 0 so the indexing is always valid,
+        # even if we throw it away because self.ts_size == 0.
         ts_0 = self.ts[0]
         ts_1 = self.ts[self.ts_size - 1]
-        pred = (t >= ts_0) & (t <= ts_1)
-        _derivative = ft.partial(self.__class__._derivative, t=t, left=left)
-        _nan = self.__class__._nan
-        return lax.cond(pred, _derivative, _nan, self)
+        pred = (self.ts_size > 1) & (t >= ts_0) & (t <= ts_1)
+        deriv_fn = ft.partial(self.__class__._derivative, t=t, left=left)
+        nan_fn = self.__class__._nan
+        # Use cond to avoid generating nans unless we have to.
+        return lax.cond(pred, deriv_fn, nan_fn, self)
 
     def _evaluate(self, t, left):
         return self._get_local_interpolation(t, left).evaluate(t, left=left)
@@ -344,15 +349,25 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         return (self.direction * out**ω).ω
 
     def _nan(self):
-        return jtu.tree_map(ft.partial(jnp.full_like, fill_value=jnp.nan), self.y0)
+        return jtu.tree_map(
+            ft.partial(jnp.full_like, fill_value=jnp.nan), self.y0_if_trivial
+        )
 
     @property
     def t0(self):
-        return self.ts[0] * self.direction
+        # Note that len(self.ts) == max_steps + 1 > 0 so the indexing is always valid,
+        # even if we throw it away because self.ts_size == 0.
+        ts_0 = jnp.where(self.ts_size == 1, self.t0_if_trivial, self.ts[0])
+        return ts_0 * self.direction
 
     @property
     def t1(self):
-        return self.ts[self.ts_size - 1] * self.direction
+        # Note that len(self.ts) == max_steps + 1 > 0 so the indexing is always valid,
+        # even if we throw it away because self.ts_size == 0.
+        ts_1 = jnp.where(
+            self.ts_size == 1, self.t0_if_trivial, self.ts[self.ts_size - 1]
+        )
+        return ts_1 * self.direction
 
 
 #

@@ -8,7 +8,7 @@ from equinox.internal import ω
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..solution import RESULTS
-from ..term import AbstractTerm
+from ..term import AbstractTerm, ODETerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -36,7 +36,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = (ODETerm, AbstractTerm)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -94,7 +94,7 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = (ODETerm, AbstractTerm)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):

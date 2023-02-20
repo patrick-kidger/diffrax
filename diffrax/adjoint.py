@@ -1,11 +1,11 @@
 import abc
 import functools as ft
 import warnings
-from dataclasses import fields
 from typing import Any, Dict, Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
+import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -13,7 +13,7 @@ from equinox.internal import ω
 
 from .ad import implicit_jvp
 from .heuristics import is_sde, is_unsafe_sde
-from .saveat import SaveAt
+from .saveat import save_y, SaveAt, SubSaveAt
 from .solver import AbstractItoSolver, AbstractStratonovichSolver
 from .term import AbstractTerm, AdjointTerm
 
@@ -22,28 +22,86 @@ def _is_none(x):
     return x is None
 
 
+def _is_subsaveat(x: Any) -> bool:
+    return isinstance(x, SubSaveAt)
+
+
+def _nondiff_solver_controller_state(
+    adjoint, init_state, passed_solver_state, passed_controller_state
+):
+    if passed_solver_state:
+        name = (
+            f"When using `adjoint={adjoint.__class__.__name__}()`, then `solver_state`"
+        )
+        solver_fn = ft.partial(
+            eqxi.nondifferentiable,
+            name=name,
+        )
+    else:
+        solver_fn = lax.stop_gradient
+    if passed_controller_state:
+        name = (
+            f"When using `adjoint={adjoint.__class__.__name__}()`, then "
+            "`controller_state`"
+        )
+        controller_fn = ft.partial(
+            eqxi.nondifferentiable,
+            name=name,
+        )
+    else:
+        controller_fn = lax.stop_gradient
+    init_state = eqx.tree_at(
+        lambda s: s.solver_state,
+        init_state,
+        replace_fn=solver_fn,
+        is_leaf=_is_none,
+    )
+    init_state = eqx.tree_at(
+        lambda s: s.controller_state,
+        init_state,
+        replace_fn=controller_fn,
+        is_leaf=_is_none,
+    )
+    return init_state
+
+
 def _only_transpose_ys(final_state):
-    entries = (
+    from .integrate import SaveState
+
+    is_save_state = lambda x: isinstance(x, SaveState)
+
+    def get_ys(_final_state):
+        return [
+            s.ys
+            for s in jtu.tree_leaves(_final_state.save_state, is_leaf=is_save_state)
+        ]
+
+    ys = get_ys(final_state)
+
+    named_nondiff_entries = (
         "y",
         "tprev",
         "tnext",
         "solver_state",
         "controller_state",
-        "ts",
         "dense_ts",
         "dense_infos",
     )
-    values = {
-        k: eqxi.nondifferentiable_backward(
-            getattr(final_state, k), name=k, symbolic=False
-        )
-        for k in entries
-    }
-    values["ys"] = final_state.ys
+    named_nondiff_values = tuple(
+        eqxi.nondifferentiable_backward(getattr(final_state, k), name=k, symbolic=False)
+        for k in named_nondiff_entries
+    )
+
     final_state = eqxi.nondifferentiable_backward(final_state, symbolic=False)
-    get = lambda s: tuple(getattr(s, k) for k in entries + ("ys",))
-    replace = tuple(values[k] for k in entries + ("ys",))
-    final_state = eqx.tree_at(get, final_state, replace, is_leaf=_is_none)
+
+    get_named_nondiff_entries = lambda s: tuple(
+        getattr(s, k) for k in named_nondiff_entries
+    )
+    final_state = eqx.tree_at(
+        get_named_nondiff_entries, final_state, named_nondiff_values, is_leaf=_is_none
+    )
+
+    final_state = eqx.tree_at(get_ys, final_state, ys)
     return final_state
 
 
@@ -99,24 +157,8 @@ class AbstractAdjoint(eqx.Module):
         return diffeqsolve
 
 
-def _inner_buffers(state):
-    assert type(state).__name__ == "_InnerState"
-    assert {f.name for f in fields(state)} == {
-        "ts",
-        "ys",
-        "saveat_ts_index",
-        "save_index",
-    }
-    return state.ts, state.ys
-
-
-def _outer_buffers(state):
-    assert type(state).__name__ == "_State"
-    return state.ts, state.ys, state.dense_ts, state.dense_infos
-
-
-_inner_loop = ft.partial(eqxi.while_loop, buffers=_inner_buffers)
-_outer_loop = ft.partial(eqxi.while_loop, buffers=_outer_buffers)
+_inner_loop = jax.named_call(eqxi.while_loop, name="inner-loop")
+_outer_loop = jax.named_call(eqxi.while_loop, name="outer-loop")
 
 
 def _uncallable(*args, **kwargs):
@@ -226,10 +268,7 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
                 "instead."
             )
         if self.checkpoints is None and max_steps is None:
-            if saveat.ts is None:
-                inner_while_loop = _uncallable
-            else:
-                inner_while_loop = ft.partial(_inner_loop, kind="lax")
+            inner_while_loop = ft.partial(_inner_loop, kind="lax")
             outer_while_loop = ft.partial(_outer_loop, kind="lax")
             msg = (
                 "Cannot reverse-mode autodifferentiate when using "
@@ -239,12 +278,7 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
                 "number of steps, or explicitly specify how many checkpoints to use."
             )
         else:
-            if saveat.ts is None:
-                inner_while_loop = _uncallable
-            else:
-                inner_while_loop = ft.partial(
-                    _inner_loop, kind="checkpointed", checkpoints=len(saveat.ts)
-                )
+            inner_while_loop = ft.partial(_inner_loop, kind="checkpointed")
             outer_while_loop = ft.partial(
                 _outer_loop, kind="checkpointed", checkpoints=self.checkpoints
             )
@@ -349,8 +383,12 @@ class DirectAdjoint(AbstractAdjoint):
 def _vf(ys, residual, args__terms, closure):
     state_no_y, _ = residual
     t = state_no_y.tprev
-    # unpack length-1 dimension
-    y = jtu.tree_map(lambda _y: _y[0], ys)
+
+    def _unpack(_y):
+        (_y1,) = _y
+        return _y1
+
+    y = jtu.tree_map(_unpack, ys)
     args, terms = args__terms
     _, _, solver, _, _ = closure
     return solver.func(terms, t, y, args)
@@ -371,8 +409,12 @@ def _solve(args__terms, closure):
     )
     # Note that we use .ys not .y here. The former is what is actually returned
     # by diffeqsolve, so it is the thing we want to attach the tangent to.
-    return final_state.ys, (
-        eqx.tree_at(lambda s: s.ys, final_state, None),
+    #
+    # Note that `final_state.save_state` has type PyTree[SaveState]. To access `.ys`
+    # we are assuming that this PyTree has trivial structure. This is the case because
+    # of the guard in `ImplicitAdjoint` that `saveat` be `SaveAt(t1=True)`.
+    return final_state.save_state.ys, (
+        eqx.tree_at(lambda s: s.save_state.ys, final_state, None),
         aux_stats,
     )
 
@@ -410,28 +452,18 @@ class ImplicitAdjoint(AbstractAdjoint):
                 "Can only use `adjoint=ImplicitAdjoint()` with "
                 "`saveat=SaveAt(t1=True)`."
             )
-
-        if not passed_solver_state:
-            init_state = eqx.tree_at(
-                lambda s: s.solver_state,
-                init_state,
-                replace_fn=lax.stop_gradient,
-                is_leaf=_is_none,
-            )
-        if not passed_controller_state:
-            init_state = eqx.tree_at(
-                lambda s: s.controller_state,
-                init_state,
-                replace_fn=lax.stop_gradient,
-                is_leaf=_is_none,
-            )
-
+        init_state = _nondiff_solver_controller_state(
+            self, init_state, passed_solver_state, passed_controller_state
+        )
         closure = (self, kwargs, solver, saveat, init_state)
         ys, residual = implicit_jvp(_solve, _vf, (args, terms), closure)
 
         final_state_no_ys, aux_stats = residual
+        # Note that `final_state.save_state` has type PyTree[SaveState]. To access `.ys`
+        # we are assuming that this PyTree has trivial structure. This is the case
+        # because of the guard that `saveat` be `SaveAt(t1=True)`.
         final_state = eqx.tree_at(
-            lambda s: s.ys, final_state_no_ys, ys, is_leaf=_is_none
+            lambda s: s.save_state.ys, final_state_no_ys, ys, is_leaf=_is_none
         )
         final_state = _only_transpose_ys(final_state)
         return final_state, aux_stats
@@ -445,9 +477,7 @@ class ImplicitAdjoint(AbstractAdjoint):
 def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
     del throw
     y, args, terms = y__args__terms
-    init_state = eqx.tree_at(
-        lambda s: jtu.tree_leaves(s.y), init_state, jtu.tree_leaves(y)
-    )
+    init_state = eqx.tree_at(lambda s: s.y, init_state, y)
     del y
     return self._loop(
         args=args,
@@ -461,8 +491,10 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
 
 def _loop_backsolve_fwd(y__args__terms, **kwargs):
     final_state, aux_stats = _loop_backsolve(y__args__terms, **kwargs)
-    ts = final_state.ts
-    ys = final_state.ys
+    # Note that `final_state.save_state` has type `PyTree[SaveState]`; here we are
+    # relying on the guard in `BacksolveAdjoint` that it have trivial structure.
+    ts = final_state.save_state.ts
+    ys = final_state.save_state.ys
     return (final_state, aux_stats), (ts, ys)
 
 
@@ -493,7 +525,9 @@ def _loop_backsolve_bwd(
     ts, ys = residuals
     del residuals
     grad_final_state, _ = grad_final_state__aux_stats
-    grad_ys = grad_final_state.ys
+    # Note that `grad_final_state.save_state` has type `PyTree[SaveState]`; here we are
+    # relying on the guard in `BacksolveAdjoint` that it have trivial structure.
+    grad_ys = grad_final_state.save_state.ys
     del grad_final_state, grad_final_state__aux_stats
     y, args, terms = y__args__terms
     del y__args__terms
@@ -521,7 +555,9 @@ def _loop_backsolve_bwd(
     kwargs.update(self.kwargs)
     del self, solver, stepsize_controller, adjoint_terms, dt0, max_steps, throw
     del y, args, terms
-    saveat_t0 = saveat.t0
+    # Note that `saveat.subs` has type `PyTree[SubSaveAt]`. Here we use the assumption
+    # (checked in `BacksolveAdjoint`) that it has trivial pytree structure.
+    saveat_t0 = saveat.subs.t0
     del saveat
 
     #
@@ -675,9 +711,10 @@ class BacksolveAdjoint(AbstractAdjoint):
         }
         given_keys = set(kwargs.keys())
         diff_keys = given_keys - valid_keys
-        if len(diff_keys):
+        if len(diff_keys) > 0:
             raise ValueError(
-                f"The following keys are not valid for `BacksolveAdjoint`: {diff_keys}"
+                "The following keyword argments are not valid for `BacksolveAdjoint`: "
+                f"{diff_keys}"
             )
         self.kwargs = kwargs
 
@@ -693,11 +730,20 @@ class BacksolveAdjoint(AbstractAdjoint):
         passed_controller_state,
         **kwargs,
     ):
-        del passed_solver_state, passed_controller_state
-        if saveat.steps or saveat.dense:
+        if jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat) != jtu.tree_structure(
+            0
+        ):
+            raise NotImplementedError(
+                "Cannot use `adjoint=BacksolveAdjoint()` with `SaveAt(subs=...)`."
+            )
+        if saveat.dense or saveat.subs.steps:
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
-                "`saveat=Steps(steps=True)` or `saveat=Steps(dense=True)`."
+                "`saveat=SaveAt(steps=True)` or saveat=SaveAt(dense=True)`."
+            )
+        if saveat.subs.fn is not save_y:
+            raise NotImplementedError(
+                "Cannot use `adjoint=BacksolveAdjoint()` with `saveat=SaveAt(fn=...)`."
             )
         if is_unsafe_sde(terms):
             raise ValueError(
@@ -713,16 +759,16 @@ class BacksolveAdjoint(AbstractAdjoint):
                 )
             elif not isinstance(solver, AbstractStratonovichSolver):
                 warnings.warn(
-                    f"{solver.___class__._name__} is not marked as converging to "
+                    f"{solver.__class__.__name__} is not marked as converging to "
                     "either the Itô or the Stratonovich solution. Note that "
                     "`BacksolveAdjoint` will only produce the correct solution for "
                     "Stratonovich SDEs."
                 )
 
         y = init_state.y
-        sentinel = object()
-        init_state = eqx.tree_at(
-            lambda s: jtu.tree_leaves(s.y), init_state, replace_fn=lambda _: sentinel
+        init_state = eqx.tree_at(lambda s: s.y, init_state, object())
+        init_state = _nondiff_solver_controller_state(
+            self, init_state, passed_solver_state, passed_controller_state
         )
 
         final_state, aux_stats = _loop_backsolve(
