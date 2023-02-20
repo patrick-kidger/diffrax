@@ -4,11 +4,8 @@
     selection:
         members:
             - __init__
-            - t0
-            - t1
-            - ts
-            - steps
-            - dense
-            - solver_state
-            - controller_state
-            - made_jump
+
+::: diffrax.SubSaveAt
+    selection:
+        members:
+            - __init__
