@@ -90,7 +90,7 @@ plugins:
 
 nav:
     - 'index.md'
-    - 'further_details/citation.md'
+    - 'citation.md'
     - Usage:
         - 'usage/getting-started.md'
         - 'usage/how-to-choose-a-solver.md'
@@ -120,7 +120,7 @@ nav:
         - 'api/saveat.md'
         - 'api/stepsize_controller.md'
         - 'api/solution.md'
-        - 'api/citation.md'
+        - 'api/autocitation.md'
     - Advanced API:
         - 'api/adjoints.md'
         - 'api/events.md'

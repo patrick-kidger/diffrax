@@ -20,7 +20,7 @@ _From a technical point of view, the internal structure of the library is pretty
 pip install diffrax
 ```
 
-Requires Python >=3.7 and JAX >=0.3.4.
+Requires Python 3.8+, JAX 0.4.3+, and [Equinox](https://github.com/patrick-kidger/equinox) 0.10.0+.
 
 ## Quick example
 
@@ -43,16 +43,6 @@ Here, `Dopri5` refers to the Dormand--Prince 5(4) numerical differential equatio
 
 --8<-- "further_details/.citation.md"
 
-## Getting started
+## Next steps
 
-If this page has caught your interest, then have a look at the [Getting Started](./usage/getting-started.md) page.
-
-!!! help
-
-    Both Diffrax and its documentation are very new! If:
-
-    - anything is unclear;
-    - you have any suggestions;
-    - you need any more features;
-
-    then please open an issue or pull request on [GitHub](https://github.com/patrick-kidger/diffrax).
+Have a look at the [Getting Started](./usage/getting-started.md) page.

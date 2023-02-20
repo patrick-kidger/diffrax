@@ -14,7 +14,7 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
     diffeqsolve(terms, solver=Euler(), ...)
     ```
 
-    Some solvers are SDE-specific. For these, such as for example [`diffrax.StratonovichMilstein`][], then `terms` should be a 2-tuple `(AbstractTerm, AbstractTerm)`, representing the drift and diffusion separately.
+    Some solvers are SDE-specific. For these, such as for example [`diffrax.StratonovichMilstein`][], then `terms` should be a 2-tuple `(ODETerm, AbstractTerm)`, representing the drift and diffusion separately.
 
     For those SDE-specific solvers then this is documented below, and the term structure is available programmatically under `<solver>.term_structure`.
 
@@ -60,7 +60,7 @@ These are reversible in the same way as when applied to ODEs. [See here.](./ode_
 
 !!! info "Term structure"
 
-    For these SDE-specific solvers, the terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple `(AbstractTerm, AbstractTerm)`, representing the drift and diffusion respectively. Typically that means `(ODETerm(...), ControlTerm(..., ...))`.
+    For these SDE-specific solvers, the terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple `(ODETerm, AbstractTerm)`, representing the drift and diffusion respectively. Typically that means `(ODETerm(...), ControlTerm(..., ...))`.
 
 ::: diffrax.EulerHeun
     selection:

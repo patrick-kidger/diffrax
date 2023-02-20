@@ -327,8 +327,6 @@ class DirectAdjoint(AbstractAdjoint):
 
     So unless you need forward-mode autodifferentiation then
     [`diffrax.RecursiveCheckpointAdjoint`][] should be preferred.
-
-    This is not reverse-mode autodifferentiable if `diffeqsolve(..., max_steps=None)`.
     """
 
     def loop(
