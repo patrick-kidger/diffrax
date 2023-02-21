@@ -43,11 +43,11 @@ class ButcherTableau:
     c: np.ndarray
     b_sol: np.ndarray
     b_error: np.ndarray
-    a_lower: Tuple[np.ndarray]
+    a_lower: Tuple[np.ndarray, ...]
 
     # Implicit RK methods
     a_diagonal: Optional[np.ndarray] = None
-    a_predictor: Optional[Tuple[np.ndarray]] = None
+    a_predictor: Optional[Tuple[np.ndarray, ...]] = None
 
     # Determine the use of fast-paths
     ssal: bool = field(init=False)
