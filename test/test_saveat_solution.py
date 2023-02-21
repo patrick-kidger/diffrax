@@ -247,3 +247,22 @@ def test_subsaveat(adjoint, multi_subs, with_fn, getkey):
             ys2 = sol.ys
         assert shaped_allclose(ts2, jnp.array([0, 0.5, 1.0, 1.5]))
         assert shaped_allclose(ys2, jax.vmap(mlp)(jax.vmap(sol2.evaluate)(ts2)))
+
+
+def test_backprop_none_subs():
+    saveat = diffrax.SaveAt(dense=True)
+
+    @jax.grad
+    def run(y0):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: -y),
+            diffrax.Tsit5(),
+            0,
+            1,
+            0.1,
+            y0,
+            saveat=saveat,
+        )
+        return sol.evaluate(0.5)
+
+    run(1.0)

@@ -1,7 +1,7 @@
 import functools as ft
 import inspect
 import re
-from typing import Callable, Optional, Sequence
+from typing import Callable, List, Optional
 
 import jax
 import jax.tree_util as jtu
@@ -118,7 +118,7 @@ def citation(*args, **kwargs):
 _diffeqsignature = inspect.signature(diffeqsolve)
 
 
-citation_rules: Sequence[Callable[..., Optional[str]]] = []
+citation_rules: List[Callable[..., Optional[str]]] = []
 
 
 _thesis_cite = r"""

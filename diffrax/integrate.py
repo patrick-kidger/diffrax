@@ -69,7 +69,12 @@ def _inner_buffers(save_state):
 def _outer_buffers(state):
     assert type(state) is State
     is_save_state = lambda x: isinstance(x, SaveState)
+    # state.save_state has type PyTree[SaveState]. In particular this may include some
+    # `None`s, which may sometimes be treated as leaves (e.g.
+    # `tree_at(_outer_buffers, ..., is_leaf=lambda x: x is None)`).
+    # So we need to only get those leaves which really are a SaveState.
     save_states = jtu.tree_leaves(state.save_state, is_leaf=is_save_state)
+    save_states = [x for x in save_states if is_save_state(x)]
     return (
         [s.ts for s in save_states]
         + [s.ys for s in save_states]
