@@ -120,7 +120,7 @@ class ItoMilstein(AbstractItoSolver):
 
         #
         # So this is a bit involved, largely because of the generality that the rest of
-        # the libary supports. (In particular arbitrary PyTrees, and arbitrary (linear)
+        # the library supports. (In particular arbitrary PyTrees, and arbitrary (linear)
         # `AbstractTerm.prod`)
         #
         # The expression for Ito Milstein is

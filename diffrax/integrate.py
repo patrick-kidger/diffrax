@@ -147,7 +147,7 @@ def loop(
 
     # Privileged optimisation for the common case of no jumps. We can reduce
     # solver compile time with this.
-    # TODO: somehow make this a non-priviliged optimisation, i.e. detect when
+    # TODO: somehow make this a non-privileged optimisation, i.e. detect when
     # we can make jumps or not.
     cannot_make_jump = isinstance(stepsize_controller, (ConstantStepSize, StepTo)) or (
         isinstance(stepsize_controller, PIDController)
