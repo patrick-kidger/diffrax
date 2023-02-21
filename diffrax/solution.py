@@ -112,7 +112,7 @@ class Solution(AbstractPath):
         """
         if self.interpolation is None:
             raise ValueError(
-                "Dense solution has not been saved; pass saveat.dense=True."
+                "Dense solution has not been saved; pass SaveAt(dense=True)."
             )
         return self.interpolation.evaluate(t0, t1, left)
 
@@ -159,6 +159,6 @@ class Solution(AbstractPath):
         """
         if self.interpolation is None:
             raise ValueError(
-                "Dense solution has not been saved; pass saveat.dense=True."
+                "Dense solution has not been saved; pass SaveAt(dense=True)."
             )
         return self.interpolation.derivative(t, left)

@@ -12,7 +12,6 @@ from .dopri5 import Dopri5
 from .dopri8 import Dopri8
 from .euler import Euler
 from .euler_heun import EulerHeun
-from .fehlberg2 import Fehlberg2
 from .heun import Heun
 from .implicit_euler import ImplicitEuler
 from .kvaerno3 import Kvaerno3

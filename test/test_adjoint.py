@@ -1,4 +1,3 @@
-import math
 from typing import Any
 
 import diffrax
@@ -11,26 +10,6 @@ import optax
 import pytest
 
 from .helpers import shaped_allclose
-
-
-def test_no_adjoint():
-    def fn(y0):
-        term = diffrax.ODETerm(lambda t, y, args: -y)
-        t0 = 0
-        t1 = 1
-        dt0 = 0.1
-        solver = diffrax.Dopri5()
-        adjoint = diffrax.NoAdjoint()
-        sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, adjoint=adjoint)
-        return jnp.sum(sol.ys)
-
-    with pytest.raises(ValueError):
-        jax.grad(fn)(1.0)
-
-    primal, dual = jax.jvp(fn, (1.0,), (1.0,))
-    e_inv = 1 / math.e
-    assert shaped_allclose(primal, e_inv)
-    assert shaped_allclose(dual, e_inv)
 
 
 class _VectorField(eqx.Module):
@@ -106,21 +85,28 @@ def test_against(getkey):
                     continue
                 saveat = diffrax.SaveAt(t0=t0, t1=t1, ts=ts)
 
+                direct_grads = _run_grad(diff, saveat, diffrax.DirectAdjoint())
                 recursive_grads = _run_grad(
                     diff, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad(diff, saveat, diffrax.BacksolveAdjoint())
-                assert shaped_allclose(recursive_grads, backsolve_grads, atol=1e-5)
+                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
+                direct_grads = _run_grad_int(
+                    y0__args__term, saveat, diffrax.DirectAdjoint()
+                )
                 recursive_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.BacksolveAdjoint()
                 )
+                direct_grads = jtu.tree_map(_convert_float0, direct_grads)
                 recursive_grads = jtu.tree_map(_convert_float0, recursive_grads)
                 backsolve_grads = jtu.tree_map(_convert_float0, backsolve_grads)
-                assert shaped_allclose(recursive_grads, backsolve_grads, atol=1e-5)
+                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
 
 def test_adjoint_seminorm():
@@ -250,3 +236,59 @@ def test_implicit():
     assert shaped_allclose(
         model.steady_state, target_steady_state, rtol=1e-2, atol=1e-2
     )
+
+
+def test_backprop_ts(getkey):
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
+
+    @eqx.filter_jit
+    @eqx.filter_value_and_grad
+    def run(model):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: model(y)),
+            diffrax.Euler(),
+            0,
+            1,
+            0.1,
+            jnp.array([1.0]),
+            saveat=diffrax.SaveAt(ts=jnp.linspace(0, 1, 5)),
+        )
+        return jnp.sum(sol.ys)
+
+    run(mlp)
+
+
+def test_sde_against(getkey):
+    def f(t, y, args):
+        k0, _ = args
+        return -k0 * y
+
+    def g(t, y, args):
+        _, k1 = args
+        return k1 * y
+
+    t0 = 0
+    t1 = 1
+    dt0 = 0.001
+    tol = 1e-5
+    shape = (2,)
+    bm = diffrax.VirtualBrownianTree(t0, t1, tol, shape, key=getkey())
+    drift = diffrax.ODETerm(f)
+    diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+    terms = diffrax.MultiTerm(drift, diffusion)
+    solver = diffrax.Heun()
+
+    @eqx.filter_jit
+    @jax.grad
+    def run(y0__args, adjoint):
+        y0, args = y0__args
+        sol = diffrax.diffeqsolve(terms, solver, t0, t1, dt0, y0, args, adjoint=adjoint)
+        return jnp.sum(sol.ys)
+
+    y0 = jnp.array([1.0, 2.0])
+    args = (0.5, 0.1)
+    grads1 = run((y0, args), diffrax.DirectAdjoint())
+    grads2 = run((y0, args), diffrax.BacksolveAdjoint())
+    grads3 = run((y0, args), diffrax.RecursiveCheckpointAdjoint())
+    assert shaped_allclose(grads1, grads2, rtol=1e-3, atol=1e-3)
+    assert shaped_allclose(grads1, grads3, rtol=1e-3, atol=1e-3)

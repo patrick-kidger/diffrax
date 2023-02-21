@@ -44,9 +44,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
-python_requires = "~=3.7"
+python_requires = "~=3.8"
 
-install_requires = ["jax>=0.3.4", "equinox>=0.9.1"]
+install_requires = ["jax>=0.4.3", "equinox>=0.10.0"]
 
 setuptools.setup(
     name=name,

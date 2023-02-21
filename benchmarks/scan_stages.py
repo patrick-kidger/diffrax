@@ -1,14 +1,14 @@
 """Benchmarks the effect of `diffrax.AbstractRungeKutta(scan_stages=...)`.
 
-On my CPU-only machine:
+On my relatively beefy CPU-only machine:
 ```
-bash> python scan_stages.py False
-Compile+run time 24.38062646985054
-Run time 0.0018830380868166685
+scan_stages=True
+Compile+run time 1.8253102810122073
+Run time 0.00017526978626847267
 
-bash> python scan_stages.py True
-Compile+run time 11.418417416978627
-Run time 0.0014536201488226652
+scan_stages=False
+Compile+run time 10.679616351146251
+Run time 0.00021236995235085487
 ```
 """
 
@@ -17,7 +17,6 @@ import timeit
 
 import diffrax as dfx
 import equinox as eqx
-import fire
 import jax.numpy as jnp
 import jax.random as jr
 
@@ -44,7 +43,7 @@ class VectorField(eqx.Module):
         return jnp.stack(y)
 
 
-def main(scan_stages):
+def run(scan_stages):
     vf = VectorField(1, 1, 16, 2, key=jr.PRNGKey(0))
     term = dfx.ODETerm(vf)
     solver = dfx.Dopri8(scan_stages=scan_stages)
@@ -60,8 +59,11 @@ def main(scan_stages):
         )
 
     solve_ = ft.partial(solve, jnp.array([1.0]))
+    print(f"scan_stages={scan_stages}")
     print("Compile+run time", timeit.timeit(solve_, number=1))
     print("Run time", timeit.timeit(solve_, number=1))
 
 
-fire.Fire(main)
+run(scan_stages=True)
+print()
+run(scan_stages=False)

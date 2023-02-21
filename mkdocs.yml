@@ -90,23 +90,26 @@ plugins:
 
 nav:
     - 'index.md'
-    - 'further_details/citation.md'
+    - 'citation.md'
     - Usage:
         - 'usage/getting-started.md'
         - 'usage/how-to-choose-a-solver.md'
         - 'usage/manual-stepping.md'
         - 'usage/extending.md'
     - Examples:
-        - Basic examples: 'basic-examples.md'
-        - Neural ODE: 'examples/neural_ode.ipynb'
-        - Neural CDE: 'examples/neural_cde.ipynb'
-        - Neural SDE: 'examples/neural_sde.ipynb'
-        - Latent ODE: 'examples/latent_ode.ipynb'
-        - Continuous Normalising Flow: 'examples/continuous_normalising_flow.ipynb'
-        - Symbolic Regression: 'examples/symbolic_regression.ipynb'
+        - Basic ODE/SDE/CDE examples: 'other_examples/basic-examples.md'
+        - Coupled ODEs: 'examples/coupled_odes.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
-        - Steady State: 'examples/steady_state.ipynb'
-        - Kalman Filter: 'examples/kalman_filter.ipynb'
+        - Neural differential equations:
+            - Neural ODE: 'examples/neural_ode.ipynb'
+            - Neural CDE: 'examples/neural_cde.ipynb'
+            - Neural SDE: 'examples/neural_sde.ipynb'
+            - Latent ODE: 'examples/latent_ode.ipynb'
+            - Continuous normalising flow: 'examples/continuous_normalising_flow.ipynb'
+        - Symbolic regression: 'examples/symbolic_regression.ipynb'
+        - Steady state: 'examples/steady_state.ipynb'
+        - Kalman filter: 'examples/kalman_filter.ipynb'
+        - Nonlinear heat PDE: 'examples/nonlinear_heat_pde.ipynb'
     - Basic API:
         - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
@@ -117,6 +120,7 @@ nav:
         - 'api/saveat.md'
         - 'api/stepsize_controller.md'
         - 'api/solution.md'
+        - 'api/autocitation.md'
     - Advanced API:
         - 'api/adjoints.md'
         - 'api/events.md'
@@ -132,4 +136,3 @@ nav:
         - Developer Documentation:
             - 'devdocs/predictor_dirk.md'
             - 'devdocs/adjoint_commutative_noise.md'
-            - 'devdocs/bounded_while_loop.md'

@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
@@ -26,7 +25,7 @@ class ImplicitEuler(AbstractImplicitSolver):
     A-B-L stable 1st order SDIRK method. Does not support adaptive step sizing.
     """
 
-    term_structure = jtu.tree_structure(0)
+    term_structure = AbstractTerm
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):

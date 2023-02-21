@@ -1,12 +1,11 @@
 from typing import Tuple
 
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..solution import RESULTS
-from ..term import AbstractTerm
+from ..term import AbstractTerm, ODETerm
 from .base import AbstractStratonovichSolver
 
 
@@ -20,7 +19,7 @@ class EulerHeun(AbstractStratonovichSolver):
     Used to solve SDEs, and converges to the Stratonovich solution.
     """
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = (ODETerm, AbstractTerm)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -31,7 +30,7 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: Tuple[ODETerm, AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,

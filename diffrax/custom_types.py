@@ -129,5 +129,3 @@ else:
 
 DenseInfo = Dict[str, PyTree[Array]]
 DenseInfos = Dict[str, PyTree[Array["times", ...]]]  # noqa: F821
-
-PyTreeDef = type(jtu.tree_structure(0))

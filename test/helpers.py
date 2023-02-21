@@ -1,7 +1,5 @@
 import functools as ft
-import gc
 import operator
-import time
 
 import diffrax
 import equinox as eqx
@@ -85,23 +83,3 @@ def shaped_allclose(x, y, **kwargs):
     return same_structure and jtu.tree_reduce(
         operator.and_, jtu.tree_map(allclose, x, y), True
     )
-
-
-def time_fn(fn, repeat=1):
-    fn()  # Compile
-    gc_enabled = gc.isenabled()
-    if gc_enabled:
-        gc.collect()
-    gc.disable()
-    try:
-        times = []
-        for _ in range(repeat):
-            start = time.perf_counter_ns()
-            fn()
-            end = time.perf_counter_ns()
-            times.append(end - start)
-        return min(times)
-    finally:
-        if gc_enabled:
-            gc.enable()
-            gc.collect()

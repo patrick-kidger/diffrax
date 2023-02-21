@@ -14,31 +14,34 @@ There are multiple ways to backpropagate through a differential equation (to com
 
     Alternatively we may compute $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y_0}$ analytically. In doing so we obtain a backwards-in-time ODE that we must numerically solve to obtain the desired gradients. This is known as "optimise then discretise", and corresponds to [`diffrax.BacksolveAdjoint`][] below.
 
-??? abstract "`diffrax.AbstractSolver`"
+??? abstract "`diffrax.AbstractAdjoint`"
 
     ::: diffrax.AbstractAdjoint
         selection:
             members:
                 - loop
 
+Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.BacksolveAdjoint`][] can only be reverse-mode autodifferentiated. [`diffrax.ImplicitAdjoint`][] and [`diffrax.DirectAdjoint`][] support both forward and reverse-mode autodifferentiation.
+
 ---
 
 ::: diffrax.RecursiveCheckpointAdjoint
     selection:
-        members: false
-
-::: diffrax.NoAdjoint
-    selection:
-        members: false
-
-::: diffrax.ImplicitAdjoint
-    selection:
-        members: false
+        members:
+            - __init__
 
 ::: diffrax.BacksolveAdjoint
     selection:
         members:
             - __init__
+
+::: diffrax.ImplicitAdjoint
+    selection:
+        members: false
+
+::: diffrax.DirectAdjoint
+    selection:
+        members: false
 
 ---
 

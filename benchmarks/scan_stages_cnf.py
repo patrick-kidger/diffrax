@@ -32,7 +32,6 @@ import timeit
 
 import diffrax
 import equinox as eqx
-import fire
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -50,7 +49,7 @@ def vector_field_prob(t, input, model):
     return f, logp
 
 
-@eqx.filter_vmap(args=(None, 0, None, None))
+@eqx.filter_vmap(in_axes=(None, 0, None, None))
 def log_prob(model, y0, scan_stages, backsolve):
     term = diffrax.ODETerm(vector_field_prob)
     solver = diffrax.Dopri5(scan_stages=scan_stages)
@@ -80,13 +79,18 @@ def solve(model, inputs, scan_stages, backsolve):
     return -log_prob(model, inputs, scan_stages, backsolve).mean()
 
 
-def main(scan_stages, backsolve):
+def run(scan_stages, backsolve):
     mkey, dkey = jr.split(jr.PRNGKey(0), 2)
     model = eqx.nn.MLP(2, 2, 10, 2, activation=jnn.gelu, key=mkey)
     x = jr.normal(dkey, (256, 2))
-    solve_ = ft.partial(solve, model, x, scan_stages, backsolve)
-    print("Compile+run time", timeit.timeit(solve_, number=1))
-    print("Run time", timeit.timeit(solve_, number=1))
+    solve2 = ft.partial(solve, model, x, scan_stages, backsolve)
+    print(f"scan_stages={scan_stages}, backsolve={backsolve}")
+    print("Compile+run time", timeit.timeit(solve2, number=1))
+    print("Run time", timeit.timeit(solve2, number=1))
+    print()
 
 
-fire.Fire(main)
+run(scan_stages=False, backsolve=False)
+run(scan_stages=False, backsolve=True)
+run(scan_stages=True, backsolve=False)
+run(scan_stages=True, backsolve=True)
