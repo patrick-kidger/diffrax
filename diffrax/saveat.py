@@ -1,4 +1,4 @@
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Union, Callable
 
 import equinox as eqx
 import jax
@@ -22,6 +22,7 @@ class SaveAt(eqx.Module):
     solver_state: bool = False
     controller_state: bool = False
     made_jump: bool = False
+    func: Callable = lambda t, y, args: y
 
     def __post_init__(self):
         with jax.ensure_compile_time_eval():
@@ -50,6 +51,8 @@ SaveAt.__init__.__doc__ = """**Main Arguments:**
 
 It is less likely you will need to use these options.
 
+- `func`: A function that returns an arbitrary pytree of values computed 
+     from `t, y, args`. Defaults to return the state
 - `solver_state`: If `True`, save the internal state of the numerical solver at
     `t1`.
 - `controller_state`: If `True`, save the internal state of the step size
