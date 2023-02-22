@@ -30,7 +30,6 @@ def getkey():
 def clear_caches():
     process = psutil.Process()
     if process.memory_info().vms > 4 * 2**30:  # >4GB memory usage
-        jax.clear_backends()
         for module_name, module in sys.modules.copy().items():
             if module_name.startswith("jax"):
                 if module_name not in ["jax.interpreters.partial_eval"]:
