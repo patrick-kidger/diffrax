@@ -112,7 +112,7 @@ These arguments are used less frequently.
 - `subs`: Some PyTree of [`diffrax.SubSaveAt`][], which allows for finer-grained control
     over what is saved. Each `SubSaveAt` specifies a combination of a function `fn` and
     some times `t0`, `t1`, `ts`, `steps` at which to evaluate it. `sol.ts` and `sol.ys`
-    will then by PyTrees of the same structure as `subs`, with each leaf of the PyTree
+    will then be PyTrees of the same structure as `subs`, with each leaf of the PyTree
     saving what the corresponding `SubSaveAt` specifies. The arguments
     `SaveAt(t0=..., t1=..., ts=..., steps=..., fn=...)` are actually just a convenience
     for passing a single `SubSaveAt` as
