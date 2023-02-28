@@ -354,6 +354,15 @@ class MultiTerm(AbstractTerm):
         ]
         return jtu.tree_map(_sum, *out)
 
+    def vf_prod(
+        self, t: Scalar, y: PyTree, args: PyTree, control: Tuple[PyTree, ...]
+    ) -> PyTree:
+        out = [
+            term.vf_prod(t, y, args, control_)
+            for term, control_ in zip(self.terms, control)
+        ]
+        return jtu.tree_map(_sum, *out)
+
 
 class WrapTerm(AbstractTerm):
     term: AbstractTerm
@@ -370,6 +379,10 @@ class WrapTerm(AbstractTerm):
 
     def prod(self, vf: PyTree, control: PyTree) -> PyTree:
         return self.term.prod(vf, control)
+
+    def vf_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
+        t = t * self.direction
+        return self.term.vf_prod(t, y, args, control)
 
 
 class AdjointTerm(AbstractTerm):
