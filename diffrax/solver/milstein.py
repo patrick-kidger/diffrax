@@ -45,9 +45,19 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     def strong_order(self, terms):
         return 1  # assuming commutative noise
 
+    def init(
+        self,
+        terms: Tuple[ODETerm, AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: Tuple[ODETerm, AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -103,9 +113,19 @@ class ItoMilstein(AbstractItoSolver):
     def strong_order(self, terms):
         return 1  # assuming commutative noise
 
+    def init(
+        self,
+        terms: Tuple[ODETerm, AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: Tuple[ODETerm, AbstractTerm],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,

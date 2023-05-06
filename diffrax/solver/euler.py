@@ -30,6 +30,16 @@ class Euler(AbstractItoSolver):
     def strong_order(self, terms):
         return 0.5
 
+    def init(
+        self,
+        terms: AbstractTerm,
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
         terms: AbstractTerm,

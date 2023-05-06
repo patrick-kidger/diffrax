@@ -85,6 +85,7 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         else:
             return self.order(terms)
 
+    @abc.abstractmethod
     def init(
         self,
         terms: PyTree[AbstractTerm],
@@ -101,7 +102,6 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
 
         The initial solver state, which should be used the first time `step` is called.
         """
-        return None
 
     @abc.abstractmethod
     def step(
