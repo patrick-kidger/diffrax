@@ -28,6 +28,16 @@ class EulerHeun(AbstractStratonovichSolver):
     def strong_order(self, terms):
         return 0.5
 
+    def init(
+        self,
+        terms: Tuple[ODETerm, AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
         terms: Tuple[ODETerm, AbstractTerm],

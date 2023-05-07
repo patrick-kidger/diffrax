@@ -39,7 +39,8 @@ def clear_caches():
                         if hasattr(obj, "cache_clear"):
                             try:
                                 print(f"Clearing {obj}")
-                                obj.cache_clear()
+                                if "Weakref" not in type(obj).__name__:
+                                    obj.cache_clear()
                             except Exception:
                                 pass
         gc.collect()

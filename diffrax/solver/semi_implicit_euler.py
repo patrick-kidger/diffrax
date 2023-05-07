@@ -25,6 +25,16 @@ class SemiImplicitEuler(AbstractSolver):
     def order(self, terms):
         return 1
 
+    def init(
+        self,
+        terms: Tuple[AbstractTerm, AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
         terms: Tuple[AbstractTerm, AbstractTerm],
@@ -35,7 +45,7 @@ class SemiImplicitEuler(AbstractSolver):
         solver_state: _SolverState,
         made_jump: Bool,
     ) -> Tuple[Tuple[PyTree, PyTree], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
-        del made_jump
+        del solver_state, made_jump
 
         term_1, term_2 = terms
         y0_1, y0_2 = y0

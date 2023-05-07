@@ -41,18 +41,18 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
         *,
         y0: PyTree[Array["dims":...]],  # noqa: F821
         y1: PyTree[Array["dims":...]],  # noqa: F821
-        f0: PyTree[Array["dims":...]],  # noqa: F821
-        f1: PyTree[Array["dims":...]],  # noqa: F821
+        k0: PyTree[Array["dims":...]],  # noqa: F821
+        k1: PyTree[Array["dims":...]],  # noqa: F821
         **kwargs
     ):
         super().__init__(**kwargs)
 
-        def _calculate(_y0, _y1, _f0, _f1):
-            _a = _f0 + _f1 + 2 * _y0 - 2 * _y1
-            _b = -2 * _f0 - _f1 - 3 * _y0 + 3 * _y1
-            return jnp.stack([_a, _b, _f0, _y0])
+        def _calculate(_y0, _y1, _k0, _k1):
+            _a = _k0 + _k1 + 2 * _y0 - 2 * _y1
+            _b = -2 * _k0 - _k1 - 3 * _y0 + 3 * _y1
+            return jnp.stack([_a, _b, _k0, _y0])
 
-        self.coeffs = jtu.tree_map(_calculate, y0, y1, f0, f1)
+        self.coeffs = jtu.tree_map(_calculate, y0, y1, k0, k1)
 
     @classmethod
     def from_k(
@@ -63,7 +63,7 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
         k: PyTree[Array["order", "dims":...]],  # noqa: F821
         **kwargs
     ):
-        return cls(y0=y0, y1=y1, f0=ω(k)[0].ω, f1=ω(k)[-1].ω, **kwargs)
+        return cls(y0=y0, y1=y1, k0=ω(k)[0].ω, k1=ω(k)[-1].ω, **kwargs)
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
