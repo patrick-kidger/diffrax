@@ -1,4 +1,3 @@
-import abc
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
@@ -53,6 +52,10 @@ class ButcherTableau:
     ssal: bool = field(init=False)
     fsal: bool = field(init=False)
 
+    # Informational
+    implicit: bool = field(init=False)
+    num_stages: int = field(init=False)
+
     def __post_init__(self):
         assert self.c.ndim == 1
         for a_i in self.a_lower:
@@ -101,6 +104,9 @@ class ButcherTableau:
             lower_b_sol_equal and diagonal_b_sol_equal and explicit_first_stage,
         )
 
+        object.__setattr__(self, "implicit", implicit)
+        object.__setattr__(self, "num_stages", len(self.b_sol))
+
 
 ButcherTableau.__init__.__doc__ = """**Arguments:**
 
@@ -123,7 +129,7 @@ Let `k` denote the number of stages of the solver.
 - `a_predictor`: optional. Used in a similar way to `a_lower`; specifies the linear
     combination of previous stages to use as a predictor for the solution to the
     implicit problem at that stage. See
-    [the developer documentation](../../devdocs/predictor_dirk). U#sed for diagonal
+    [the developer documentation](../../devdocs/predictor_dirk). Used for diagonal
     implicit Runge--Kutta methods only.
 
 Whether the solver exhibits either the FSAL or SSAL properties is determined
@@ -197,15 +203,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     term_structure = AbstractTerm
 
-    @property
-    @abc.abstractmethod
-    def tableau(self) -> ButcherTableau:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def calculate_jacobian(self) -> CalculateJacobian:
-        pass
+    tableau: eqxi.AbstractClassVar[ButcherTableau]
+    calculate_jacobian: eqxi.AbstractClassVar[CalculateJacobian]
 
     def _first(self, terms, t0, t1, y0, args):
         vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
@@ -411,11 +410,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         num_stages = len(self.tableau.c) + 1
         if use_fs:
-            fs = jtu.tree_map(lambda f: jnp.empty((num_stages,) + f.shape), f0_struct)
+            fs = jtu.tree_map(lambda f: jnp.zeros((num_stages,) + f.shape), f0_struct)
             ks = None
         else:
             fs = None
-            ks = jtu.tree_map(lambda k: jnp.empty((num_stages,) + jnp.shape(k)), y0)
+            ks = jtu.tree_map(lambda k: jnp.zeros((num_stages,) + jnp.shape(k)), y0)
 
         #
         # First stage. Defines `result`, `scan_first_stage`. Places `f0` and `k0` into
@@ -556,9 +555,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 assert _a_diagonal_i is not None
                 # Predictor for where to start iterating from
                 if _return_fi:
-                    _f_pred = _vector_tree_dot(_a_predictor_i, fs, _i)  # noqa: F821
+                    _f_pred = _vector_tree_dot(_a_predictor_i, _fs, _i)  # noqa: F821
                 else:
-                    _k_pred = _vector_tree_dot(_a_predictor_i, ks, _i)  # noqa: F821
+                    _k_pred = _vector_tree_dot(_a_predictor_i, _ks, _i)  # noqa: F821
                 # Determine Jacobian to use at this stage
                 if self.calculate_jacobian == CalculateJacobian.every_stage:
                     if _return_fi:
@@ -827,7 +826,7 @@ class AbstractSDIRK(AbstractDIRK):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if cls.tableau is not None:  # Abstract subclasses may not have a tableau.
+        if hasattr(cls, "tableau"):  # Abstract subclasses may not have a tableau.
             diagonal = cls.tableau.a_diagonal[0]
             assert (cls.tableau.a_diagonal == diagonal).all()
 
@@ -844,7 +843,7 @@ class AbstractESDIRK(AbstractDIRK):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if cls.tableau is not None:  # Abstract subclasses may not have a tableau.
+        if hasattr(cls, "tableau"):  # Abstract subclasses may not have a tableau.
             assert cls.tableau.a_diagonal[0] == 0
             diagonal = cls.tableau.a_diagonal[1]
             assert (cls.tableau.a_diagonal[1:] == diagonal).all()
