@@ -14,7 +14,7 @@ from equinox.internal import ω
 from .ad import implicit_jvp
 from .heuristics import is_sde, is_unsafe_sde
 from .saveat import save_y, SaveAt, SubSaveAt
-from .solver import AbstractItoSolver, AbstractStratonovichSolver
+from .solver import AbstractItoSolver, AbstractRungeKutta, AbstractStratonovichSolver
 from .term import AbstractTerm, AdjointTerm
 
 
@@ -332,6 +332,7 @@ class DirectAdjoint(AbstractAdjoint):
     def loop(
         self,
         *,
+        solver,
         max_steps,
         terms,
         throw,
@@ -362,10 +363,15 @@ class DirectAdjoint(AbstractAdjoint):
         else:
             kind = "bounded"
             msg = None
+        # Support forward-mode autodiff.
+        # TODO: remove this hack once we can JVP through custom_vjps.
+        if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
+            solver = eqx.tree_at(lambda s: s.scan_kind, solver, "lax")
         inner_while_loop = ft.partial(_inner_loop, kind=kind)
         outer_while_loop = ft.partial(_outer_loop, kind=kind)
         final_state = self._loop(
             **kwargs,
+            solver=solver,
             max_steps=max_steps,
             terms=terms,
             inner_while_loop=inner_while_loop,

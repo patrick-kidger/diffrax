@@ -2,7 +2,6 @@
 
 ### Compilation is taking a long time.
 
-- Use `scan_stages=True`, e.g. `Tsit5(scan_stages=True)`. This is supported for all Runge--Kutta methods. This will substantially reduce compile time at the expense of a slightly slower run time.
 - Set `dt0=<not None>`, e.g. `diffeqsolve(..., dt0=0.01)`. In contrast `dt0=None` will determine the initial step size automatically, but will increase compilation time.
 - Prefer `SaveAt(t0=True, t1=True)` over `SaveAt(ts=[t0, t1])`, if possible.
 - It's an internal (subject-to-change) API, but you can also try adding `equinox.internal.noinline` to your vector field (s), e.g. `ODETerm(noinline(...))`. This stages the vector field out into a separate compilation graph. This can greatly decrease compilation time whilst greatly increasing runtime.
@@ -18,7 +17,7 @@ The equivalent solver in Diffrax is:
 diffeqsolve(
     ...,
     dt0=None,
-    solver=Dopri5(scan_stages=True),
+    solver=Dopri5(),
     stepsize_controller=PIDController(rtol=1.4e-8, atol=1.4e-8),
     adjoint=BacksolveAdjoint(),
     max_steps=None,

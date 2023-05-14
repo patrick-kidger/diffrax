@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -14,22 +14,6 @@ from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..solution import is_okay, RESULTS, update_result
 from ..term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
-
-
-def _scan(*sequences):
-    for x in sequences:
-        if x is not None:
-            length = len(x)
-            break
-    else:
-        raise ValueError("Must have at least one non-None iterable")
-
-    def _check(_x):
-        assert len(_x) == length
-        return _x
-
-    sequences = [[None] * length if x is None else _check(x) for x in sequences]
-    return zip(*sequences)
 
 
 # Entries must be np.arrays, and not jnp.arrays, so that we can index into them during
@@ -199,52 +183,22 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     instance of [`diffrax.CalculateJacobian`][].
     """
 
-    scan_stages: bool = False
+    scan_kind: Union[None, Literal["lax"], Literal["checkpointed"]] = None
 
     term_structure = AbstractTerm
 
     tableau: eqxi.AbstractClassVar[ButcherTableau]
     calculate_jacobian: eqxi.AbstractClassVar[CalculateJacobian]
 
-    def _first(self, terms, t0, t1, y0, args):
+    def _common(self, terms, t0, t1, y0, args):
         vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
-        implicit_first_stage = (
-            self.tableau.a_diagonal is not None and self.tableau.a_diagonal[0] != 0
-        )
-        # The gamut of conditions under which we need to evaluate `f0` or `k0`.
+        # If the vector field is expensive then we want to use vf_prods instead.
+        # FSAL implies evaluating just the vector field, since we need to contract
+        # the same vector field evaluation against two different controls.
         #
-        # If we're computing the Jacobian at the start of the step, then we
-        # need this as a linearisation point.
-        #
-        # If the first stage is implicit, then we need this as a predictor for
-        # where to start iterating from.
-        #
-        # If we're not scanning stages then we're definitely not deferring this
-        # evaluation to the scan loop, so get it done now.
-        need_f0_or_k0 = (
-            self.calculate_jacobian == CalculateJacobian.every_step
-            or implicit_first_stage
-            or not self.scan_stages
-        )
-        fsal = self.tableau.fsal
-        if fsal and vf_expensive:
-            # If the vector field is expensive then we want to use vf_prods instead.
-            # FSAL implies evaluating just the vector field, since we need to contract
-            # the same vector field evaluation against two different controls.
-            #
-            # But "evaluating just the vector field" is, as just established, expensive.
-            fsal = False
-        if fsal and self.scan_stages and not need_f0_or_k0:
-            # If we're scanning stages then we'd like to disable FSAL.
-            # FSAL implies evaluating the vector field in `init` as well as in `step`.
-            # But `scan_stages` is a please-compile-faster flag, so we should avoid the
-            # extra tracing.
-            #
-            # However we disable-the-disabling if `need_f0_or_k0`, since in this case
-            # we evaluate `f0` or `k0` anyway, so it wouldn't help. So we might as well
-            # take advantage of the runtime benefits of FSAL.
-            fsal = False
-        return vf_expensive, implicit_first_stage, need_f0_or_k0, fsal
+        # But "evaluating just the vector field" is, as just established, expensive.
+        fsal = self.tableau.fsal and not vf_expensive
+        return vf_expensive, fsal
 
     def func(
         self,
@@ -263,7 +217,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
-        _, _, _, fsal = self._first(terms, t0, t1, y0, args)
+        _, fsal = self._common(terms, t0, t1, y0, args)
         if fsal:
             return terms.vf(t0, y0, args)
         else:
@@ -316,20 +270,24 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # e.g. we need `ks` to perform dense interpolation if needed.
         #
 
-        _implicit_later_stages = self.tableau.a_diagonal is not None and any(
-            self.tableau.a_diagonal[1:] != 0
+        implicit_first_stage = self.tableau.implicit and self.tableau.a_diagonal[0] != 0
+        # If we're computing the Jacobian at the start of the step, then we
+        # need this as a linearisation point.
+        #
+        # If the first stage is implicit, then we need this as a predictor for
+        # where to start iterating from.
+        need_f0_or_k0 = (
+            self.calculate_jacobian == CalculateJacobian.every_step
+            or implicit_first_stage
         )
-        _vf_expensive, implicit_first_stage, need_f0_or_k0, fsal = self._first(
-            terms, t0, t1, y0, args
-        )
-        ssal = self.tableau.ssal
-        if _implicit_later_stages and fsal:
+        vf_expensive, fsal = self._common(terms, t0, t1, y0, args)
+        if self.tableau.implicit and fsal:
             use_fs = True
-        elif _vf_expensive:
+        elif vf_expensive:
             use_fs = False
         else:  # Choice not as important here; we use ks for minor efficiency reasons.
             use_fs = False
-        del _vf_expensive, _implicit_later_stages
+        del vf_expensive
 
         control = terms.contr(t0, t1)
         dt = t1 - t0
@@ -399,7 +357,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # Allocate `fs` or `ks` as a place to store the stage evaluations.
         #
 
-        if use_fs or (fsal and self.scan_stages):
+        if use_fs or fsal:
             if f0 is None:
                 # Only perform this trace if we have to; tracing can actually be
                 # a bit expensive.
@@ -430,11 +388,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 scan_first_stage = False
                 assert self.tableau.a_diagonal is not None
                 diagonal0 = self.tableau.a_diagonal[0]
-                if self.tableau.diagonal[0] == 1:
+                if self.tableau.a_diagonal[0] == 1:
                     # No floating point error
                     t0_ = t1
                 else:
-                    t0_ = t0 + self.tableau.diagonal[0] * dt
+                    t0_ = t0 + self.tableau.a_diagonal[0] * dt
                 if use_fs:
                     if y0 is not None:
                         assert jac_f is not None
@@ -459,7 +417,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     result = nonlinear_sol.result
                 del diagonal0, t0_, nonlinear_sol
             else:
-                scan_first_stage = self.scan_stages
+                scan_first_stage = True
                 result = RESULTS.successful
 
         if scan_first_stage:
@@ -482,82 +440,49 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # `scan_first_stage`.
         #
 
-        if self.scan_stages:
-
-            def _vector_tree_dot(_x, _y, _i):
-                del _i
-                return vector_tree_dot(_x, _y)
-
-        else:
-
-            def _vector_tree_dot(_x, _y, _i):
-                return vector_tree_dot(_x, ω(_y)[:_i].ω)
-
         def eval_stage(_carry, _input):
             _, _, _fs, _ks, _result = _carry
             _i, _a_lower_i, _a_diagonal_i, _a_predictor_i, _c_i = _input
+            # Unwrap buffers. Take advantage of the fact that they're initialised at
+            # zero, so that we don't actually read from a location before its written to
+            _unsafe_fs_unwrapped = jtu.tree_map(lambda _, x: x[...], fs, _fs)
+            _unsafe_ks_unwrapped = jtu.tree_map(lambda _, x: x[...], ks, _ks)
 
             #
             # Evaluate the linear combination of previous stages
             #
 
             if use_fs:
-                _increment = _vector_tree_dot(_a_lower_i, _fs, _i)  # noqa: F821
+                _increment = vector_tree_dot(_a_lower_i, _unsafe_fs_unwrapped)
                 _increment = terms.prod(_increment, control)
             else:
-                _increment = _vector_tree_dot(_a_lower_i, _ks, _i)  # noqa: F821
+                _increment = vector_tree_dot(_a_lower_i, _unsafe_ks_unwrapped)
             _yi_partial = (y0**ω + _increment**ω).ω
-
-            #
-            # Is this an implicit or explicit stage?
-            #
-
-            if self.tableau.a_diagonal is None:
-                _implicit_stage = False
-            else:
-                if self.scan_stages:
-                    if scan_first_stage:  # noqa: F821
-                        _diagonal = self.tableau.a_diagonal
-                    else:
-                        _diagonal = self.tableau.a_diagonal[1:]
-                    _implicit_stage = any(_diagonal != 0)
-                    if _implicit_stage and any(_diagonal == 0):
-                        assert False, (
-                            "Cannot have a mix of implicit and "
-                            "explicit stages when scanning"
-                        )
-                    del _diagonal
-                else:
-                    _implicit_stage = _a_diagonal_i != 0
 
             #
             # Figure out if we're computing a vector field ("f") or a
             # vector-field-product ("k")
             #
             # Ask for fi if we're using fs; ask for ki if we're using ks. Makes sense!
-            # In addition, ask for fi if we're on the last stage and are using
-            # an FSAL scheme, as we'll be passing that on to the next step. If
-            # we're scanning the stages then every stage uses the same logic so
-            # override the last iteration check.
+            # In addition, ask for fi if we're using an FSAL scheme, as we'll be passing
+            # that on to the next step.
             #
 
-            _last_iteration = _i == num_stages - 1
-            _return_fi = use_fs or (fsal and (self.scan_stages or _last_iteration))
+            _return_fi = use_fs or fsal
             _return_ki = not use_fs
-            del _last_iteration
 
             #
             # Evaluate the stage
             #
 
             _ti = jnp.where(_c_i == 1, t1, t0 + _c_i * dt)  # No floating point error
-            if _implicit_stage:
+            if self.tableau.implicit:
                 assert _a_diagonal_i is not None
                 # Predictor for where to start iterating from
                 if _return_fi:
-                    _f_pred = _vector_tree_dot(_a_predictor_i, _fs, _i)  # noqa: F821
+                    _f_pred = vector_tree_dot(_a_predictor_i, _unsafe_fs_unwrapped)
                 else:
-                    _k_pred = _vector_tree_dot(_a_predictor_i, _ks, _i)  # noqa: F821
+                    _k_pred = vector_tree_dot(_a_predictor_i, _unsafe_ks_unwrapped)
                 # Determine Jacobian to use at this stage
                 if self.calculate_jacobian == CalculateJacobian.every_stage:
                     if _return_fi:
@@ -660,10 +585,10 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             #
 
             if use_fs:
-                _fs = ω(_fs).at[_i].set(ω(_fi)).ω
+                _fs = jtu.tree_map(lambda x, xs: xs.at[_i].set(x), _fi, _fs)
             else:
-                _ks = ω(_ks).at[_i].set(ω(_ki)).ω
-            if ssal:
+                _ks = jtu.tree_map(lambda x, xs: xs.at[_i].set(x), _ki, _ks)
+            if self.tableau.ssal:
                 _yi_partial_out = _yi_partial
             else:
                 _yi_partial_out = None
@@ -673,83 +598,72 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 _fi_out = None
             return (_yi_partial_out, _fi_out, _fs, _ks, _result), None
 
-        if self.scan_stages:
-            if scan_first_stage:
-                tableau_a_lower = np.zeros((num_stages, num_stages))
-                for i, a_lower_i in enumerate(self.tableau.a_lower):
-                    tableau_a_lower[i + 1, : i + 1] = a_lower_i
-                tableau_a_diagonal = self.tableau.a_diagonal
-                tableau_a_predictor = self.tableau.a_predictor
-                tableau_c = np.zeros(num_stages)
-                tableau_c[1:] = self.tableau.c
-                i_init = 0
-                assert tableau_a_diagonal is None
-                assert tableau_a_predictor is None
-            else:
-                tableau_a_lower = np.zeros((num_stages - 1, num_stages))
-                for i, a_lower_i in enumerate(self.tableau.a_lower):
-                    tableau_a_lower[i, : i + 1] = a_lower_i
-                if self.tableau.a_diagonal is None:
-                    tableau_a_diagonal = None
-                else:
-                    tableau_a_diagonal = self.tableau.a_diagonal[1:]
-                if self.tableau.a_predictor is None:
-                    tableau_a_predictor = None
-                else:
-                    tableau_a_predictor = np.zeros((num_stages - 1, num_stages))
-                    for i, a_predictor_i in enumerate(self.tableau.a_predictor):
-                        tableau_a_predictor[i, : i + 1] = a_predictor_i
-                tableau_c = self.tableau.c
-                i_init = 1
-            if ssal:
-                y_dummy = y0
-            else:
-                y_dummy = None
-            if fsal:
-                f_dummy = jtu.tree_map(
-                    lambda x: jnp.zeros(x.shape, dtype=x.dtype), f0_struct
-                )
-            else:
-                f_dummy = None
-            (y1_partial, f1, fs, ks, result), _ = lax.scan(
-                eval_stage,
-                (y_dummy, f_dummy, fs, ks, result),
-                (
-                    np.arange(i_init, num_stages),
-                    tableau_a_lower,
-                    tableau_a_diagonal,
-                    tableau_a_predictor,
-                    tableau_c,
-                ),
-            )
-            del y_dummy, f_dummy
+        #
+        # Iterate over stages
+        #
+
+        if scan_first_stage:
+            tableau_a_lower = np.zeros((num_stages, num_stages))
+            for i, a_lower_i in enumerate(self.tableau.a_lower):
+                tableau_a_lower[i + 1, : i + 1] = a_lower_i
+            tableau_a_diagonal = self.tableau.a_diagonal
+            tableau_a_predictor = self.tableau.a_predictor
+            tableau_c = np.zeros(num_stages)
+            tableau_c[1:] = self.tableau.c
+            i_init = 0
+            assert tableau_a_diagonal is None
+            assert tableau_a_predictor is None
         else:
-            assert not scan_first_stage
+            tableau_a_lower = np.zeros((num_stages - 1, num_stages))
+            for i, a_lower_i in enumerate(self.tableau.a_lower):
+                tableau_a_lower[i, : i + 1] = a_lower_i
             if self.tableau.a_diagonal is None:
-                a_diagonal = None
+                tableau_a_diagonal = None
             else:
-                a_diagonal = self.tableau.a_diagonal[1:]
-            for i, a_lower_i, a_diagonal_i, a_predictor_i, c_i in _scan(
-                range(1, num_stages),
-                self.tableau.a_lower,
-                a_diagonal,
-                self.tableau.a_predictor,
-                self.tableau.c,
-            ):
-                (yi_partial, fi, fs, ks, result), _ = eval_stage(
-                    (None, None, fs, ks, result),
-                    (i, a_lower_i, a_diagonal_i, a_predictor_i, c_i),
-                )
-            y1_partial = yi_partial
-            f1 = fi
-            del a_diagonal, yi_partial, fi
-        del scan_first_stage, _vector_tree_dot
+                tableau_a_diagonal = self.tableau.a_diagonal[1:]
+            if self.tableau.a_predictor is None:
+                tableau_a_predictor = None
+            else:
+                tableau_a_predictor = np.zeros((num_stages - 1, num_stages))
+                for i, a_predictor_i in enumerate(self.tableau.a_predictor):
+                    tableau_a_predictor[i, : i + 1] = a_predictor_i
+            tableau_c = self.tableau.c
+            i_init = 1
+        if self.tableau.ssal:
+            y_dummy = y0
+        else:
+            y_dummy = None
+        if fsal:
+            f_dummy = jtu.tree_map(
+                lambda x: jnp.zeros(x.shape, dtype=x.dtype), f0_struct
+            )
+        else:
+            f_dummy = None
+        if self.scan_kind is None:
+            scan_kind = "checkpointed"
+        else:
+            scan_kind = self.scan_kind
+        (y1_partial, f1, fs, ks, result), _ = eqxi.scan(
+            eval_stage,
+            (y_dummy, f_dummy, fs, ks, result),
+            (
+                np.arange(i_init, num_stages),
+                tableau_a_lower,
+                tableau_a_diagonal,
+                tableau_a_predictor,
+                tableau_c,
+            ),
+            buffers=lambda x: (x[2], x[3]),  # fs and ks
+            kind=scan_kind,
+            checkpoints="all",
+        )
+        del y_dummy, f_dummy, scan_first_stage
 
         #
         # Compute step output
         #
 
-        if ssal:
+        if self.tableau.ssal:
             y1 = y1_partial
         else:
             if use_fs:

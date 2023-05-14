@@ -14,8 +14,6 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#ordinary
 
 These methods are suitable for most problems.
 
-Each of these takes a `scan_stages` argument at initialisation, defaulting to `False`. Set to `True` to substantially improve compilation speed in return for a slight reduction in runtime speed.
-
 ::: diffrax.Euler
     selection:
         members: false
@@ -54,7 +52,7 @@ Each of these takes a `scan_stages` argument at initialisation, defaulting to `F
 
 These methods are suitable for stiff problems.
 
-Each of these takes a `scan_stages` argument at initialisation, which [behaves the same as for the explicit Runge--Kutta methods](#explicit-runge-kutta-erk-methods). In addition, each of these takes a `nonlinear_solver` argument at initialisation, defaulting to a Newton solver, which is used to solve the implicit problem at each step. See the page on [nonlinear solvers](../nonlinear_solver.md).
+Each of these takes a `nonlinear_solver` argument at initialisation, defaulting to a Newton solver, which is used to solve the implicit problem at each step. See the page on [nonlinear solvers](../nonlinear_solver.md).
 
 ::: diffrax.ImplicitEuler
     selection:

@@ -22,8 +22,6 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 ### Explicit Runge--Kutta (ERK) methods
 
-Each of these takes a `scan_stages` argument at initialisation, which [behaves the same as as the explicit Runge--Kutta methods for ODEs](./ode_solvers.md#explicit-runge-kutta-erk-methods).
-
 ::: diffrax.Euler
     selection:
         members: false
