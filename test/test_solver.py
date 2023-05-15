@@ -1,4 +1,8 @@
 import diffrax
+import equinox as eqx
+import jax.numpy as jnp
+import jax.random as jr
+import pytest
 
 
 def test_half_solver():
@@ -43,3 +47,51 @@ def test_implicit_euler_adaptive():
     )
     assert out1.result == diffrax.RESULTS.implicit_nonconvergence
     assert out2.result == diffrax.RESULTS.successful
+
+
+def test_multiple_tableau1():
+    class DoubleDopri5(diffrax.AbstractRungeKutta):
+        tableau = (diffrax.Dopri5.tableau, diffrax.Dopri5.tableau)
+        calculate_jacobian = diffrax.CalculateJacobian.never
+
+        def interpolation_cls(self, *, k, **kwargs):
+            return diffrax.LocalLinearInterpolation(**kwargs)
+
+    mlp1 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(0))
+    mlp2 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(1))
+
+    term1 = diffrax.ODETerm(lambda t, y, args: mlp1(y))
+    term2 = diffrax.ODETerm(lambda t, y, args: mlp2(y))
+    t0 = 0
+    t1 = 1
+    dt0 = 0.1
+    y0 = jnp.array([1.0, 2.0])
+    out_a = diffrax.diffeqsolve(
+        diffrax.MultiTerm(term1, term2),
+        diffrax.Dopri5(),
+        t0,
+        t1,
+        dt0,
+        y0,
+    )
+    out_b = diffrax.diffeqsolve(
+        (term1, term2),
+        DoubleDopri5(),
+        t0,
+        t1,
+        dt0,
+        y0,
+    )
+    assert jnp.allclose(out_a.ys, out_b.ys, rtol=1e-8, atol=1e-8)
+
+
+def test_multiple_tableau2():
+    # Different number of stages
+    with pytest.raises(ValueError):
+
+        class Dopri5Tsit5(diffrax.AbstractRungeKutta):
+            tableau = (diffrax.Dopri5.tableau, diffrax.Bosh3.tableau)
+            calculate_jacobian = diffrax.CalculateJacobian.never
+
+            def interpolation_cls(self, *, k, **kwargs):
+                return diffrax.LocalLinearInterpolation(**kwargs)
