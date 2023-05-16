@@ -541,6 +541,8 @@ def _loop_backsolve_bwd(
     zeros_like_diff_args = jtu.tree_map(jnp.zeros_like, diff_args)
     zeros_like_diff_terms = jtu.tree_map(jnp.zeros_like, diff_terms)
     del diff_args, diff_terms
+    # TODO: have this look inside MultiTerms? Need to think about the math. i.e.:
+    # is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm)
     adjoint_terms = jtu.tree_map(
         AdjointTerm, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
@@ -768,6 +770,11 @@ class BacksolveAdjoint(AbstractAdjoint):
                     "`BacksolveAdjoint` will only produce the correct solution for "
                     "Stratonovich SDEs."
                 )
+        if jtu.tree_structure(solver.term_structure) != jtu.tree_structure(0):
+            raise NotImplementedError(
+                "`diffrax.BacksolveAdjoint` is only compatible with solvers that take "
+                "a single term."
+            )
 
         y = init_state.y
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())

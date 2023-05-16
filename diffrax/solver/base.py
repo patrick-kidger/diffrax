@@ -6,8 +6,9 @@ import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from jaxtyping import PyTree
 
-from ..custom_types import Bool, DenseInfo, PyTree, Scalar
+from ..custom_types import Bool, DenseInfo, Scalar
 from ..heuristics import is_sde
 from ..local_interpolation import AbstractLocalInterpolation
 from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver

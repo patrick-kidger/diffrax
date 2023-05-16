@@ -1,7 +1,7 @@
 import functools as ft
 import typing
 import warnings
-from typing import Any, Callable, Optional
+from typing import Any, Callable, get_args, get_origin, Optional, Tuple
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -16,7 +16,15 @@ from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
 from .saveat import SaveAt, SubSaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
-from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
+from .solver import (
+    AbstractItoSolver,
+    AbstractSolver,
+    AbstractStratonovichSolver,
+    Euler,
+    EulerHeun,
+    ItoMilstein,
+    StratonovichMilstein,
+)
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -24,7 +32,7 @@ from .step_size_controller import (
     PIDController,
     StepTo,
 )
-from .term import AbstractTerm, WrapTerm
+from .term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 
 
 class SaveState(eqx.Module):
@@ -55,6 +63,28 @@ class State(eqx.Module):
 
 def _is_none(x):
     return x is None
+
+
+def _term_compatible(terms, term_structure):
+    def _check(term_cls, term):
+        if get_origin(term_cls) is MultiTerm:
+            if isinstance(term, MultiTerm):
+                [_tmp] = get_args(term_cls)
+                assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
+                if not _term_compatible(term.terms, get_args(_tmp)):
+                    raise ValueError
+            else:
+                raise ValueError
+        else:
+            if not isinstance(term, term_cls):
+                raise ValueError
+
+    try:
+        jtu.tree_map(_check, term_structure, terms)
+    except ValueError:
+        # ValueError may also arise from mismatched tree structures
+        return False
+    return True
 
 
 def _is_subsaveat(x: Any) -> bool:
@@ -541,19 +571,25 @@ def diffeqsolve(
             pred = (t1 - t0) * dt0 < 0
         dt0 = eqxi.error_if(dt0, pred, msg)
 
+    # Backward compatibility
+    if isinstance(
+        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
+    ) and _term_compatible(terms, (ODETerm, AbstractTerm)):
+        warnings.warn(
+            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+            f"{solver.__class__.__name__} is deprecated in favour of "
+            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+            "the same terms can now be passed used for both general and SDE-specific "
+            "solvers!"
+        )
+        terms = MultiTerm(*terms)
+
     # Error checking
-    term_leaves, term_structure = jtu.tree_flatten(
-        terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
-    )
-    term_leaves2, term_structure2 = jtu.tree_flatten(solver.term_structure)
-    if term_structure != term_structure2 or any(
-        not isinstance(x, y) for x, y in zip(term_leaves, term_leaves2)
-    ):
+    if not _term_compatible(terms, solver.term_structure):
         raise ValueError(
             "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
             f"structure {solver.term_structure}"
         )
-    del term_leaves, term_structure, term_leaves2, term_structure2
 
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
@@ -627,10 +663,16 @@ def diffeqsolve(
         _get_subsaveat_ts, saveat, replace_fn=lambda ts: ts * direction
     )
     stepsize_controller = stepsize_controller.wrap(direction)
+
+    def _wrap(term):
+        assert isinstance(term, AbstractTerm)
+        assert not isinstance(term, MultiTerm)
+        return WrapTerm(term, direction)
+
     terms = jtu.tree_map(
-        lambda t: WrapTerm(t, direction),
+        _wrap,
         terms,
-        is_leaf=lambda x: isinstance(x, AbstractTerm),
+        is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
 
     # Stepsize controller gets an opportunity to modify the solver.

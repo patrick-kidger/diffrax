@@ -30,6 +30,7 @@ from .runge_kutta import (
     AbstractSDIRK,
     ButcherTableau,
     CalculateJacobian,
+    MultiButcherTableau,
 )
 from .semi_implicit_euler import SemiImplicitEuler
 from .tsit5 import Tsit5

@@ -81,6 +81,11 @@ In addition [`diffrax.AbstractSolver`][] has several subclasses that you can use
         members:
             - __init__
 
+::: diffrax.MultiButcherTableau
+    selection:
+        members:
+            - __init__
+
 ::: diffrax.CalculateJacobian
     selection:
         members: false

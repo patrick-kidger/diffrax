@@ -51,7 +51,9 @@ def test_implicit_euler_adaptive():
 
 def test_multiple_tableau1():
     class DoubleDopri5(diffrax.AbstractRungeKutta):
-        tableau = (diffrax.Dopri5.tableau, diffrax.Dopri5.tableau)
+        tableau = diffrax.MultiButcherTableau(
+            diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
+        )
         calculate_jacobian = diffrax.CalculateJacobian.never
 
         def interpolation_cls(self, *, k, **kwargs):
@@ -75,7 +77,7 @@ def test_multiple_tableau1():
         y0,
     )
     out_b = diffrax.diffeqsolve(
-        (term1, term2),
+        diffrax.MultiTerm(term1, term2),
         DoubleDopri5(),
         t0,
         t1,
@@ -84,14 +86,47 @@ def test_multiple_tableau1():
     )
     assert jnp.allclose(out_a.ys, out_b.ys, rtol=1e-8, atol=1e-8)
 
+    with pytest.raises(ValueError):
+        diffrax.diffeqsolve(
+            (term1, term2),
+            DoubleDopri5(),
+            t0,
+            t1,
+            dt0,
+            y0,
+        )
+
 
 def test_multiple_tableau2():
     # Different number of stages
     with pytest.raises(ValueError):
 
-        class Dopri5Tsit5(diffrax.AbstractRungeKutta):
-            tableau = (diffrax.Dopri5.tableau, diffrax.Bosh3.tableau)
+        class X(diffrax.AbstractRungeKutta):
+            tableau = diffrax.MultiButcherTableau(
+                diffrax.Dopri5.tableau, diffrax.Bosh3.tableau
+            )
             calculate_jacobian = diffrax.CalculateJacobian.never
 
             def interpolation_cls(self, *, k, **kwargs):
                 return diffrax.LocalLinearInterpolation(**kwargs)
+
+    # Multiple implicit
+    with pytest.raises(ValueError):
+
+        class Y(diffrax.AbstractRungeKutta):
+            tableau = diffrax.MultiButcherTableau(
+                diffrax.Kvaerno3.tableau, diffrax.Kvaerno3.tableau
+            )
+            calculate_jacobian = diffrax.CalculateJacobian.never
+
+            def interpolation_cls(self, *, k, **kwargs):
+                return diffrax.LocalLinearInterpolation(**kwargs)
+
+    class Z(diffrax.AbstractRungeKutta):
+        tableau = diffrax.MultiButcherTableau(
+            diffrax.Bosh3.tableau, diffrax.Kvaerno3.tableau
+        )
+        calculate_jacobian = diffrax.CalculateJacobian.never
+
+        def interpolation_cls(self, *, k, **kwargs):
+            return diffrax.LocalLinearInterpolation(**kwargs)

@@ -8,7 +8,7 @@ from equinox.internal import ω
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..solution import RESULTS
-from ..term import AbstractTerm, ODETerm
+from ..term import AbstractTerm, MultiTerm, ODETerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -36,7 +36,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = (ODETerm, AbstractTerm)
+    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -47,7 +47,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: Tuple[ODETerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -57,7 +57,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: Tuple[ODETerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -66,7 +66,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         made_jump: Bool,
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         dt = drift.contr(t0, t1)
         dw = diffusion.contr(t0, t1)
 
@@ -84,12 +84,12 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def func(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
 
 
@@ -104,7 +104,7 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = (ODETerm, AbstractTerm)
+    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -115,7 +115,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def init(
         self,
-        terms: Tuple[ODETerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -125,7 +125,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def step(
         self,
-        terms: Tuple[ODETerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -346,7 +346,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
         t0: Scalar,
         y0: PyTree,
         args: PyTree,

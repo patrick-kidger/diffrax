@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import get_args, get_origin, Literal, Optional, Tuple, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -13,7 +13,7 @@ from jaxtyping import Array, Bool, PyTree, Scalar
 
 from ..custom_types import DenseInfo
 from ..solution import is_okay, RESULTS, update_result
-from ..term import AbstractTerm, ODETerm, WrapTerm
+from ..term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
 
 
@@ -115,6 +115,23 @@ automatically.
 """
 
 
+class MultiButcherTableau(eqx.Module):
+    """Wraps multiple [`diffrax.ButcherTableau`][]s together. Used in some multi-tableau
+    solvers, like stochastic Runge--Kutta methods or IMEX methods.
+    """
+
+    tableaus: Tuple[ButcherTableau, ...]
+
+    def __init__(self, *tableaus: ButcherTableau):
+        self.tableaus = tableaus
+
+
+MultiButcherTableau.__init__.__doc__ = """**Arguments:**
+
+- `*tableaus`: the tableaus to wrap together.
+"""
+
+
 class CalculateJacobian(metaclass=eqxi.ContainerMeta):
     """An enumeration of possible ways a Runga--Kutta method may wish to calculate a
     Jacobian.
@@ -201,53 +218,43 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     scan_kind: Union[None, Literal["lax"], Literal["checkpointed"]] = None
 
-    tableau: eqxi.AbstractClassVar[PyTree[ButcherTableau]]
+    tableau: eqxi.AbstractClassVar[Union[ButcherTableau, MultiButcherTableau]]
     calculate_jacobian: eqxi.AbstractClassVar[CalculateJacobian]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        seen_implicit = False
-        num_stages = None
-
-        def _f(t: ButcherTableau):
-            nonlocal seen_implicit
-            nonlocal num_stages
-            if num_stages is None:
-                num_stages = t.num_stages
-            if t.num_stages != num_stages:
-                raise ValueError("Tableaus must all have the same number of stages")
-            if t.implicit:
-                if seen_implicit:
-                    raise ValueError("May have at most one implicit tableau")
-                else:
-                    seen_implicit = True
-            return AbstractTerm
-
         if hasattr(cls, "tableau"):  # Abstract subclasses may not have a tableau
-            term_structure = jtu.tree_map(_f, cls.tableau)
-            # Allow subclasses to specify more specific term structures if desired, e.g.
-            # (ODETerm, ControlTerm) rather than (AbstractTerm, AbtstractTerm).
-            try:
-                term_structure2 = cls.term_structure
-            except AttributeError:
-                cls.term_structure = term_structure
+            if isinstance(cls.tableau, ButcherTableau):
+                if hasattr(cls, "term_structure"):
+                    assert issubclass(cls.term_structure, AbstractTerm)
+                else:
+                    cls.term_structure = AbstractTerm
+            elif isinstance(cls.tableau, MultiButcherTableau):
+                if len({tab.num_stages for tab in cls.tableau.tableaus}) > 1:
+                    raise ValueError("Tableaus must all have the same number of stages")
+                if len([tab for tab in cls.tableau.tableaus if tab.implicit]) > 1:
+                    raise ValueError("May have at most one implicit tableau")
+                if hasattr(cls, "term_structure"):
+                    assert get_origin(cls.term_structure) is MultiTerm
+                    [_tmp] = get_args(cls.term_structure)
+                    assert get_origin(_tmp) in (tuple, Tuple)
+                    assert all(issubclass(x, AbstractTerm) for x in get_args(_tmp))
+                else:
+                    terms = tuple(
+                        AbstractTerm for _ in range(len(cls.tableau.tableaus))
+                    )
+                    cls.term_structure = MultiTerm[Tuple[terms]]
             else:
-                x = jtu.tree_structure(term_structure, is_leaf=_is_term)
-                x2 = jtu.tree_structure(term_structure2, is_leaf=_is_term)
-                if x != x2:
-                    raise ValueError("Mismatched term structures")
+                assert False
 
     def _common(self, terms, t0, t1, y0, args):
         # For simplicity we share `vf_expensive` and `fsal` across all tableaus.
         # TODO: could we make these work per-tableau?
-        vf_expensive = False
-        fsal = True
-        terms = jtu.tree_leaves(terms, is_leaf=_is_term)
-        tableaus = jtu.tree_leaves(self.tableau)
-        assert len(terms) == len(tableaus)
-        for term, tableau in zip(terms, tableaus):
-            vf_expensive = vf_expensive or term.is_vf_expensive(t0, t1, y0, args)
-            fsal = fsal and tableau.fsal
+        vf_expensive = terms.is_vf_expensive(t0, t1, y0, args)
+        if isinstance(self.tableau, MultiButcherTableau):
+            fsal = all(tab.fsal for tab in self.tableau.tableaus)
+        else:
+            fsal = self.tableau.fsal
         # If the vector field is expensive then we want to use vf_prods instead.
         # FSAL implies evaluating just the vector field, since we need to contract
         # the same vector field evaluation against two different controls.
@@ -256,16 +263,16 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     def func(
         self,
-        terms: PyTree[AbstractTerm],
+        terms: AbstractTerm,
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        return jtu.tree_map(lambda t: t.vf(t0, y0, args), terms, is_leaf=_is_term)
+        return terms.vf(t0, y0, args)
 
     def init(
         self,
-        terms: PyTree[AbstractTerm],
+        terms: AbstractTerm,
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -274,20 +281,29 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         _, fsal = self._common(terms, t0, t1, y0, args)
         if fsal:
             first_step = jnp.array(True)
-            if (type(terms) is WrapTerm) and (type(terms.term) is ODETerm):
-                # Privileged optimisation for the common case
-                f0 = jtu.tree_map(lambda x: jnp.zeros(x.shape, x.dtype), y0)
-            else:
+            f0 = sentinel = object()
+            if type(terms) is WrapTerm:
+                # Privileged optimisations for some common cases
+                _terms = terms.term
+                if type(_terms) is ODETerm:
+                    f0 = jtu.tree_map(lambda x: jnp.zeros(x.shape, x.dtype), y0)
+                elif type(_terms) is MultiTerm:
+                    if all(type(x) is ODETerm for x in _terms.terms):
+                        f0 = tuple(
+                            jtu.tree_map(lambda x: jnp.zeros(x.shape, x.dtype), y0)
+                            for _ in range(len(_terms.terms))
+                        )
+            if f0 is sentinel:
                 # Must be initialiased at zero as it is inserted into `ks` which must be
                 # initialised at zero.
-                f0 = eqxi.eval_zero(lambda: self.func(terms, t0, y0, args))
+                f0 = eqxi.eval_zero(self.func, terms, t0, y0, args)
             return first_step, f0
         else:
             return None
 
     def step(
         self,
-        terms: PyTree[AbstractTerm],
+        terms: AbstractTerm,
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -331,16 +347,30 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # e.g. we need `ks` to perform dense interpolation if needed.
         #
 
+        is_vf_expensive, fsal = self._common(terms, t0, t1, y0, args)
+
+        # The code below is actually quite generic: it handles a pytree of Butcher
+        # tableaus and a pytree of terms.
+        # Our MultiTerm/MultiButcherTableau interface is slightly more restrictive.
+        # Here we just unpack from one to the other.
+        if isinstance(self.tableau, ButcherTableau):
+            assert isinstance(terms, AbstractTerm)
+            tableaus = self.tableau
+        else:
+            assert isinstance(terms, MultiTerm)
+            tableaus = self.tableau.tableaus
+            terms = terms.terms
+
         assert jtu.tree_structure(terms, is_leaf=_is_term) == jtu.tree_structure(
-            self.tableau
+            tableaus
         )
 
-        # Structure of `terms` and `self.tableau`.
+        # Structure of `terms` and `tableaus`.
         def t_map(fn, *trees):
             def _fn(_, *_trees):
                 return fn(*_trees)
 
-            return jtu.tree_map(_fn, self.tableau, *trees)
+            return jtu.tree_map(_fn, tableaus, *trees)
 
         def t_leaves(tree):
             return [x.value for x in jtu.tree_leaves(t_map(_Leaf, tree))]
@@ -371,8 +401,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             _prod = lambda term_i, f_i, control_i: term_i.prod(f_i, control_i)
             return t_map(_prod, terms, f, control)
 
-        num_stages = jtu.tree_leaves(self.tableau)[0].num_stages
-        is_vf_expensive, fsal = self._common(terms, t0, t1, y0, args)
+        num_stages = jtu.tree_leaves(tableaus)[0].num_stages
         if fsal:
             assert solver_state is not None
             first_step, f0 = solver_state
@@ -410,8 +439,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             tableau_c[1:] = tableau.c
             return jnp.asarray(tableau_c)
 
-        tableau_a_lower = t_map(embed_a_lower, self.tableau)
-        tableau_c = t_map(embed_c, self.tableau)
+        tableau_a_lower = t_map(embed_a_lower, tableaus)
+        tableau_c = t_map(embed_c, tableaus)
 
         def cond_fun(val):
             _stage_index, *_ = val
@@ -456,17 +485,17 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         )
         _, y1_partial, increment, f1, ks = final_val
 
-        if all(tableau.ssal for tableau in jtu.tree_leaves(self.tableau)):
+        if all(tableau.ssal for tableau in jtu.tree_leaves(tableaus)):
             y1 = y1_partial
         else:
             increment = t_map(
                 lambda t, k, i: i if t.ssal else vector_tree_dot(t.b_sol, k),
-                self.tableau,
+                tableaus,
                 ks,
                 increment,
             )
             y1 = s_map(_sum, y0, *t_leaves(increment))
-        y_error = t_map(lambda t, k: vector_tree_dot(t.b_error, k), self.tableau, ks)
+        y_error = t_map(lambda t, k: vector_tree_dot(t.b_error, k), tableaus, ks)
         dense_info = dict(y0=y0, y1=y1, k=ks)
         if fsal:
             new_solver_state = False, f1

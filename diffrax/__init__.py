@@ -65,6 +65,7 @@ from .solver import (
     Kvaerno5,
     LeapfrogMidpoint,
     Midpoint,
+    MultiButcherTableau,
     Ralston,
     ReversibleHeun,
     SemiImplicitEuler,
