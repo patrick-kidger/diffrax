@@ -17,7 +17,8 @@ class Midpoint(AbstractERK, AbstractStratonovichSolver):
     """Midpoint method.
 
     2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
-    step sizing.
+    step sizing. Uses 2 stages. Uses 2nd order Hermite interpolation for dense/ts
+    output.
 
     Also sometimes known as the "modified Euler method".
 

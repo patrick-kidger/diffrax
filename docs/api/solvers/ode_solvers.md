@@ -72,6 +72,32 @@ Each of these takes a `nonlinear_solver` argument at initialisation, defaulting 
 
 ---
 
+### IMEX methods
+
+These "implicit-explicit" methods are suitable for problems of the form $\frac{\mathrm{d}y}{\mathrm{d}t} = f(t, y(t)) + g(t, y(t))$, where $f$ is the non-stiff part (explicit integration) and $g$ is the stiff part (implicit integration).
+
+??? info "Term structure"
+
+    These methods should be called with `terms=MultiTerm(explicit_term, implicit_term)`.
+
+::: diffrax.Sil3
+    selection:
+        members: false
+
+::: diffrax.KenCarp3
+    selection:
+        members: false
+
+::: diffrax.KenCarp4
+    selection:
+        members: false
+
+::: diffrax.KenCarp5
+    selection:
+        members: false
+
+---
+
 ### Symplectic methods
 
 These methods are suitable for problems with symplectic structure; that is to say those ODEs of the form

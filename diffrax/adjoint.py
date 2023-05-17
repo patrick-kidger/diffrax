@@ -366,7 +366,7 @@ class DirectAdjoint(AbstractAdjoint):
         # Support forward-mode autodiff.
         # TODO: remove this hack once we can JVP through custom_vjps.
         if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
-            solver = eqx.tree_at(lambda s: s.scan_kind, solver, "lax")
+            solver = eqx.tree_at(lambda s: s.scan_kind, solver, "bounded")
         inner_while_loop = ft.partial(_inner_loop, kind=kind)
         outer_while_loop = ft.partial(_outer_loop, kind=kind)
         final_state = self._loop(

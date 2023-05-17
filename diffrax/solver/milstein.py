@@ -28,7 +28,11 @@ _SolverState = None
 class StratonovichMilstein(AbstractStratonovichSolver):
     r"""Milstein's method; Stratonovich version.
 
-    Used to solve SDEs, and converges to the Stratonovich solution.
+    Used to solve SDEs, and converges to the Stratonovich solution. Uses local linear
+    interpolation for dense/ts output.
+
+    This should be called with `terms=MultiTerm(drift_term, diffusion_term)`, where the
+    drift is an `ODETerm`.
 
     !!! warning
 
@@ -96,7 +100,11 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 class ItoMilstein(AbstractItoSolver):
     r"""Milstein's method; Itô version.
 
-    Used to solve SDEs, and converges to the Itô solution.
+    Used to solve SDEs, and converges to the Itô solution. Uses local linear
+    interpolation for dense/ts output.
+
+    This should be called with `terms=MultiTerm(drift_term, diffusion_term)`, where the
+    drift is an `ODETerm`.
 
     !!! warning
 
@@ -134,7 +142,7 @@ class ItoMilstein(AbstractItoSolver):
         made_jump: Bool,
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         Δt = drift.contr(t0, t1)
         Δw = diffusion.contr(t0, t1)
 

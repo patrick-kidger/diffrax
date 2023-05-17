@@ -16,7 +16,8 @@ _SolverState = None
 class Euler(AbstractItoSolver):
     """Euler's method.
 
-    1st order explicit Runge--Kutta method. Does not support adaptive step sizing.
+    1st order explicit Runge--Kutta method. Does not support adaptive step sizing. Uses
+    1 stage. Uses 1st order local linear interpolation for dense/ts output.
 
     When used to solve SDEs, converges to the Itô solution.
     """

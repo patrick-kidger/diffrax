@@ -1,17 +1,18 @@
+import functools as ft
 from dataclasses import dataclass, field
 from typing import get_args, get_origin, Literal, Optional, Tuple, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
+import jax.flatten_util as jfu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, Bool, PyTree, Scalar
 
-from ..custom_types import DenseInfo
+from ..custom_types import Array, DenseInfo, PyTree, Scalar, sentinel
 from ..solution import is_okay, RESULTS, update_result
 from ..term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
@@ -31,12 +32,60 @@ class ButcherTableau:
     # Implicit RK methods
     a_diagonal: Optional[np.ndarray] = None
     a_predictor: Optional[tuple[np.ndarray, ...]] = None
+    c1: float = 0.0
 
     # Properties implied by the above tableaus, e.g. used to define fast-paths.
     ssal: bool = field(init=False)
     fsal: bool = field(init=False)
     implicit: bool = field(init=False)
     num_stages: int = field(init=False)
+
+    # Example!
+    #
+    # Consider a Butcher tableau:
+    #
+    # c1 | a11 a12 a13 a14
+    # c2 | a21 a22 a23 a24
+    # c3 | a31 a32 a33 a34
+    # c4 | a41 a42 a43 a44
+    # ---+----------------
+    #    |  b1  b2  b3  b4
+    #    |  β1  β2  β3  β4
+    #
+    # Let y0 be the input to the step, and let y1 denote the output of the step.
+    #
+    # Then the output is computed via
+    # y1 = y0 + Σ_i bi ki
+    # where ki = fi dt   (in the case of an ODE -- it is "fi dW" etc. for an SDE)
+    # and fi = f(ci, zi)
+    # and zi = y0 + Σ_j aij kj
+    #
+    # Note that "stage" may be used to refer to any of ki, fi, or zi.
+    #
+    # The error estimate is given by
+    # err = Σ_i βi ki
+    # (I.e. it is compute directly -- *not* as the difference of two solutions.)
+    #
+    # ---
+    #
+    # To encoder the above tableau in Diffrax, you would take:
+    # c = np.array([c2, c3, c4])
+    # b_sol = np.array([b1, b2, b3, b4])
+    # b_error = np.array([β1, β2, β3, β3])
+    # a_lower = (
+    #    np.array([a21]),
+    #    np.array([a31, a32]),
+    #    np.array([a41, a42, a43]),
+    # )
+    # a_diagonal = np.array([a11, a22, a33, a44])  # Optional if all zero
+    # c1 = c1  # Optional if zero
+    #
+    # Noting that a_diagonal and c1 are only used for implicit solvers, hence their
+    # optionality.
+    #
+    # In addition we support an additional `a_predictor` tableau for implicit solvers.
+    # This seems to be semi-new here; see
+    # https://docs.kidger.site/diffrax/devdocs/predictor_dirk/
 
     def __post_init__(self):
         assert self.c.ndim == 1
@@ -70,17 +119,17 @@ class ButcherTableau:
         diagonal_b_sol_equal = self.b_sol[-1] == last_diagonal
         explicit_first_stage = self.a_diagonal is None or (self.a_diagonal[0] == 0)
         explicit_last_stage = self.a_diagonal is None or (self.a_diagonal[-1] == 0)
-        # Solution y1 is the same as the last stage
-        object.__setattr__(
-            self,
-            "ssal",
-            lower_b_sol_equal and diagonal_b_sol_equal and explicit_last_stage,
-        )
-        # Vector field - control product k1 is the same across first/last stages.
+        # (vector field)-control product `k1` is the same across first/last stages.
         object.__setattr__(
             self,
             "fsal",
             lower_b_sol_equal and diagonal_b_sol_equal and explicit_first_stage,
+        )
+        # Solution `y1` is the same as the last stage
+        object.__setattr__(
+            self,
+            "ssal",
+            lower_b_sol_equal and diagonal_b_sol_equal and explicit_last_stage,
         )
         object.__setattr__(self, "implicit", self.a_diagonal is not None)
         object.__setattr__(self, "num_stages", len(self.b_sol))
@@ -117,7 +166,12 @@ automatically.
 
 class MultiButcherTableau(eqx.Module):
     """Wraps multiple [`diffrax.ButcherTableau`][]s together. Used in some multi-tableau
-    solvers, like stochastic Runge--Kutta methods or IMEX methods.
+    solvers, like IMEX methods.
+
+    !!! important
+
+        This API is not stable, and deliberately undocumented. (The reason is that we
+        might yet adapt this to implement Stochastic Runge--Kutta methods.)
     """
 
     tableaus: Tuple[ButcherTableau, ...]
@@ -138,19 +192,24 @@ class CalculateJacobian(metaclass=eqxi.ContainerMeta):
 
     `never`: used for explicit Runga--Kutta methods.
 
-    `every_step`: the Jacobian is calculated once per step; in particular it is
-        calculated at the start of the step and re-used for every stage in the step.
-        Used for SDIRK and ESDIRK methods.
-
     `every_stage`: the Jacobian is calculated once per stage. Used for DIRK methods.
+
+    `first_stage`: the Jacobian is calculated once per step; in particular it is
+        calculated in the first stage and re-used for every subsequent stage in the
+        step. Used for SDIRK methods.
+
+    `second_stage`: the Jacobian is calculated once per step; in particular it is
+        calculated in the second stage and re-used for every subsequent stage in the
+        step. Used for ESDIRK methods.
     """
 
     never = "never"
-    every_step = "every_step"
     every_stage = "every_stage"
+    first_stage = "first_stage"
+    second_stage = "second_stage"
 
 
-_SolverState = Optional[tuple[Bool[Scalar, ""], PyTree[Array]]]
+_SolverState = Optional[tuple[Scalar, PyTree[Array]]]
 
 
 # TODO: examine termination criterion for Newton iteration
@@ -161,8 +220,8 @@ _SolverState = Optional[tuple[Bool[Scalar, ""], PyTree[Array]]]
 def _implicit_relation_f(fi, nonlinear_solve_args):
     diagonal, vf, prod, ti, yi_partial, args, control = nonlinear_solve_args
     diff = (
-        vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
-        - fi**ω
+        fi**ω
+        - vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
     ).ω
     return diff
 
@@ -174,8 +233,8 @@ def _implicit_relation_k(ki, nonlinear_solve_args):
     # (Bearing in mind that our ki is dt times smaller than theirs.)
     diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
     diff = (
-        vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
-        - ki**ω
+        ki**ω
+        - vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
     ).ω
     return diff
 
@@ -202,6 +261,19 @@ def _sum(*x):
     return total
 
 
+def _filter_stop_gradient(x):
+    dynamic, static = eqx.partition(x, eqx.is_inexact_array)
+    dynamic = lax.stop_gradient(dynamic)
+    return eqx.combine(dynamic, static)
+
+
+def _assert_same_structure(x, y):
+    x = jax.eval_shape(lambda: x)
+    y = jax.eval_shape(lambda: y)
+    x, y = jtu.tree_map(lambda a: (a.shape, a.dtype), (x, y))
+    return eqx.tree_equal(x, y) is True
+
+
 class AbstractRungeKutta(AbstractAdaptiveSolver):
     """Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
     Runge--Kutta methods, which have a different computational structure.)
@@ -216,7 +288,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     instance of [`diffrax.CalculateJacobian`][].
     """
 
-    scan_kind: Union[None, Literal["lax"], Literal["checkpointed"]] = None
+    scan_kind: Union[None, Literal["lax", "checkpointed", "bounded"]] = None
 
     tableau: eqxi.AbstractClassVar[Union[ButcherTableau, MultiButcherTableau]]
     calculate_jacobian: eqxi.AbstractClassVar[CalculateJacobian]
@@ -281,7 +353,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         _, fsal = self._common(terms, t0, t1, y0, args)
         if fsal:
             first_step = jnp.array(True)
-            f0 = sentinel = object()
+            f0 = sentinel
             if type(terms) is WrapTerm:
                 # Privileged optimisations for some common cases
                 _terms = terms.term
@@ -309,686 +381,650 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         y0: PyTree,
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
+        made_jump: bool,
     ) -> tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
         #
-        # Some Runge--Kutta methods have special structure that we can use to improve
-        # efficiency.
+        # Alright, settle in for what is probably the most advanced Runge-Kutta
+        # implementation on the planet.
         #
-        # The famous one is FSAL; "first same as last". That is, the final evaluation
-        # of the vector field on the previous step is the same as the first evaluation
-        # on the subsequent step. We can reuse it and save an evaluation.
-        # However note that this requires saving a vf evaluation, not a
-        # vf-control-product. (This comes up when we have a different control on the
-        # next step, e.g. as with adaptive step sizes, or with SDEs.)
-        # As such we disable FSAL if a vf is expensive and a vf-control-product is
-        # cheap. (The canonical example is the optimise-then-discretise adjoint SDE.
-        # For this SDE, the vf-control product is a vector-Jacobian product, which is
-        # notably cheaper than evaluating a full Jacobian.)
+        # This is capable of handling all of:
+        # - Explicit Runge--Kutta methods (ERK)
+        # - Diagonal Implicit Runge--Kutta methods (DIRK)
+        # - Singular Diagonal Implicit Runge--Kutta methods (SDIRK)
+        # - Explicit Singular Diagonal Implicit Runge--Kutta methods (ESDIRK)
+        # - Implicit-Explicit Runge--Kutta methods (IMEX)
         #
-        # Next we have SSAL; "solution same as last". That is, the output of the step
-        # has already been calculated during the internal stage calculations. We can
-        # reuse those and save a dot product.
+        # In all cases it can handle applications to both ODEs and SDEs.
+        # Several of these are implicit methods. The latter two are multi-tableau
+        # methods.
         #
-        # Finally we have a choice whether to save and work with vector field
-        # evaluations (fs), or to save and work with (vector field)-control products
-        # (ks).
-        # The former is needed for implicit FSAL solvers: they need to obtain the
-        # final f1 for the FSAL property, which means they need to do the implicit
-        # solve in vf-space rather than (vf-control-product)-space, which means they
-        # need to use `fs` to predict the initial point for the root finding operation.
-        # Meanwhile the latter is needed when solving optimise-then-discretise adjoint
-        # SDEs, for which vector field evaluations are prohibitively expensive, and we
-        # must necessarily work only with the (much cheaper) vf-control-products. (In
-        # this case this is the difference between computing a Jacobian and computing a
-        # vector-Jacobian product.)
-        # For other problems, we choose to use `ks`. This doesn't have a strong
-        # rationale although it does have some minor efficiency points in its favour,
-        # e.g. we need `ks` to perform dense interpolation if needed.
+        # Both ODEs and SDEs: this is the usual innovation with Diffrax. We treat
+        # everything as a CDE against an arbitrary control. This also means we have a
+        # distinction between f-space (vector field values) and k-space
+        # ((vector field)-control products).
+        #
+        # Implicit methods: these all involve computing a Jacobian somewhere, and doing
+        # a root find. Any root finder can be used, although in practice the chord
+        # method is typical. Indeed it is common (SDIRK; ESDIRK) to reuse the Jacobian
+        # between stages.
+        #
+        # Multi-tableau methods: these are cases where each term has a different
+        # tableau, and their stages are interleaved. This means that the y-value at
+        # which we evaluate each stage depends on the previous stages of all tableaus.
+        # Note that these shouldn't be confused with splitting methods, where typically
+        # we solve one term using one solver, and then another term using another
+        # solver, without interleaving the stages. (Splitting methods instead interleave
+        # steps.)
+        #
+        # The other main innovation here (besides the unification of all these different
+        # solvers) is a JAX-specific thing: getting all of these to compile efficiently,
+        # with some tricks to trace through the vector field as few times as possible.
+        #
+        # As usual with JAX (and with a sprinkle of Equinox innovations), everything is
+        # also autovectorisable and autodifferentiable.
+        #
+        # This *doesn't* handle Fully Implicit Runge--Kutta methods (FIRK), as those
+        # have a different computational structure (they're just one big nonlinear
+        # solve).
+        #
+        # This also doesn't (yet) handle Stochastic Runge--Kutta methods (SRK), as those
+        # still require a bit more infrastructure: generating space-time Levy areas, or
+        # even space-space Levy areas.
         #
 
-        is_vf_expensive, fsal = self._common(terms, t0, t1, y0, args)
+        vf_expensive, fsal = self._common(terms, t0, t1, y0, args)
 
-        # The code below is actually quite generic: it handles a pytree of Butcher
-        # tableaus and a pytree of terms.
-        # Our MultiTerm/MultiButcherTableau interface is slightly more restrictive.
-        # Here we just unpack from one to the other.
+        # The code below is actually quite generic: it handles a PyTree of Butcher
+        # tableaus and a PyTree of terms. (Which must match each other.)
+        # Our MultiTerm/MultiButcherTableau interface is slightly more restrictive, in
+        # that it only admits PyTree structures of `*` or `(*, ...)`.
         if isinstance(self.tableau, ButcherTableau):
             assert isinstance(terms, AbstractTerm)
             tableaus = self.tableau
+            implicit_tableau = self.tableau if self.tableau.implicit else None
+            implicit_term = terms if self.tableau.implicit else None
         else:
             assert isinstance(terms, MultiTerm)
             tableaus = self.tableau.tableaus
             terms = terms.terms
-
+            assert len(tableaus) == len(terms)
+            for tab, term in zip(tableaus, terms):
+                if tab.implicit:
+                    implicit_tableau = tab
+                    implicit_term = term
+                    break
+            else:
+                implicit_tableau = None
+                implicit_term = None
         assert jtu.tree_structure(terms, is_leaf=_is_term) == jtu.tree_structure(
             tableaus
         )
 
+        #
+        # We have a choice whether to evaluate `vf` to get vector field evaluations
+        # ("values in f-space"), or to evaluate `vf_prod` to get (vector field)-control
+        # products ("values in k-space").
+        #
+        # In addition we have a choice whether to *store* fs or ks. If we evaluate
+        # `vf_prod` then we must store ks, as we can't (cheaply) reconstruct fs from ks.
+        # If we evaluate `vf` then we can store either, as we can just do an
+        # `fs`-control product prior to storing them.
+        #
+        # The first most important case is if evaluating the vector field is expensive.
+        # The canonical example is solving optimise-then-discretise adjoint SDEs, for
+        # which the diffusion term takes the form (dg/dy)dW, which is a vjp against the
+        # control. This can be done most efficiently by never materialising the full
+        # diffusion matrix (the Jacobian dg/dy): don't call `vf`, and instead work
+        # directly with `vf_prod`.
+        # Cases of this nature are communicated via the `vf_expensive` flag. (Which
+        # in Diffrax by default is applied to all AdjointTerms with vector controls.)
+        # - Verdict: eval_fs=False, store_fs=False
+        #
+        # If we don't hit the above case, we consider FSAL.
+        # For any FSAL solver, we must evaluate `vf`: we need the final `f1` to pass to
+        # the next step. (The control changes from step-to-step, so we cannot simply
+        # pass `k1`.)
+        # In addition if the solver has an implicit tableau, then we must store `fs`.
+        # This is because to get the final f1, we need to do the implicit solve in
+        # f-space, which means we need to store fs to predict the initial point for the
+        # root finding operation.
+        # - Verdict: eval_fs=True, store_fs=True.
+        # If the solver is explicit-only, then we can store either. We choose to store
+        # ks instead, as this is perhaps slightly more efficient: other downstream tasks
+        # like error estimates and dense information use ks rather than fs.
+        # - Verdict: eval_fs=True, store_fs=False
+        #
+        # For all other cases, we don't have any hard restrictions. It *may* be the case
+        # that a user-provided term has an overloaded `vf_prod` to be more efficient.
+        # (The canonical example is if `vf` is the product of two matrices and the
+        # control is a vector: it's usually cheaper to do `A @ (B @ dx)` rather than
+        # `(A @ B) @ dx`.) Moreover downstream tasks like error estimatess and dense
+        # information still use ks rather than fs. So we also use ks in this case.
+        # - Verdict: eval_fs=False, store_fs=False
+        #
+        if vf_expensive:
+            eval_fs = False
+            store_fs = False
+            assert not fsal  # fsal is disabled in this case
+        elif fsal:
+            if implicit_tableau is None:
+                eval_fs = True
+                store_fs = False
+            else:
+                eval_fs = True
+                store_fs = True
+        else:
+            eval_fs = False
+            store_fs = False
+        if not eval_fs:
+            assert not store_fs
+
+        #
+        # We have a lot of PyTrees of various structures floating around. Here are some
+        # helpers to map over each structure.
+        #
+
         # Structure of `terms` and `tableaus`.
-        def t_map(fn, *trees):
-            def _fn(_, *_trees):
-                return fn(*_trees)
+        def t_map(fn, *trees, implicit_val=sentinel):
+            def _fn(tableau, *_trees):
+                if tableau.implicit and implicit_val is not sentinel:
+                    return implicit_val
+                else:
+                    return fn(*_trees)
 
             return jtu.tree_map(_fn, tableaus, *trees)
 
-        def t_leaves(tree):
-            return [x.value for x in jtu.tree_leaves(t_map(_Leaf, tree))]
-
         # Structure of `y` and `k`.
-        # (but not `f`, which can be arbitrary and different)
-        def s_map(fn, *trees):
+        def y_map(fn, *trees):
             def _fn(_, *_trees):
                 return fn(*_trees)
 
             return jtu.tree_map(_fn, y0, *trees)
 
-        def ts_map(fn, *trees):
-            return t_map(lambda *_trees: s_map(fn, *_trees), *trees)
+        # Structure of `f`. Note that this is a suffix of `t_map`.
+        def f_map(fn, *trees):
+            def _fn(_, *_trees):
+                return fn(*_trees)
 
-        control = t_map(lambda term_i: term_i.contr(t0, t1), terms)
+            assert f0 is not _unused
+            return jtu.tree_map(_fn, f0, *trees)
+
+        def t_leaves(tree):
+            return [x.value for x in jtu.tree_leaves(t_map(_Leaf, tree))]
+
+        def ty_map(fn, *trees):
+            return t_map(lambda *_trees: y_map(fn, *_trees), *trees)
+
+        def get_implicit(xs):
+            def _get_implicit_impl(term, x):
+                nonlocal value
+                if term is implicit_term:
+                    if value is sentinel:
+                        value = x
+                    else:
+                        assert False
+
+            value = sentinel
+            t_map(_get_implicit_impl, terms, xs)
+            assert value is not sentinel
+            return value
+
         dt = t1 - t0
+        control = t_map(lambda term_i: term_i.contr(t0, t1), terms)
+        if implicit_tableau is None:
+            implicit_control = _unused
+        else:
+            implicit_control = get_implicit(control)
 
-        def vf(t, y):
+        def vf(t, y, *, implicit_val):
+            _assert_same_structure(y, y0)
             _vf = lambda term_i, t_i: term_i.vf(t_i, y, args)
-            return t_map(_vf, terms, t)
+            out = t_map(_vf, terms, t, implicit_val=implicit_val)
+            if f0 is not _unused:
+                _assert_same_structure(out, f0)
+            return out
 
-        def vf_prod(t, y):
+        def vf_prod(t, y, *, implicit_val):
+            _assert_same_structure(y, y0)
             _vf = lambda term_i, t_i, control_i: term_i.vf_prod(t_i, y, args, control_i)
-            return t_map(_vf, terms, t, control)
+            out = t_map(_vf, terms, t, control, implicit_val=implicit_val)
+            t_map(ft.partial(_assert_same_structure, y0), out)
+            return out
 
         def prod(f):
+            if f0 is not _unused:
+                _assert_same_structure(f, f0)
             _prod = lambda term_i, f_i, control_i: term_i.prod(f_i, control_i)
-            return t_map(_prod, terms, f, control)
+            out = t_map(_prod, terms, f, control)
+            t_map(ft.partial(_assert_same_structure, y0), out)
+            return out
 
-        num_stages = jtu.tree_leaves(tableaus)[0].num_stages
+        #
+        # Now get `f0` from an FSAL condition if possible.
+        # FSAL = first-same-as-last. It essentially refers to the last stage of the
+        # previous step only being used in error estimates, but not in advancing the
+        # solution. This means that it is also the value `vf(t0, y0)` in the this step.
+        # So provided our first stage is explicit (=necessarily just `vf(t0, y0)`) then
+        # we can skip evaluating our first stage.
+        #
+        # The only exception is on the very first step, or after a jump, in which case
+        # our stored value is invalid and must be (re-)computed.
+        #
         if fsal:
             assert solver_state is not None
             first_step, f0 = solver_state
-            stage_index = jnp.where(first_step, 0, 1)
-            # `made_jump` can be a tracer, hence the `is`.
-            if made_jump is False:
-                # Fast-path for compilation in the common case.
-                k0 = prod(f0)
+            eval_first_stage = eqxi.unvmap_any(first_step | made_jump)
+            init_stage_index = jnp.where(eval_first_stage, 0, 1)
+            # We do `fs.at[0].set(f0)` below. If we're actually going to evaluate the
+            # first stage, then zero out `f0` so that that is a no-op.
+            f0 = jtu.tree_map(lambda x: jnp.where(eval_first_stage, 0, x), f0)
+            if store_fs:
+                k0 = _unused
             else:
-                _t0 = t_map(lambda _: t0)
-                k0 = lax.cond(made_jump, lambda: vf_prod(_t0, y0), lambda: prod(f0))
-                del _t0
+                k0 = prod(f0)
         else:
+            # Non-FSAL solvers just iterate over all stages.
             f0 = _unused
             k0 = _unused
-            stage_index = 0
+            init_stage_index = 0
         del solver_state
 
-        # Must be initialised at zero as we do matmuls against the partially-filled
-        # array.
-        ks = t_map(
-            lambda: s_map(lambda x: jnp.zeros((num_stages,) + x.shape, x.dtype), y0),
-        )
+        #
+        # If using a DIRK or SDIRK implicit solver: we need to pick the location (in
+        # f-space or k-space) at which to compute our first Jacobian.
+        # See: https://docs.kidger.site/diffrax/devdocs/predictor_dirk/#first-stage
+        #
+        if self.calculate_jacobian == CalculateJacobian.never:  # Typically ERK methods
+            f0_for_jac = _unused
+            k0_for_jac = _unused
+        else:
+            if fsal:  # Typically ESDIRK methods.
+                f0_for_jac = _unused
+                k0_for_jac = _unused
+            else:  # Typically DIRK or SDIRK methods.
+                # Sadness. The extra evaluation increases compilation time, as we must
+                # trace our vector field again.
+                if eval_fs:
+                    f0_for_jac = implicit_term.vf(t0, y0, args)
+                    k0_for_jac = _unused
+                else:
+                    f0_for_jac = _unused
+                    k0_for_jac = implicit_term.vf_prod(t0, y0, args, implicit_control)
+                # (
+                # Possible sneaky sadness-ameliorating ideas which we don't do here:
+                # 1. Construct a candidate f0 or k0 by combining the stages of the
+                #    previous step. I don't know of any theory for this but it sounds
+                #    reasonable. As above the exact value here isn't that important.
+                # 2. Add an extra explicit stage at the end of the previous step, to do
+                #    the above `vf` or `vf_prod` evaluation for us (FSAL-like, although
+                #    this would actually end up being SSAL). Note that if we implemented
+                #    that as `lax.cond(implicit, nonlinear_solve, explict_step)` then we
+                #    would get no compile-time speedup (the goal here) as both branches
+                #    involve tracing the vector field. So we would have to
+                #    unconditionally run the nonlinear solver -- which is bad for
+                #    runtime performance. So we don't do this.
+                # )
+
+        #
+        # Create the buffers we'll populate with our f- or k-evaluations.
+        #
+
+        num_stages = jtu.tree_leaves(tableaus)[0].num_stages
+        # Must be initialised at zero as we later do matmuls against the
+        # partially-filled arrays.
+        if store_fs:
+            assert f0 is not _unused
+            fs = f_map(lambda x: jnp.zeros((num_stages,) + x.shape, x.dtype), f0)
+            ks = _unused
+        else:
+            fs = _unused
+            ks = t_map(
+                lambda: y_map(
+                    lambda x: jnp.zeros((num_stages,) + x.shape, x.dtype), y0
+                ),
+            )
         if fsal:
-            ks = ts_map(lambda x, xs: xs.at[0].set(x), k0, ks)
+            # !!! This is only valid because:
+            # - On the very first step, or if we have a jump, then `f0` and  `k0` are
+            #   zero and this is a no-op;
+            # - On later steps we have `init_stage_index=1` and thus don't write to
+            #   index 0.
+            # We recall that the `buffers` of
+            # `eqxi.while_loop(..., kind="checkpointed", buffers=...)`
+            # must not have the same location written to multiple times, as otherwise
+            # we will get incorrect gradients.
+            # Either way we are correctly following the principle of "only write once".
+            if store_fs:
+                fs = f_map(lambda x, xs: xs.at[0].set(x), f0, fs)
+            else:
+                ks = ty_map(lambda x, xs: xs.at[0].set(x), k0, ks)
 
-        def embed_a_lower(tableau):
-            tableau_a_lower = np.zeros((num_stages, num_stages))
-            for i, a_lower_i in enumerate(tableau.a_lower):
-                tableau_a_lower[i + 1, : i + 1] = a_lower_i
-            return jnp.asarray(tableau_a_lower)
+        #
+        # Transform our tableaus into full square tableaus. (Rather than just the
+        # triangular ones in which they're stored.) This is needed so that we can do
+        # matvecs against them, which can't be of variable length.
+        # (We could maybe implement a variable-length matvec by using a while loop --
+        # not clear that that would necessarily get good performance though. Not
+        # benchmarked.)
+        #
 
-        def embed_c(tableau):
-            tableau_c = np.zeros(num_stages)
-            tableau_c[1:] = tableau.c
-            return jnp.asarray(tableau_c)
+        def embed_a_lower(tab):
+            tab_a_lower = np.zeros((num_stages, num_stages))
+            for i, a_lower_i in enumerate(tab.a_lower):
+                tab_a_lower[i + 1, : i + 1] = a_lower_i
+            return jnp.asarray(tab_a_lower)
 
-        tableau_a_lower = t_map(embed_a_lower, tableaus)
-        tableau_c = t_map(embed_c, tableaus)
+        def embed_c(tab):
+            tab_c = np.zeros(num_stages)
+            if tab.c1 is not None:
+                tab_c[0] = tab.c1
+            tab_c[1:] = tab.c
+            return jnp.asarray(tab_c)
 
-        def cond_fun(val):
-            _stage_index, *_ = val
-            return _stage_index < num_stages
+        tableaus_a_lower = t_map(embed_a_lower, tableaus)
+        tableaus_c = t_map(embed_c, tableaus)
 
-        def body_fun(val):
-            stage_index, _, _, _, ks = val
-            a_lower_i = t_map(lambda t: t[stage_index], tableau_a_lower)
-            c_i = t_map(lambda t: t[stage_index], tableau_c)
+        if implicit_tableau is not None:
+            implicit_diagonal = jnp.asarray(implicit_tableau.a_diagonal)
+            implicit_predictor = np.zeros((num_stages, num_stages))
+            for i, a_predictor_i in enumerate(implicit_tableau.a_predictor):
+                implicit_predictor[i + 1, : i + 1] = a_predictor_i
+            implicit_predictor = jnp.asarray(implicit_predictor)
+            implicit_c = get_implicit(tableaus_c)
+
+        #
+        # Run the loop over stages. (This is what you signed up for, and it's taken us
+        # several hundred lines of code just to get this far!)
+        #
+
+        def cond_stage(val):
+            stage_index, *_ = val
+            return stage_index < num_stages
+
+        def rk_stage(val):
+            stage_index, _, _, jac_f, jac_k, fs, ks, result = val
+            #
+            # Start by getting the linear combination of previous stages.
+            #
+            a_lower_i = t_map(lambda tab: tab[stage_index], tableaus_a_lower)
+            c_i = t_map(lambda tab: tab[stage_index], tableaus_c)
             # Unwrap buffers. This is only valid (=correct under autodiff) because we
-            # follow a triangular pattern and don't read from a location before it's
+            # follow a triangular pattern and don't read from a location before it is
             # written to, or write to the same location twice.
-            # (The reads in the matmuls don't count, as we initialise at zero.)
-            unsafe_ks = ts_map(lambda x: x[...], ks)
-            increment = t_map(vector_tree_dot, a_lower_i, unsafe_ks)
-            yi_partial = s_map(_sum, y0, *t_leaves(increment))
+            # (The reads in the vector_tree_dots don't count, as the operands are zero.)
+            if store_fs:
+                assert fs is not _unused
+                unsafe_fs = f_map(lambda x: x[...], fs)
+                unsafe_ks = _unused
+                increment = prod(t_map(vector_tree_dot, a_lower_i, unsafe_fs))
+            else:
+                assert ks is not _unused
+                unsafe_fs = _unused
+                unsafe_ks = ty_map(lambda x: x[...], ks)
+                increment = t_map(vector_tree_dot, a_lower_i, unsafe_ks)
+            yi_partial = y_map(_sum, y0, *t_leaves(increment))
+            #
+            # Find the y value at which to evaluate this stage.
+            # If we have only explicit tableaus, then this is just the linear
+            # combination we found above.
+            # If we have an implicit tableau, then perform the implicit solve.
+            # Note that we perform the solve in f-space or k-space; not y-space.
+            #
+            if implicit_tableau is None:
+                implicit_fi = sentinel
+                implicit_ki = sentinel
+                yi = yi_partial
+            else:
+                implicit_diagonal_i = implicit_diagonal[stage_index]
+                implicit_predictor_i = implicit_predictor[stage_index]
+                implicit_c_i = implicit_c[stage_index]
+                # No floating point error
+                implicit_ti = jnp.where(implicit_c_i == 1, t1, t0 + implicit_c_i * dt)
+                if_first_stage = ft.partial(jnp.where, stage_index == 0)
+                if eval_fs:
+                    f_pred = get_implicit(
+                        vector_tree_dot(implicit_predictor_i, unsafe_fs)
+                    )
+                    if not fsal:
+                        # FSAL => explicit first stage so the choice of predictor
+                        # doesn't matter.
+                        f_pred = jtu.tree_map(if_first_stage, f0_for_jac, f_pred)
+                    f_implicit_args = (
+                        implicit_diagonal_i,
+                        implicit_term.vf,
+                        implicit_term.prod,
+                        implicit_ti,
+                        yi_partial,
+                        args,
+                        implicit_control,
+                    )
+                    k_pred = _unused
+                    k_implicit_args = _unused
+                else:
+                    f_pred = _unused
+                    f_implicit_args = _unused
+                    k_pred = vector_tree_dot(
+                        implicit_predictor_i, get_implicit(unsafe_ks)
+                    )
+                    if not fsal:
+                        # FSAL => explicit first stage so the choice of predictor
+                        # doesn't matter.
+                        k_pred = jtu.tree_map(if_first_stage, k0_for_jac, k_pred)
+                    k_implicit_args = (
+                        implicit_diagonal_i,
+                        implicit_term.vf_prod,
+                        implicit_ti,
+                        yi_partial,
+                        args,
+                        implicit_control,
+                    )
+
+                def eval_f_jac():
+                    return self.nonlinear_solver.jac(
+                        _implicit_relation_f,
+                        lax.stop_gradient(f_pred),
+                        _filter_stop_gradient(f_implicit_args),
+                    )
+
+                def eval_k_jac():
+                    return self.nonlinear_solver.jac(
+                        _implicit_relation_k,
+                        lax.stop_gradient(k_pred),
+                        _filter_stop_gradient(k_implicit_args),
+                    )
+
+                if self.calculate_jacobian == CalculateJacobian.every_stage:
+                    if eval_fs:
+                        jac_f = eval_f_jac()
+                        jac_k = _unused
+                    else:
+                        jac_f = _unused
+                        jac_k = eval_k_jac()
+                else:
+                    if self.calculate_jacobian == CalculateJacobian.first_stage:
+                        assert len(set(implicit_tableau.a_diagonal)) == 1
+                        jac_stage_index = 0
+                    else:
+                        assert self.calculate_jacobian == CalculateJacobian.second_stage
+                        assert implicit_tableau.a_diagonal[0] == 0
+                        assert len(set(implicit_tableau.a_diagonal[1:])) == 1
+                        jac_stage_index = 1
+                        stage_index = eqxi.nonbatchable(stage_index)
+                    # These `stop_gradients` are needed to work around the lack of
+                    # symbolic zeros in `custom_vjp`s.
+                    if eval_fs:
+                        jac_f = lax.stop_gradient(jac_f)
+                        jac_f = lax.cond(
+                            stage_index == jac_stage_index, eval_f_jac, lambda: jac_f
+                        )
+                        jac_k = _unused
+                    else:
+                        jac_f = _unused
+                        jac_k = lax.stop_gradient(jac_k)
+                        jac_k = lax.cond(
+                            stage_index == jac_stage_index, eval_k_jac, lambda: jac_k
+                        )
+                if eval_fs:
+                    jac_f = eqxi.nondifferentiable(jac_f, name="jac_f")
+                    nonlinear_sol = self.nonlinear_solver(
+                        _implicit_relation_f, f_pred, f_implicit_args, jac_f
+                    )
+                    implicit_fi = nonlinear_sol.root
+                    implicit_ki = _unused
+                    implicit_inc = implicit_term.prod(implicit_fi, implicit_control)
+                else:
+                    assert not fsal
+                    jac_k = eqxi.nondifferentiable(jac_k, name="jac_k")
+                    nonlinear_sol = self.nonlinear_solver(
+                        _implicit_relation_k, k_pred, k_implicit_args, jac_k
+                    )
+                    implicit_fi = _unused
+                    implicit_ki = implicit_inc = nonlinear_sol.root
+                yi = y_map(
+                    lambda a, b: a + implicit_diagonal_i * b, yi_partial, implicit_inc
+                )
+                result = update_result(result, nonlinear_sol.result)
+            #
+            # Now evaluate our vector field at the value yi.
+            # If we had an implicit tableau then we can skip evaluating the vector field
+            # for that tableau, as we did the solve in f-space or k-space and already
+            # have its value.
+            #
             # No floating point error
             ti = t_map(lambda _c_i: jnp.where(_c_i == 1, t1, t0 + _c_i * dt), c_i)
-            if fsal:
-                assert not is_vf_expensive
-                fi = vf(ti, yi_partial)
-                ki = prod(fi)
+            if eval_fs:
+                assert not vf_expensive
+                assert implicit_fi is not _unused
+                fi = vf(ti, yi, implicit_val=implicit_fi)
+                if store_fs:
+                    ki = _unused
+                else:
+                    ki = prod(fi)
             else:
+                assert implicit_ki is not _unused
+                assert not store_fs
                 fi = _unused
-                ki = vf_prod(ti, yi_partial)
-            ks = ts_map(lambda x, xs: xs.at[stage_index].set(x), ki, ks)
-            return stage_index + 1, yi_partial, increment, fi, ks
+                ki = vf_prod(ti, yi, implicit_val=implicit_ki)
+            #
+            # Update our outputs
+            #
+            if fsal:
+                assert fi is not _unused
+                f1_for_fsal = fi
+            else:
+                f1_for_fsal = _unused
+            if store_fs:
+                assert fi is not _unused
+                assert fs is not _unused
+                fs = f_map(lambda x, xs: xs.at[stage_index].set(x), fi, fs)
+            else:
+                assert ki is not _unused
+                assert ks is not _unused
+                ks = ty_map(lambda x, xs: xs.at[stage_index].set(x), ki, ks)
+            return (
+                stage_index + 1,
+                yi,
+                f1_for_fsal,
+                jac_f,
+                jac_k,
+                fs,
+                ks,
+                result,
+            )
 
         def buffers(val):
-            _, _, _, _, ks = val
-            return ks
+            *_, fs, ks, _ = val
+            return fs, ks
 
-        init_val = (stage_index, y0, t_map(lambda: y0), f0, ks)
+        if fsal:
+            assert f0 is not _unused
+            dummy_f = f0
+        else:
+            dummy_f = _unused
+        if self.calculate_jacobian == CalculateJacobian.never:
+            jac_f = _unused
+            jac_k = _unused
+        else:
+            # Set the initial Jacobian to be the identity matrix.
+            # For DIRK and SDIRK methods then the choice here doesn't matter; we compute
+            # the Jacobian straight away.
+            # For ESDIRK methods, this is the Jacobian of an explicit step.
+            #
+            # TODO: fix once we have more advanced nonlinear solvers.
+            # Mildly hacky hardcoding for now.
+            if eval_fs:
+                assert f0 is not _unused
+                struct = jax.eval_shape(lambda: jfu.ravel_pytree(get_implicit(f0))[0])
+                jac_f = (
+                    jnp.eye(struct.size, dtype=struct.dtype),
+                    jnp.arange(struct.size, dtype=jnp.int32),
+                )
+                jac_k = _unused
+            else:
+                struct = jax.eval_shape(lambda: jfu.ravel_pytree(y0)[0])
+                jac_f = _unused
+                jac_k = (
+                    jnp.eye(struct.size, dtype=struct.dtype),
+                    jnp.arange(struct.size, dtype=jnp.int32),
+                )
+        init_val = (
+            init_stage_index,
+            y0,
+            dummy_f,
+            jac_f,
+            jac_k,
+            fs,
+            ks,
+            RESULTS.successful,
+        )
+        # Needs to be an `eqxi.while_loop` as:
+        # (a) we may have variable length: e.g. an FSAL explicit RK scheme will have one
+        #     more stage on the first step.
+        # (b) to work around a limitation of JAX's autodiff being unable to express
+        #     "triangular computations" (every stage depends on all previous stages)
+        #     without spurious copies.
         final_val = eqxi.while_loop(
-            cond_fun,
-            body_fun,
+            cond_stage,
+            rk_stage,
             init_val,
             max_steps=num_stages,
             buffers=buffers,
             kind="checkpointed" if self.scan_kind is None else self.scan_kind,
             checkpoints=num_stages,
+            base=num_stages,
         )
-        _, y1_partial, increment, f1, ks = final_val
-
-        if all(tableau.ssal for tableau in jtu.tree_leaves(tableaus)):
-            y1 = y1_partial
-        else:
-            increment = t_map(
-                lambda t, k, i: i if t.ssal else vector_tree_dot(t.b_sol, k),
-                tableaus,
-                ks,
-                increment,
-            )
-            y1 = s_map(_sum, y0, *t_leaves(increment))
-        y_error = t_map(lambda t, k: vector_tree_dot(t.b_error, k), tableaus, ks)
-        dense_info = dict(y0=y0, y1=y1, k=ks)
-        if fsal:
-            new_solver_state = False, f1
-        else:
-            new_solver_state = None
-        result = RESULTS.successful
-        return y1, y_error, dense_info, new_solver_state, result
-
-    def old_step(
-        self,
-        terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
-        args: PyTree,
-        solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
-        #
-        # Some Runge--Kutta methods have special structure that we can use to improve
-        # efficiency.
-        #
-        # The famous one is FSAL; "first same as last". That is, the final evaluation
-        # of the vector field on the previous step is the same as the first evaluation
-        # on the subsequent step. We can reuse it and save an evaluation.
-        # However note that this requires saving a vf evaluation, not a
-        # vf-control-product. (This comes up when we have a different control on the
-        # next step, e.g. as with adaptive step sizes, or with SDEs.)
-        # As such we disable FSAL if a vf is expensive and a vf-control-product is
-        # cheap. (The canonical example is the optimise-then-discretise adjoint SDE.
-        # For this SDE, the vf-control product is a vector-Jacobian product, which is
-        # notably cheaper than evaluating a full Jacobian.)
-        #
-        # Next we have SSAL; "solution same as last". That is, the output of the step
-        # has already been calculated during the internal stage calculations. We can
-        # reuse those and save a dot product.
-        #
-        # Finally we have a choice whether to save and work with vector field
-        # evaluations (fs), or to save and work with (vector field)-control products
-        # (ks).
-        # The former is needed for implicit FSAL solvers: they need to obtain the
-        # final f1 for the FSAL property, which means they need to do the implicit
-        # solve in vf-space rather than (vf-control-product)-space, which means they
-        # need to use `fs` to predict the initial point for the root finding operation.
-        # Meanwhile the latter is needed when solving optimise-then-discretise adjoint
-        # SDEs, for which vector field evaluations are prohibitively expensive, and we
-        # must necessarily work only with the (much cheaper) vf-control-products. (In
-        # this case this is the difference between computing a Jacobian and computing a
-        # vector-Jacobian product.)
-        # For other problems, we choose to use `ks`. This doesn't have a strong
-        # rationale although it does have some minor efficiency points in its favour,
-        # e.g. we need `ks` to perform dense interpolation if needed.
-        #
-
-        implicit_first_stage = self.tableau.implicit and self.tableau.a_diagonal[0] != 0
-        # If we're computing the Jacobian at the start of the step, then we
-        # need this as a linearisation point.
-        #
-        # If the first stage is implicit, then we need this as a predictor for
-        # where to start iterating from.
-        need_f0_or_k0 = (
-            self.calculate_jacobian == CalculateJacobian.every_step
-            or implicit_first_stage
-        )
-        vf_expensive, fsal = self._common(terms, t0, t1, y0, args)
-        if self.tableau.implicit and fsal:
-            use_fs = True
-        elif vf_expensive:
-            use_fs = False
-        else:  # Choice not as important here; we use ks for minor efficiency reasons.
-            use_fs = False
-        del vf_expensive
-
-        control = terms.contr(t0, t1)
-        dt = t1 - t0
+        _, y1, f1_for_fsal, _, _, fs, ks, result = final_val
 
         #
-        # Calculate `f0` and `k0`. If this is just a first explicit stage then we'll
-        # sort that out later. But we might need these values for something else too
-        # (as a predictor for implicit stages; as a linearisation point for a Jacobian).
+        # Calculate outputs: the final `y1` from our step, any dense information, etc.
         #
 
-        f0 = None
-        k0 = None
-        if fsal:
-            f0 = solver_state
-            if not use_fs:
-                # `made_jump` can be a tracer, hence the `is`.
-                if made_jump is False:
-                    # Fast-path for compilation in the common case.
-                    k0 = terms.prod(f0, control)
-                else:
-                    k0 = lax.cond(
-                        made_jump,
-                        lambda: terms.vf_prod(t0, y0, args, control),
-                        lambda: terms.prod(f0, control),  # noqa: F821
-                    )
-        else:
-            if need_f0_or_k0:
-                if use_fs:
-                    f0 = terms.vf(t0, y0, args)
-                else:
-                    k0 = terms.vf_prod(t0, y0, args, control)
-
-        #
-        # Calculate `jac_f` and `jac_k` (maybe). That is to say, the Jacobian for use
-        # throughout an implicit method. In practice this is for SDIRK and ESDIRK
-        # methods, which use the same Jacobian throughout every stage.
-        #
-
-        jac_f = None
-        jac_k = None
-        if self.calculate_jacobian == CalculateJacobian.every_step:
-            assert self.tableau.a_diagonal is not None
-            # Skipping the first element to account for ESDIRK methods.
-            assert all(
-                x == self.tableau.a_diagonal[1] for x in self.tableau.a_diagonal[2:]
-            )
-            diagonal0 = self.tableau.a_diagonal[1]
-            if use_fs:
-                if y0 is not None:
-                    assert f0 is not None
-                jac_f = self.nonlinear_solver.jac(
-                    _implicit_relation_f,
-                    f0,
-                    (diagonal0, terms.vf, terms.prod, t0, y0, args, control),
-                )
+        if store_fs:
+            assert ks == _unused
+            if fs is None:
+                # Handle edge-case of y0=None
+                ks = None
             else:
-                if y0 is not None:
-                    assert k0 is not None
-                jac_k = self.nonlinear_solver.jac(
-                    _implicit_relation_k,
-                    k0,
-                    (diagonal0, terms.vf_prod, t0, y0, args, control),
-                )
-            del diagonal0
+                ks = jax.vmap(prod)(fs)
+        if any(not tableau.ssal for tableau in jtu.tree_leaves(tableaus)):
 
-        #
-        # Allocate `fs` or `ks` as a place to store the stage evaluations.
-        #
+            def _increment(tab_i, k_i):
+                return vector_tree_dot(tab_i.b_sol, k_i)
 
-        if use_fs or fsal:
-            if f0 is None:
-                # Only perform this trace if we have to; tracing can actually be
-                # a bit expensive.
-                f0_struct = eqx.filter_eval_shape(terms.vf, t0, y0, args)
-            else:
-                f0_struct = jax.eval_shape(lambda: f0)  # noqa: F821
-        # else f0_struct deliberately left undefined, and is unused.
-
-        num_stages = self.tableau.num_stages
-        if use_fs:
-            fs = jtu.tree_map(lambda f: jnp.zeros((num_stages,) + f.shape), f0_struct)
-            ks = None
-        else:
-            fs = None
-            ks = jtu.tree_map(lambda k: jnp.zeros((num_stages,) + jnp.shape(k)), y0)
-
-        #
-        # First stage. Defines `result`, `scan_first_stage`. Places `f0` and `k0` into
-        # `fs` and `ks`. (+Redefines them if it's an implicit first stage.) Consumes
-        # `f0` and `k0`.
-        #
-
-        if fsal:
-            scan_first_stage = False
-            result = RESULTS.successful
-        else:
-            if implicit_first_stage:
-                scan_first_stage = False
-                assert self.tableau.a_diagonal is not None
-                diagonal0 = self.tableau.a_diagonal[0]
-                if self.tableau.a_diagonal[0] == 1:
-                    # No floating point error
-                    t0_ = t1
-                else:
-                    t0_ = t0 + self.tableau.a_diagonal[0] * dt
-                if use_fs:
-                    if y0 is not None:
-                        assert jac_f is not None
-                    nonlinear_sol = self.nonlinear_solver(
-                        _implicit_relation_f,
-                        f0,
-                        (diagonal0, terms.vf, terms.prod, t0_, y0, args, control),
-                        jac_f,
-                    )
-                    f0 = nonlinear_sol.root
-                    result = nonlinear_sol.result
-                else:
-                    if y0 is not None:
-                        assert jac_k is not None
-                    nonlinear_sol = self.nonlinear_solver(
-                        _implicit_relation_k,
-                        k0,
-                        (diagonal0, terms.vf_prod, t0_, y0, args, control),
-                        jac_k,
-                    )
-                    k0 = nonlinear_sol.root
-                    result = nonlinear_sol.result
-                del diagonal0, t0_, nonlinear_sol
-            else:
-                scan_first_stage = True
-                result = RESULTS.successful
-
-        if scan_first_stage:
-            assert f0 is None
-            assert k0 is None
-        else:
-            if use_fs:
-                if y0 is not None:
-                    assert f0 is not None
-                fs = ω(fs).at[0].set(ω(f0)).ω
-            else:
-                if y0 is not None:
-                    assert k0 is not None
-                ks = ω(ks).at[0].set(ω(k0)).ω
-
-        del f0, k0
-
-        #
-        # Iterate through the stages. Fills in `fs` and `ks`. Consumes
-        # `scan_first_stage`.
-        #
-
-        def eval_stage(_carry, _input):
-            _, _, _fs, _ks, _result = _carry
-            _i, _a_lower_i, _a_diagonal_i, _a_predictor_i, _c_i = _input
-            # Unwrap buffers. Take advantage of the fact that they're initialised at
-            # zero, so that we don't really read from a location before its written to.
-            _unsafe_fs_unwrapped = jtu.tree_map(lambda _, x: x[...], fs, _fs)
-            _unsafe_ks_unwrapped = jtu.tree_map(lambda _, x: x[...], ks, _ks)
-
-            #
-            # Evaluate the linear combination of previous stages
-            #
-
-            if use_fs:
-                _increment = vector_tree_dot(_a_lower_i, _unsafe_fs_unwrapped)
-                _increment = terms.prod(_increment, control)
-            else:
-                _increment = vector_tree_dot(_a_lower_i, _unsafe_ks_unwrapped)
-            _yi_partial = (y0**ω + _increment**ω).ω
-
-            #
-            # Figure out if we're computing a vector field ("f") or a
-            # vector-field-product ("k")
-            #
-            # Ask for fi if we're using fs; ask for ki if we're using ks. Makes sense!
-            # In addition, ask for fi if we're using an FSAL scheme, as we'll be passing
-            # that on to the next step.
-            #
-
-            _return_fi = use_fs or fsal
-            _return_ki = not use_fs
-
-            #
-            # Evaluate the stage
-            #
-
-            _ti = jnp.where(_c_i == 1, t1, t0 + _c_i * dt)  # No floating point error
-            if self.tableau.implicit:
-                assert _a_diagonal_i is not None
-                # Predictor for where to start iterating from
-                if _return_fi:
-                    _f_pred = vector_tree_dot(_a_predictor_i, _unsafe_fs_unwrapped)
-                else:
-                    _k_pred = vector_tree_dot(_a_predictor_i, _unsafe_ks_unwrapped)
-                # Determine Jacobian to use at this stage
-                if self.calculate_jacobian == CalculateJacobian.every_stage:
-                    if _return_fi:
-                        _jac_f = self.nonlinear_solver.jac(
-                            _implicit_relation_f,
-                            _f_pred,
-                            (
-                                _a_diagonal_i,
-                                terms.vf,
-                                terms.prod,
-                                _ti,
-                                _yi_partial,
-                                args,
-                                control,
-                            ),
-                        )
-                        _jac_k = None
-                    else:
-                        _jac_f = None
-                        _jac_k = self.nonlinear_solver.jac(
-                            _implicit_relation_k,
-                            _k_pred,
-                            (
-                                _a_diagonal_i,
-                                terms.vf,
-                                terms.prod,
-                                _ti,
-                                _yi_partial,
-                                args,
-                                control,
-                            ),
-                        )
-                else:
-                    assert self.calculate_jacobian == CalculateJacobian.every_step
-                    _jac_f = jac_f
-                    _jac_k = jac_k
-                # Solve nonlinear problem
-                if _return_fi:
-                    if y0 is not None:
-                        assert _jac_f is not None
-                    _nonlinear_sol = self.nonlinear_solver(
-                        _implicit_relation_f,
-                        _f_pred,
-                        (
-                            _a_diagonal_i,
-                            terms.vf,
-                            terms.prod,
-                            _ti,
-                            _yi_partial,
-                            args,
-                            control,
-                        ),
-                        _jac_f,
-                    )
-                    _fi = _nonlinear_sol.root
-                    if _return_ki:
-                        _ki = terms.prod(_fi, control)
-                    else:
-                        _ki = None
-                else:
-                    if _return_ki:
-                        if y0 is not None:
-                            assert _jac_k is not None
-                        _nonlinear_sol = self.nonlinear_solver(
-                            _implicit_relation_k,
-                            _k_pred,
-                            (
-                                _a_diagonal_i,
-                                terms.vf_prod,
-                                _ti,
-                                _yi_partial,
-                                args,
-                                control,
-                            ),
-                            _jac_k,
-                        )
-                        _fi = None
-                        _ki = _nonlinear_sol.root
-                    else:
-                        assert False
-                _result = update_result(_result, _nonlinear_sol.result)
-                del _nonlinear_sol
-            else:
-                # Explicit stage
-                if _return_fi:
-                    _fi = terms.vf(_ti, _yi_partial, args)
-                    if _return_ki:
-                        _ki = terms.prod(_fi, control)
-                    else:
-                        _ki = None
-                else:
-                    _fi = None
-                    if _return_ki:
-                        _ki = terms.vf_prod(_ti, _yi_partial, args, control)
-                    else:
-                        assert False
-
-            #
-            # Store output
-            #
-
-            if use_fs:
-                _fs = jtu.tree_map(lambda x, xs: xs.at[_i].set(x), _fi, _fs)
-            else:
-                _ks = jtu.tree_map(lambda x, xs: xs.at[_i].set(x), _ki, _ks)
-            if self.tableau.ssal:
-                _yi_partial_out = _yi_partial
-            else:
-                _yi_partial_out = None
-            if fsal:
-                _fi_out = _fi
-            else:
-                _fi_out = None
-            return (_yi_partial_out, _fi_out, _fs, _ks, _result), None
-
-        #
-        # Iterate over stages
-        #
-
-        if scan_first_stage:
-            tableau_a_lower = np.zeros((num_stages, num_stages))
-            for i, a_lower_i in enumerate(self.tableau.a_lower):
-                tableau_a_lower[i + 1, : i + 1] = a_lower_i
-            tableau_a_diagonal = self.tableau.a_diagonal
-            tableau_a_predictor = self.tableau.a_predictor
-            tableau_c = np.zeros(num_stages)
-            tableau_c[1:] = self.tableau.c
-            i_init = 0
-            assert tableau_a_diagonal is None
-            assert tableau_a_predictor is None
-        else:
-            tableau_a_lower = np.zeros((num_stages - 1, num_stages))
-            for i, a_lower_i in enumerate(self.tableau.a_lower):
-                tableau_a_lower[i, : i + 1] = a_lower_i
-            if self.tableau.a_diagonal is None:
-                tableau_a_diagonal = None
-            else:
-                tableau_a_diagonal = self.tableau.a_diagonal[1:]
-            if self.tableau.a_predictor is None:
-                tableau_a_predictor = None
-            else:
-                tableau_a_predictor = np.zeros((num_stages - 1, num_stages))
-                for i, a_predictor_i in enumerate(self.tableau.a_predictor):
-                    tableau_a_predictor[i, : i + 1] = a_predictor_i
-            tableau_c = self.tableau.c
-            i_init = 1
-        if self.tableau.ssal:
-            y_dummy = y0
-        else:
-            y_dummy = None
-        if fsal:
-            f_dummy = jtu.tree_map(
-                lambda x: jnp.zeros(x.shape, dtype=x.dtype), f0_struct
-            )
-        else:
-            f_dummy = None
-        if self.scan_kind is None:
-            scan_kind = "checkpointed"
-        else:
-            scan_kind = self.scan_kind
-        (y1_partial, f1, fs, ks, result), _ = eqxi.scan(
-            eval_stage,
-            (y_dummy, f_dummy, fs, ks, result),
-            (
-                np.arange(i_init, num_stages),
-                tableau_a_lower,
-                tableau_a_diagonal,
-                tableau_a_predictor,
-                tableau_c,
-            ),
-            buffers=lambda x: (x[2], x[3]),  # fs and ks
-            kind=scan_kind,
-            checkpoints="all",
-        )
-        del y_dummy, f_dummy, scan_first_stage
-
-        #
-        # Compute step output
-        #
-
-        if self.tableau.ssal:
-            y1 = y1_partial
-        else:
-            if use_fs:
-                increment = vector_tree_dot(self.tableau.b_sol, fs)
-                increment = terms.prod(increment, control)
-            else:
-                increment = vector_tree_dot(self.tableau.b_sol, ks)
-            y1 = (y0**ω + increment**ω).ω
-
-        #
-        # Compute error estimate
-        #
-
-        if use_fs:
-            y_error = vector_tree_dot(self.tableau.b_error, fs)
-            y_error = terms.prod(y_error, control)
-        else:
-            y_error = vector_tree_dot(self.tableau.b_error, ks)
+            increment = t_map(_increment, tableaus, ks)
+            y1 = y_map(_sum, y0, *t_leaves(increment))
+        y_error = t_map(lambda tab, k: vector_tree_dot(tab.b_error, k), tableaus, ks)
+        y_error = y_map(_sum, *t_leaves(y_error))
         y_error = jtu.tree_map(
             lambda _y_error: jnp.where(is_okay(result), _y_error, jnp.inf),
             y_error,
         )  # i.e. an implicit step failed to converge
-
-        #
-        # Compute dense info
-        #
-
-        if use_fs:
-            if fs is None:
-                # Edge case for diffeqsolve(y0=None)
-                ks = None
-            else:
-                ks = jax.vmap(lambda f: terms.prod(f, control))(fs)
         dense_info = dict(y0=y0, y1=y1, k=ks)
-
-        #
-        # Compute next solver state
-        #
-
         if fsal:
-            solver_state = f1
+            new_solver_state = False, f1_for_fsal
         else:
-            solver_state = None
-
-        return y1, y_error, dense_info, solver_state, result
+            new_solver_state = None
+        return y1, y_error, dense_info, new_solver_state, result
 
 
 class AbstractERK(AbstractRungeKutta):
@@ -1024,7 +1060,7 @@ class AbstractSDIRK(AbstractDIRK):
             diagonal = cls.tableau.a_diagonal[0]
             assert (cls.tableau.a_diagonal == diagonal).all()
 
-    calculate_jacobian = CalculateJacobian.every_step
+    calculate_jacobian = CalculateJacobian.second_stage
 
 
 class AbstractESDIRK(AbstractDIRK):
@@ -1042,4 +1078,4 @@ class AbstractESDIRK(AbstractDIRK):
             diagonal = cls.tableau.a_diagonal[1]
             assert (cls.tableau.a_diagonal[1:] == diagonal).all()
 
-    calculate_jacobian = CalculateJacobian.every_step
+    calculate_jacobian = CalculateJacobian.second_stage

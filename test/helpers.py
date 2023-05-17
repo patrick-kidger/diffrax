@@ -25,6 +25,13 @@ all_ode_solvers = (
     diffrax.Kvaerno5(),
 )
 
+all_split_solvers = (
+    diffrax.Sil3(),
+    diffrax.KenCarp3(),
+    diffrax.KenCarp4(),
+    diffrax.KenCarp5(),
+)
+
 
 def implicit_tol(solver):
     if isinstance(solver, diffrax.AbstractImplicitSolver):

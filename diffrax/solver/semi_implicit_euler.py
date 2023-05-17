@@ -16,7 +16,8 @@ _SolverState = None
 class SemiImplicitEuler(AbstractSolver):
     """Semi-implicit Euler's method.
 
-    Symplectic method. Does not support adaptive step sizing.
+    Symplectic method. Does not support adaptive step sizing. Uses 1st order local
+    linear interpolation for dense/ts output.
     """
 
     term_structure = (AbstractTerm, AbstractTerm)

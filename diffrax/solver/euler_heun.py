@@ -16,6 +16,11 @@ _SolverState = None
 class EulerHeun(AbstractStratonovichSolver):
     """Euler-Heun method.
 
+    Uses a 1st order local linear interpolation scheme for dense/ts output.
+
+    This should be called with `terms=MultiTerm(drift_term, diffusion_term)`, where the
+    drift is an `ODETerm`.
+
     Used to solve SDEs, and converges to the Stratonovich solution.
     """
 

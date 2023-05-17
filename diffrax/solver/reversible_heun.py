@@ -17,7 +17,7 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for
-    adaptive step sizing.
+    adaptive step sizing. Uses 1st order local linear interpolation for dense/ts output.
 
     When used to solve SDEs, converges to the Stratonovich solution.
 

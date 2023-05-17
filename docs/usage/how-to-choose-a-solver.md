@@ -34,6 +34,10 @@ See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
     - Taking many more solver steps than necessary (e.g. 8 steps -> 800 steps);
     - Wrapping with `jax.value_and_grad` or `jax.grad` actually changing the result of the primal (forward) computation.
 
+### Split problems
+
+For "split stiffness" problems, with one term that is stiff and another term that is non-stiff, then IMEX methods are appropriate: [`diffrax.KenCarp4`][] is recommended. In addition you should almost always use an adaptive step size controller such as [`diffrax.PIDController`][].
+
 ---
 
 ## Stochastic differential equations
