@@ -789,10 +789,13 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         # FSAL => explicit first stage so the choice of predictor
                         # doesn't matter.
                         f_pred = jtu.tree_map(if_first_stage, f0_for_jac, f_pred)
+                    assert f0 is not _unused
                     f_implicit_args = (
                         implicit_diagonal_i,
-                        implicit_term.vf,
-                        implicit_term.prod,
+                        eqx.filter_closure_convert(implicit_term.vf, t0, y0, args),
+                        eqx.filter_closure_convert(
+                            implicit_term.prod, f_pred, implicit_control
+                        ),
                         implicit_ti,
                         yi_partial,
                         args,
@@ -812,7 +815,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         k_pred = jtu.tree_map(if_first_stage, k0_for_jac, k_pred)
                     k_implicit_args = (
                         implicit_diagonal_i,
-                        implicit_term.vf_prod,
+                        eqx.filter_closure_convert(
+                            implicit_term.vf_prod, t0, y0, args, implicit_control
+                        ),
                         implicit_ti,
                         yi_partial,
                         args,
