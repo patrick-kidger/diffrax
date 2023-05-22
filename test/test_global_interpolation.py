@@ -1,5 +1,6 @@
 import functools as ft
 import operator
+from typing import Tuple
 
 import diffrax
 import jax
@@ -8,7 +9,7 @@ import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
 
-from .helpers import all_ode_solvers, implicit_tol, shaped_allclose
+from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, shaped_allclose
 
 
 @pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])
@@ -315,8 +316,18 @@ def test_interpolation_classes(mode, getkey):
 def _test_dense_interpolation(solver, key, t1):
     y0 = jrandom.uniform(key, (), minval=0.4, maxval=2)
     dt0 = t1 / 1e3
+    if (
+        solver.term_structure
+        == diffrax.MultiTerm[Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
+    ):
+        term = diffrax.MultiTerm(
+            diffrax.ODETerm(lambda t, y, args: -0.7 * y),
+            diffrax.ODETerm(lambda t, y, args: -0.3 * y),
+        )
+    else:
+        term = diffrax.ODETerm(lambda t, y, args: -y)
     sol = diffrax.diffeqsolve(
-        diffrax.ODETerm(lambda t, y, args: -y),
+        term,
         solver=solver,
         t0=0,
         t1=t1,
@@ -334,7 +345,7 @@ def _test_dense_interpolation(solver, key, t1):
     return vals, true_vals, derivs, true_derivs
 
 
-@pytest.mark.parametrize("solver", all_ode_solvers)
+@pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_dense_interpolation(solver, getkey):
     solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)
@@ -360,7 +371,7 @@ def test_dense_interpolation(solver, getkey):
 # When vmap'ing then it can happen that some batch elements take more steps to solve
 # than others. This means some padding is used to make things line up; here we test
 # that all of this works as intended.
-@pytest.mark.parametrize("solver", all_ode_solvers)
+@pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_dense_interpolation_vmap(solver, getkey):
     solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)

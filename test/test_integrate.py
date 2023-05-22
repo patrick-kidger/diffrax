@@ -1,5 +1,6 @@
 import math
 import operator
+from typing import Tuple
 
 import diffrax
 import equinox as eqx
@@ -13,6 +14,7 @@ from equinox.internal import ω
 
 from .helpers import (
     all_ode_solvers,
+    all_split_solvers,
     implicit_tol,
     random_pytree,
     shaped_allclose,
@@ -115,7 +117,7 @@ def test_basic(solver, t_dtype, treedef, stepsize_controller, getkey):
     assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
-@pytest.mark.parametrize("solver", all_ode_solvers)
+@pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_ode_order(solver):
     solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)
@@ -123,10 +125,24 @@ def test_ode_order(solver):
 
     A = jrandom.normal(akey, (10, 10), dtype=jnp.float64) * 0.5
 
-    def f(t, y, args):
-        return A @ y
+    if (
+        solver.term_structure
+        == diffrax.MultiTerm[Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
+    ):
 
-    term = diffrax.ODETerm(f)
+        def f1(t, y, args):
+            return 0.3 * A @ y
+
+        def f2(t, y, args):
+            return 0.7 * A @ y
+
+        term = diffrax.MultiTerm(diffrax.ODETerm(f1), diffrax.ODETerm(f2))
+    else:
+
+        def f(t, y, args):
+            return A @ y
+
+        term = diffrax.ODETerm(f)
     t0 = 0
     t1 = 4
     y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)

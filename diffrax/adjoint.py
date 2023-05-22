@@ -14,7 +14,7 @@ from equinox.internal import ω
 from .ad import implicit_jvp
 from .heuristics import is_sde, is_unsafe_sde
 from .saveat import save_y, SaveAt, SubSaveAt
-from .solver import AbstractItoSolver, AbstractStratonovichSolver
+from .solver import AbstractItoSolver, AbstractRungeKutta, AbstractStratonovichSolver
 from .term import AbstractTerm, AdjointTerm
 
 
@@ -332,6 +332,7 @@ class DirectAdjoint(AbstractAdjoint):
     def loop(
         self,
         *,
+        solver,
         max_steps,
         terms,
         throw,
@@ -362,10 +363,15 @@ class DirectAdjoint(AbstractAdjoint):
         else:
             kind = "bounded"
             msg = None
+        # Support forward-mode autodiff.
+        # TODO: remove this hack once we can JVP through custom_vjps.
+        if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
+            solver = eqx.tree_at(lambda s: s.scan_kind, solver, "bounded")
         inner_while_loop = ft.partial(_inner_loop, kind=kind)
         outer_while_loop = ft.partial(_outer_loop, kind=kind)
         final_state = self._loop(
             **kwargs,
+            solver=solver,
             max_steps=max_steps,
             terms=terms,
             inner_while_loop=inner_while_loop,
@@ -535,6 +541,8 @@ def _loop_backsolve_bwd(
     zeros_like_diff_args = jtu.tree_map(jnp.zeros_like, diff_args)
     zeros_like_diff_terms = jtu.tree_map(jnp.zeros_like, diff_terms)
     del diff_args, diff_terms
+    # TODO: have this look inside MultiTerms? Need to think about the math. i.e.:
+    # is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm)
     adjoint_terms = jtu.tree_map(
         AdjointTerm, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
     )
@@ -762,6 +770,11 @@ class BacksolveAdjoint(AbstractAdjoint):
                     "`BacksolveAdjoint` will only produce the correct solution for "
                     "Stratonovich SDEs."
                 )
+        if jtu.tree_structure(solver.term_structure) != jtu.tree_structure(0):
+            raise NotImplementedError(
+                "`diffrax.BacksolveAdjoint` is only compatible with solvers that take "
+                "a single term."
+            )
 
         y = init_state.y
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())

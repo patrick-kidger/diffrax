@@ -31,6 +31,7 @@ from .local_interpolation import (
 from .misc import adjoint_rms_seminorm
 from .nonlinear_solver import (
     AbstractNonlinearSolver,
+    AffineNonlinearSolver,
     NewtonNonlinearSolver,
     NonlinearSolution,
 )
@@ -60,14 +61,19 @@ from .solver import (
     Heun,
     ImplicitEuler,
     ItoMilstein,
+    KenCarp3,
+    KenCarp4,
+    KenCarp5,
     Kvaerno3,
     Kvaerno4,
     Kvaerno5,
     LeapfrogMidpoint,
     Midpoint,
+    MultiButcherTableau,
     Ralston,
     ReversibleHeun,
     SemiImplicitEuler,
+    Sil3,
     StratonovichMilstein,
     Tsit5,
 )

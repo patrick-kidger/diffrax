@@ -22,8 +22,9 @@ def _implicit_relation(z1, nonlinear_solve_args):
 class ImplicitEuler(AbstractImplicitSolver):
     r"""Implicit Euler method.
 
-    A-B-L stable 1st order SDIRK method. Has an embedded 2nd order method for adaptive
-    step sizing.
+    A-B-L stable 1st order SDIRK method. Has an embedded 2nd order Heun method for
+    adaptive step sizing. Uses 1 stage. Uses a 1st order local linear interpolation for
+    dense/ts output.
     """
 
     term_structure = AbstractTerm

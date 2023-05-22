@@ -2,11 +2,13 @@ import abc
 from typing import Callable, Optional, Tuple, Type, TypeVar
 
 import equinox as eqx
+import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from jaxtyping import PyTree
 
-from ..custom_types import Bool, DenseInfo, PyTree, Scalar
+from ..custom_types import Bool, DenseInfo, Scalar
 from ..heuristics import is_sde
 from ..local_interpolation import AbstractLocalInterpolation
 from ..nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
@@ -41,16 +43,10 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     structure of `terms` in `diffeqsolve(terms, ...)`.
     """
 
-    @property
-    @abc.abstractmethod
-    def term_structure(self) -> PyTree[Type[AbstractTerm]]:
-        """What PyTree structure `terms` should have when used with this solver."""
-
-    # On the type: frequently just Type[AbstractLocalInterpolation]
-    @property
-    @abc.abstractmethod
-    def interpolation_cls(self) -> Callable[..., AbstractLocalInterpolation]:
-        """How to interpolate the solution in between steps."""
+    # What PyTree structure `terms` should have when used with this solver.
+    term_structure: eqxi.AbstractClassVar[PyTree[Type[AbstractTerm]]]
+    # How to interpolate the solution in between steps.
+    interpolation_cls: eqxi.AbstractClassVar[Callable[..., AbstractLocalInterpolation]]
 
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         """Order of the solver for solving ODEs."""

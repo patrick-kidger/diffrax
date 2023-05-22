@@ -40,7 +40,8 @@ class Kvaerno3(AbstractESDIRK):
     r"""Kvaerno's 3/2 method.
 
     A-L stable stiffly accurate 3rd order ESDIRK method. Has an embedded 2nd order
-    method for adaptive step sizing. Uses 4 stages.
+    method for adaptive step sizing. Uses 4 stages with FSAL. Uses 3rd order Hermite
+    interpolation for dense/ts output.
 
     ??? cite "Reference"
 

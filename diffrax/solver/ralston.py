@@ -26,7 +26,7 @@ class Ralston(AbstractERK, AbstractStratonovichSolver):
     """Ralston's method.
 
     2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
-    step sizing.
+    step sizing. Uses 2 stages. Uses 2nd order Hermite interpolation for dense output.
 
     When used to solve SDEs, converges to the Stratonovich solution.
     """

@@ -1,6 +1,6 @@
 import abc
 import operator
-from typing import Callable, Tuple
+from typing import Callable, Generic, Tuple, TypeVar
 
 import equinox as eqx
 import jax
@@ -313,7 +313,10 @@ def _sum(*x):
     return sum(x[1:], x[0])
 
 
-class MultiTerm(AbstractTerm):
+_Terms = TypeVar("_Terms", bound=Tuple[AbstractTerm, ...])
+
+
+class MultiTerm(AbstractTerm, Generic[_Terms]):
     r"""Accumulates multiple terms into a single term.
 
     Consider the SDE
@@ -332,9 +335,9 @@ class MultiTerm(AbstractTerm):
     transform is a necessary part of e.g. solving an SDE with both drift and diffusion.
     """
 
-    terms: Tuple[AbstractTerm, ...]
+    terms: _Terms
 
-    def __init__(self, *terms):
+    def __init__(self, *terms: AbstractTerm):
         """**Arguments:**
 
         - `*terms`: Any number of [`diffrax.AbstractTerm`][]s to combine.
@@ -363,6 +366,15 @@ class MultiTerm(AbstractTerm):
         ]
         return jtu.tree_map(_sum, *out)
 
+    def is_vf_expensive(
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        y: Tuple[PyTree, PyTree, PyTree, PyTree],
+        args: PyTree,
+    ) -> bool:
+        return any(term.is_vf_expensive(t0, t1, y, args) for term in self.terms)
+
 
 class WrapTerm(AbstractTerm):
     term: AbstractTerm
@@ -383,6 +395,15 @@ class WrapTerm(AbstractTerm):
     def vf_prod(self, t: Scalar, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
         t = t * self.direction
         return self.term.vf_prod(t, y, args, control)
+
+    def is_vf_expensive(
+        self,
+        t0: Scalar,
+        t1: Scalar,
+        y: Tuple[PyTree, PyTree, PyTree, PyTree],
+        args: PyTree,
+    ) -> bool:
+        return self.term.is_vf_expensive(t0, t1, y, args)
 
 
 class AdjointTerm(AbstractTerm):

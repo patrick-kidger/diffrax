@@ -17,7 +17,8 @@ _SolverState = Tuple[Scalar, PyTree]
 class LeapfrogMidpoint(AbstractSolver):
     r"""Leapfrog/midpoint method.
 
-    2nd order linear multistep method.
+    2nd order linear multistep method. Uses 1st order local linear interpolation for
+    dense/ts output.
 
     Note that this is referred to as the "leapfrog/midpoint method" as this is the name
     used by Shampine in the reference below. It should not be confused with any of the
