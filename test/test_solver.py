@@ -2,11 +2,12 @@ from typing import Tuple
 
 import diffrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from .helpers import shaped_allclose
+from .helpers import implicit_tol, shaped_allclose
 
 
 def test_half_solver():
@@ -454,3 +455,18 @@ def test_rober(solver):
         ]
     )
     assert jnp.allclose(sol.ys, true_ys, rtol=1e-3, atol=1e-8)
+
+
+def test_implicit_closure_convert():
+    @jax.grad
+    def f(x):
+        def vector_field(t, y, args):
+            return x * y
+
+        term = diffrax.ODETerm(vector_field)
+        solver = diffrax.Kvaerno3()
+        solver = implicit_tol(solver)
+        out = diffrax.diffeqsolve(term, solver, 0, 1, 0.1, 1.0)
+        return out.ys[0]
+
+    f(1.0)
