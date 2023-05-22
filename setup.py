@@ -44,7 +44,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
-python_requires = "~=3.8"
+python_requires = "~=3.9"
 
 install_requires = ["jax>=0.4.3", "equinox>=0.10.4"]
 
