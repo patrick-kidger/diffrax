@@ -5,7 +5,6 @@ from typing import get_args, get_origin, Literal, Optional, Tuple, Union
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.flatten_util as jfu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -218,7 +217,19 @@ _SolverState = Optional[tuple[Scalar, PyTree[Array]]]
 #       numerical behaviour since the iteration is close to 0. (Although we have
 #       multiplied by the increment of the control, i.e. dt, which is small...)
 def _implicit_relation_f(fi, nonlinear_solve_args):
-    diagonal, vf, prod, ti, yi_partial, args, control = nonlinear_solve_args
+    # We pass stage_index, even without using it, so that custom nonlinear solvers
+    # can special-case on the stage if they want to.
+    (
+        stage_index,
+        diagonal,
+        vf,
+        prod,
+        ti,
+        yi_partial,
+        args,
+        control,
+    ) = nonlinear_solve_args
+    del stage_index
     diff = (
         fi**ω
         - vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
@@ -231,7 +242,11 @@ def _implicit_relation_k(ki, nonlinear_solve_args):
     # c.f:
     # https://github.com/SciML/DiffEqDevMaterials/blob/master/newton/output/main.pdf
     # (Bearing in mind that our ki is dt times smaller than theirs.)
-    diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
+    #
+    # We pass stage_index, even without using it, so that custom nonlinear solvers
+    # can special-case on the stage if they want to.
+    stage_index, diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
+    del stage_index
     diff = (
         ki**ω
         - vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
@@ -732,6 +747,25 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             implicit_predictor = jnp.asarray(implicit_predictor)
             implicit_c = get_implicit(tableaus_c)
 
+        if implicit_term is None:
+            implicit_vf = _unused
+            implicit_prod = _unused
+            implicit_vf_prod = _unused
+        else:
+            if eval_fs:
+                assert f0 is not _unused
+                implicit_vf = eqx.filter_closure_convert(implicit_term.vf, t0, y0, args)
+                implicit_prod = eqx.filter_closure_convert(
+                    implicit_term.prod, get_implicit(f0), implicit_control
+                )
+                implicit_vf_prod = _unused
+            else:
+                implicit_vf = _unused
+                implicit_prod = _unused
+                implicit_vf_prod = eqx.filter_closure_convert(
+                    implicit_term.vf_prod, t0, y0, args, implicit_control
+                )
+
         #
         # Run the loop over stages. (This is what you signed up for, and it's taken us
         # several hundred lines of code just to get this far!)
@@ -791,11 +825,10 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         f_pred = jtu.tree_map(if_first_stage, f0_for_jac, f_pred)
                     assert f0 is not _unused
                     f_implicit_args = (
+                        stage_index,
                         implicit_diagonal_i,
-                        eqx.filter_closure_convert(implicit_term.vf, t0, y0, args),
-                        eqx.filter_closure_convert(
-                            implicit_term.prod, f_pred, implicit_control
-                        ),
+                        implicit_vf,
+                        implicit_prod,
                         implicit_ti,
                         yi_partial,
                         args,
@@ -814,10 +847,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         # doesn't matter.
                         k_pred = jtu.tree_map(if_first_stage, k0_for_jac, k_pred)
                     k_implicit_args = (
+                        stage_index,
                         implicit_diagonal_i,
-                        eqx.filter_closure_convert(
-                            implicit_term.vf_prod, t0, y0, args, implicit_control
-                        ),
+                        implicit_vf_prod,
                         implicit_ti,
                         yi_partial,
                         args,
@@ -954,23 +986,41 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             # For DIRK and SDIRK methods then the choice here doesn't matter; we compute
             # the Jacobian straight away.
             # For ESDIRK methods, this is the Jacobian of an explicit step.
-            #
-            # TODO: fix once we have more advanced nonlinear solvers.
-            # Mildly hacky hardcoding for now.
             if eval_fs:
                 assert f0 is not _unused
-                struct = jax.eval_shape(lambda: jfu.ravel_pytree(get_implicit(f0))[0])
-                jac_f = (
-                    jnp.eye(struct.size, dtype=struct.dtype),
-                    jnp.arange(struct.size, dtype=jnp.int32),
+                f_implicit_args = (
+                    jnp.array(0),
+                    # zero diagonal == identity matrix as the Jacobian
+                    jnp.array(0.0, dtype=implicit_diagonal.dtype),
+                    implicit_vf,
+                    implicit_prod,
+                    t0,
+                    y0,
+                    args,
+                    implicit_control,
+                )
+                jac_f = self.nonlinear_solver.jac(
+                    _implicit_relation_f,
+                    jtu.tree_map(jnp.zeros_like, get_implicit(f0)),
+                    _filter_stop_gradient(f_implicit_args),
                 )
                 jac_k = _unused
             else:
-                struct = jax.eval_shape(lambda: jfu.ravel_pytree(y0)[0])
+                k_implicit_args = (
+                    jnp.array(0),
+                    # zero diagonal == identity matrix as the Jacobian
+                    jnp.array(0.0, dtype=implicit_diagonal.dtype),
+                    implicit_vf_prod,
+                    t0,
+                    y0,
+                    args,
+                    implicit_control,
+                )
                 jac_f = _unused
-                jac_k = (
-                    jnp.eye(struct.size, dtype=struct.dtype),
-                    jnp.arange(struct.size, dtype=jnp.int32),
+                jac_k = self.nonlinear_solver.jac(
+                    _implicit_relation_k,
+                    jtu.tree_map(jnp.zeros_like, y0),
+                    _filter_stop_gradient(k_implicit_args),
                 )
         init_val = (
             init_stage_index,
@@ -1065,7 +1115,7 @@ class AbstractSDIRK(AbstractDIRK):
             diagonal = cls.tableau.a_diagonal[0]
             assert (cls.tableau.a_diagonal == diagonal).all()
 
-    calculate_jacobian = CalculateJacobian.second_stage
+    calculate_jacobian = CalculateJacobian.first_stage
 
 
 class AbstractESDIRK(AbstractDIRK):
