@@ -741,7 +741,9 @@ def diffeqsolve(
         save_index = 0
         ts = jnp.full(out_size, jnp.inf)
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
-        ys = jtu.tree_map(lambda y: jnp.full((out_size,) + y.shape, jnp.inf), struct)
+        ys = jtu.tree_map(
+            lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
+        )
         return SaveState(
             ts=ts, ys=ys, save_index=save_index, saveat_ts_index=saveat_ts_index
         )
