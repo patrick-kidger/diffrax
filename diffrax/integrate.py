@@ -19,6 +19,7 @@ from .misc import static_select
 from .saveat import SaveAt, SubSaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
 from .solver import (
+    AbstractImplicitSolver,
     AbstractItoSolver,
     AbstractSolver,
     AbstractStratonovichSolver,
@@ -604,6 +605,18 @@ def diffeqsolve(
         with jax.ensure_compile_time_eval():
             pred = (t1 - t0) * dt0 < 0
         dt0 = eqxi.error_if(jnp.array(dt0), pred, msg)
+
+    # Error checking and warning for complex dtypes
+    if any(jtu.tree_leaves(jtu.tree_map(jnp.iscomplexobj, y0))):
+        if isinstance(solver, AbstractImplicitSolver):
+            raise ValueError(
+                "Implicit solvers in conjunction with complex dtypes is currently not "
+                "supported."
+            )
+        warnings.warn(
+            "Complex dtype support is work in progress, please read "
+            "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully."
+        )
 
     # Backward compatibility
     if isinstance(
