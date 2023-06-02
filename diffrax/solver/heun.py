@@ -17,7 +17,8 @@ class Heun(AbstractERK, AbstractStratonovichSolver):
     """Heun's method.
 
     2nd order explicit Runge--Kutta method. Has an embedded Euler method for adaptive
-    step sizing.
+    step sizing. Uses 2 stages. Uses 2nd-order Hermite interpolation for dense/ts
+    output.
 
     Also sometimes known as either the "improved Euler method", "modified Euler method"
     or "explicit trapezoidal rule".

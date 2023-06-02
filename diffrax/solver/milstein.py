@@ -8,7 +8,7 @@ from equinox.internal import ω
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..solution import RESULTS
-from ..term import AbstractTerm
+from ..term import AbstractTerm, MultiTerm, ODETerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -28,7 +28,11 @@ _SolverState = None
 class StratonovichMilstein(AbstractStratonovichSolver):
     r"""Milstein's method; Stratonovich version.
 
-    Used to solve SDEs, and converges to the Stratonovich solution.
+    Used to solve SDEs, and converges to the Stratonovich solution. Uses local linear
+    interpolation for dense/ts output.
+
+    This should be called with `terms=MultiTerm(drift_term, diffusion_term)`, where the
+    drift is an `ODETerm`.
 
     !!! warning
 
@@ -36,7 +40,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -45,9 +49,19 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     def strong_order(self, terms):
         return 1  # assuming commutative noise
 
+    def init(
+        self,
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -56,7 +70,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         made_jump: Bool,
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         dt = drift.contr(t0, t1)
         dw = diffusion.contr(t0, t1)
 
@@ -74,19 +88,23 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def func(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
 
 
 class ItoMilstein(AbstractItoSolver):
     r"""Milstein's method; Itô version.
 
-    Used to solve SDEs, and converges to the Itô solution.
+    Used to solve SDEs, and converges to the Itô solution. Uses local linear
+    interpolation for dense/ts output.
+
+    This should be called with `terms=MultiTerm(drift_term, diffusion_term)`, where the
+    drift is an `ODETerm`.
 
     !!! warning
 
@@ -94,7 +112,7 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -103,9 +121,19 @@ class ItoMilstein(AbstractItoSolver):
     def strong_order(self, terms):
         return 1  # assuming commutative noise
 
+    def init(
+        self,
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -114,13 +142,13 @@ class ItoMilstein(AbstractItoSolver):
         made_jump: Bool,
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         Δt = drift.contr(t0, t1)
         Δw = diffusion.contr(t0, t1)
 
         #
         # So this is a bit involved, largely because of the generality that the rest of
-        # the libary supports. (In particular arbitrary PyTrees, and arbitrary (linear)
+        # the library supports. (In particular arbitrary PyTrees, and arbitrary (linear)
         # `AbstractTerm.prod`)
         #
         # The expression for Ito Milstein is
@@ -326,7 +354,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
         t0: Scalar,
         y0: PyTree,
         args: PyTree,

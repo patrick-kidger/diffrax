@@ -14,15 +14,13 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
     diffeqsolve(terms, solver=Euler(), ...)
     ```
 
-    Some solvers are SDE-specific. For these, such as for example [`diffrax.StratonovichMilstein`][], then `terms` should be a 2-tuple `(AbstractTerm, AbstractTerm)`, representing the drift and diffusion separately.
+    Some solvers are SDE-specific. For these, such as for example [`diffrax.StratonovichMilstein`][], then `terms` must specifically be of the form `MultiTerm(ODETerm(...), SomeOtherTerm(...))` (Typically `SomeOTherTerm` will be a `ControlTerm` or `WeaklyDiagonalControlTerm`) representing the drift and diffusion specifically.
 
     For those SDE-specific solvers then this is documented below, and the term structure is available programmatically under `<solver>.term_structure`.
 
 ---
 
 ### Explicit Runge--Kutta (ERK) methods
-
-Each of these takes a `scan_stages` argument at initialisation, which [behaves the same as as the explicit Runge--Kutta methods for ODEs](./ode_solvers.md#explicit-runge-kutta-erk-methods).
 
 ::: diffrax.Euler
     selection:
@@ -60,7 +58,8 @@ These are reversible in the same way as when applied to ODEs. [See here.](./ode_
 
 !!! info "Term structure"
 
-    For these SDE-specific solvers, the terms (given by the value of `terms` to [`diffrax.diffeqsolve`][]) must be a 2-tuple `(AbstractTerm, AbstractTerm)`, representing the drift and diffusion respectively. Typically that means `(ODETerm(...), ControlTerm(..., ...))`.
+    These solvers are SDE-specific. For these, `terms` must specifically be of the form `MultiTerm(ODETerm(...), SomeOtherTerm(...))` (Typically `SomeOTherTerm` will be a `ControlTerm` or `WeaklyDiagonalControlTerm`) representing the drift and diffusion specifically.
+
 
 ::: diffrax.EulerHeun
     selection:

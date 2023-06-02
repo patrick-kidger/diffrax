@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
@@ -18,7 +17,8 @@ _SolverState = Tuple[Scalar, PyTree]
 class LeapfrogMidpoint(AbstractSolver):
     r"""Leapfrog/midpoint method.
 
-    2nd order linear multistep method.
+    2nd order linear multistep method. Uses 1st order local linear interpolation for
+    dense/ts output.
 
     Note that this is referred to as the "leapfrog/midpoint method" as this is the name
     used by Shampine in the reference below. It should not be confused with any of the
@@ -41,7 +41,7 @@ class LeapfrogMidpoint(AbstractSolver):
         ```
     """
 
-    term_structure = jtu.tree_structure(0)
+    term_structure = AbstractTerm
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):

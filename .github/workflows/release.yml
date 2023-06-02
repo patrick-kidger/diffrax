@@ -12,7 +12,7 @@ jobs:
       - name: Release
         uses: patrick-kidger/action_update_python_project@v1
         with:
-            python-version: "3.8"
+            python-version: "3.11"
             test-script: |
                 python -m pip install pytest psutil jax jaxlib equinox scipy optax
                 cp -r ${{ github.workspace }}/test ./test

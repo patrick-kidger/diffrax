@@ -6,7 +6,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
-from ..custom_types import Array, PyTree, Scalar
+from .custom_types import Array, PyTree, Scalar
 
 
 _itemsize_kind_type = {

@@ -1,7 +1,8 @@
 import inspect
 import typing
-from typing import Dict, Generic, Tuple, TypeVar, Union
+from typing import Any, Dict, Generic, Tuple, TypeVar, Union
 
+import equinox.internal as eqxi
 import jax.tree_util as jtu
 
 
@@ -129,5 +130,4 @@ else:
 
 DenseInfo = Dict[str, PyTree[Array]]
 DenseInfos = Dict[str, PyTree[Array["times", ...]]]  # noqa: F821
-
-PyTreeDef = type(jtu.tree_structure(0))
+sentinel: Any = eqxi.doc_repr(object(), "sentinel")

@@ -84,7 +84,8 @@ class Kvaerno5(AbstractESDIRK):
     r"""Kvaerno's 5/4 method.
 
     A-L stable stiffly accurate 5th order ESDIRK method. Has an embedded 4th order
-    method for adaptive step sizing. Uses 7 stages.
+    method for adaptive step sizing. Uses 7 stages with FSAL. Uses 3rd order Hermite
+    interpolation for dense/ts output.
 
     When solving an ODE over the interval $[t_0, t_1]$, note that this method will make
     some evaluations slightly past $t_1$.

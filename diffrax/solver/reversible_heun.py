@@ -1,7 +1,6 @@
 from typing import Tuple
 
 import jax.lax as lax
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
@@ -18,7 +17,7 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for
-    adaptive step sizing.
+    adaptive step sizing. Uses 1st order local linear interpolation for dense/ts output.
 
     When used to solve SDEs, converges to the Stratonovich solution.
 
@@ -34,7 +33,7 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         ```
     """
 
-    term_structure = jtu.tree_structure(0)
+    term_structure = AbstractTerm
     interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
 
     def order(self, terms):

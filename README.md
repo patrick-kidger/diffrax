@@ -21,7 +21,7 @@ _From a technical point of view, the internal structure of the library is pretty
 pip install diffrax
 ```
 
-Requires Python >=3.7 and JAX >=0.3.4.
+Requires Python 3.9+, JAX 0.4.4+, and [Equinox](https://github.com/patrick-kidger/equinox) 0.10.4+.
 
 ## Documentation
 
@@ -64,5 +64,7 @@ If you found this library useful in academic research, please cite: [(arXiv link
 Neural networks: [Equinox](https://github.com/patrick-kidger/equinox).
 
 Type annotations and runtime checking for PyTrees and shape/dtype of JAX arrays: [jaxtyping](https://github.com/google/jaxtyping).
+
+Computer vision models: [Eqxvision](https://github.com/paganpasta/eqxvision).
 
 SymPy<->JAX conversion; train symbolic expressions via gradient descent: [sympy2jax](https://github.com/google/sympy2jax).

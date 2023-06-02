@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
@@ -17,12 +16,13 @@ _SolverState = None
 class Euler(AbstractItoSolver):
     """Euler's method.
 
-    1st order explicit Runge--Kutta method. Does not support adaptive step sizing.
+    1st order explicit Runge--Kutta method. Does not support adaptive step sizing. Uses
+    1 stage. Uses 1st order local linear interpolation for dense/ts output.
 
     When used to solve SDEs, converges to the Itô solution.
     """
 
-    term_structure = jtu.tree_structure(0)
+    term_structure = AbstractTerm
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -30,6 +30,16 @@ class Euler(AbstractItoSolver):
 
     def strong_order(self, terms):
         return 0.5
+
+    def init(
+        self,
+        terms: AbstractTerm,
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
 
     def step(
         self,

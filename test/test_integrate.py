@@ -1,5 +1,6 @@
 import math
 import operator
+from typing import Tuple
 
 import diffrax
 import equinox as eqx
@@ -13,6 +14,7 @@ from equinox.internal import ω
 
 from .helpers import (
     all_ode_solvers,
+    all_split_solvers,
     implicit_tol,
     random_pytree,
     shaped_allclose,
@@ -129,7 +131,7 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
     assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
-@pytest.mark.parametrize("solver", all_ode_solvers)
+@pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_ode_order(solver):
     solver = implicit_tol(solver)
     key = jrandom.PRNGKey(5678)
@@ -137,10 +139,24 @@ def test_ode_order(solver):
 
     A = jrandom.normal(akey, (10, 10), dtype=jnp.float64) * 0.5
 
-    def f(t, y, args):
-        return A @ y
+    if (
+        solver.term_structure
+        == diffrax.MultiTerm[Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
+    ):
 
-    term = diffrax.ODETerm(f)
+        def f1(t, y, args):
+            return 0.3 * A @ y
+
+        def f2(t, y, args):
+            return 0.7 * A @ y
+
+        term = diffrax.MultiTerm(diffrax.ODETerm(f1), diffrax.ODETerm(f2))
+    else:
+
+        def f(t, y, args):
+            return A @ y
+
+        term = diffrax.ODETerm(f)
     t0 = 0
     t1 = 4
     y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
@@ -219,7 +235,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     bm = diffrax.VirtualBrownianTree(
         t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
-    if solver_ctr.term_structure == jtu.tree_structure(0):
+    if solver_ctr.term_structure == diffrax.AbstractTerm:
         terms = diffrax.MultiTerm(
             diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
         )
@@ -306,8 +322,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     t0 = -4
     t1 = -0.3
     negdt0 = None if dt0 is None else -dt0
-    if saveat.ts is not None:
-        saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.ts])
+    if saveat.subs is not None and saveat.subs.ts is not None:
+        saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.subs.ts])
     sol2 = diffrax.diffeqsolve(
         diffrax.ODETerm(f),
         solver_ctr(),
@@ -321,7 +337,12 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     assert shaped_allclose(sol2.t0, -4)
     assert shaped_allclose(sol2.t1, -0.3)
 
-    if saveat.t0 or saveat.t1 or saveat.ts is not None or saveat.steps:
+    if saveat.subs is not None and (
+        saveat.subs.t0
+        or saveat.subs.t1
+        or saveat.subs.ts is not None
+        or saveat.subs.steps
+    ):
         assert shaped_allclose(sol1.ts, -sol2.ts, equal_nan=True)
         assert shaped_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
@@ -348,203 +369,6 @@ def test_semi_implicit_euler():
     term_combined = diffrax.ODETerm(lambda t, y, args: (-y[1], y[0]))
     sol2 = diffrax.diffeqsolve(term_combined, diffrax.Tsit5(), 0, 1, 0.001, y0)
     assert shaped_allclose(sol1.ys, sol2.ys)
-
-
-def test_compile_time_steps():
-    terms = diffrax.ODETerm(lambda t, y, args: -y)
-    y0 = jnp.array([1.0])
-    solver = diffrax.Tsit5()
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        None,
-        y0,
-        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-    )
-    assert sol.stats["compiled_num_steps"] is None
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        0.1,
-        y0,
-        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
-    )
-    assert sol.stats["compiled_num_steps"] is None
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        0.1,
-        y0,
-        stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
-    )
-    assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        0.1,
-        y0,
-        stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
-    )
-    assert shaped_allclose(sol.stats["compiled_num_steps"], 10)
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        0.1,
-        y0,
-        stepsize_controller=diffrax.ConstantStepSize(compile_steps=False),
-    )
-    assert sol.stats["compiled_num_steps"] is None
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        None,
-        y0,
-        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=True),
-    )
-    assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        None,
-        y0,
-        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=None),
-    )
-    assert shaped_allclose(sol.stats["compiled_num_steps"], 3)
-
-    sol = diffrax.diffeqsolve(
-        terms,
-        solver,
-        0,
-        1,
-        None,
-        y0,
-        stepsize_controller=diffrax.StepTo([0, 0.3, 0.5, 1], compile_steps=False),
-    )
-    assert sol.stats["compiled_num_steps"] is None
-
-    with pytest.raises(ValueError):
-        sol = jax.jit(
-            lambda t0: diffrax.diffeqsolve(
-                terms,
-                solver,
-                t0,
-                1,
-                0.1,
-                y0,
-                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
-            )
-        )(0)
-
-    sol = jax.jit(
-        lambda t0: diffrax.diffeqsolve(
-            terms,
-            solver,
-            t0,
-            1,
-            0.1,
-            y0,
-            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
-        )
-    )(0)
-    assert sol.stats["compiled_num_steps"] is None
-
-    sol = jax.jit(
-        lambda t1: diffrax.diffeqsolve(
-            terms,
-            solver,
-            0,
-            t1,
-            0.1,
-            y0,
-            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
-        )
-    )(1)
-    assert sol.stats["compiled_num_steps"] is None
-
-    sol = jax.jit(
-        lambda dt0: diffrax.diffeqsolve(
-            terms,
-            solver,
-            0,
-            1,
-            dt0,
-            y0,
-            stepsize_controller=diffrax.ConstantStepSize(compile_steps=None),
-        )
-    )(0.1)
-    assert sol.stats["compiled_num_steps"] is None
-
-    # Work around JAX issue #9298
-    diffeqsolve_nojit = diffrax.diffeqsolve.__wrapped__
-
-    _t0 = jnp.array([0, 0])
-    sol = jax.jit(
-        lambda: jax.vmap(
-            lambda t0: diffeqsolve_nojit(
-                terms,
-                solver,
-                t0,
-                1,
-                0.1,
-                y0,
-                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
-            )
-        )(_t0)
-    )()
-    assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([10, 10]))
-
-    _t1 = jnp.array([1, 2])
-    sol = jax.jit(
-        lambda: jax.vmap(
-            lambda t1: diffeqsolve_nojit(
-                terms,
-                solver,
-                0,
-                t1,
-                0.1,
-                y0,
-                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
-            )
-        )(_t1)
-    )()
-    assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
-
-    _dt0 = jnp.array([0.1, 0.05])
-    sol = jax.jit(
-        lambda: jax.vmap(
-            lambda dt0: diffeqsolve_nojit(
-                terms,
-                solver,
-                0,
-                1,
-                dt0,
-                y0,
-                stepsize_controller=diffrax.ConstantStepSize(compile_steps=True),
-            )
-        )(_dt0)
-    )()
-    assert shaped_allclose(sol.stats["compiled_num_steps"], jnp.array([20, 20]))
 
 
 @pytest.mark.parametrize(

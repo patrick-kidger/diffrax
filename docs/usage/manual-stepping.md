@@ -1,9 +1,5 @@
 # Interactively step through a solve
 
-!!! warning
-
-    This API should now be relatively stable, but in principle may still be subject to change.
-
 Sometimes you might want to do perform a differential equation solve just one step at a time (or a few steps at a time), and perhaps do some other computations in between.  A common example is when solving a differential equation in real time, and wanting to continually produce some output.
 
 One option is to repeatedly call `diffrax.diffeqsolve`. However if that seems inelegant/inefficient to you, then it is possible to use the solvers (and step size controllers, etc.) yourself directly.

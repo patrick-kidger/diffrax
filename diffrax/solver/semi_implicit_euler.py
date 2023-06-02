@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
@@ -17,14 +16,25 @@ _SolverState = None
 class SemiImplicitEuler(AbstractSolver):
     """Semi-implicit Euler's method.
 
-    Symplectic method. Does not support adaptive step sizing.
+    Symplectic method. Does not support adaptive step sizing. Uses 1st order local
+    linear interpolation for dense/ts output.
     """
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = (AbstractTerm, AbstractTerm)
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
         return 1
+
+    def init(
+        self,
+        terms: Tuple[AbstractTerm, AbstractTerm],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
 
     def step(
         self,
@@ -36,7 +46,7 @@ class SemiImplicitEuler(AbstractSolver):
         solver_state: _SolverState,
         made_jump: Bool,
     ) -> Tuple[Tuple[PyTree, PyTree], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
-        del made_jump
+        del solver_state, made_jump
 
         term_1, term_2 = terms
         y0_1, y0_2 = y0

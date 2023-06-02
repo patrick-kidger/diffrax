@@ -16,7 +16,7 @@ For non-stiff problems then [`diffrax.Tsit5`][] is a good general-purpose solver
     
     For a long time the recommend default solver for many problems was [`diffrax.Dopri5`][]. This is the default solver used in [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq/), and is the solver used in MATLAB's `ode45`. However `Tsit5` is now reckoned on being slightly more efficient overall. (Try both if you wish.)
 
-If you need accurate solutions at high tolerances then try [`diffrax.Dopri8`][].
+If you need accurate solutions at tight tolerances then try [`diffrax.Dopri8`][].
 
 If you are solving a neural differential equation, and training via discretise-then-optimise (corresponding to `diffeqsolve(..., adjoint=RecursiveCheckpointAdjoint())`, which is the default), then accurate solutions are often not needed and a low-order solver will be most efficient. For example something like [`diffrax.Heun`][].
 
@@ -34,13 +34,17 @@ See also the [Stiff ODE example](../examples/stiff_ode.ipynb).
     - Taking many more solver steps than necessary (e.g. 8 steps -> 800 steps);
     - Wrapping with `jax.value_and_grad` or `jax.grad` actually changing the result of the primal (forward) computation.
 
+### Split problems
+
+For "split stiffness" problems, with one term that is stiff and another term that is non-stiff, then IMEX methods are appropriate: [`diffrax.KenCarp4`][] is recommended. In addition you should almost always use an adaptive step size controller such as [`diffrax.PIDController`][].
+
 ---
 
 ## Stochastic differential equations
 
 SDE solvers are relatively specialised depending on the type of problem. Each solver will converge to either the Itô solution or the Stratonovich solution. In addition some solvers require "commutative noise".
 
-??? info "Commutative noise"
+!!! info "Commutative noise"
 
     Consider the SDE
 

@@ -20,7 +20,8 @@ class Bosh3(AbstractERK):
     """Bogacki--Shampine's 3/2 method.
 
     3rd order explicit Runge--Kutta method. Has an embedded 2nd order method for
-    adaptive step sizing.
+    adaptive step sizing. Uses 4 stages with FSAL. Uses 3rd order Hermite
+    interpolation for dense/ts output.
 
     Also sometimes known as "Ralston's third order method".
     """

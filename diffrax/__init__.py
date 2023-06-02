@@ -1,10 +1,11 @@
 from .adjoint import (
     AbstractAdjoint,
     BacksolveAdjoint,
+    DirectAdjoint,
     ImplicitAdjoint,
-    NoAdjoint,
     RecursiveCheckpointAdjoint,
 )
+from .autocitation import citation, citation_rules
 from .brownian import AbstractBrownianPath, UnsafeBrownianPath, VirtualBrownianTree
 from .event import (
     AbstractDiscreteTerminatingEvent,
@@ -27,14 +28,15 @@ from .local_interpolation import (
     LocalLinearInterpolation,
     ThirdOrderHermitePolynomialInterpolation,
 )
-from .misc import adjoint_rms_seminorm, sde_kl_divergence
+from .misc import adjoint_rms_seminorm
 from .nonlinear_solver import (
     AbstractNonlinearSolver,
+    AffineNonlinearSolver,
     NewtonNonlinearSolver,
     NonlinearSolution,
 )
 from .path import AbstractPath
-from .saveat import SaveAt
+from .saveat import SaveAt, SubSaveAt
 from .solution import is_event, is_okay, is_successful, RESULTS, Solution
 from .solver import (
     AbstractAdaptiveSolver,
@@ -55,19 +57,23 @@ from .solver import (
     Dopri8,
     Euler,
     EulerHeun,
-    Fehlberg2,
     HalfSolver,
     Heun,
     ImplicitEuler,
     ItoMilstein,
+    KenCarp3,
+    KenCarp4,
+    KenCarp5,
     Kvaerno3,
     Kvaerno4,
     Kvaerno5,
     LeapfrogMidpoint,
     Midpoint,
+    MultiButcherTableau,
     Ralston,
     ReversibleHeun,
     SemiImplicitEuler,
+    Sil3,
     StratonovichMilstein,
     Tsit5,
 )
@@ -87,4 +93,4 @@ from .term import (
 )
 
 
-__version__ = "0.2.2"
+__version__ = "0.4.0"

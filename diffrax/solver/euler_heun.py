@@ -1,12 +1,11 @@
 from typing import Tuple
 
-import jax.tree_util as jtu
 from equinox.internal import ω
 
 from ..custom_types import Bool, DenseInfo, PyTree, Scalar
 from ..local_interpolation import LocalLinearInterpolation
 from ..solution import RESULTS
-from ..term import AbstractTerm
+from ..term import AbstractTerm, MultiTerm, ODETerm
 from .base import AbstractStratonovichSolver
 
 
@@ -17,10 +16,15 @@ _SolverState = None
 class EulerHeun(AbstractStratonovichSolver):
     """Euler-Heun method.
 
+    Uses a 1st order local linear interpolation scheme for dense/ts output.
+
+    This should be called with `terms=MultiTerm(drift_term, diffusion_term)`, where the
+    drift is an `ODETerm`.
+
     Used to solve SDEs, and converges to the Stratonovich solution.
     """
 
-    term_structure = jtu.tree_structure((0, 0))
+    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -29,9 +33,19 @@ class EulerHeun(AbstractStratonovichSolver):
     def strong_order(self, terms):
         return 0.5
 
+    def init(
+        self,
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        t0: Scalar,
+        t1: Scalar,
+        y0: PyTree,
+        args: PyTree,
+    ) -> _SolverState:
+        return None
+
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: Scalar,
         t1: Scalar,
         y0: PyTree,
@@ -41,7 +55,7 @@ class EulerHeun(AbstractStratonovichSolver):
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
 
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         dt = drift.contr(t0, t1)
         dW = diffusion.contr(t0, t1)
 
@@ -58,10 +72,10 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def func(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
         t0: Scalar,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
-        drift, diffusion = terms
+        drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)

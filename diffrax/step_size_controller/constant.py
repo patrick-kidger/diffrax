@@ -1,7 +1,6 @@
 from typing import Callable, Optional, Sequence, Tuple, Union
 
 import equinox.internal as eqxi
-import jax
 import jax.numpy as jnp
 
 from ..custom_types import Array, Int, PyTree, Scalar
@@ -14,8 +13,6 @@ class ConstantStepSize(AbstractStepSizeController):
     """Use a constant step size, equal to the `dt0` argument of
     [`diffrax.diffeqsolve`][].
     """
-
-    compile_steps: Optional[bool] = False
 
     def wrap(self, direction: Scalar):
         return self
@@ -61,30 +58,13 @@ class ConstantStepSize(AbstractStepSizeController):
         )
 
 
-ConstantStepSize.__init__.__doc__ = """**Arguments:**
-
-- `compile_steps`: If `True` then the number of steps taken in the differential
-    equation solve will be baked into the compilation. When this is possible then
-    this can improve compile times and run times slightly. The downside is that this
-    implies re-compiling if this changes, and that this is only possible if the exact
-    number of steps to be taken is known in advance (i.e. `t0`, `t1`, `dt0` cannot be
-    traced values) -- and an error will be thrown if the exact number of steps could
-    not be determined. Set to `False` (the default) to not bake in the number of steps.
-    Set to `None` to attempt to bake in the number of steps, but to fall back to
-    `False`-behaviour if the number of steps could not be determined (rather than
-    throwing an error).
-"""
-
-
 class StepTo(AbstractStepSizeController):
     """Make steps to just prespecified times."""
 
     ts: Union[Sequence[Scalar], Array["times"]]  # noqa: F821
-    compile_steps: Optional[bool] = False
 
     def __post_init__(self):
-        with jax.ensure_compile_time_eval():
-            object.__setattr__(self, "ts", jnp.asarray(self.ts))
+        object.__setattr__(self, "ts", jnp.asarray(self.ts))
         if self.ts.ndim != 1:
             raise ValueError("`ts` must be one-dimensional.")
         if len(self.ts) < 2:
@@ -99,7 +79,7 @@ class StepTo(AbstractStepSizeController):
             "`StepTo(ts=...)` must be strictly increasing (or strictly decreasing if "
             "t0 > t1).",
         )
-        return type(self)(ts=ts, compile_steps=self.compile_steps)
+        return type(self)(ts=ts)
 
     def init(
         self,
@@ -153,5 +133,4 @@ StepTo.__init__.__doc__ = """**Arguments:**
     between the `t0` and `t1` (inclusive) passed to [`diffrax.diffeqsolve`][].
     Correctness of `ts` with respect to `t0` and `t1` as well as its
     monotonicity is checked by the implementation.
-- `compile_steps`: As [`diffrax.ConstantStepSize.__init__`][].
 """

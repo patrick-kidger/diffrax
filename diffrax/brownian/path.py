@@ -66,7 +66,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> PyTree[Array]:
         del left
         t0 = eqxi.nondifferentiable(t0, name="t0")
-        t1 = eqxi.nondifferentiable(t1, name="t0")
+        t1 = eqxi.nondifferentiable(t1, name="t1")
         t0_ = force_bitcast_convert_type(t0, jnp.int32)
         t1_ = force_bitcast_convert_type(t1, jnp.int32)
         key = jrandom.fold_in(self.key, t0_)

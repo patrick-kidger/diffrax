@@ -2,6 +2,7 @@ import jax.tree_util as jtu
 
 from .brownian import AbstractBrownianPath, UnsafeBrownianPath
 from .custom_types import PyTree
+from .path import AbstractPath
 from .term import AbstractTerm
 
 
@@ -16,13 +17,28 @@ from .term import AbstractTerm
 # really just to catch common errors.
 # That is, for the power user who implements enough to bypass this check -- probably
 # they know what they're doing and can handle both of these cases appropriately.
+def _is_brownian(x):
+    return isinstance(x, AbstractBrownianPath)
+
+
+def _is_unsafe_brownian(x):
+    return isinstance(x, UnsafeBrownianPath)
+
+
+def _is_path(x):
+    return isinstance(x, AbstractPath)
+
+
 def is_sde(terms: PyTree[AbstractTerm]) -> bool:
-    is_brownian = lambda x: isinstance(x, AbstractBrownianPath)
-    leaves, _ = jtu.tree_flatten(terms, is_leaf=is_brownian)
-    return any(is_brownian(leaf) for leaf in leaves)
+    leaves, _ = jtu.tree_flatten(terms, is_leaf=_is_brownian)
+    return any(_is_brownian(leaf) for leaf in leaves)
 
 
 def is_unsafe_sde(terms: PyTree[AbstractTerm]) -> bool:
-    is_brownian = lambda x: isinstance(x, UnsafeBrownianPath)
-    leaves, _ = jtu.tree_flatten(terms, is_leaf=is_brownian)
-    return any(is_brownian(leaf) for leaf in leaves)
+    leaves, _ = jtu.tree_flatten(terms, is_leaf=_is_unsafe_brownian)
+    return any(_is_unsafe_brownian(leaf) for leaf in leaves)
+
+
+def is_cde(terms: PyTree[AbstractTerm]) -> bool:
+    leaves, _ = jtu.tree_flatten(terms, is_leaf=_is_path)
+    return any(_is_path(leaf) and not _is_brownian(leaf) for leaf in leaves)

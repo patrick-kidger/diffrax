@@ -285,10 +285,12 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 
 
 class DenseInterpolation(AbstractGlobalInterpolation):
-    ts_size: Int
+    ts_size: Int  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
-    direction: Scalar
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
+    direction: Scalar
+    t0_if_trivial: Array
+    y0_if_trivial: PyTree[Array]
 
     def __post_init__(self):
         def _check(_infos):
@@ -315,26 +317,49 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     ) -> PyTree:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
-        t0 = t0 * self.direction
-        # Passing `left` doesn't matter on a local interpolation, which is globally
-        # continuous.
-        return self._get_local_interpolation(t0, left).evaluate(t0)
+        t = t0 * self.direction
+        t_bounded = self._nan_if_out_of_bounds(t)
+        out = self._get_local_interpolation(t_bounded, left).evaluate(
+            t_bounded, left=left
+        )
+        keep = ft.partial(jnp.where, (t == self.t0_if_trivial) & (self.ts_size == 1))
+        return jtu.tree_map(keep, self.y0_if_trivial, out)
 
     @eqx.filter_jit
     def derivative(self, t: Scalar, left: bool = True) -> PyTree:
-        # Passing `left` doesn't matter on a local interpolation, which is globally
-        # continuous.
         t = t * self.direction
-        out = self._get_local_interpolation(t, left).derivative(t)
+        t = self._nan_if_out_of_bounds(t)
+        out = self._get_local_interpolation(t, left).derivative(t, left=left)
         return (self.direction * out**ω).ω
+
+    def _nan_if_out_of_bounds(self, t):
+        # Note that len(self.ts) == max_steps + 1 > 0 so the indexing is always valid,
+        # even if we throw it away because self.ts_size == 0.
+        ts_0 = self.ts[0]
+        ts_1 = self.ts[self.ts_size - 1]
+        out_of_bounds = (self.ts_size <= 1) | (t < ts_0) | (t > ts_1)
+        make_nans = lambda t: jnp.where(out_of_bounds, jnp.nan, t)
+        identity = lambda t: t
+        # Avoid making NaNs unless we have to, by using a cond.
+        # (For the sake of JAX_DEBUG_NANS.)
+        t = lax.cond(eqxi.unvmap_any(out_of_bounds), make_nans, identity, t)
+        return t
 
     @property
     def t0(self):
-        return self.ts[0] * self.direction
+        # Note that len(self.ts) == max_steps + 1 > 0 so the indexing is always valid,
+        # even if we throw it away because self.ts_size == 0.
+        ts_0 = jnp.where(self.ts_size == 1, self.t0_if_trivial, self.ts[0])
+        return ts_0 * self.direction
 
     @property
     def t1(self):
-        return self.ts[-1] * self.direction
+        # Note that len(self.ts) == max_steps + 1 > 0 so the indexing is always valid,
+        # even if we throw it away because self.ts_size == 0.
+        ts_1 = jnp.where(
+            self.ts_size == 1, self.t0_if_trivial, self.ts[self.ts_size - 1]
+        )
+        return ts_1 * self.direction
 
 
 #
@@ -509,7 +534,7 @@ def rectilinear_interpolation(
         `new_ys = [y0, y0, y1, y1, y2, y2, y3]`.
 
         This can be thought of as advancing time whilst keeping the data fixed, then
-        keeping the data fixed whilst advancing time.
+        keeping time fixed whilst advancing the data.
 
     **Arguments:**
 

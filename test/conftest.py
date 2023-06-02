@@ -38,7 +38,9 @@ def clear_caches():
                         obj = getattr(module, obj_name)
                         if hasattr(obj, "cache_clear"):
                             try:
-                                obj.cache_clear()
+                                print(f"Clearing {obj}")
+                                if "Weakref" not in type(obj).__name__:
+                                    obj.cache_clear()
                             except Exception:
                                 pass
         gc.collect()

@@ -295,7 +295,7 @@ class Dopri8(AbstractERK):
     """Dormand--Prince's 8/7 method.
 
     8th order Runge--Kutta method. Has an embedded 7th order method for adaptive step
-    sizing.
+    sizing. Uses 14 stages with FSAL. Uses 8th order interpolation for dense/ts output.
 
     ??? cite "References"
 

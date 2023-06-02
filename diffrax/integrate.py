@@ -1,28 +1,30 @@
 import functools as ft
+import typing
 import warnings
-from typing import Optional
+from typing import Any, Callable, get_args, get_origin, Optional, Tuple
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
-from .adjoint import (
-    AbstractAdjoint,
-    BacksolveAdjoint,
-    NoAdjoint,
-    RecursiveCheckpointAdjoint,
-)
+from .adjoint import AbstractAdjoint, DirectAdjoint, RecursiveCheckpointAdjoint
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
-from .misc import bounded_while_loop, HadInplaceUpdate
-from .saveat import SaveAt
+from .saveat import SaveAt, SubSaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
-from .solver import AbstractItoSolver, AbstractSolver, AbstractStratonovichSolver, Euler
+from .solver import (
+    AbstractItoSolver,
+    AbstractSolver,
+    AbstractStratonovichSolver,
+    Euler,
+    EulerHeun,
+    ItoMilstein,
+    StratonovichMilstein,
+)
 from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -30,10 +32,17 @@ from .step_size_controller import (
     PIDController,
     StepTo,
 )
-from .term import AbstractTerm, WrapTerm
+from .term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 
 
-class _State(eqx.Module):
+class SaveState(eqx.Module):
+    saveat_ts_index: Int
+    ts: Array["times"]  # noqa: F821
+    ys: PyTree[Array["times", ...]]  # noqa: F821
+    save_index: Int
+
+
+class State(eqx.Module):
     # Evolving state during the solve
     y: Array["state"]  # noqa: F821
     tprev: Scalar
@@ -46,36 +55,76 @@ class _State(eqx.Module):
     num_accepted_steps: Int
     num_rejected_steps: Int
     # Output that is .at[].set() updated during the solve (and their indices)
-    saveat_ts_index: Scalar
-    ts: Array["times"]  # noqa: F821
-    ys: PyTree[Array["times", ...]]  # noqa: F821
-    save_index: Int
+    save_state: PyTree[SaveState]
     dense_ts: Optional[Array["times + 1"]]  # noqa: F821
     dense_infos: Optional[PyTree[Array["times", ...]]]  # noqa: F821
     dense_save_index: Int
 
 
-class _InnerState(eqx.Module):
-    saveat_ts_index: Int
-    ts: Array["times"]  # noqa: F821
-    ys: PyTree[Array["times", ...]]  # noqa: F821
-    save_index: Int
+def _is_none(x):
+    return x is None
 
 
-def _save(state: _State, t: Scalar) -> _State:
-    ts = state.ts
-    ys = state.ys
-    save_index = state.save_index
-    y = state.y
+def _term_compatible(terms, term_structure):
+    def _check(term_cls, term):
+        if get_origin(term_cls) is MultiTerm:
+            if isinstance(term, MultiTerm):
+                [_tmp] = get_args(term_cls)
+                assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
+                if not _term_compatible(term.terms, get_args(_tmp)):
+                    raise ValueError
+            else:
+                raise ValueError
+        else:
+            if not isinstance(term, term_cls):
+                raise ValueError
+
+    try:
+        jtu.tree_map(_check, term_structure, terms)
+    except ValueError:
+        # ValueError may also arise from mismatched tree structures
+        return False
+    return True
+
+
+def _is_subsaveat(x: Any) -> bool:
+    return isinstance(x, SubSaveAt)
+
+
+def _inner_buffers(save_state):
+    assert type(save_state) is SaveState
+    return save_state.ts, save_state.ys
+
+
+def _outer_buffers(state):
+    assert type(state) is State
+    is_save_state = lambda x: isinstance(x, SaveState)
+    # state.save_state has type PyTree[SaveState]. In particular this may include some
+    # `None`s, which may sometimes be treated as leaves (e.g.
+    # `tree_at(_outer_buffers, ..., is_leaf=lambda x: x is None)`).
+    # So we need to only get those leaves which really are a SaveState.
+    save_states = jtu.tree_leaves(state.save_state, is_leaf=is_save_state)
+    save_states = [x for x in save_states if is_save_state(x)]
+    return (
+        [s.ts for s in save_states]
+        + [s.ys for s in save_states]
+        + [state.dense_ts, state.dense_infos]
+    )
+
+
+def _save(
+    t: Scalar, y: PyTree[Array], args: PyTree, fn: Callable, save_state: SaveState
+) -> SaveState:
+    ts = save_state.ts
+    ys = save_state.ys
+    save_index = save_state.save_index
 
     ts = ts.at[save_index].set(t)
-    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, y)
+    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, fn(t, y, args))
     save_index = save_index + 1
 
     return eqx.tree_at(
-        lambda s: [s.ts, s.save_index] + jtu.tree_leaves(s.ys),
-        state,
-        [ts, save_index] + jtu.tree_leaves(ys),
+        lambda s: [s.ts, s.ys, s.save_index], save_state, [ts, ys, save_index]
     )
 
 
@@ -105,19 +154,30 @@ def loop(
     terms,
     args,
     init_state,
-    is_bounded,
+    inner_while_loop,
+    outer_while_loop,
 ):
 
-    if saveat.t0:
-        init_state = _save(init_state, t0)
     if saveat.dense:
         dense_ts = init_state.dense_ts
         dense_ts = dense_ts.at[0].set(t0)
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
 
+    def save_t0(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+        if subsaveat.t0:
+            save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
+        return save_state
+
+    save_state = jtu.tree_map(
+        save_t0, saveat.subs, init_state.save_state, is_leaf=_is_subsaveat
+    )
+    init_state = eqx.tree_at(
+        lambda s: s.save_state, init_state, save_state, is_leaf=_is_none
+    )
+
     # Privileged optimisation for the common case of no jumps. We can reduce
     # solver compile time with this.
-    # TODO: somehow make this a non-priviliged optimisation, i.e. detect when
+    # TODO: somehow make this a non-privileged optimisation, i.e. detect when
     # we can make jumps or not.
     cannot_make_jump = isinstance(stepsize_controller, (ConstantStepSize, StepTo)) or (
         isinstance(stepsize_controller, PIDController)
@@ -127,7 +187,7 @@ def loop(
     def cond_fun(state):
         return (state.tprev < t1) & is_successful(state.result)
 
-    def body_fun(state, inplace):
+    def body_fun(state):
 
         #
         # Actually do some differential equation solving! Make numerical steps, adapt
@@ -215,152 +275,91 @@ def loop(
 
         #
         # Store the output produced from this numerical step.
-        # This is a bit involved, and uses the `inplace` function passed as an argument
-        # to this body function.
-        # This is because we need to make in-place updates to store our results, but
-        # doing is a bit of a hassle inside `bounded_while_loop`. (See its docstring
-        # for details.)
         #
 
-        saveat_ts_index = state.saveat_ts_index
-        ts = state.ts
-        ys = state.ys
-        save_index = state.save_index
+        interpolator = solver.interpolation_cls(
+            t0=state.tprev, t1=state.tnext, **dense_info
+        )
+        save_state = state.save_state
         dense_ts = state.dense_ts
         dense_infos = state.dense_infos
         dense_save_index = state.dense_save_index
-        made_inplace_update = False
 
-        if saveat.ts is not None:
-            made_inplace_update = True
+        def save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+            if subsaveat.ts is not None:
+                save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state)
+            return save_state
 
-            _interpolator = solver.interpolation_cls(
-                t0=state.tprev, t1=state.tnext, **dense_info
-            )
-
-            def _saveat_get(_saveat_ts_index):
-                return saveat.ts[jnp.minimum(_saveat_ts_index, len(saveat.ts) - 1)]
-
-            def _cond_fun(_state):
-                _saveat_ts_index = _state.saveat_ts_index
-                _saveat_t = _saveat_get(_saveat_ts_index)
+        def save_ts_impl(ts, fn, save_state: SaveState) -> SaveState:
+            def _cond_fun(_save_state):
                 return (
                     keep_step
-                    & (_saveat_t <= state.tnext)
-                    & (_saveat_ts_index < len(saveat.ts))
+                    & (ts[_save_state.saveat_ts_index] <= state.tnext)
+                    & (_save_state.saveat_ts_index < len(ts))
                 )
 
-            def _body_fun(_state, _inplace):
-                _saveat_ts_index = _state.saveat_ts_index
-                _ts = _state.ts
-                _ys = _state.ys
-                _save_index = _state.save_index
-
-                _saveat_t = _saveat_get(_saveat_ts_index)
-                _saveat_y = _interpolator.evaluate(_saveat_t)
-
-                # VOODOO MAGIC
-                #
-                # Okay, time for some voodoo that I absolutely don't understand.
-                #
-                # Shown in the comment is what I would to write:
-                #
-                #  _inplace = _inplace.merge(inplace)
-                #  _ts = _inplace(_ts).at[_save_index].set(_saveat_t)
-                #  _ys = jtu.tree_map(lambda __ys, __saveat_y: _inplace(__ys).at[_save_index].set(__saveat_y), _ys, _saveat_y)  # noqa: E501
-                #
-                # Seems reasonable, right? Just updating a value.
-                #
-                # Below is what we actually run:
-
-                _inplace.merge(inplace)
-                _pred = cond_fun(state) & _cond_fun(_state)
-                _ts = _ts.at[_save_index].set(
-                    jnp.where(_pred, _saveat_t, _ts[_save_index])
-                )
+            def _body_fun(_save_state):
+                _t = ts[_save_state.saveat_ts_index]
+                _y = interpolator.evaluate(_t)
+                _ts = _save_state.ts.at[_save_state.save_index].set(_t)
                 _ys = jtu.tree_map(
-                    lambda __ys, __saveat_y: __ys.at[_save_index].set(
-                        jnp.where(_pred, __saveat_y, __ys[_save_index])
-                    ),
-                    _ys,
-                    _saveat_y,
+                    lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
+                    fn(_t, _y, args),
+                    _save_state.ys,
                 )
-
-                # Some immediate questions you might have:
-                #
-                # - Isn't this essentially equivalent to the commented-out version?
-                #   - Nitpick: the commented-out version includes an enhanced cond_fun
-                #     that checks the step count, but it shouldn't matter here.
-                # - It looks like `_inplace.merge(inplace)` isn't even used?
-                #   - I think it will appear in the jaxpr, interestingly, based off of
-                #     the toy example:
-                #     >>> def f(x, y):
-                #     ...     x & y
-                #     ...     return x + 1
-                #     >>> jax.make_jaxpr(f)(1, 2)
-                #     Which is presumably how this manages to affect anything at all.
-                #
-                # And you are right. Those are both reasonable questions, at least as
-                # far as I can see.
-                #
-                # And yet for some reason this version will run substantially faster.
-                # (At time of writing: on the `small_neural_ode.py` benchmark, on the
-                # CPU.)
-                #
-                # ~VOODOO MAGIC
-
-                _saveat_ts_index = _saveat_ts_index + 1
-                _save_index = _save_index + 1
-
-                _ts = HadInplaceUpdate(_ts)
-                _ys = jtu.tree_map(HadInplaceUpdate, _ys)
-
-                return _InnerState(
-                    saveat_ts_index=_saveat_ts_index,
+                return SaveState(
+                    saveat_ts_index=_save_state.saveat_ts_index + 1,
                     ts=_ts,
                     ys=_ys,
-                    save_index=_save_index,
+                    save_index=_save_state.save_index + 1,
                 )
 
-            init_inner_state = _InnerState(
-                saveat_ts_index=saveat_ts_index, ts=ts, ys=ys, save_index=save_index
+            return inner_while_loop(
+                _cond_fun,
+                _body_fun,
+                save_state,
+                max_steps=len(ts),
+                buffers=_inner_buffers,
+                checkpoints=len(ts),
             )
 
-            final_inner_state = bounded_while_loop(
-                _cond_fun, _body_fun, init_inner_state, max_steps=len(saveat.ts)
-            )
+        save_state = jtu.tree_map(
+            save_ts, saveat.subs, save_state, is_leaf=_is_subsaveat
+        )
 
-            saveat_ts_index = final_inner_state.saveat_ts_index
-            ts = final_inner_state.ts
-            ys = final_inner_state.ys
-            save_index = final_inner_state.save_index
+        def maybe_inplace(i, u, x):
+            return x.at[i].set(u, pred=keep_step)
 
-        def maybe_inplace(i, x, u):
-            return inplace(x).at[i].set(jnp.where(keep_step, u, x[i]))
+        def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+            if subsaveat.steps:
+                ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
+                ys = jtu.tree_map(
+                    ft.partial(maybe_inplace, save_state.save_index),
+                    subsaveat.fn(tprev, y, args),
+                    save_state.ys,
+                )
+                save_index = save_state.save_index + keep_step
+                save_state = eqx.tree_at(
+                    lambda s: [s.ts, s.ys, s.save_index],
+                    save_state,
+                    [ts, ys, save_index],
+                )
+            return save_state
 
-        if saveat.steps:
-            made_inplace_update = True
-            ts = maybe_inplace(save_index, ts, tprev)
-            ys = jtu.tree_map(ft.partial(maybe_inplace, save_index), ys, y)
-            save_index = save_index + keep_step
+        save_state = jtu.tree_map(
+            save_steps, saveat.subs, save_state, is_leaf=_is_subsaveat
+        )
 
         if saveat.dense:
-            made_inplace_update = True
-            dense_ts = maybe_inplace(dense_save_index + 1, dense_ts, tprev)
+            dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
             dense_infos = jtu.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
-                dense_infos,
                 dense_info,
+                dense_infos,
             )
             dense_save_index = dense_save_index + keep_step
 
-        if made_inplace_update:
-            ts = HadInplaceUpdate(ts)
-            ys = jtu.tree_map(HadInplaceUpdate, ys)
-            dense_ts = HadInplaceUpdate(dense_ts)
-            dense_infos = jtu.tree_map(HadInplaceUpdate, dense_infos)
-
-        new_state = _State(
+        new_state = State(
             y=y,
             tprev=tprev,
             tnext=tnext,
@@ -371,10 +370,7 @@ def loop(
             num_steps=num_steps,
             num_accepted_steps=num_accepted_steps,
             num_rejected_steps=num_rejected_steps,
-            saveat_ts_index=saveat_ts_index,
-            ts=ts,
-            ys=ys,
-            save_index=save_index,
+            save_state=save_state,
             dense_ts=dense_ts,
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
@@ -402,112 +398,41 @@ def loop(
 
         return new_state
 
-    if is_bounded:
-        # Some privileged optimisations, but for common use cases.
-        # TODO: make these a method on an AbstractFixedStepSizeController?
-        #
-        # These optimisations depend on implementations details of `ConstantStepSize`,
-        # `StepTo`, and `bounded_while_loop`.
-        #
-        # We try to determine the exact number of integration steps that will be made.
-        # If this is possible then we can use a single `lax.scan`, rather than the
-        # recursive construction of `bounded_while_loop`. This primarily reduces
-        # compilation times.
-        if max_steps is None:
-            # `bounded_while_loop(..., max_steps=None)` lowers to `lax.while_loop`
-            # anyway; this is already fast. Don't try to determine the number of steps
-            # needed.
-            compiled_num_steps = None
-        elif isinstance(stepsize_controller, ConstantStepSize) and (
-            stepsize_controller.compile_steps is None
-            or stepsize_controller.compile_steps is True
-        ):
-            # We can determine the number of steps quite easily with constant step
-            # size.
+    final_state = outer_while_loop(
+        cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
+    )
+
+    def _save_t1(subsaveat, save_state):
+        if subsaveat.t1 and not subsaveat.steps:
+            # If subsaveat.steps then the final value is already saved.
             #
-            # We do so using a `lax.while_loop`.
-            # - Not just a (t1 - t0)/dt0 division, to avoid floating point errors.
-            # - lax.while_loop, not just a Python one, to ensure that we match the
-            #   behaviour at runtime; no funny edge cases.
-            with jax.ensure_compile_time_eval():
+            # Use `tprev` instead of `t1` in case of an event terminating the solve
+            # early. (And absent such an event then `tprev == t1`.)
+            save_state = _save(
+                final_state.tprev, final_state.y, args, subsaveat.fn, save_state
+            )
+        return save_state
 
-                def _is_finite(_t):
-                    all_finite = eqxi.unvmap_all(jnp.isfinite(_t))
-                    return not isinstance(all_finite, jax.core.Tracer) and all_finite
+    save_state = jtu.tree_map(
+        _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
+    )
+    final_state = eqx.tree_at(
+        lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
+    )
 
-                if _is_finite(t0) and _is_finite(t1) and _is_finite(dt0):
-
-                    def _cond_fun(_state):
-                        _, _t = _state
-                        return _t < t1
-
-                    def _body_fun(_state):
-                        _step, _t = _state
-                        return _step + 1, _clip_to_end(_t, _t + dt0, t1, True)
-
-                    compiled_num_steps, _ = lax.while_loop(
-                        _cond_fun, _body_fun, (0, t0)
-                    )
-                    compiled_num_steps = eqxi.unvmap_max(compiled_num_steps)
-                else:
-                    if stepsize_controller.compile_steps is None:
-                        compiled_num_steps = None
-                    else:
-                        assert stepsize_controller.compile_steps is True
-                        raise ValueError(
-                            "Could not determine exact number of steps, but "
-                            "`stepsize_controller.compile_steps=True`"
-                        )
-        elif isinstance(stepsize_controller, StepTo) and (
-            stepsize_controller.compile_steps is None
-            or stepsize_controller.compile_steps is True
-        ):
-            # The user has explicitly specified the number of steps.
-            compiled_num_steps = len(stepsize_controller.ts) - 1
-        else:
-            # Else we can't determine the number of steps.
-            compiled_num_steps = None
-
-        if compiled_num_steps is None or isinstance(
-            compiled_num_steps, jax.core.Tracer
-        ):
-            # If we couldn't determine the number of steps then use the default
-            # recursive construction.
-            compiled_num_steps = None
-            base = 16
-        else:
-            if isinstance(compiled_num_steps, jnp.ndarray):
-                compiled_num_steps = compiled_num_steps.item()
-            base = compiled_num_steps
-            max_steps = min(max_steps, compiled_num_steps)
-
-        final_state = bounded_while_loop(
-            cond_fun, body_fun, init_state, max_steps, base=base
-        )
-    else:
-        compiled_num_steps = None
-
-        if max_steps is None:
-            _cond_fun = cond_fun
-        else:
-
-            def _cond_fun(state):
-                return cond_fun(state) & (state.num_steps < max_steps)
-
-        final_state = bounded_while_loop(
-            _cond_fun, body_fun, init_state, max_steps=None
-        )
-
-    if saveat.t1 and not saveat.steps:
-        # if saveat.steps then the final value is already saved.
-        # Using `tprev` instead of `t1` in case of an event terminating the solve
-        # early. (And absent such an event then `tprev == t1`.)
-        final_state = _save(final_state, final_state.tprev)
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
-    aux_stats = dict(compiled_num_steps=compiled_num_steps)
+    aux_stats = dict()
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
+
+
+if getattr(typing, "GENERATING_DOCUMENTATION", False):
+    # Nicer documentation for the default `diffeqsolve(saveat=...)` argument.
+    # Not using `eqxi.doc_repr` as some IDEs (Helix, at least) show the source code
+    # of the default argument directly.
+    class SaveAt(eqx.Module):  # noqa: F811
+        t1: bool
 
 
 @eqx.filter_jit
@@ -524,7 +449,7 @@ def diffeqsolve(
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
-    max_steps: Optional[int] = 16**3,
+    max_steps: Optional[int] = 4096,
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
@@ -553,7 +478,7 @@ def diffeqsolve(
     - `dt0`: The step size to use for the first step. If using fixed step sizes then
         this will also be the step size for all other steps. (Except the last one,
         which may be slightly smaller and clipped to `t1`.) If set as `None` then the
-        initial step size will be determined automatically if possible.
+        initial step size will be determined automatically.
     - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
         can be coerced to JAX arrays, like Python floats.)
     - `args`: Any additional arguments to pass to the vector field.
@@ -566,13 +491,12 @@ def diffeqsolve(
 
     **Other arguments:**
 
-    These arguments are infrequently used, and for most purposes you shouldn't need to
-    understand these. All of these are keyword-only arguments.
+    These arguments are less frequently used, and for most purposes you shouldn't need
+    to understand these. All of these are keyword-only arguments.
 
-    - `adjoint`: How to backpropagate (and compute forward-mode autoderivatives) of
-        `diffeqsolve`. Defaults to discretise-then-optimise, which is usually the best
-        option for most problems. See the page on [Adjoints](./adjoints.md) for more
-        information.
+    - `adjoint`: How to differentiate `diffeqsolve`. Defaults to
+        discretise-then-optimise, which is usually the best option for most problems.
+        See the page on [Adjoints](./adjoints.md) for more information.
 
     - `discrete_terminating_event`: A discrete event at which to terminate the solve
         early. See the page on [Events](./events.md) for more information.
@@ -581,14 +505,7 @@ def diffeqsolve(
         unconditionally.
 
         Can also be set to `None` to allow an arbitrary number of steps, although this
-        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`,
-        and can only be backpropagated through if using `adjoint=BacksolveAdjoint()` or
-        `adjoint=ImplicitAdjoint()`.
-
-        Note that (a) compile times; and (b) backpropagation run times; will increase
-        as `max_steps` increases. (Specifically, each time `max_steps` passes a power
-        of 16.) You can reduce these times by using the smallest value of `max_steps`
-        that is reasonable for your problem.
+        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`.
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
@@ -605,7 +522,7 @@ def diffeqsolve(
 
         !!! note
 
-            Note that when `jax.vmap`-ing a differential equation solve, then
+            When `jax.vmap`-ing a differential equation solve, then
             `throw=True` means that an exception will be raised if any batch element
             fails. You may prefer to set `throw=False` and inspect the `result` field
             of the returned solution object, to determine which batch elements
@@ -654,23 +571,25 @@ def diffeqsolve(
             pred = (t1 - t0) * dt0 < 0
         dt0 = eqxi.error_if(dt0, pred, msg)
 
+    # Backward compatibility
+    if isinstance(
+        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
+    ) and _term_compatible(terms, (ODETerm, AbstractTerm)):
+        warnings.warn(
+            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+            f"{solver.__class__.__name__} is deprecated in favour of "
+            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+            "the same terms can now be passed used for both general and SDE-specific "
+            "solvers!"
+        )
+        terms = MultiTerm(*terms)
+
     # Error checking
-    term_leaves, term_structure = jtu.tree_flatten(
-        terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
-    )
-    raises = False
-    for leaf in term_leaves:
-        if not isinstance(leaf, AbstractTerm):
-            raises = True
-        del leaf
-    if term_structure != solver.term_structure:
-        raises = True
-    if raises:
+    if not _term_compatible(terms, solver.term_structure):
         raise ValueError(
             "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
             f"structure {solver.term_structure}"
         )
-    del term_leaves, term_structure, raises
 
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
@@ -678,18 +597,6 @@ def diffeqsolve(
                 f"`{type(solver).__name__}` is not marked as converging to either the "
                 "Itô or the Stratonovich solution."
             )
-        if isinstance(adjoint, BacksolveAdjoint):
-            if isinstance(solver, AbstractItoSolver):
-                raise NotImplementedError(
-                    f"`{solver.__name__}` converges to the Itô solution. However "
-                    "`BacksolveAdjoint` currently only supports Stratonovich SDEs."
-                )
-            elif not isinstance(solver, AbstractStratonovichSolver):
-                warnings.warn(
-                    f"{solver.__name__} is not marked as converging to either the Itô "
-                    "or the Stratonovich solution. Note that BacksolveAdjoint will "
-                    "only produce the correct solution for Stratonovich SDEs."
-                )
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             # Specific check to not work even if using HalfSolver(Euler())
             if isinstance(solver, Euler):
@@ -697,29 +604,46 @@ def diffeqsolve(
                     "An SDE should not be solved with adaptive step sizes with Euler's "
                     "method, as it may not converge to the correct solution."
                 )
+        # TODO: remove these lines.
+        #
+        # These are to work around an edge case: on the backward pass,
+        # RecursiveCheckpointAdjoint currently tries to differentiate the overall
+        # per-step function wrt all floating-point arrays. In particular this includes
+        # `state.tprev`, which feeds into the control, which feeds into
+        # VirtualBrownianTree, which can't be differentiated.
+        # We're waiting on JAX to offer a way of specifying which arguments to a
+        # custom_vjp have symbolic zero *tangents* (not cotangents) so that we can more
+        # precisely determine what to differentiate wrt.
+        #
+        # We don't replace this in the case of an unsafe SDE because
+        # RecursiveCheckpointAdjoint will raise an error in that case anyway, so we
+        # should let the normal error be raised.
+        if isinstance(adjoint, RecursiveCheckpointAdjoint) and not is_unsafe_sde(terms):
+            adjoint = DirectAdjoint()
     if is_unsafe_sde(terms):
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             raise ValueError(
                 "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
             )
-        if not isinstance(adjoint, NoAdjoint):
-            raise ValueError(
-                "`UnsafeBrownianPath` can only be used with `adjoint=NoAdjoint()`."
-            )
 
-    # Allow setting e.g. t0 as an int with dt0 as a float. (We need consistent
-    # types for JAX to be happy with the bounded_while_loop below.)
-    with jax.ensure_compile_time_eval():
-        timelikes = (jnp.array(0.0), t0, t1, dt0, saveat.ts)
-        timelikes = [x for x in timelikes if x is not None]
-        dtype = jnp.result_type(*timelikes)
-        t0 = jnp.asarray(t0, dtype=dtype)
-        t1 = jnp.asarray(t1, dtype=dtype)
-        if dt0 is not None:
-            dt0 = jnp.asarray(dt0, dtype=dtype)
-        if saveat.ts is not None:
-            saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts.astype(dtype))
-        timelikes.append(dtype)
+    # Allow setting e.g. t0 as an int with dt0 as a float.
+    timelikes = [jnp.array(0.0), t0, t1, dt0] + [
+        s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
+    ]
+    timelikes = [x for x in timelikes if x is not None]
+    dtype = jnp.result_type(*timelikes)
+    t0 = jnp.asarray(t0, dtype=dtype)
+    t1 = jnp.asarray(t1, dtype=dtype)
+    if dt0 is not None:
+        dt0 = jnp.asarray(dt0, dtype=dtype)
+
+    def _get_subsaveat_ts(saveat):
+        out = [s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)]
+        return [x for x in out if x is not None]
+
+    saveat = eqx.tree_at(
+        _get_subsaveat_ts, saveat, replace_fn=lambda ts: ts.astype(dtype)  # noqa: F821
+    )
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
     def _promote(yi):
@@ -730,19 +654,25 @@ def diffeqsolve(
     del timelikes, dtype
 
     # Normalises time: if t0 > t1 then flip things around.
-    with jax.ensure_compile_time_eval():
-        direction = jnp.where(t0 < t1, 1, -1)
-        t0 = t0 * direction
-        t1 = t1 * direction
-        if dt0 is not None:
-            dt0 = dt0 * direction
-        if saveat.ts is not None:
-            saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat.ts * direction)
+    direction = jnp.where(t0 < t1, 1, -1)
+    t0 = t0 * direction
+    t1 = t1 * direction
+    if dt0 is not None:
+        dt0 = dt0 * direction
+    saveat = eqx.tree_at(
+        _get_subsaveat_ts, saveat, replace_fn=lambda ts: ts * direction
+    )
     stepsize_controller = stepsize_controller.wrap(direction)
+
+    def _wrap(term):
+        assert isinstance(term, AbstractTerm)
+        assert not isinstance(term, MultiTerm)
+        return WrapTerm(term, direction)
+
     terms = jtu.tree_map(
-        lambda t: WrapTerm(t, direction),
+        _wrap,
         terms,
-        is_leaf=lambda x: isinstance(x, AbstractTerm),
+        is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
 
     # Stepsize controller gets an opportunity to modify the solver.
@@ -751,18 +681,20 @@ def diffeqsolve(
     solver = stepsize_controller.wrap_solver(solver)
 
     # Error checking
-    if saveat.ts is not None:
-        saveat_ts = eqxi.error_if(
-            saveat.ts,
-            saveat.ts[1:] < saveat.ts[:-1],
+    def _check_subsaveat_ts(ts):
+        ts = eqxi.error_if(
+            ts,
+            ts[1:] < ts[:-1],
             "saveat.ts must be increasing or decreasing.",
         )
-        saveat_ts = eqxi.error_if(
-            saveat_ts,
-            (saveat.ts > t1) | (saveat.ts < t0),
+        ts = eqxi.error_if(
+            ts,
+            (ts > t1) | (ts < t0),
             "saveat.ts must lie between t0 and t1.",
         )
-        saveat = eqx.tree_at(lambda s: s.ts, saveat, saveat_ts)
+        return ts
+
+    saveat = eqx.tree_at(_get_subsaveat_ts, saveat, replace_fn=_check_subsaveat_ts)
 
     # Initialise states
     tprev = t0
@@ -788,35 +720,39 @@ def diffeqsolve(
         passed_solver_state = True
 
     # Allocate memory to store output.
-    out_size = 0
-    if saveat.t0:
-        out_size += 1
-    if saveat.ts is not None:
-        out_size += len(saveat.ts)
-    if saveat.steps:
-        # We have no way of knowing how many steps we'll actually end up taking, and
-        # XLA doesn't support dynamic shapes. So we just have to allocate the maximum
-        # amount of steps we can possibly take.
-        if max_steps is None:
-            raise ValueError(
-                "`max_steps=None` is incompatible with `saveat.steps=True`"
-            )
-        out_size += max_steps
-    if saveat.t1 and not saveat.steps:
-        out_size += 1
+    def _allocate_output(subsaveat: SubSaveAt) -> SaveState:
+        out_size = 0
+        if subsaveat.t0:
+            out_size += 1
+        if subsaveat.ts is not None:
+            out_size += len(subsaveat.ts)
+        if subsaveat.steps:
+            # We have no way of knowing how many steps we'll actually end up taking, and
+            # XLA doesn't support dynamic shapes. So we just have to allocate the
+            # maximum amount of steps we can possibly take.
+            if max_steps is None:
+                raise ValueError(
+                    "`max_steps=None` is incompatible with saving at `steps=True`"
+                )
+            out_size += max_steps
+        if subsaveat.t1 and not subsaveat.steps:
+            out_size += 1
+        saveat_ts_index = 0
+        save_index = 0
+        ts = jnp.full(out_size, jnp.inf)
+        struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
+        ys = jtu.tree_map(lambda y: jnp.full((out_size,) + y.shape, jnp.inf), struct)
+        return SaveState(
+            ts=ts, ys=ys, save_index=save_index, saveat_ts_index=saveat_ts_index
+        )
+
+    save_state = jtu.tree_map(_allocate_output, saveat.subs, is_leaf=_is_subsaveat)
     num_steps = 0
     num_accepted_steps = 0
     num_rejected_steps = 0
-    saveat_ts_index = 0
-    save_index = 0
     made_jump = False if made_jump is None else made_jump
-    ts = jnp.full(out_size, jnp.inf)
-    ys = jtu.tree_map(
-        lambda y: jnp.full((out_size,) + jnp.shape(y), jnp.inf, dtype=y.dtype), y0
-    )
     result = jnp.array(RESULTS.successful)
     if saveat.dense:
-        t0 = eqxi.error_if(t0, t0 == t1, "Cannot save dense output if t0 == t1")
         if max_steps is None:
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
@@ -836,7 +772,7 @@ def diffeqsolve(
         dense_save_index = None
 
     # Initialise state
-    init_state = _State(
+    init_state = State(
         y=y0,
         tprev=tprev,
         tnext=tnext,
@@ -847,10 +783,7 @@ def diffeqsolve(
         num_steps=num_steps,
         num_accepted_steps=num_accepted_steps,
         num_rejected_steps=num_rejected_steps,
-        saveat_ts_index=saveat_ts_index,
-        ts=ts,
-        ys=ys,
-        save_index=save_index,
+        save_state=save_state,
         dense_ts=dense_ts,
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
@@ -881,16 +814,15 @@ def diffeqsolve(
     # Finish up
     #
 
-    if saveat.t0 or saveat.t1 or saveat.steps or (saveat.ts is not None):
-        ts = final_state.ts
-        ts = ts * direction
-        ys = final_state.ys
-        # It's important that we don't do any further postprocessing on `ys` here, as
-        # it is the `final_state` value that is used when backpropagating via
-        # optimise-then-discretise.
-    else:
-        ts = None
-        ys = None
+    is_save_state = lambda x: isinstance(x, SaveState)
+    ts = jtu.tree_map(
+        lambda s: s.ts * direction, final_state.save_state, is_leaf=is_save_state
+    )
+    ys = jtu.tree_map(lambda s: s.ys, final_state.save_state, is_leaf=is_save_state)
+    # It's important that we don't do any further postprocessing on `ys` here, as
+    # it is the `final_state` value that is used when backpropagating via
+    # optimise-then-discretise.
+
     if saveat.controller_state:
         controller_state = final_state.controller_state
     else:
@@ -907,9 +839,11 @@ def diffeqsolve(
         interpolation = DenseInterpolation(
             ts=final_state.dense_ts,
             ts_size=final_state.dense_save_index + 1,
-            interpolation_cls=solver.interpolation_cls,
             infos=final_state.dense_infos,
+            interpolation_cls=solver.interpolation_cls,
             direction=direction,
+            t0_if_trivial=t0,
+            y0_if_trivial=y0,
         )
     else:
         interpolation = None
@@ -923,7 +857,6 @@ def diffeqsolve(
         "num_accepted_steps": final_state.num_accepted_steps,
         "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
-        "compiled_num_steps": aux_stats["compiled_num_steps"],
     }
     result = final_state.result
     sol = Solution(

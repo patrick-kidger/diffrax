@@ -98,8 +98,13 @@ _tsit5_tableau = ButcherTableau(
 
 class _Tsit5Interpolation(AbstractLocalInterpolation):
     y0: PyTree[Array[...]]
-    y1: PyTree[Array[...]]  # Unused, just here for API compatibility
     k: PyTree[Array["order":7, ...]]  # noqa: F821
+
+    def __init__(self, *, y0, y1, k, **kwargs):
+        del y1  # exists for API compatibility
+        super().__init__(**kwargs)
+        self.y0 = y0
+        self.k = k
 
     def evaluate(
         self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
@@ -147,7 +152,8 @@ class Tsit5(AbstractERK):
     r"""Tsitouras' 5/4 method.
 
     5th order explicit Runge--Kutta method. Has an embedded 4th order method for
-    adaptive step sizing.
+    adaptive step sizing. Uses 7 stages with FSAL. Uses 5th order interpolation
+    for dense/ts output.
 
     ??? cite "Reference"
 

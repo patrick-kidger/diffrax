@@ -1,7 +1,5 @@
 import functools as ft
-import gc
 import operator
-import time
 
 import diffrax
 import equinox as eqx
@@ -11,30 +9,27 @@ import jax.tree_util as jtu
 
 
 all_ode_solvers = (
-    diffrax.Bosh3(scan_stages=False),
-    diffrax.Bosh3(scan_stages=True),
-    diffrax.Dopri5(scan_stages=False),
-    diffrax.Dopri5(scan_stages=True),
-    diffrax.Dopri8(scan_stages=False),
-    diffrax.Dopri8(scan_stages=True),
+    diffrax.Bosh3(),
+    diffrax.Dopri5(),
+    diffrax.Dopri8(),
     diffrax.Euler(),
-    diffrax.Ralston(scan_stages=False),
-    diffrax.Ralston(scan_stages=True),
-    diffrax.Midpoint(scan_stages=False),
-    diffrax.Midpoint(scan_stages=True),
-    diffrax.Heun(scan_stages=False),
-    diffrax.Heun(scan_stages=True),
+    diffrax.Ralston(),
+    diffrax.Midpoint(),
+    diffrax.Heun(),
     diffrax.LeapfrogMidpoint(),
     diffrax.ReversibleHeun(),
-    diffrax.Tsit5(scan_stages=False),
-    diffrax.Tsit5(scan_stages=True),
+    diffrax.Tsit5(),
     diffrax.ImplicitEuler(),
-    diffrax.Kvaerno3(scan_stages=False),
-    diffrax.Kvaerno3(scan_stages=True),
-    diffrax.Kvaerno4(scan_stages=False),
-    diffrax.Kvaerno4(scan_stages=True),
-    diffrax.Kvaerno5(scan_stages=False),
-    diffrax.Kvaerno5(scan_stages=True),
+    diffrax.Kvaerno3(),
+    diffrax.Kvaerno4(),
+    diffrax.Kvaerno5(),
+)
+
+all_split_solvers = (
+    diffrax.Sil3(),
+    diffrax.KenCarp3(),
+    diffrax.KenCarp4(),
+    diffrax.KenCarp5(),
 )
 
 
@@ -85,23 +80,3 @@ def shaped_allclose(x, y, **kwargs):
     return same_structure and jtu.tree_reduce(
         operator.and_, jtu.tree_map(allclose, x, y), True
     )
-
-
-def time_fn(fn, repeat=1):
-    fn()  # Compile
-    gc_enabled = gc.isenabled()
-    if gc_enabled:
-        gc.collect()
-    gc.disable()
-    try:
-        times = []
-        for _ in range(repeat):
-            start = time.perf_counter_ns()
-            fn()
-            end = time.perf_counter_ns()
-            times.append(end - start)
-        return min(times)
-    finally:
-        if gc_enabled:
-            gc.enable()
-            gc.collect()
