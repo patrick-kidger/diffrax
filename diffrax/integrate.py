@@ -646,8 +646,10 @@ def diffeqsolve(
     )
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
+    # fixing issue with float64 and weak dtypes, see discussion at:
+    # https://github.com/patrick-kidger/diffrax/pull/197#discussion_r1130173527
     def _promote(yi):
-        _dtype = jnp.result_type(yi, *timelikes)  # noqa: F821
+        _dtype = jnp.result_type(yi, dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
     y0 = jtu.tree_map(_promote, y0)
