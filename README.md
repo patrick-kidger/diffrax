@@ -59,12 +59,16 @@ If you found this library useful in academic research, please cite: [(arXiv link
 
 (Also consider starring the project on GitHub.)
 
-## See also
+## See also: other libraries in the JAX ecosystem
 
-Neural networks: [Equinox](https://github.com/patrick-kidger/equinox).
+[Equinox](https://github.com/patrick-kidger/equinox): neural networks.
 
-Type annotations and runtime checking for PyTrees and shape/dtype of JAX arrays: [jaxtyping](https://github.com/google/jaxtyping).
+[Optax](https://github.com/deepmind/optax): first-order gradient (SGD, Adam, ...) optimisers.
 
-Computer vision models: [Eqxvision](https://github.com/paganpasta/eqxvision).
+[Lineax](https://github.com/google/lineax): linear solvers and linear least squares.
 
-SymPy<->JAX conversion; train symbolic expressions via gradient descent: [sympy2jax](https://github.com/google/sympy2jax).
+[jaxtyping](https://github.com/google/jaxtyping): type annotations for shape/dtype of arrays.
+
+[Eqxvision](https://github.com/paganpasta/eqxvision): computer vision models.
+
+[sympy2jax](https://github.com/google/sympy2jax): SymPy<->JAX conversion; train symbolic expressions via gradient descent.

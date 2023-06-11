@@ -46,3 +46,17 @@ Here, `Dopri5` refers to the Dormand--Prince 5(4) numerical differential equatio
 ## Next steps
 
 Have a look at the [Getting Started](./usage/getting-started.md) page.
+
+## See also: other libraries in the JAX ecosystem
+
+[Equinox](https://github.com/patrick-kidger/equinox): neural networks.
+
+[Optax](https://github.com/deepmind/optax): first-order gradient (SGD, Adam, ...) optimisers.
+
+[Lineax](https://github.com/google/lineax): linear solvers and linear least squares.
+
+[jaxtyping](https://github.com/google/jaxtyping): type annotations for shape/dtype of arrays.
+
+[Eqxvision](https://github.com/paganpasta/eqxvision): computer vision models.
+
+[sympy2jax](https://github.com/google/sympy2jax): SymPy<->JAX conversion; train symbolic expressions via gradient descent.
