@@ -100,6 +100,7 @@ nav:
         - Basic ODE/SDE/CDE examples: 'other_examples/basic-examples.md'
         - Coupled ODEs: 'examples/coupled_odes.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
+        - Forcing terms: 'examples/forcing.ipynb'
         - Neural differential equations:
             - Neural ODE: 'examples/neural_ode.ipynb'
             - Neural CDE: 'examples/neural_cde.ipynb'
@@ -109,6 +110,7 @@ nav:
         - Symbolic regression: 'examples/symbolic_regression.ipynb'
         - Steady state: 'examples/steady_state.ipynb'
         - Kalman filter: 'examples/kalman_filter.ipynb'
+        - Second-order sensitivities: 'examples/hessian.ipynb'
         - Nonlinear heat PDE: 'examples/nonlinear_heat_pde.ipynb'
     - Basic API:
         - 'api/type_terminology.md'
