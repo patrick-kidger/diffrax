@@ -7,7 +7,7 @@ from ..heuristics import is_sde
 from ..local_interpolation import LocalLinearInterpolation
 from ..solution import RESULTS
 from ..term import AbstractTerm
-from .base import AbstractImplicitSolver
+from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
 
 
 _SolverState = None
@@ -19,7 +19,7 @@ def _implicit_relation(z1, nonlinear_solve_args):
     return diff
 
 
-class ImplicitEuler(AbstractImplicitSolver):
+class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     r"""Implicit Euler method.
 
     A-B-L stable 1st order SDIRK method. Has an embedded 2nd order Heun method for

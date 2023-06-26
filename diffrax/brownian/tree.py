@@ -184,7 +184,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # conditional variance. This means that the Virtual Brownian Tree will pass
         # statistical tests comparing w(t)|(w(s),w(u)) against the true Brownian
         # bridge. (Provided s, t, u are greater than the discretisation level `tol`.)
-        # (If you just do linear then you find that the variance is *every so slightly*
+        # (If you just do linear then you find that the variance is *ever so slightly*
         # too small.)
         s = final_state.s
         u = final_state.u
@@ -198,7 +198,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # [t^2 t 1][b] = [w_t]
         # [u^2 u 1][c]   [w_u]
         #
-        # `A` is inverse of the above matrix, rescaled to s=0, t=0.5, u=1.
+        # `A` is the inverse of the above matrix, with s=0, t=0.5, u=1.
         A = jnp.array([[2, -4, 2], [-3, 4, -1], [1, 0, 0]])
         coeffs = jnp.tensordot(A, jnp.stack([w_s, w_t, w_u]), axes=1)
         return jnp.polyval(coeffs, rescaled_τ)
