@@ -170,7 +170,13 @@ class ODETerm(AbstractTerm):
     vector_field: Callable[[Scalar, PyTree, PyTree], PyTree]
 
     def vf(self, t: Scalar, y: PyTree, args: PyTree) -> PyTree:
-        return self.vector_field(t, y, args)
+        out = self.vector_field(t, y, args)
+        if jtu.tree_structure(out) != jtu.tree_structure(y):
+            raise ValueError(
+                "The vector field inside `ODETerm` must return a pytree with the "
+                "same structure as `y0`."
+            )
+        return jtu.tree_map(lambda o, yi: jnp.broadcast_to(o, jnp.shape(yi)), out, y)
 
     @staticmethod
     def contr(t0: Scalar, t1: Scalar) -> Scalar:

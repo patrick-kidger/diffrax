@@ -51,6 +51,17 @@ def test_against(getkey):
             ).ys
         )
 
+    def _run_finite_diff(y0__args__term, saveat, adjoint):
+        y0, args, term = y0__args__term
+        y0_a = y0 + jnp.array([1e-5, 0])
+        y0_b = y0 + jnp.array([0, 1e-5])
+        val = _run((y0, args, term), saveat, adjoint)
+        val_a = _run((y0_a, args, term), saveat, adjoint)
+        val_b = _run((y0_b, args, term), saveat, adjoint)
+        out_a = (val_a - val) / 1e-5
+        out_b = (val_b - val) / 1e-5
+        return jnp.stack([out_a, out_b])
+
     diff, nondiff = eqx.partition(y0__args__term, eqx.is_inexact_array)
     _run_grad = eqx.filter_jit(
         jax.grad(
@@ -85,11 +96,15 @@ def test_against(getkey):
                     continue
                 saveat = diffrax.SaveAt(t0=t0, t1=t1, ts=ts)
 
+                fd_grads = _run_finite_diff(
+                    y0__args__term, saveat, diffrax.RecursiveCheckpointAdjoint()
+                )
                 direct_grads = _run_grad(diff, saveat, diffrax.DirectAdjoint())
                 recursive_grads = _run_grad(
                     diff, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad(diff, saveat, diffrax.BacksolveAdjoint())
+                assert shaped_allclose(fd_grads, direct_grads[0])
                 assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
