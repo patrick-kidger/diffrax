@@ -493,7 +493,9 @@ def _loop_backsolve(y__args__terms, *, self, throw, init_state, **kwargs):
     )
 
 
-def _loop_backsolve_fwd(y__args__terms, **kwargs):
+@_loop_backsolve.def_fwd
+def _loop_backsolve_fwd(perturbed, y__args__terms, **kwargs):
+    del perturbed
     final_state, aux_stats = _loop_backsolve(y__args__terms, **kwargs)
     # Note that `final_state.save_state` has type `PyTree[SaveState]`; here we are
     # relying on the guard in `BacksolveAdjoint` that it have trivial structure.
@@ -502,9 +504,18 @@ def _loop_backsolve_fwd(y__args__terms, **kwargs):
     return (final_state, aux_stats), (ts, ys)
 
 
+def _materialise_none(y, grad_y):
+    if grad_y is None and eqx.is_inexact_array(y):
+        return jnp.zeros_like(y)
+    else:
+        return grad_y
+
+
+@_loop_backsolve.def_bwd
 def _loop_backsolve_bwd(
     residuals,
     grad_final_state__aux_stats,
+    perturbed,
     y__args__terms,
     *,
     self,
@@ -525,13 +536,15 @@ def _loop_backsolve_bwd(
     # using them later.
     #
 
-    del init_state, t1
+    del perturbed, init_state, t1
     ts, ys = residuals
     del residuals
     grad_final_state, _ = grad_final_state__aux_stats
     # Note that `grad_final_state.save_state` has type `PyTree[SaveState]`; here we are
     # relying on the guard in `BacksolveAdjoint` that it have trivial structure.
     grad_ys = grad_final_state.save_state.ys
+    # We take the simple way out and don't try to handle symbolic zeros.
+    grad_ys = jtu.tree_map(_materialise_none, ys, grad_ys)
     del grad_final_state, grad_final_state__aux_stats
     y, args, terms = y__args__terms
     del y__args__terms
@@ -660,9 +673,6 @@ def _loop_backsolve_bwd(
         a_y1, a_diff_args1, a_diff_terms1 = aug1
 
     return a_y1, a_diff_args1, a_diff_terms1
-
-
-_loop_backsolve.defvjp(_loop_backsolve_fwd, _loop_backsolve_bwd)
 
 
 class BacksolveAdjoint(AbstractAdjoint):
