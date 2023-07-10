@@ -8,12 +8,14 @@ import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from jax.typing import ArrayLike
 
 from .adjoint import AbstractAdjoint, DirectAdjoint, RecursiveCheckpointAdjoint
 from .custom_types import Array, Bool, Int, PyTree, Scalar
 from .event import AbstractDiscreteTerminatingEvent
 from .global_interpolation import DenseInterpolation
 from .heuristics import is_sde, is_unsafe_sde
+from .misc import static_select
 from .saveat import SaveAt, SubSaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
 from .solver import (
@@ -29,7 +31,6 @@ from .step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
     ConstantStepSize,
-    PIDController,
     StepTo,
 )
 from .term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
@@ -141,6 +142,19 @@ def _clip_to_end(tprev, tnext, t1, keep_step):
     return jnp.where(clip, tclip, tnext)
 
 
+def _maybe_static(static_x: ArrayLike, x: Array) -> ArrayLike:
+    # Some values (made_jump and result) are not used in many common use-cases. If we
+    # detect that they're unused then we make sure they're non-Array Python values, so
+    # that we can special case on them at trace time and get a performance boost.
+    if isinstance(static_x, (bool, int, float, complex)):
+        return static_x
+    elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
+        with jax.ensure_compile_time_eval():
+            return static_x.item()
+    else:
+        return x
+
+
 def loop(
     *,
     solver,
@@ -175,19 +189,27 @@ def loop(
         lambda s: s.save_state, init_state, save_state, is_leaf=_is_none
     )
 
-    # Privileged optimisation for the common case of no jumps. We can reduce
-    # solver compile time with this.
-    # TODO: somehow make this a non-privileged optimisation, i.e. detect when
-    # we can make jumps or not.
-    cannot_make_jump = isinstance(stepsize_controller, (ConstantStepSize, StepTo)) or (
-        isinstance(stepsize_controller, PIDController)
-        and stepsize_controller.jump_ts is None
-    )
+    def _handle_static(state):
+        # We can improve runtime by resolving `result` at trace time if possible.
+        # We can improve compiletime by resolving `made_jump` at trace time if possible.
+        result = _maybe_static(static_result, state.result)
+        made_jump = _maybe_static(static_made_jump, state.made_jump)
+        return eqx.tree_at(
+            lambda s: (s.result, s.made_jump), state, (result, made_jump)
+        )
 
     def cond_fun(state):
-        return (state.tprev < t1) & is_successful(state.result)
+        if isinstance(stepsize_controller, StepTo):
+            # Privileged optimisation.
+            # This is a measurably cheaper check than the tprev < t1 check.
+            out = state.num_steps < len(stepsize_controller.ts) - 1
+        else:
+            out = state.tprev < t1
+        state = _handle_static(state)
+        return out & is_successful(state.result)
 
     def body_fun(state):
+        state = _handle_static(state)
 
         #
         # Actually do some differential equation solving! Make numerical steps, adapt
@@ -201,7 +223,7 @@ def loop(
             state.y,
             args,
             state.solver_state,
-            False if cannot_make_jump else state.made_jump,
+            state.made_jump,
         )
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
@@ -228,16 +250,6 @@ def loop(
             state.controller_state,
         )
         assert jnp.result_type(keep_step) is jnp.dtype(bool)
-        if cannot_make_jump:
-            # Should hopefully get DCE'd out.
-            made_jump = eqxi.error_if(
-                made_jump,
-                made_jump,
-                (
-                    "Internal error in Diffrax: made unexpected jump. Please report an "
-                    "issue at https://github.com/patrick-kidger/diffrax/issues"
-                ),
-            )
 
         #
         # Do some book-keeping.
@@ -252,8 +264,8 @@ def loop(
         keep = lambda a, b: jnp.where(keep_step, a, b)
         y = jtu.tree_map(keep, y, state.y)
         solver_state = jtu.tree_map(keep, solver_state, state.solver_state)
-        made_jump = keep(made_jump, state.made_jump)
-        solver_result = keep(solver_result, RESULTS.successful)
+        made_jump = static_select(keep_step, made_jump, state.made_jump)
+        solver_result = static_select(keep_step, solver_result, RESULTS.successful)
 
         # TODO: if we ever support non-terminating events, then they should go in here.
         # In particular the thing to be careful about is in the `if saveat.steps`
@@ -262,9 +274,8 @@ def loop(
         # previous step's `tnext`, i.e. immediately before the jump.)
 
         # Store the first unsuccessful result we get whilst iterating (if any).
-        result = state.result
-        result = jnp.where(is_okay(result), solver_result, result)
-        result = jnp.where(is_okay(result), stepsize_controller_result, result)
+        result = static_select(is_okay(state.result), solver_result, state.result)
+        result = static_select(is_okay(result), stepsize_controller_result, result)
 
         # Count the number of steps, just for statistical purposes.
         num_steps = state.num_steps + 1
@@ -328,7 +339,15 @@ def loop(
         )
 
         def maybe_inplace(i, u, x):
-            return x.at[i].set(u, pred=keep_step)
+            # Annoying hack. We normally call this with `x` wrapped into a buffer
+            # (from Equinox's while loops). However we do also first trace through to
+            # see if we can resolve some values statically, in which case normal JAX
+            # arrays don't support the extra `pred` argument. We don't then use the
+            # result of this so we just skip it.
+            if _filtering:
+                return x
+            else:
+                return x.at[i].set(u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.steps:
@@ -389,7 +408,7 @@ def loop(
                 terms=terms,
                 args=args,
             )
-            result = jnp.where(
+            result = static_select(
                 discrete_terminating_event_occurred,
                 RESULTS.discrete_terminating_event_occurred,
                 result,
@@ -397,6 +416,15 @@ def loop(
             new_state = eqx.tree_at(lambda s: s.result, new_state, result)
 
         return new_state
+
+    _filtering = True
+    static_made_jump = init_state.made_jump
+    static_result = init_state.result
+    filter_state = eqx.filter_eval_shape(body_fun, init_state)
+    _filtering = False
+    static_made_jump = filter_state.made_jump
+    static_result = filter_state.result
+    del filter_state
 
     final_state = outer_while_loop(
         cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
@@ -420,6 +448,7 @@ def loop(
         lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
     )
 
+    final_state = _handle_static(final_state)
     result = jnp.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
@@ -751,7 +780,7 @@ def diffeqsolve(
     num_accepted_steps = 0
     num_rejected_steps = 0
     made_jump = False if made_jump is None else made_jump
-    result = jnp.array(RESULTS.successful)
+    result = RESULTS.successful
     if saveat.dense:
         if max_steps is None:
             raise ValueError(
@@ -871,10 +900,11 @@ def diffeqsolve(
     )
 
     error_index = eqxi.unvmap_max(result)
-    sol = eqxi.branched_error_if(
-        sol,
-        throw & jnp.invert(is_okay(result)),
-        error_index,
-        RESULTS.reverse_lookup,
-    )
+    if throw:
+        sol = eqxi.branched_error_if(
+            sol,
+            jnp.invert(is_okay(result)),
+            error_index,
+            RESULTS.reverse_lookup,
+        )
     return sol

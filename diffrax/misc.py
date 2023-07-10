@@ -1,10 +1,12 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 import jax
+import jax.core
 import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from jax.typing import ArrayLike
 
 from .custom_types import Array, PyTree, Scalar
 
@@ -162,3 +164,22 @@ def split_by_tree(key, tree, is_leaf: Optional[Callable[[PyTree], bool]] = None)
 
 def is_tuple_of_ints(obj):
     return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
+
+
+def static_select(pred: Union[bool, Array], a: ArrayLike, b: ArrayLike) -> ArrayLike:
+    # This is mostly useful in that it doesn't promote `a` or `b` to Arrays when the
+    # predicate is statically known.
+    # This in turn allows us to perform some trace-time optimisations that XLA isn't
+    # smart enough to do on its own.
+    if (
+        type(pred) is not bool
+        and type(jax.core.get_aval(pred)) is jax.core.ConcreteArray
+    ):
+        with jax.ensure_compile_time_eval():
+            pred = pred.item()
+    if pred is True:
+        return a
+    elif pred is False:
+        return b
+    else:
+        return lax.select(pred, a, b)

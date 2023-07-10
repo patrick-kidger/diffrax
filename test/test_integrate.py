@@ -390,3 +390,31 @@ def test_grad_implicit_solve(solver):
     val_eps = f(1.0 + eps)
     numerical_grads = (val_eps - val) / eps
     assert shaped_allclose(grads, numerical_grads)
+
+
+def test_concrete_made_jump():
+    for constant in (True, False):
+        if constant:
+            dt0 = 0.1
+            stepsize_controller = diffrax.ConstantStepSize()
+        else:
+            dt0 = None
+            stepsize_controller = diffrax.StepTo([0, 0.3, 1])
+
+        @jax.jit
+        def run(y0):
+            term = diffrax.ODETerm(lambda t, y, args: -y)
+            sol = diffrax.diffeqsolve(
+                term,
+                diffrax.Tsit5(),
+                0,
+                1,
+                dt0,
+                y0,
+                stepsize_controller=stepsize_controller,
+                saveat=diffrax.SaveAt(t1=True, made_jump=True),
+                throw=False,
+            )
+            assert sol.made_jump is False
+
+        run(1)

@@ -2,10 +2,11 @@ from dataclasses import field
 from typing import Any, Dict, Optional
 
 import equinox.internal as eqxi
-import jax.numpy as jnp
+import jax
 
 from .custom_types import Array, Bool, PyTree, Scalar
 from .global_interpolation import DenseInterpolation
+from .misc import static_select
 from .path import AbstractPath
 
 
@@ -25,17 +26,20 @@ class RESULTS(metaclass=eqxi.ContainerMeta):
 
 
 def is_okay(result: RESULTS) -> Bool:
-    return is_successful(result) | is_event(result)
+    with jax.ensure_compile_time_eval():
+        return is_successful(result) | is_event(result)
 
 
 def is_successful(result: RESULTS) -> Bool:
-    return result == RESULTS.successful
+    with jax.ensure_compile_time_eval():
+        return result == RESULTS.successful
 
 
 # TODO: In the future we may support other event types, in which case this function
 # should be updated.
 def is_event(result: RESULTS) -> Bool:
-    return result == RESULTS.discrete_terminating_event_occurred
+    with jax.ensure_compile_time_eval():
+        return result == RESULTS.discrete_terminating_event_occurred
 
 
 def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
@@ -49,8 +53,11 @@ def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
     event_n | event_n event_o error_o
     error_n | error_n error_n error_o
     """
-    out_result = jnp.where(is_okay(old_result), new_result, old_result)
-    return jnp.where(is_okay(new_result) & is_event(old_result), old_result, out_result)
+    with jax.ensure_compile_time_eval():
+        out_result = static_select(is_okay(old_result), new_result, old_result)
+        return static_select(
+            is_okay(new_result) & is_event(old_result), old_result, out_result
+        )
 
 
 class Solution(AbstractPath):
