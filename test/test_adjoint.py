@@ -51,6 +51,7 @@ def test_against(getkey):
             ).ys
         )
 
+    # Only does gradients with respect to y0
     def _run_finite_diff(y0__args__term, saveat, adjoint):
         y0, args, term = y0__args__term
         y0_a = y0 + jnp.array([1e-5, 0])
@@ -62,13 +63,39 @@ def test_against(getkey):
         out_b = (val_b - val) / 1e-5
         return jnp.stack([out_a, out_b])
 
-    diff, nondiff = eqx.partition(y0__args__term, eqx.is_inexact_array)
-    _run_grad = eqx.filter_jit(
-        jax.grad(
-            lambda d, saveat, adjoint: _run(eqx.combine(d, nondiff), saveat, adjoint)
-        )
-    )
+    inexact, static = eqx.partition(y0__args__term, eqx.is_inexact_array)
+
+    def _run_inexact(inexact, saveat, adjoint):
+        return _run(eqx.combine(inexact, static), saveat, adjoint)
+
+    _run_grad = eqx.filter_jit(jax.grad(_run_inexact))
     _run_grad_int = eqx.filter_jit(jax.grad(_run, allow_int=True))
+
+    twice_inexact = jtu.tree_map(lambda *x: jnp.stack(x), inexact, inexact)
+
+    @eqx.filter_jit
+    def _run_vmap_grad(twice_inexact, saveat, adjoint):
+        f = jax.vmap(jax.grad(_run_inexact), in_axes=(0, None, None))
+        return f(twice_inexact, saveat, adjoint)
+
+    # @eqx.filter_jit
+    # def _run_vmap_finite_diff(twice_inexact, saveat, adjoint):
+    #     @jax.vmap
+    #     def _run_impl(inexact):
+    #         y0__args__term = eqx.combine(inexact, static)
+    #         return _run_finite_diff(y0__args__term, saveat, adjoint)
+    #     return _run_impl(twice_inexact)
+
+    @eqx.filter_jit
+    def _run_grad_vmap(twice_inexact, saveat, adjoint):
+        @jax.grad
+        def _run_impl(twice_inexact):
+            f = jax.vmap(_run_inexact, in_axes=(0, None, None))
+            out = f(twice_inexact, saveat, adjoint)
+            assert out.shape == (2,)
+            return jnp.sum(out)
+
+        return _run_impl(twice_inexact)
 
     # Yep, test that they're not implemented. We can remove these checks if we ever
     # do implement them.
@@ -99,11 +126,11 @@ def test_against(getkey):
                 fd_grads = _run_finite_diff(
                     y0__args__term, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
-                direct_grads = _run_grad(diff, saveat, diffrax.DirectAdjoint())
+                direct_grads = _run_grad(inexact, saveat, diffrax.DirectAdjoint())
                 recursive_grads = _run_grad(
-                    diff, saveat, diffrax.RecursiveCheckpointAdjoint()
+                    inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
-                backsolve_grads = _run_grad(diff, saveat, diffrax.BacksolveAdjoint())
+                backsolve_grads = _run_grad(inexact, saveat, diffrax.BacksolveAdjoint())
                 assert shaped_allclose(fd_grads, direct_grads[0])
                 assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
@@ -120,6 +147,34 @@ def test_against(getkey):
                 direct_grads = jtu.tree_map(_convert_float0, direct_grads)
                 recursive_grads = jtu.tree_map(_convert_float0, recursive_grads)
                 backsolve_grads = jtu.tree_map(_convert_float0, backsolve_grads)
+                assert shaped_allclose(fd_grads, direct_grads[0])
+                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
+
+                fd_grads = jtu.tree_map(lambda *x: jnp.stack(x), fd_grads, fd_grads)
+                direct_grads = _run_vmap_grad(
+                    twice_inexact, saveat, diffrax.DirectAdjoint()
+                )
+                recursive_grads = _run_vmap_grad(
+                    twice_inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
+                )
+                backsolve_grads = _run_vmap_grad(
+                    twice_inexact, saveat, diffrax.BacksolveAdjoint()
+                )
+                assert shaped_allclose(fd_grads, direct_grads[0])
+                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
+
+                direct_grads = _run_grad_vmap(
+                    twice_inexact, saveat, diffrax.DirectAdjoint()
+                )
+                recursive_grads = _run_grad_vmap(
+                    twice_inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
+                )
+                backsolve_grads = _run_grad_vmap(
+                    twice_inexact, saveat, diffrax.BacksolveAdjoint()
+                )
+                assert shaped_allclose(fd_grads, direct_grads[0])
                 assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
