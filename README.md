@@ -72,3 +72,5 @@ If you found this library useful in academic research, please cite: [(arXiv link
 [Eqxvision](https://github.com/paganpasta/eqxvision): computer vision models.
 
 [sympy2jax](https://github.com/google/sympy2jax): SymPy<->JAX conversion; train symbolic expressions via gradient descent.
+
+[Levanter](https://github.com/stanford-crfm/levanter): scalable+reliable training of foundation models (e.g. LLMs).
