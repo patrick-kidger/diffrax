@@ -2,7 +2,7 @@ import abc
 import operator
 import warnings
 from collections.abc import Callable
-from typing import cast, Generic, Optional, TypeVar, Union
+from typing import Generic, Optional, TypeVar, Union, cast
 
 import equinox as eqx
 import jax
@@ -13,7 +13,7 @@ import numpy as np
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
 
-from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
+from ._custom_types import VF, Args, Control, IntScalarLike, RealScalarLike, Y
 from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
@@ -161,7 +161,14 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control]):
         return False
 
 
-class ODETerm(AbstractTerm[_VF, RealScalarLike]):
+class VectorFieldWrapper(eqx.Module):
+    vector_field: Callable[[RealScalarLike, PyTree, PyTree], PyTree]
+
+    def __call__(self, t, y, args):
+        return self.vector_field(t, y, args)
+
+
+class ODETerm(AbstractTerm):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
 
@@ -180,7 +187,10 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
 
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
+    def __init__(self, vector_field):
+        self.vector_field = VectorFieldWrapper(vector_field)
+
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         out = self.vector_field(t, y, args)
         if jtu.tree_structure(out) != jtu.tree_structure(y):
             raise ValueError(
@@ -267,6 +277,10 @@ class _AbstractControlTerm(AbstractTerm[_VF, _Control]):
     control: Union[
         AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
     ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
+
+    def __init__(self, vector_field, control):
+        self.vector_field = VectorFieldWrapper(vector_field)
+        self.control = control
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
