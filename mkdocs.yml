@@ -100,6 +100,7 @@ nav:
         - 'usage/extending.md'
     - Examples:
         - Basic ODE/SDE/CDE examples: 'other_examples/basic-examples.md'
+        # - DDE : 'examples/dde.ipynb' to add in Basic examples
         - Coupled ODEs: 'examples/coupled_odes.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Forcing terms: 'examples/forcing.ipynb'
@@ -108,6 +109,7 @@ nav:
             - Neural CDE: 'examples/neural_cde.ipynb'
             - Neural SDE: 'examples/neural_sde.ipynb'
             - Latent ODE: 'examples/latent_ode.ipynb'
+            # - Neural DDE: 'examples/neural_dde.ipynb'
             - Continuous normalising flow: 'examples/continuous_normalising_flow.ipynb'
         - Symbolic regression: 'examples/symbolic_regression.ipynb'
         - Steady state: 'examples/steady_state.ipynb'
@@ -134,6 +136,7 @@ nav:
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
         - 'api/progress_meter.md'
+        # - 'api/delays.md'
     - Further details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'

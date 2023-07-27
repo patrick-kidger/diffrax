@@ -171,7 +171,14 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control]):
         return False
 
 
-class ODETerm(AbstractTerm[_VF, RealScalarLike]):
+class VectorFieldWrapper(eqx.Module):
+    vector_field: Callable[[RealScalarLike, PyTree, PyTree], PyTree]
+
+    def __call__(self, t, y, args):
+        return self.vector_field(t, y, args)
+
+
+class ODETerm(AbstractTerm):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
 
@@ -190,7 +197,10 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
 
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
+    def __init__(self, vector_field):
+        self.vector_field = VectorFieldWrapper(vector_field)
+
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         out = self.vector_field(t, y, args)
         if jtu.tree_structure(out) != jtu.tree_structure(y):
             raise ValueError(
