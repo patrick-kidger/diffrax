@@ -598,7 +598,7 @@ def diffeqsolve(
         )
         with jax.ensure_compile_time_eval():
             pred = (t1 - t0) * dt0 < 0
-        dt0 = eqxi.error_if(dt0, pred, msg)
+        dt0 = eqxi.error_if(jnp.array(dt0), pred, msg)
 
     # Backward compatibility
     if isinstance(
