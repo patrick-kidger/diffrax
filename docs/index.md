@@ -20,7 +20,7 @@ _From a technical point of view, the internal structure of the library is pretty
 pip install diffrax
 ```
 
-Requires Python 3.9+, JAX 0.4.13+, and [Equinox](https://github.com/patrick-kidger/equinox) 0.10.10+.
+Requires Python 3.9+, JAX 0.4.13+, and [Equinox](https://github.com/patrick-kidger/equinox) 0.10.11+.
 
 ## Quick example
 
