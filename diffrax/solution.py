@@ -13,12 +13,16 @@ from .path import AbstractPath
 class RESULTS(metaclass=eqxi.ContainerMeta):
     successful = ""
     discrete_terminating_event_occurred = (
-        "Terminating solve because a discrete event occurred."
+        "Terminating differential equation solve because a discrete terminating event "
+        "occurred."
     )
     max_steps_reached = (
-        "The maximum number of solver steps was reached. Try increasing `max_steps`."
+        "The maximum number of steps was reached in the differential equation solver. "
+        "Try increasing `diffrax.diffeqsolve(..., max_steps=...)`."
     )
-    dt_min_reached = "The minimum step size was reached."
+    dt_min_reached = (
+        "The minimum step size was reached in the differential equation solver."
+    )
     implicit_divergence = "Implicit method diverged."
     implicit_nonconvergence = (
         "Implicit method did not converge within the required number of iterations."
