@@ -11,6 +11,7 @@ In the following example, we solve an ODE using [`diffrax.Tsit5`][], and print o
     See the [Abstract solvers](../api/solvers/abstract_solvers.md) page for a reference on the solver methods (`init`, `step`) used here.
 
 ```python
+import jax.numpy as jnp
 from diffrax import ODETerm, Tsit5
 
 vector_field = lambda t, y, args: -y
@@ -20,7 +21,7 @@ solver = Tsit5()
 t0 = 0
 dt0 = 0.05
 t1 = 1
-y0 = 1
+y0 = jnp.array(1.0)
 args = None
 
 tprev = t0
