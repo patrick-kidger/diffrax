@@ -36,5 +36,6 @@ from .runge_kutta import (
     MultiButcherTableau,
 )
 from .semi_implicit_euler import SemiImplicitEuler
+from .stormer_verlet import StormerVerlet
 from .sil3 import Sil3
 from .tsit5 import Tsit5
