@@ -60,7 +60,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t0: Scalar = field(init=True)
     t1: Scalar = field(init=True)  # override init=False in AbstractPath
     tol: Scalar
-    shape: PyTree[jax.ShapeDtypeStruct] = eqx.static_field()
+    shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     key: "jax.random.PRNGKey"  # noqa: F821
 
     def __init__(

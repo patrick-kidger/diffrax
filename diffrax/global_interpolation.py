@@ -287,7 +287,7 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 class DenseInterpolation(AbstractGlobalInterpolation):
     ts_size: Int  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
-    interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
+    interpolation_cls: Type[AbstractLocalInterpolation] = eqx.field(static=True)
     direction: Scalar
     t0_if_trivial: Array
     y0_if_trivial: PyTree[Array]
