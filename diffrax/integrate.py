@@ -249,7 +249,7 @@ def loop(
             error_order,
             state.controller_state,
         )
-        assert jnp.result_type(keep_step) is jnp.dtype(bool)
+        assert jnp.result_type(keep_step) in [bool, jnp.dtype(bool)]
 
         #
         # Do some book-keeping.
