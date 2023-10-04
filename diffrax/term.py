@@ -409,7 +409,9 @@ class WrapTerm(AbstractTerm):
         y: Tuple[PyTree, PyTree, PyTree, PyTree],
         args: PyTree,
     ) -> bool:
-        return self.term.is_vf_expensive(t0, t1, y, args)
+        _t0 = jnp.where(self.direction == 1, t0, -t1)
+        _t1 = jnp.where(self.direction == 1, t1, -t0)
+        return self.term.is_vf_expensive(_t0, _t1, y, args)
 
 
 class AdjointTerm(AbstractTerm):
@@ -422,8 +424,8 @@ class AdjointTerm(AbstractTerm):
         y: Tuple[PyTree, PyTree, PyTree, PyTree],
         args: PyTree,
     ) -> bool:
-        control = self.contr(t0, t1)
-        if sum(c.size for c in jtu.tree_leaves(control)) in (0, 1):
+        control_struct = jax.eval_shape(self.contr, t0, t1)
+        if sum(c.size for c in jtu.tree_leaves(control_struct)) in (0, 1):
             return False
         else:
             return True
