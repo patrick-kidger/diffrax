@@ -415,6 +415,11 @@ def loop(
             )
             new_state = eqx.tree_at(lambda s: s.result, new_state, result)
 
+        if not _filtering:
+            # This is only necessary for Equinox <0.11.1.
+            # After that, this fix has been upstreamed to Equinox.
+            # TODO: remove once we make Equinox >=0.11.1 required.
+            new_state = jtu.tree_map(jnp.array, new_state)
         return new_state
 
     _filtering = True

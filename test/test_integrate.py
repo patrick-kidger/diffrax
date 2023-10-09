@@ -418,3 +418,27 @@ def test_concrete_made_jump():
             assert sol.made_jump is False
 
         run(1)
+
+
+def test_no_jit():
+    # https://github.com/patrick-kidger/diffrax/issues/293
+    # https://github.com/patrick-kidger/diffrax/issues/321
+
+    # Test that this doesn't crash.
+    with jax.disable_jit():
+
+        def vector_field(t, y, args):
+            return jnp.zeros_like(y)
+
+        term = diffrax.ODETerm(vector_field)
+        y = jnp.zeros((1,))
+        stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
+        diffrax.diffeqsolve(
+            term,
+            diffrax.Kvaerno4(),
+            t0=0,
+            t1=1e-2,
+            dt0=1e-3,
+            stepsize_controller=stepsize_controller,
+            y0=y,
+        )

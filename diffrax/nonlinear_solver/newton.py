@@ -141,7 +141,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             val = (flat, step + 1, diffsize, diffsize_prev)
             return val
 
-        val = (flat, 0, 0.0, 0.0)
+        val = (flat, 0, jnp.array(0.0), jnp.array(0.0))
         val = lax.while_loop(cond_fn, body_fn, val)
         flat, num_steps, diffsize, diffsize_prev = val
 
