@@ -118,7 +118,7 @@ class ItoMilstein(AbstractItoSolver):
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`StratonovichMilstein` should not used to solve ODEs.")
+        raise ValueError("`ItoMilstein` should not used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise
@@ -356,10 +356,10 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
+        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         y0: PyTree[ArrayLike],
         args: PyTree,
-    ) -> PyTree[ArrayLike]:
+    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike]]:
         drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
