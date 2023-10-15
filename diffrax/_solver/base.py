@@ -6,6 +6,7 @@ import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
@@ -297,7 +298,7 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
             terms, t0, t1, y0, args, original_solver_state, made_jump
         )
 
-        y_error = jnp.abs(y1 - y1_alt)
+        y_error = (y1**ω - y1_alt**ω).call(jnp.abs).ω
         result = jnp.maximum(result1, jnp.maximum(result2, result3))
 
         return y1, y_error, dense_info, solver_state, result

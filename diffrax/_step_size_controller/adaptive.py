@@ -13,7 +13,7 @@ from .._custom_types import BoolScalarLike, IntScalarLike, Real, RealScalarLike
 from .._misc import rms_norm
 from .._solution import RESULTS
 from .._solver import AbstractImplicitSolver, AbstractSolver
-from .._term import AbstractTerm
+from .._term import AbstractTerm, ODETerm
 from .base import AbstractStepSizeController
 
 
@@ -31,6 +31,10 @@ def _select_initial_step(
     atol: RealScalarLike,
     norm: Callable[[PyTree], RealScalarLike],
 ) -> RealScalarLike:
+    # TODO: someone needs to figure out an initial step size algorithm for SDEs.
+    if not isinstance(terms, ODETerm):
+        return 0.01
+
     def fn(carry):
         t, y, _h0, _d1, _f, _ = carry
         f = func(terms, t, y, args)

@@ -470,3 +470,28 @@ def test_implicit_closure_convert():
         return out.ys[0]
 
     f(1.0)
+
+
+# Doesn't crash
+def test_adaptive_dt0_semiimplicit_euler():
+    f = diffrax.ODETerm(lambda t, y, args: y)
+    g = diffrax.ODETerm(lambda t, y, args: y)
+    solver = diffrax.HalfSolver(diffrax.SemiImplicitEuler())
+    y0 = (1.0, 1.0)
+    stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
+    diffrax.diffeqsolve(
+        (f, g), solver, 0, 1, None, y0, stepsize_controller=stepsize_controller
+    )
+
+
+# Doesn't crash
+def test_adaptive_dt0_milstein(getkey):
+    bm = diffrax.VirtualBrownianTree(0, 1, 1e-3, (), key=getkey())
+    f = diffrax.ODETerm(lambda t, y, args: y)
+    g = diffrax.ControlTerm(lambda t, y, args: y, bm)
+    terms = diffrax.MultiTerm(f, g)
+    solver = diffrax.HalfSolver(diffrax.ItoMilstein())
+    stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
+    diffrax.diffeqsolve(
+        terms, solver, 0, 1, None, 1, stepsize_controller=stepsize_controller
+    )
