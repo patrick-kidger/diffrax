@@ -1,17 +1,25 @@
 import functools as ft
 import typing
 import warnings
-from typing import Any, Callable, get_args, get_origin, Optional, Tuple
+from typing import Any, Callable, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
+import jax.core
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from jax.typing import ArrayLike
+from jaxtyping import Array, ArrayLike, Float, PyTree
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
-from ._custom_types import Array, Bool, Int, PyTree, Scalar
+from ._custom_types import (
+    BoolScalarLike,
+    DenseInfos,
+    FloatScalarLike,
+    IntScalarLike,
+    Real,
+    RealScalarLike,
+)
 from ._event import AbstractDiscreteTerminatingEvent
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
@@ -38,29 +46,29 @@ from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 
 
 class SaveState(eqx.Module):
-    saveat_ts_index: Int
-    ts: Array["times"]  # noqa: F821
-    ys: PyTree[Array["times", ...]]  # noqa: F821
-    save_index: Int
+    saveat_ts_index: IntScalarLike
+    ts: Real[Array, " times"]
+    ys: PyTree[Float[Array, "times ..."]]
+    save_index: IntScalarLike
 
 
 class State(eqx.Module):
     # Evolving state during the solve
-    y: Array["state"]  # noqa: F821
-    tprev: Scalar
-    tnext: Scalar
-    made_jump: Bool
-    solver_state: PyTree
-    controller_state: PyTree
+    y: PyTree[Array]
+    tprev: FloatScalarLike
+    tnext: FloatScalarLike
+    made_jump: BoolScalarLike
+    solver_state: PyTree[Array]
+    controller_state: PyTree[Array]
     result: RESULTS
-    num_steps: Int
-    num_accepted_steps: Int
-    num_rejected_steps: Int
+    num_steps: IntScalarLike
+    num_accepted_steps: IntScalarLike
+    num_rejected_steps: IntScalarLike
     # Output that is .at[].set() updated during the solve (and their indices)
     save_state: PyTree[SaveState]
-    dense_ts: Optional[Array["times + 1"]]  # noqa: F821
-    dense_infos: Optional[PyTree[Array["times", ...]]]  # noqa: F821
-    dense_save_index: Int
+    dense_ts: Optional[Float[Array, " times+1"]]
+    dense_infos: Optional[DenseInfos]
+    dense_save_index: IntScalarLike
 
 
 def _is_none(x):
@@ -115,7 +123,11 @@ def _outer_buffers(state):
 
 
 def _save(
-    t: Scalar, y: PyTree[Array], args: PyTree, fn: Callable, save_state: SaveState
+    t: FloatScalarLike,
+    y: PyTree[Array],
+    args: PyTree,
+    fn: Callable,
+    save_state: SaveState,
 ) -> SaveState:
     ts = save_state.ts
     ys = save_state.ys
@@ -462,23 +474,24 @@ def loop(
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
 
 
-if getattr(typing, "GENERATING_DOCUMENTATION", False):
-    # Nicer documentation for the default `diffeqsolve(saveat=...)` argument.
-    # Not using `eqxi.doc_repr` as some IDEs (Helix, at least) show the source code
-    # of the default argument directly.
-    class SaveAt(eqx.Module):  # noqa: F811
-        t1: bool
+if not TYPE_CHECKING:
+    if getattr(typing, "GENERATING_DOCUMENTATION", False):
+        # Nicer documentation for the default `diffeqsolve(saveat=...)` argument.
+        # Not using `eqxi.doc_repr` as some IDEs (Helix, at least) show the source code
+        # of the default argument directly.
+        class SaveAt(eqx.Module):  # noqa: F811
+            t1: bool
 
 
 @eqx.filter_jit
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
     solver: AbstractSolver,
-    t0: Scalar,
-    t1: Scalar,
-    dt0: Optional[Scalar],
-    y0: PyTree,
-    args: Optional[PyTree] = None,
+    t0: RealScalarLike,
+    t1: RealScalarLike,
+    dt0: Optional[RealScalarLike],
+    y0: PyTree[Array],
+    args: PyTree = None,
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
@@ -488,7 +501,7 @@ def diffeqsolve(
     throw: bool = True,
     solver_state: Optional[PyTree] = None,
     controller_state: Optional[PyTree] = None,
-    made_jump: Optional[Bool] = None,
+    made_jump: Optional[BoolScalarLike] = None,
 ) -> Solution:
     """Solves a differential equation.
 

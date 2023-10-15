@@ -2,21 +2,22 @@ import abc
 from typing import Callable, Optional, Tuple, TypeVar
 
 import equinox as eqx
+from jaxtyping import ArrayLike, PyTree
 
-from .._custom_types import Bool, PyTree, Scalar
+from .._custom_types import BoolScalarLike, IntScalarLike, RealScalarLike
 from .._solution import RESULTS
 from .._solver import AbstractSolver
 from .._term import AbstractTerm
 
 
-_ControllerState = TypeVar("ControllerState", bound=PyTree)
+_ControllerState = TypeVar("_ControllerState")
 
 
 class AbstractStepSizeController(eqx.Module):
     """Abstract base class for all step size controllers."""
 
     @abc.abstractmethod
-    def wrap(self, direction: Scalar) -> "AbstractStepSizeController":
+    def wrap(self, direction: IntScalarLike) -> "AbstractStepSizeController":
         """Remakes this step size controller, adding additional information.
 
         Most step size controllers can't be used without first calling `wrap` to give
@@ -54,14 +55,14 @@ class AbstractStepSizeController(eqx.Module):
     def init(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
-        dt0: Optional[Scalar],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        dt0: Optional[RealScalarLike],
         args: PyTree,
-        func: Callable[[Scalar, PyTree, PyTree], PyTree],
-        error_order: Optional[Scalar],
-    ) -> Tuple[Scalar, _ControllerState]:
+        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        error_order: Optional[RealScalarLike],
+    ) -> Tuple[RealScalarLike, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
 
@@ -87,15 +88,22 @@ class AbstractStepSizeController(eqx.Module):
     @abc.abstractmethod
     def adapt_step_size(
         self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
-        y1_candidate: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        y1_candidate: PyTree[ArrayLike],
         args: PyTree,
-        y_error: Optional[PyTree],
-        error_order: Scalar,
+        y_error: Optional[PyTree[ArrayLike]],
+        error_order: RealScalarLike,
         controller_state: _ControllerState,
-    ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
+    ) -> Tuple[
+        BoolScalarLike,
+        RealScalarLike,
+        RealScalarLike,
+        BoolScalarLike,
+        _ControllerState,
+        RESULTS,
+    ]:
         """Determines whether to accept or reject the current step, and determines the
         step size to use on the next step.
 

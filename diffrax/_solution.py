@@ -3,8 +3,9 @@ from typing import Any, Dict, Optional
 
 import equinox.internal as eqxi
 import jax
+from jaxtyping import Array, PyTree, Shaped
 
-from ._custom_types import Array, Bool, PyTree, Scalar
+from ._custom_types import BoolScalarLike, Real, RealScalarLike
 from ._global_interpolation import DenseInterpolation
 from ._misc import static_select
 from ._path import AbstractPath
@@ -29,19 +30,19 @@ class RESULTS(metaclass=eqxi.ContainerMeta):
     )
 
 
-def is_okay(result: RESULTS) -> Bool:
+def is_okay(result: RESULTS) -> BoolScalarLike:
     with jax.ensure_compile_time_eval():
         return is_successful(result) | is_event(result)
 
 
-def is_successful(result: RESULTS) -> Bool:
+def is_successful(result: RESULTS) -> BoolScalarLike:
     with jax.ensure_compile_time_eval():
         return result == RESULTS.successful
 
 
 # TODO: In the future we may support other event types, in which case this function
 # should be updated.
-def is_event(result: RESULTS) -> Bool:
+def is_event(result: RESULTS) -> BoolScalarLike:
     with jax.ensure_compile_time_eval():
         return result == RESULTS.discrete_terminating_event_occurred
 
@@ -96,20 +97,20 @@ class Solution(AbstractPath):
         must allocate enough space for the maximum possible number of steps.
     """
 
-    t0: Scalar = field(init=True, repr=True)
-    t1: Scalar = field(init=True, repr=True)  # override AbstractPath
-    ts: Optional[Array["times"]]  # noqa: F821
-    ys: Optional[PyTree["times", ...]]  # noqa: F821
+    t0: RealScalarLike = field(init=True, repr=True)
+    t1: RealScalarLike = field(init=True, repr=True)  # override AbstractPath
+    ts: Optional[Real[Array, " times"]]
+    ys: Optional[PyTree[Shaped[Array, "times ..."]]]
     interpolation: Optional[DenseInterpolation]
     stats: Dict[str, Any]
     result: RESULTS
     solver_state: Optional[PyTree]
     controller_state: Optional[PyTree]
-    made_jump: Optional[Bool]
+    made_jump: Optional[BoolScalarLike]
 
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> PyTree:
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[Array]:
         """If dense output was saved, then evaluate the solution at any point in the
         region of integration `self.t0` to `self.t1`.
 
@@ -127,7 +128,7 @@ class Solution(AbstractPath):
             )
         return self.interpolation.evaluate(t0, t1, left)
 
-    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
         r"""If dense output was saved, then calculate an **approximation** to the
         derivative of the solution at any point in the region of integration `self.t0`
         to `self.t1`.

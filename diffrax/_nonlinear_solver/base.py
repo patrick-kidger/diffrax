@@ -7,9 +7,10 @@ import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
+from jaxtyping import Array, PyTree
 
 from .._ad import implicit_jvp
-from .._custom_types import Int, PyTree, Scalar
+from .._custom_types import IntScalarLike, RealScalarLike
 from .._solution import RESULTS
 
 
@@ -18,7 +19,7 @@ LU_Jacobian = TypeVar("LU_Jacobian")
 
 class NonlinearSolution(eqx.Module):
     root: PyTree
-    num_steps: Int
+    num_steps: IntScalarLike
     result: RESULTS
 
 
@@ -40,14 +41,14 @@ class AbstractNonlinearSolver(eqx.Module):
     Subclasses will be differentiable via the implicit function theorem.
     """
 
-    rtol: Optional[Scalar] = None
-    atol: Optional[Scalar] = None
+    rtol: Optional[RealScalarLike] = None
+    atol: Optional[RealScalarLike] = None
 
     @abc.abstractmethod
     def _solve(
         self,
         fn: Callable,
-        x: PyTree,
+        x: PyTree[Array],
         jac: Optional[LU_Jacobian],
         nondiff_args: PyTree,
         diff_args: PyTree,
@@ -55,7 +56,11 @@ class AbstractNonlinearSolver(eqx.Module):
         pass
 
     def __call__(
-        self, fn: Callable, x: PyTree, args: PyTree, jac: Optional[LU_Jacobian] = None
+        self,
+        fn: Callable,
+        x: PyTree[Array],
+        args: PyTree,
+        jac: Optional[LU_Jacobian] = None,
     ) -> NonlinearSolution:
         """Find `z` such that `fn(z, args) = 0`.
 
@@ -95,7 +100,7 @@ class AbstractNonlinearSolver(eqx.Module):
         )
 
     @staticmethod
-    def jac(fn: Callable, x: PyTree, args: PyTree) -> LU_Jacobian:
+    def jac(fn: Callable, x: PyTree[Array], args: PyTree) -> LU_Jacobian:
         """Computes the LU decomposition of the Jacobian `d(fn)/dx`.
 
         Arguments as [`diffrax.AbstractNonlinearSolver.__call__`][].

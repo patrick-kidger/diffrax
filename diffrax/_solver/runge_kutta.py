@@ -10,8 +10,10 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
+from jaxtyping import Array, ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Array, DenseInfo, PyTree, Scalar, sentinel
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike, sentinel
 from .._solution import is_okay, RESULTS, update_result
 from .._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
@@ -208,7 +210,7 @@ class CalculateJacobian(metaclass=eqxi.ContainerMeta):
     second_stage = "second_stage"
 
 
-_SolverState = Optional[tuple[Scalar, PyTree[Array]]]
+_SolverState: TypeAlias = Optional[tuple[BoolScalarLike, PyTree[Array]]]
 
 
 # TODO: examine termination criterion for Newton iteration
@@ -351,7 +353,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     def func(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
+        t0: RealScalarLike,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
@@ -360,9 +362,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     def init(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
     ) -> _SolverState:
         _, fsal = self._common(terms, t0, t1, y0, args)
@@ -391,13 +393,13 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
     def step(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: bool,
-    ) -> tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
         #
         # Alright, settle in for what is probably the most advanced Runge-Kutta
         # implementation on the planet.

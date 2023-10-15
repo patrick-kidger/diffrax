@@ -1,6 +1,8 @@
 import abc
 
-from .._custom_types import Array, PyTree, Scalar
+from jaxtyping import Array, PyTree
+
+from .._custom_types import RealScalarLike
 from .._path import AbstractPath
 
 
@@ -8,7 +10,9 @@ class AbstractBrownianPath(AbstractPath):
     "Abstract base class for all Brownian paths."
 
     @abc.abstractmethod
-    def evaluate(self, t0: Scalar, t1: Scalar, left: bool = True) -> PyTree[Array]:
+    def evaluate(
+        self, t0: RealScalarLike, t1: RealScalarLike, left: bool = True
+    ) -> PyTree[Array]:
         r"""Samples a Brownian increment $w(t_1) - w(t_0)$.
 
         Each increment has distribution $\mathcal{N}(0, t_1 - t_0)$.

@@ -1,7 +1,7 @@
 import jax.tree_util as jtu
+from jaxtyping import PyTree
 
 from ._brownian import AbstractBrownianPath, UnsafeBrownianPath
-from ._custom_types import PyTree
 from ._path import AbstractPath
 from ._term import AbstractTerm
 

@@ -5,8 +5,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from equinox.internal import ω
+from jaxtyping import Array, PyTree, Shaped
 
-from .._custom_types import Array, PyTree, Scalar
+from .._custom_types import RealScalarLike
 from .._local_interpolation import AbstractLocalInterpolation
 from .._misc import linear_rescale
 from .base import AbstractImplicitSolver, vector_tree_dot
@@ -81,8 +82,8 @@ _implicit_tableau = ButcherTableau(
 
 
 class KenCarpInterpolation(AbstractLocalInterpolation):
-    y0: PyTree[Array[...]]
-    k: Tuple[PyTree[Array["order", ...]], PyTree[Array["order", ...]]]  # noqa: F821
+    y0: PyTree[Array]
+    k: Tuple[PyTree[Shaped[Array, "order ..."]], PyTree[Shaped[Array, "order ..."]]]
 
     coeffs: eqxi.AbstractClassVar[np.ndarray]
 
@@ -93,7 +94,7 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
         self.k = k
 
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
     ) -> PyTree:
         del left
         if t1 is not None:
