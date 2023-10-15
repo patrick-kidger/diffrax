@@ -2,8 +2,9 @@ from typing import Callable, Optional, Sequence, Union
 
 import equinox as eqx
 import jax.numpy as jnp
+from jaxtyping import Array, PyTree
 
-from ._custom_types import Array, PyTree, Scalar
+from ._custom_types import Real, RealScalarLike
 
 
 def save_y(t, y, args):
@@ -20,7 +21,7 @@ class SubSaveAt(eqx.Module):
 
     t0: bool = False
     t1: bool = False
-    ts: Optional[Union[Sequence[Scalar], Array["times"]]] = None  # noqa: F821
+    ts: Optional[Real[Array, " times"]] = None
     steps: bool = False
     fn: Callable = save_y
 
@@ -66,7 +67,7 @@ class SaveAt(eqx.Module):
         *,
         t0: bool = False,
         t1: bool = False,
-        ts: Union[None, Sequence[Scalar], Array["times"]] = None,  # noqa: F821
+        ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]] = None,
         steps: bool = False,
         fn: Callable = save_y,
         subs: PyTree[SubSaveAt] = None,

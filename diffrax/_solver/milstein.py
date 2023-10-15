@@ -4,16 +4,18 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
+from jaxtyping import ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Bool, DenseInfo, PyTree, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm, MultiTerm, ODETerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
-_ErrorEstimate = None
-_SolverState = None
+_ErrorEstimate: TypeAlias = None
+_SolverState: TypeAlias = None
 
 
 #
@@ -52,9 +54,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     def init(
         self,
         terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
     ) -> _SolverState:
         return None
@@ -62,13 +64,13 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     def step(
         self,
         terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
         dt = drift.contr(t0, t1)
@@ -89,7 +91,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     def func(
         self,
         terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
-        t0: Scalar,
+        t0: RealScalarLike,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:
@@ -124,9 +126,9 @@ class ItoMilstein(AbstractItoSolver):
     def init(
         self,
         terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
     ) -> _SolverState:
         return None
@@ -134,13 +136,13 @@ class ItoMilstein(AbstractItoSolver):
     def step(
         self,
         terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
         Δt = drift.contr(t0, t1)
@@ -355,9 +357,9 @@ class ItoMilstein(AbstractItoSolver):
     def func(
         self,
         terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
-        t0: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
-    ) -> PyTree:
-        drift, diffusion = terms
+    ) -> PyTree[ArrayLike]:
+        drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)

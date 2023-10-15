@@ -8,8 +8,9 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
+from jaxtyping import Array, PRNGKeyArray, PyTree
 
-from .._custom_types import Array, PyTree, Scalar
+from .._custom_types import RealScalarLike
 from .._misc import is_tuple_of_ints, split_by_tree
 from .base import AbstractBrownianPath
 
@@ -27,13 +28,13 @@ from .base import AbstractBrownianPath
 
 
 class _State(eqx.Module):
-    s: Scalar
-    t: Scalar
-    u: Scalar
-    w_s: Scalar
-    w_t: Scalar
-    w_u: Scalar
-    key: "jax.random.PRNGKey"
+    s: RealScalarLike
+    t: RealScalarLike
+    u: RealScalarLike
+    w_s: RealScalarLike
+    w_t: RealScalarLike
+    w_u: RealScalarLike
+    key: PRNGKeyArray
 
 
 class VirtualBrownianTree(AbstractBrownianPath):
@@ -57,19 +58,19 @@ class VirtualBrownianTree(AbstractBrownianPath):
         corrects a small bias in the generated samples.)
     """
 
-    t0: Scalar = field(init=True)
-    t1: Scalar = field(init=True)  # override init=False in AbstractPath
-    tol: Scalar
+    t0: RealScalarLike = field(init=True)
+    t1: RealScalarLike = field(init=True)  # override init=False in AbstractPath
+    tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    key: "jax.random.PRNGKey"  # noqa: F821
+    key: PRNGKeyArray
 
     def __init__(
         self,
-        t0: Scalar,
-        t1: Scalar,
-        tol: Scalar,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        tol: RealScalarLike,
         shape: Union[Tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
-        key: "jax.random.PRNGKey",
+        key: PRNGKeyArray,
     ):
         self.t0 = t0
         self.t1 = t1
@@ -90,7 +91,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
     ) -> PyTree[Array]:
         del left
         t0 = eqxi.nondifferentiable(t0, name="t0")
@@ -104,7 +105,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
                 self._evaluate(t0),
             )
 
-    def _evaluate(self, τ: Scalar) -> PyTree[Array]:
+    def _evaluate(self, τ: RealScalarLike) -> PyTree[Array]:
         map_func = lambda key, shape: self._evaluate_leaf(key, τ, shape)
         return jtu.tree_map(map_func, self.key, self.shape)
 
@@ -117,7 +118,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     def _evaluate_leaf(
         self,
         key,
-        τ: Scalar,
+        τ: RealScalarLike,
         shape: jax.ShapeDtypeStruct,
     ) -> Array:
         shape, dtype = shape.shape, shape.dtype

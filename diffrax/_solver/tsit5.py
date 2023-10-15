@@ -3,8 +3,9 @@ from typing import Optional
 import jax.numpy as jnp
 import numpy as np
 from equinox.internal import ω
+from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
-from .._custom_types import Array, PyTree, Scalar
+from .._custom_types import RealScalarLike
 from .._local_interpolation import AbstractLocalInterpolation
 from .._misc import linear_rescale
 from .base import vector_tree_dot
@@ -97,8 +98,8 @@ _tsit5_tableau = ButcherTableau(
 
 
 class _Tsit5Interpolation(AbstractLocalInterpolation):
-    y0: PyTree[Array[...]]
-    k: PyTree[Array["order":7, ...]]  # noqa: F821
+    y0: PyTree[ArrayLike]
+    k: PyTree[Shaped[Array, "7 ..."]]
 
     def __init__(self, *, y0, y1, k, **kwargs):
         del y1  # exists for API compatibility
@@ -107,8 +108,8 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         self.k = k
 
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> PyTree:  # noqa: F821
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[ArrayLike]:
         del left
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)

@@ -1,16 +1,18 @@
 from typing import Tuple
 
 from equinox.internal import ω
+from jaxtyping import ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Bool, DenseInfo, PyTree, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractItoSolver
 
 
-_ErrorEstimate = None
-_SolverState = None
+_ErrorEstimate: TypeAlias = None
+_SolverState: TypeAlias = None
 
 
 class Euler(AbstractItoSolver):
@@ -34,9 +36,9 @@ class Euler(AbstractItoSolver):
     def init(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
     ) -> _SolverState:
         return None
@@ -44,12 +46,12 @@ class Euler(AbstractItoSolver):
     def step(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
+        made_jump: BoolScalarLike,
     ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         control = terms.contr(t0, t1)
@@ -60,7 +62,7 @@ class Euler(AbstractItoSolver):
     def func(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
+        t0: RealScalarLike,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:

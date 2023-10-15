@@ -2,15 +2,17 @@ from typing import Tuple
 
 import jax.lax as lax
 from equinox.internal import ω
+from jaxtyping import ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Bool, DenseInfo, PyTree, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 
 
-_SolverState = Tuple[PyTree, PyTree]
+_SolverState: TypeAlias = Tuple[PyTree, PyTree]
 
 
 class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
@@ -43,7 +45,12 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         return 0.5
 
     def init(
-        self, terms: AbstractTerm, t0: Scalar, t1: Scalar, y0: PyTree, args: PyTree
+        self,
+        terms: AbstractTerm,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        args: PyTree,
     ) -> _SolverState:
         del t1
         vf0 = terms.vf(t0, y0, args)
@@ -52,13 +59,13 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     def step(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
 
         yhat0, vf0 = solver_state
 
@@ -77,7 +84,7 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     def func(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
+        t0: RealScalarLike,
         y0: PyTree,
         args: PyTree,
     ) -> PyTree:

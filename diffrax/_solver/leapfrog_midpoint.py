@@ -1,16 +1,18 @@
 from typing import Tuple
 
 from equinox.internal import ω
+from jaxtyping import ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Bool, DenseInfo, PyTree, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractSolver
 
 
-_ErrorEstimate = None
-_SolverState = Tuple[Scalar, PyTree]
+_ErrorEstimate: TypeAlias = None
+_SolverState: TypeAlias = Tuple[RealScalarLike, PyTree]
 
 
 # TODO: support arbitrary linear multistep methods
@@ -48,7 +50,12 @@ class LeapfrogMidpoint(AbstractSolver):
         return 2
 
     def init(
-        self, terms: AbstractTerm, t0: Scalar, t1: Scalar, y0: PyTree, args: PyTree
+        self,
+        terms: AbstractTerm,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        args: PyTree,
     ) -> _SolverState:
         del terms, t1, args
         # Corresponds to making an explicit Euler step on the first step.
@@ -57,13 +64,13 @@ class LeapfrogMidpoint(AbstractSolver):
     def step(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del made_jump
         tm1, ym1 = solver_state
         control = terms.contr(tm1, t1)
@@ -75,8 +82,8 @@ class LeapfrogMidpoint(AbstractSolver):
     def func(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
-    ) -> PyTree:
+    ) -> PyTree[ArrayLike]:
         return terms.vf(t0, y0, args)

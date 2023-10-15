@@ -6,9 +6,9 @@ import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from jaxtyping import PyTree
+from jaxtyping import ArrayLike, PyTree
 
-from .._custom_types import Bool, DenseInfo, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._heuristics import is_sde
 from .._local_interpolation import AbstractLocalInterpolation
 from .._nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
@@ -16,7 +16,7 @@ from .._solution import RESULTS
 from .._term import AbstractTerm
 
 
-_SolverState = TypeVar("SolverState", bound=Optional[PyTree])
+_SolverState = TypeVar("_SolverState", bound=Optional[PyTree])
 
 
 def vector_tree_dot(a, b):
@@ -52,11 +52,11 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         """Order of the solver for solving ODEs."""
         return None
 
-    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
         """Strong order of the solver for solving SDEs."""
         return None
 
-    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
         """Order of the error estimate used for adaptive stepping.
 
         The default (slightly heuristic) implementation is as follows.
@@ -85,8 +85,8 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     def init(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
         y0: PyTree,
         args: PyTree,
     ) -> _SolverState:
@@ -103,12 +103,12 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     def step(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
         y0: PyTree,
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
+        made_jump: BoolScalarLike,
     ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
@@ -145,8 +145,12 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
 
     @abc.abstractmethod
     def func(
-        self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree
-    ) -> PyTree:
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        args: PyTree,
+    ) -> PyTree[ArrayLike]:
         """Evaluate the vector field at a point. (This is unlike
         [`diffrax.AbstractSolver.step`][], which operates over an interval.)
 
@@ -243,10 +247,10 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         return self.solver.order(terms)
 
-    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
         return self.solver.strong_order(terms)
 
-    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[Scalar]:
+    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
         if is_sde(terms):
             order = self.strong_order(terms)
             if order is not None:
@@ -260,23 +264,23 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
     def init(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
-    ):
+    ) -> _SolverState:
         return self.solver.init(terms, t0, t1, y0, args)
 
     def step(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[PyTree, Optional[PyTree[ArrayLike]], DenseInfo, _SolverState, RESULTS]:
 
         original_solver_state = solver_state
         thalf = t0 + 0.5 * (t1 - t0)
@@ -298,7 +302,13 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
 
         return y1, y_error, dense_info, solver_state, result
 
-    def func(self, terms: PyTree[AbstractTerm], t0: Scalar, y0: PyTree, args: PyTree):
+    def func(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        args: PyTree,
+    ) -> PyTree[ArrayLike]:
         return self.solver.func(terms, t0, y0, args)
 
 

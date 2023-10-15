@@ -113,7 +113,6 @@ nav:
         - Second-order sensitivities: 'examples/hessian.ipynb'
         - Nonlinear heat PDE: 'examples/nonlinear_heat_pde.ipynb'
     - Basic API:
-        - 'api/type_terminology.md'
         - 'api/diffeqsolve.md'
         - Solvers:
           - 'api/solvers/ode_solvers.md'

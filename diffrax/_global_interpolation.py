@@ -8,15 +8,16 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
+from jaxtyping import Array, PyTree, Shaped
 
-from ._custom_types import Array, DenseInfos, Int, PyTree, Scalar
+from ._custom_types import DenseInfos, IntScalarLike, Real, RealScalarLike
 from ._local_interpolation import AbstractLocalInterpolation
 from ._misc import fill_forward, left_broadcast_to
 from ._path import AbstractPath
 
 
 class AbstractGlobalInterpolation(AbstractPath):
-    ts: Array["times"]  # noqa: F821
+    ts: Real[Array, " times"]
 
     def __post_init__(self):
         if self.ts.ndim != 1:
@@ -25,7 +26,9 @@ class AbstractGlobalInterpolation(AbstractPath):
     def _ts_size(self):
         return self.ts.shape[0]
 
-    def _interpret_t(self, t: Scalar, left: bool) -> Tuple[Scalar, Scalar]:
+    def _interpret_t(
+        self, t: RealScalarLike, left: bool
+    ) -> Tuple[IntScalarLike, RealScalarLike]:
         maxlen = self._ts_size() - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
         index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
@@ -64,7 +67,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         ```
     """
 
-    ys: PyTree[Array["times", ...]]  # noqa: F821
+    ys: PyTree[Shaped[Array, "times ..."]]
 
     def __post_init__(self):
         super().__post_init__()
@@ -80,8 +83,8 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> PyTree:
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[Array]:
         r"""Evaluate the linear interpolation.
 
         **Arguments:**
@@ -133,7 +136,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         ).ω
 
     @eqx.filter_jit
-    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
         r"""Evaluate the derivative of the linear interpolation. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
 
@@ -174,10 +177,10 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
     # d, c, b, a
     coeffs: Tuple[
-        PyTree["times - 1", ...],  # noqa: F821
-        PyTree["times - 1", ...],  # noqa: F821
-        PyTree["times - 1", ...],  # noqa: F821
-        PyTree["times - 1", ...],  # noqa: F821
+        PyTree[Shaped[Array, "times-1 ..."]],
+        PyTree[Shaped[Array, "times-1 ..."]],
+        PyTree[Shaped[Array, "times-1 ..."]],
+        PyTree[Shaped[Array, "times-1 ..."]],
     ]
 
     def __post_init__(self):
@@ -201,8 +204,8 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> PyTree:
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[Array]:
         r"""Evaluate the cubic interpolation.
 
         **Arguments:**
@@ -244,7 +247,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         ).ω
 
     @eqx.filter_jit
-    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
         r"""Evaluate the derivative of the cubic interpolation. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
 
@@ -289,11 +292,11 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 
 
 class DenseInterpolation(AbstractGlobalInterpolation):
-    ts_size: Int  # Takes values in {1, 2, 3, ...}
+    ts_size: IntScalarLike  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.field(static=True)
-    direction: Scalar
-    t0_if_trivial: Array
+    direction: IntScalarLike
+    t0_if_trivial: RealScalarLike
     y0_if_trivial: PyTree[Array]
 
     def __post_init__(self):
@@ -310,7 +313,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     def _ts_size(self):
         return self.ts_size
 
-    def _get_local_interpolation(self, t: Scalar, left: bool):
+    def _get_local_interpolation(self, t: RealScalarLike, left: bool):
         index, _ = self._interpret_t(t, left)
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
@@ -319,8 +322,8 @@ class DenseInterpolation(AbstractGlobalInterpolation):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> PyTree:
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[Array]:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         t = t0 * self.direction
@@ -332,7 +335,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         return jtu.tree_map(keep, self.y0_if_trivial, out)
 
     @eqx.filter_jit
-    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
         t = t * self.direction
         t = self._nan_if_out_of_bounds(t)
         out = self._get_local_interpolation(t, left).derivative(t, left=left)
@@ -374,7 +377,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
 #
 
 
-def _check_ts(ts: Array["times"]) -> None:  # noqa: F821
+def _check_ts(ts: Real[Array, " times"]) -> Real[Array, " times"]:
     if ts.ndim != 1:
         raise ValueError(f"`ts` must be 1-dimensional; got {ts.ndim}.")
     if ts.shape[0] < 2:
@@ -387,11 +390,11 @@ def _check_ts(ts: Array["times"]) -> None:  # noqa: F821
 
 
 def _interpolation_reverse(
-    carry: Tuple[Array["channels":...], Array["channels":...]],  # noqa: F821
-    value: Tuple[Array["channels":...], Array["channels":...]],  # noqa: F821
+    carry: Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    value: Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
 ) -> Tuple[
-    Tuple[Array["channels":...], Array["channels":...]],  # noqa: F821
-    Tuple[Array["channels":...], Array["channels":...]],  # noqa: F821
+    Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
 ]:
     next_ti, next_yi = carry
     ti, yi = value
@@ -402,16 +405,16 @@ def _interpolation_reverse(
 
 
 def _linear_interpolation_forward(
-    carry: Tuple[Array["channels":...], Array["channels":...]],  # noqa: F821
+    carry: Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
     value: Tuple[
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
     ],
 ) -> Tuple[
-    Tuple[Array["channels":...], Array["channels":...]],  # noqa: F821
-    Array["channels":...],  # noqa: F821
+    Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    Shaped[Array, " *channels"],
 ]:
 
     prev_ti, prev_yi = carry
@@ -428,10 +431,10 @@ def _linear_interpolation_forward(
 
 def _linear_interpolation(
     fill_forward_nans_at_end: bool,
-    ts: Array["times"],  # noqa: F821
-    ys: Array["times", "channels":...],  # noqa: F821
-    replace_nans_at_start: Optional[Array["channels":...]] = None,  # noqa: F821
-) -> Array["times", "channels":...]:  # noqa: F821
+    ts: Real[Array, " times"],
+    ys: Shaped[Array, " times *channels"],
+    replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
+) -> Shaped[Array, " times *channels"]:
 
     ts = left_broadcast_to(ts, ys.shape)
 
@@ -453,12 +456,12 @@ def _linear_interpolation(
 
 @eqx.filter_jit
 def linear_interpolation(
-    ts: Array["times"],  # noqa: F821
-    ys: PyTree["times", ...],  # noqa: F821
+    ts: Real[Array, " times"],
+    ys: PyTree[Shaped[Array, "times ..."]],
     *,
     fill_forward_nans_at_end: bool = False,
-    replace_nans_at_start: Optional[PyTree[...]] = None,
-) -> PyTree["times", ...]:  # noqa: F821
+    replace_nans_at_start: Optional[PyTree[Array]] = None,
+) -> PyTree[Shaped[Array, "times ..."]]:
     """Fill in any missing values via linear interpolation.
 
     Any missing values in `ys` (represented as `NaN`) are filled in by looking at the
@@ -493,12 +496,10 @@ def linear_interpolation(
 
 
 def _rectilinear_interpolation(
-    ts: Array["times"],  # noqa: F821
-    replace_nans_at_start: Optional[Array["channels":...]],  # noqa: F821
-    ys: Array["times", "channels":...],  # noqa: F821
-) -> Tuple[
-    Array["2 * times - 1"], Array["2 * times - 1", "channels":...]  # noqa: F821
-]:
+    ts: Real[Array, " times"],
+    replace_nans_at_start: Optional[Shaped[Array, " *channels"]],
+    ys: Shaped[Array, " times *channels"],
+) -> Tuple[Real[Array, " 2*times-1"], Shaped[Array, " 2*times-1 *channels"]]:
     ts = jnp.repeat(ts, 2, axis=0)[1:]
     ys = fill_forward(ys, replace_nans_at_start)
     ys = jnp.repeat(ys, 2, axis=0)[:-1]
@@ -507,10 +508,10 @@ def _rectilinear_interpolation(
 
 @eqx.filter_jit
 def rectilinear_interpolation(
-    ts: Array["times"],  # noqa: F821
-    ys: PyTree["times", ...],  # noqa: F821
-    replace_nans_at_start: Optional[PyTree[...]] = None,
-) -> Tuple[Array["2 * times - 1"], PyTree["2 * times - 1", ...]]:  # noqa: F821
+    ts: Real[Array, " times"],
+    ys: PyTree[Shaped[Array, "times ..."]],
+    replace_nans_at_start: Optional[PyTree[Array]] = None,
+) -> Tuple[Real[Array, " 2*times-1"], PyTree[Shaped[Array, " 2*times-1 ..."]]]:
     """Rectilinearly interpolates the input. This is a variant of linear interpolation
     that is particularly useful when using neural CDEs in a real-time scenario.
 
@@ -588,21 +589,26 @@ def rectilinear_interpolation(
 
 def _hermite_forward(
     carry: Tuple[
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
+        Shaped[Array, " *channels"],
     ],
-    value: Tuple[Scalar, Array["channels":...]],  # noqa: F821
+    value: Tuple[
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
+    ],
 ) -> Tuple[
     Tuple[
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
+        Shaped[Array, " *channels"],
     ],
     Tuple[
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
-        Array["channels":...],  # noqa: F821
+        Real[Array, " *channels"],
+        Shaped[Array, " *channels"],
+        Shaped[Array, " *channels"],
     ],
 ]:
 
@@ -645,15 +651,15 @@ def _hermite_impl(prev_ti, prev_yi, prev_deriv_i, ti, next_ti, next_yi):
 
 def _backward_hermite_coefficients(
     fill_forward_nans_at_end: bool,
-    ts: Array["times"],  # noqa: F821
-    ys: Array["times", "channels":...],  # noqa: F821
-    deriv0: Optional[Array["channels":...]] = None,  # noqa: F821
-    replace_nans_at_start: Optional[Array["channels":...]] = None,  # noqa: F821
+    ts: Real[Array, " times"],
+    ys: Shaped[Array, " times *channels"],
+    deriv0: Optional[Shaped[Array, " *channels"]] = None,
+    replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
 ) -> Tuple[
-    Array["channels":...],  # noqa: F821
-    Array["channels":...],  # noqa: F821
-    Array["channels":...],  # noqa: F821
-    Array["channels":...],  # noqa: F821
+    Shaped[Array, " *channels"],
+    Shaped[Array, " *channels"],
+    Shaped[Array, " *channels"],
+    Shaped[Array, " *channels"],
 ]:
     ts = left_broadcast_to(ts, ys.shape)
 
@@ -692,17 +698,17 @@ def _backward_hermite_coefficients(
 
 @eqx.filter_jit
 def backward_hermite_coefficients(
-    ts: Array["times"],  # noqa: F821
-    ys: PyTree["times", ...],  # noqa: F821
+    ts: Real[Array, " times"],
+    ys: PyTree[Shaped[Array, "times ..."]],
     *,
-    deriv0: Optional[PyTree[...]] = None,
+    deriv0: Optional[PyTree[Array]] = None,
     fill_forward_nans_at_end: bool = False,
-    replace_nans_at_start: Optional[PyTree[...]] = None,
+    replace_nans_at_start: Optional[PyTree[Array]] = None,
 ) -> Tuple[
-    PyTree["times - 1", ...],  # noqa: F821
-    PyTree["times - 1", ...],  # noqa: F821
-    PyTree["times - 1", ...],  # noqa: F821
-    PyTree["times - 1", ...],  # noqa: F821
+    PyTree[Shaped[Array, "times-1 ..."]],
+    PyTree[Shaped[Array, "times-1 ..."]],
+    PyTree[Shaped[Array, "times-1 ..."]],
+    PyTree[Shaped[Array, "times-1 ..."]],
 ]:
     """Interpolates the data with a cubic spline. Specifically, this calculates the
     coefficients for Hermite cubic splines with backward differences.

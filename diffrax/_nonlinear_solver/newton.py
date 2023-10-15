@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 import equinox as eqx
 import jax
@@ -6,25 +6,26 @@ import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
+from jaxtyping import Array, PyTree
 
-from .._custom_types import Bool, Int, PyTree, Scalar
+from .._custom_types import BoolScalarLike, RealScalarLike
 from .._misc import rms_norm
 from .._solution import RESULTS
 from .base import AbstractNonlinearSolver, LU_Jacobian, NonlinearSolution
 
 
-def _small(diffsize: Scalar) -> Bool:
+def _small(diffsize: RealScalarLike) -> BoolScalarLike:
     # TODO: make a more careful choice here -- the existence of this function is
     # pretty ad-hoc.
     resolution = 10 ** (2 - jnp.finfo(diffsize.dtype).precision)
     return diffsize < resolution
 
 
-def _diverged(rate: Scalar) -> Bool:
+def _diverged(rate: RealScalarLike) -> BoolScalarLike:
     return ~jnp.isfinite(rate) | (rate > 2)
 
 
-def _converged(factor: Scalar, tol: Scalar) -> Bool:
+def _converged(factor: RealScalarLike, tol: RealScalarLike) -> BoolScalarLike:
     return (factor > 0) & (factor < tol)
 
 
@@ -75,8 +76,8 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         assumes that the forward pass converged.
     """
 
-    max_steps: Optional[Int] = 10
-    kappa: Scalar = 1e-2
+    max_steps: Optional[int] = 10
+    kappa: RealScalarLike = 1e-2
     norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
 
@@ -86,12 +87,12 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
 
     def _solve(
         self,
-        fn: callable,
-        x: PyTree,
+        fn: Callable,
+        x: PyTree[Array],
         jac: Optional[LU_Jacobian],
         nondiff_args: PyTree,
         diff_args: PyTree,
-    ) -> Tuple[PyTree, RESULTS]:
+    ) -> NonlinearSolution:
         args = eqx.combine(nondiff_args, diff_args)
         if self.rtol is None or self.atol is None:
             raise ValueError(

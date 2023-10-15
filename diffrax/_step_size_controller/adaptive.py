@@ -7,8 +7,9 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
+from jaxtyping import Array, ArrayLike, PyTree
 
-from .._custom_types import Array, Bool, PyTree, Scalar
+from .._custom_types import BoolScalarLike, IntScalarLike, Real, RealScalarLike
 from .._misc import rms_norm
 from .._solution import RESULTS
 from .._solver import AbstractImplicitSolver, AbstractSolver
@@ -18,15 +19,18 @@ from .base import AbstractStepSizeController
 
 def _select_initial_step(
     terms: PyTree[AbstractTerm],
-    t0: Scalar,
+    t0: RealScalarLike,
     y0: PyTree,
     args: PyTree,
-    func: Callable[[PyTree[AbstractTerm], Scalar, PyTree, PyTree], PyTree],
-    error_order: Scalar,
-    rtol: Scalar,
-    atol: Scalar,
-    norm: Callable[[PyTree], Scalar],
-) -> Scalar:
+    func: Callable[
+        [PyTree[AbstractTerm], RealScalarLike, PyTree[ArrayLike], PyTree],
+        PyTree[ArrayLike],
+    ],
+    error_order: RealScalarLike,
+    rtol: RealScalarLike,
+    atol: RealScalarLike,
+    norm: Callable[[PyTree], RealScalarLike],
+) -> RealScalarLike:
     def fn(carry):
         t, y, _h0, _d1, _f, _ = carry
         f = func(terms, t, y, args)
@@ -60,17 +64,6 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-_ControllerState = Tuple[Bool, Bool, Scalar, Scalar, Scalar]
-
-
-_gendocs = getattr(typing, "GENERATING_DOCUMENTATION", False)
-
-
-class _gendocs_norm:
-    def __repr__(self):
-        return str(rms_norm)
-
-
 class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     """Indicates an adaptive step size controller.
 
@@ -80,8 +73,8 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     implicit solver, if they are not specified manually.
     """
 
-    rtol: Optional[Scalar] = None
-    atol: Optional[Scalar] = None
+    rtol: Optional[RealScalarLike] = None
+    atol: Optional[RealScalarLike] = None
 
     def __post_init__(self):
         if self.rtol is None or self.atol is None:
@@ -115,6 +108,22 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
                     is_leaf=lambda x: x is None,
                 )
         return solver
+
+
+_ControllerState = Tuple[
+    BoolScalarLike, BoolScalarLike, RealScalarLike, RealScalarLike, RealScalarLike
+]
+
+
+if getattr(typing, "GENERATING_DOCUMENTATION", False):
+    # We can't use `rms_norm` itself as a default attribute value. This is because it is
+    # a callable, and then the doc stack thinks that it is a method.
+    class _RmsNorm:
+        def __repr__(self):
+            return "<function rms_norm>"
+
+    old_rms_norm = rms_norm
+    rms_norm = _RmsNorm()
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
@@ -274,21 +283,19 @@ class PIDController(AbstractAdaptiveStepSizeController):
         ```
     """
 
-    pcoeff: Scalar = 0
-    icoeff: Scalar = 1
-    dcoeff: Scalar = 0
-    dtmin: Optional[Scalar] = None
-    dtmax: Optional[Scalar] = None
+    pcoeff: RealScalarLike = 0
+    icoeff: RealScalarLike = 1
+    dcoeff: RealScalarLike = 0
+    dtmin: Optional[RealScalarLike] = None
+    dtmax: Optional[RealScalarLike] = None
     force_dtmin: bool = True
-    step_ts: Optional[Array["steps"]] = None  # noqa: F821
-    jump_ts: Optional[Array["jumps"]] = None  # noqa: F821
-    factormin: Scalar = 0.2
-    factormax: Scalar = 10.0
-    # The documentation treats callables as methods and displays `norm` twice: as both
-    # an attribute and a method.
-    norm: Callable[[PyTree], Scalar] = _gendocs_norm() if _gendocs else rms_norm
-    safety: Scalar = 0.9
-    error_order: Optional[Scalar] = None
+    step_ts: Optional[Real[Array, " steps"]] = None
+    jump_ts: Optional[Real[Array, " jumps"]] = None
+    factormin: RealScalarLike = 0.2
+    factormax: RealScalarLike = 10.0
+    norm: Callable[[PyTree], RealScalarLike] = rms_norm
+    safety: RealScalarLike = 0.9
+    error_order: Optional[RealScalarLike] = None
 
     def __post_init__(self):
         super().__post_init__()
@@ -297,7 +304,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         object.__setattr__(self, "step_ts", step_ts)
         object.__setattr__(self, "jump_ts", jump_ts)
 
-    def wrap(self, direction: Scalar):
+    def wrap(self, direction: IntScalarLike):
         step_ts = None if self.step_ts is None else self.step_ts * direction
         jump_ts = None if self.jump_ts is None else self.jump_ts * direction
         return eqx.tree_at(
@@ -310,14 +317,14 @@ class PIDController(AbstractAdaptiveStepSizeController):
     def init(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
-        dt0: Optional[Scalar],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        dt0: Optional[RealScalarLike],
         args: PyTree,
-        func: Callable[[Scalar, PyTree, PyTree], PyTree],
-        error_order: Optional[Scalar],
-    ) -> Tuple[Scalar, _ControllerState]:
+        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        error_order: Optional[RealScalarLike],
+    ) -> Tuple[RealScalarLike, _ControllerState]:
         del t1
         if dt0 is None:
             error_order = self._get_error_order(error_order)
@@ -381,15 +388,22 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
     def adapt_step_size(
         self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
-        y1_candidate: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        y1_candidate: PyTree[ArrayLike],
         args: PyTree,
-        y_error: Optional[PyTree],
-        error_order: Scalar,
+        y_error: Optional[PyTree[ArrayLike]],
+        error_order: RealScalarLike,
         controller_state: _ControllerState,
-    ) -> Tuple[Bool, Scalar, Scalar, Bool, _ControllerState, RESULTS]:
+    ) -> Tuple[
+        BoolScalarLike,
+        RealScalarLike,
+        RealScalarLike,
+        BoolScalarLike,
+        _ControllerState,
+        RESULTS,
+    ]:
         # Note that different implementations, and different papers, do slightly
         # different things here. It's generally not clear which of these choices are
         # best. (If you know anything about which of these choices is best then please
@@ -569,7 +583,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         )
         return keep_step, next_t0, next_t1, made_jump, controller_state, result
 
-    def _get_error_order(self, error_order: Optional[Scalar]) -> Scalar:
+    def _get_error_order(self, error_order: Optional[RealScalarLike]) -> RealScalarLike:
         # Attribute takes priority, if the user knows the correct error order better
         # than our guess.
         error_order = error_order if self.error_order is None else self.error_order
@@ -582,7 +596,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
             )
         return error_order
 
-    def _clip_step_ts(self, t0: Scalar, t1: Scalar) -> Scalar:
+    def _clip_step_ts(self, t0: RealScalarLike, t1: RealScalarLike) -> RealScalarLike:
         if self.step_ts is None:
             return t1
 
@@ -602,7 +616,9 @@ class PIDController(AbstractAdaptiveStepSizeController):
         )
         return t1
 
-    def _clip_jump_ts(self, t0: Scalar, t1: Scalar) -> Tuple[Scalar, Array[(), bool]]:
+    def _clip_jump_ts(
+        self, t0: RealScalarLike, t1: RealScalarLike
+    ) -> Tuple[RealScalarLike, BoolScalarLike]:
         if self.jump_ts is None:
             return t1, False
         if self.jump_ts is not None and not jnp.issubdtype(
@@ -656,3 +672,6 @@ PIDController.__init__.__doc__ = """**Arguments:**
     to override the error order determined automatically, if extra structure is known
     about this particular problem. (Typically when solving SDEs with known structure.)
 """
+
+if getattr(typing, "GENERATING_DOCUMENTATION", False):
+    rms_norm = old_rms_norm

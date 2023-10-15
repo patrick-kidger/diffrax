@@ -5,8 +5,9 @@ from typing import Optional
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, PyTree
 
-from ._custom_types import PyTree, Scalar
+from ._custom_types import RealScalarLike
 
 
 class AbstractPath(eqx.Module):
@@ -36,13 +37,13 @@ class AbstractPath(eqx.Module):
         ```
     """
 
-    t0: Scalar = field(init=False, repr=False)
-    t1: Scalar = field(init=False, repr=False)
+    t0: RealScalarLike = field(init=False, repr=False)
+    t1: RealScalarLike = field(init=False, repr=False)
 
     @abc.abstractmethod
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
-    ) -> PyTree:
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[Array]:
         r"""Evaluate the path at any point in the interval $[t_0, t_1]$.
 
         **Arguments:**
@@ -73,7 +74,7 @@ class AbstractPath(eqx.Module):
 
         pass
 
-    def derivative(self, t: Scalar, left: bool = True) -> PyTree:
+    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
         r"""Evaluate the derivative of the path. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))` (and indeed this is its
         default implementation if no other is specified).

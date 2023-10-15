@@ -1,8 +1,10 @@
 from typing import Tuple
 
 from equinox.internal import ω
+from jaxtyping import ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Bool, DenseInfo, PyTree, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._heuristics import is_sde
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
@@ -10,7 +12,7 @@ from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
 
 
-_SolverState = None
+_SolverState: TypeAlias = None
 
 
 def _implicit_relation(z1, nonlinear_solve_args):
@@ -46,9 +48,9 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     def init(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
     ) -> _SolverState:
         return None
@@ -56,13 +58,13 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     def step(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[PyTree, PyTree, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
         del made_jump
         control = terms.contr(t0, t1)
         # Could use FSAL here but that would mean we'd need to switch to working with
@@ -88,8 +90,8 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     def func(
         self,
         terms: AbstractTerm,
-        t0: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
-    ) -> PyTree:
+    ) -> PyTree[ArrayLike]:
         return terms.vf(t0, y0, args)

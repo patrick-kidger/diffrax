@@ -4,8 +4,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from equinox.internal import ω
+from jaxtyping import Array, PyTree, Shaped
 
-from .._custom_types import Array, PyTree, Scalar
+from .._custom_types import RealScalarLike
 from .._local_interpolation import AbstractLocalInterpolation
 from .._misc import linear_rescale
 from .base import vector_tree_dot
@@ -187,9 +188,9 @@ _vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
 
 
 class _Dopri8Interpolation(AbstractLocalInterpolation):
-    y0: PyTree[Array[...]]
-    y1: PyTree[Array[...]]  # Unused, just here for API compatibility
-    k: PyTree[Array["order":14, ...]]  # noqa: F821
+    y0: PyTree[Array]
+    y1: PyTree[Array]  # Unused, just here for API compatibility
+    k: PyTree[Shaped[Array, "14 ..."]]
 
     eval_coeffs = np.array(
         [
@@ -281,7 +282,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
     )
 
     def evaluate(
-        self, t0: Scalar, t1: Optional[Scalar] = None, left: bool = True
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
     ) -> PyTree:  # noqa: F821
         del left
         if t1 is not None:

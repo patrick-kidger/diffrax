@@ -1,16 +1,18 @@
 from typing import Tuple
 
 from equinox.internal import ω
+from jaxtyping import ArrayLike, PyTree
+from typing_extensions import TypeAlias
 
-from .._custom_types import Bool, DenseInfo, PyTree, Scalar
+from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractSolver
 
 
-_ErrorEstimate = None
-_SolverState = None
+_ErrorEstimate: TypeAlias = None
+_SolverState: TypeAlias = None
 
 
 class SemiImplicitEuler(AbstractSolver):
@@ -29,9 +31,9 @@ class SemiImplicitEuler(AbstractSolver):
     def init(
         self,
         terms: Tuple[AbstractTerm, AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
         args: PyTree,
     ) -> _SolverState:
         return None
@@ -39,13 +41,19 @@ class SemiImplicitEuler(AbstractSolver):
     def step(
         self,
         terms: Tuple[AbstractTerm, AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
-        y0: Tuple[PyTree, PyTree],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
         args: PyTree,
         solver_state: _SolverState,
-        made_jump: Bool,
-    ) -> Tuple[Tuple[PyTree, PyTree], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        made_jump: BoolScalarLike,
+    ) -> Tuple[
+        Tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
+        _ErrorEstimate,
+        DenseInfo,
+        _SolverState,
+        RESULTS,
+    ]:
         del solver_state, made_jump
 
         term_1, term_2 = terms
@@ -63,13 +71,13 @@ class SemiImplicitEuler(AbstractSolver):
     def func(
         self,
         terms: Tuple[AbstractTerm, AbstractTerm],
-        t0: Scalar,
-        y0: Tuple[PyTree, PyTree],
+        t0: RealScalarLike,
+        y0: Tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
         args: PyTree,
-    ) -> Tuple[PyTree, PyTree]:
+    ) -> Tuple[PyTree[ArrayLike], PyTree[ArrayLike]]:
 
         term_1, term_2 = terms
         y0_1, y0_2 = y0
-        f1 = term_1.func(t0, y0_2, args)
-        f2 = term_2.func(t0, y0_1, args)
-        return (f1, f2)
+        f1 = term_1.vf(t0, y0_2, args)
+        f2 = term_2.vf(t0, y0_1, args)
+        return f1, f2

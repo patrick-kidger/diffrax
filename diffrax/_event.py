@@ -2,8 +2,9 @@ import abc
 from typing import Callable, Optional
 
 import equinox as eqx
+from jaxtyping import PyTree
 
-from ._custom_types import Bool, PyTree, Scalar
+from ._custom_types import BoolScalarLike, RealScalarLike
 from ._misc import rms_norm
 from ._step_size_controller import AbstractAdaptiveStepSizeController
 
@@ -31,7 +32,7 @@ class AbstractDiscreteTerminatingEvent(eqx.Module):
 class DiscreteTerminatingEvent(AbstractDiscreteTerminatingEvent):
     """Terminates the solve if its condition is ever active."""
 
-    cond_fn: Callable[..., Bool]
+    cond_fn: Callable[..., BoolScalarLike]
 
     def __call__(self, state, **kwargs):
         return self.cond_fn(state, **kwargs)
@@ -53,7 +54,7 @@ class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
 
     rtol: Optional[float] = None
     atol: Optional[float] = None
-    norm: Callable[[PyTree], Scalar] = rms_norm
+    norm: Callable[[PyTree], RealScalarLike] = rms_norm
 
     def __call__(self, state, *, terms, args, solver, stepsize_controller, **kwargs):
         del kwargs

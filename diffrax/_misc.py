@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple
 
 import jax
 import jax.core
@@ -6,9 +6,9 @@ import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from jax.typing import ArrayLike
+from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
-from ._custom_types import Array, PyTree, Scalar
+from ._custom_types import BoolScalarLike, RealScalarLike
 
 
 _itemsize_kind_type = {
@@ -30,17 +30,17 @@ def force_bitcast_convert_type(val, new_type):
 
 
 def _fill_forward(
-    last_observed_yi: Array["channels":...], yi: Array["channels":...]  # noqa: F821
-) -> Tuple[Array["channels":...], Array["channels":...]]:  # noqa: F821
+    last_observed_yi: Shaped[Array, " *channels"], yi: Shaped[Array, " *channels"]
+) -> Tuple[Shaped[Array, " *channels"], Shaped[Array, " *channels"]]:
     yi = jnp.where(jnp.isnan(yi), last_observed_yi, yi)
     return yi, yi
 
 
 @jax.jit
 def fill_forward(
-    ys: Array["times", ...],  # noqa: F821
-    replace_nans_at_start: Optional[Array[...]] = None,  # noqa: F821
-) -> Array["times", ...]:  # noqa: F821
+    ys: Shaped[Array, " times *channels"],
+    replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
+) -> Shaped[Array, " times *channels"]:
     """Fill-forwards over missing data (represented as NaN).
 
     By default it works its was along the "times" axis, filling in NaNs with the most
@@ -85,7 +85,7 @@ def linear_rescale(t0, t, t1):
     return numerator / denominator
 
 
-def rms_norm(x: PyTree) -> Scalar:
+def rms_norm(x: PyTree) -> RealScalarLike:
     x, _ = fu.ravel_pytree(x)
     if x.size == 0:
         return 0
@@ -111,7 +111,7 @@ def _rms_norm_jvp(x, tx):
     return out, jnp.real(t_out)
 
 
-def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> Scalar:
+def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> RealScalarLike:
     """Defines an adjoint seminorm. This can frequently be used to increase the
     efficiency of backpropagation via [`diffrax.BacksolveAdjoint`][], as follows:
 
@@ -166,7 +166,7 @@ def is_tuple_of_ints(obj):
     return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
 
 
-def static_select(pred: Union[bool, Array], a: ArrayLike, b: ArrayLike) -> ArrayLike:
+def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike:
     # This is mostly useful in that it doesn't promote `a` or `b` to Arrays when the
     # predicate is statically known.
     # This in turn allows us to perform some trace-time optimisations that XLA isn't

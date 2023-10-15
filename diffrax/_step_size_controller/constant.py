@@ -1,9 +1,10 @@
-from typing import Callable, Optional, Sequence, Tuple, Union
+from typing import Callable, Optional, Tuple
 
 import equinox.internal as eqxi
 import jax.numpy as jnp
+from jaxtyping import Array, ArrayLike, PyTree
 
-from .._custom_types import Array, Int, PyTree, Scalar
+from .._custom_types import IntScalarLike, Real, RealScalarLike
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractStepSizeController
@@ -14,20 +15,20 @@ class ConstantStepSize(AbstractStepSizeController):
     [`diffrax.diffeqsolve`][].
     """
 
-    def wrap(self, direction: Scalar):
+    def wrap(self, direction: IntScalarLike):
         return self
 
     def init(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
         y0: PyTree,
-        dt0: Optional[Scalar],
+        dt0: Optional[RealScalarLike],
         args: PyTree,
-        func: Callable[[Scalar, PyTree, PyTree], PyTree],
-        error_order: Optional[Scalar],
-    ) -> Tuple[Scalar, Scalar]:
+        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        error_order: Optional[RealScalarLike],
+    ) -> Tuple[RealScalarLike, RealScalarLike]:
         del terms, t1, y0, args, func, error_order
         if dt0 is None:
             raise ValueError(
@@ -38,15 +39,15 @@ class ConstantStepSize(AbstractStepSizeController):
 
     def adapt_step_size(
         self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: PyTree,
-        y1_candidate: PyTree,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[ArrayLike],
+        y1_candidate: PyTree[ArrayLike],
         args: PyTree,
         y_error: PyTree,
-        error_order: Scalar,
-        controller_state: Scalar,
-    ) -> Tuple[bool, Scalar, Scalar, bool, Scalar, RESULTS]:
+        error_order: RealScalarLike,
+        controller_state: RealScalarLike,
+    ) -> Tuple[bool, RealScalarLike, RealScalarLike, bool, RealScalarLike, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, error_order
         return (
             True,
@@ -61,7 +62,7 @@ class ConstantStepSize(AbstractStepSizeController):
 class StepTo(AbstractStepSizeController):
     """Make steps to just prespecified times."""
 
-    ts: Union[Sequence[Scalar], Array["times"]]  # noqa: F821
+    ts: Real[Array, " times"]
 
     def __post_init__(self):
         object.__setattr__(self, "ts", jnp.asarray(self.ts))
@@ -70,7 +71,7 @@ class StepTo(AbstractStepSizeController):
         if len(self.ts) < 2:
             raise ValueError("`ts` must have length at least 2.")
 
-    def wrap(self, direction: Scalar):
+    def wrap(self, direction: IntScalarLike):
         ts = self.ts * direction
         # Only tested after we've set the direction.
         ts = eqxi.error_if(
@@ -84,14 +85,14 @@ class StepTo(AbstractStepSizeController):
     def init(
         self,
         terms: PyTree[AbstractTerm],
-        t0: Scalar,
-        t1: Scalar,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
         y0: PyTree,
         dt0: None,
         args: PyTree,
-        func: Callable[[Scalar, PyTree, PyTree], PyTree],
-        error_order: Optional[Scalar],
-    ) -> Tuple[Scalar, int]:
+        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        error_order: Optional[RealScalarLike],
+    ) -> Tuple[RealScalarLike, int]:
         del y0, args, func, error_order
         if dt0 is not None:
             raise ValueError(
@@ -107,15 +108,15 @@ class StepTo(AbstractStepSizeController):
 
     def adapt_step_size(
         self,
-        t0: Scalar,
-        t1: Scalar,
-        y0: Array["state"],  # noqa: F821
-        y1_candidate: Array["state"],  # noqa: F821
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Real[Array, " state"],
+        y1_candidate: Real[Array, " state"],
         args: PyTree,
-        y_error: Array["state"],  # noqa: F821
-        error_order: Scalar,
+        y_error: Real[Array, " state"],
+        error_order: Optional[RealScalarLike],
         controller_state: int,
-    ) -> Tuple[bool, Scalar, Scalar, bool, Int, RESULTS]:
+    ) -> Tuple[bool, RealScalarLike, RealScalarLike, bool, IntScalarLike, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, error_order
         return (
             True,
