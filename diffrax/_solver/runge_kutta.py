@@ -1,3 +1,4 @@
+import enum
 import functools as ft
 from dataclasses import dataclass, field
 from typing import get_args, get_origin, Literal, Optional, Tuple, Union
@@ -188,7 +189,7 @@ MultiButcherTableau.__init__.__doc__ = """**Arguments:**
 """
 
 
-class CalculateJacobian(metaclass=eqxi.ContainerMeta):
+class CalculateJacobian(enum.IntEnum):
     """An enumeration of possible ways a Runga--Kutta method may wish to calculate a
     Jacobian.
 
@@ -205,10 +206,10 @@ class CalculateJacobian(metaclass=eqxi.ContainerMeta):
         step. Used for ESDIRK methods.
     """
 
-    never = "never"
-    every_stage = "every_stage"
-    first_stage = "first_stage"
-    second_stage = "second_stage"
+    never = 0
+    every_stage = 1
+    first_stage = 2
+    second_stage = 3
 
 
 _SolverState: TypeAlias = Optional[tuple[BoolScalarLike, PyTree[Array]]]

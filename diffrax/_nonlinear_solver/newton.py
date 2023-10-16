@@ -156,11 +156,11 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
             converged = _converged(factor, self.kappa)
             diverged = _diverged(rate)
             small = _small(diffsize)
-            result = jnp.where(
+            result = RESULTS.where(
                 converged, RESULTS.successful, RESULTS.implicit_nonconvergence
             )
-            result = jnp.where(diverged, RESULTS.implicit_divergence, result)
-            result = jnp.where(small, RESULTS.successful, result)
+            result = RESULTS.where(diverged, RESULTS.implicit_divergence, result)
+            result = RESULTS.where(small, RESULTS.successful, result)
         root = unflatten(flat)
         return NonlinearSolution(root=root, num_steps=num_steps, result=result)
 
