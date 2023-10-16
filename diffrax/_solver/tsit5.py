@@ -98,12 +98,15 @@ _tsit5_tableau = ButcherTableau(
 
 
 class _Tsit5Interpolation(AbstractLocalInterpolation):
+    t0: RealScalarLike
+    t1: RealScalarLike
     y0: PyTree[ArrayLike]
     k: PyTree[Shaped[Array, "7 ..."]]
 
-    def __init__(self, *, y0, y1, k, **kwargs):
+    def __init__(self, *, t0, t1, y0, y1, k):
         del y1  # exists for API compatibility
-        super().__init__(**kwargs)
+        self.t0 = t0
+        self.t1 = t1
         self.y0 = y0
         self.k = k
 

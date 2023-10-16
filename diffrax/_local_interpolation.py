@@ -1,5 +1,4 @@
 import abc
-from dataclasses import field
 from typing import Optional
 
 import jax.numpy as jnp
@@ -14,11 +13,12 @@ from ._path import AbstractPath
 
 
 class AbstractLocalInterpolation(AbstractPath):
-    t0: RealScalarLike = field(init=True, repr=True)
-    t1: RealScalarLike = field(init=True, repr=True)  # override AbstractPath
+    pass
 
 
 class LocalLinearInterpolation(AbstractLocalInterpolation):
+    t0: RealScalarLike
+    t1: RealScalarLike
     y0: PyTree[Array]
     y1: PyTree[Array]
 
@@ -35,6 +35,8 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
 
 
 class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
+    t0: RealScalarLike
+    t1: RealScalarLike
     coeffs: PyTree[Shaped[Array, " 4 *dims"]]
 
     def __init__(
@@ -82,6 +84,8 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
 
 
 class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
+    t0: RealScalarLike
+    t1: RealScalarLike
     coeffs: PyTree[Shaped[Array, " 5 *dims"]]
 
     def __init__(

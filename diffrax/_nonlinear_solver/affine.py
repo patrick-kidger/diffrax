@@ -1,8 +1,11 @@
+from typing import Optional
+
 import equinox as eqx
 import jax
 import jax.flatten_util as jfu
 import jax.numpy as jnp
 
+from .._custom_types import RealScalarLike
 from .._solution import RESULTS
 from .base import AbstractNonlinearSolver, NonlinearSolution
 
@@ -16,6 +19,9 @@ class AffineNonlinearSolver(AbstractNonlinearSolver):
         removed shortly, in favour of a more comprehensive approach to performing linear
         and nonlinear solves.
     """
+
+    rtol: Optional[RealScalarLike] = None
+    atol: Optional[RealScalarLike] = None
 
     def _solve(self, fn, x, jac, nondiff_args, diff_args):
         del jac

@@ -1,4 +1,3 @@
-from dataclasses import field
 from typing import Any, Dict, Optional
 
 import equinox.internal as eqxi
@@ -97,8 +96,8 @@ class Solution(AbstractPath):
         must allocate enough space for the maximum possible number of steps.
     """
 
-    t0: RealScalarLike = field(init=True, repr=True)
-    t1: RealScalarLike = field(init=True, repr=True)  # override AbstractPath
+    t0: RealScalarLike
+    t1: RealScalarLike
     ts: Optional[Real[Array, " times"]]
     ys: Optional[PyTree[Shaped[Array, "times ..."]]]
     interpolation: Optional[DenseInterpolation]

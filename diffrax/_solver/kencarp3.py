@@ -1,9 +1,9 @@
 from typing import Optional, Tuple
 
-import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import numpy as np
+from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree, Shaped
 
@@ -82,14 +82,17 @@ _implicit_tableau = ButcherTableau(
 
 
 class KenCarpInterpolation(AbstractLocalInterpolation):
+    t0: RealScalarLike
+    t1: RealScalarLike
     y0: PyTree[Array]
     k: Tuple[PyTree[Shaped[Array, "order ..."]], PyTree[Shaped[Array, "order ..."]]]
 
-    coeffs: eqxi.AbstractClassVar[np.ndarray]
+    coeffs: AbstractClassVar[np.ndarray]
 
-    def __init__(self, *, y0, y1, k, **kwargs):
+    def __init__(self, *, t0, t1, y0, y1, k):
         del y1  # exists for API compatibility
-        super().__init__(**kwargs)
+        self.t0 = t0
+        self.t1 = t1
         self.y0 = y0
         self.k = k
 

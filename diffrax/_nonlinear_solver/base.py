@@ -7,6 +7,7 @@ import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
+from equinox import AbstractVar
 from jaxtyping import Array, PyTree
 
 from .._ad import implicit_jvp
@@ -41,8 +42,8 @@ class AbstractNonlinearSolver(eqx.Module):
     Subclasses will be differentiable via the implicit function theorem.
     """
 
-    rtol: Optional[RealScalarLike] = None
-    atol: Optional[RealScalarLike] = None
+    rtol: AbstractVar[Optional[RealScalarLike]]
+    atol: AbstractVar[Optional[RealScalarLike]]
 
     @abc.abstractmethod
     def _solve(

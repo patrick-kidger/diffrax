@@ -188,9 +188,17 @@ _vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
 
 
 class _Dopri8Interpolation(AbstractLocalInterpolation):
+    t0: RealScalarLike
+    t1: RealScalarLike
     y0: PyTree[Array]
-    y1: PyTree[Array]  # Unused, just here for API compatibility
     k: PyTree[Shaped[Array, "14 ..."]]
+
+    def __init__(self, *, t0, t1, y0, y1, k):
+        del y1  # exists for API compatibility
+        self.t0 = t0
+        self.t1 = t1
+        self.y0 = y0
+        self.k = k
 
     eval_coeffs = np.array(
         [
