@@ -9,7 +9,12 @@ import jax.tree_util as jtu
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
 from .._custom_types import RealScalarLike
-from .._misc import force_bitcast_convert_type, is_tuple_of_ints, split_by_tree
+from .._misc import (
+    default_floating_dtype,
+    force_bitcast_convert_type,
+    is_tuple_of_ints,
+    split_by_tree,
+)
 from .base import AbstractBrownianPath
 
 
@@ -44,7 +49,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         key: PRNGKeyArray,
     ):
         self.shape = (
-            jax.ShapeDtypeStruct(shape, jax.dtypes.canonicalize_dtype(None))
+            jax.ShapeDtypeStruct(shape, default_floating_dtype())
             if is_tuple_of_ints(shape)
             else shape
         )
