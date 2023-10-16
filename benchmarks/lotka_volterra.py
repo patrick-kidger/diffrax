@@ -4,6 +4,7 @@ import timeit
 
 import jax
 import jax.numpy as jnp
+
 from diffrax import diffeqsolve, Dopri8, ODETerm, PIDController, Tsit5
 
 

@@ -1,12 +1,13 @@
 import math
 
-import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
+
+import diffrax
 
 
 _vals = {

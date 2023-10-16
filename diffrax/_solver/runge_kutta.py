@@ -1,6 +1,7 @@
 import functools as ft
 from dataclasses import dataclass, field
 from typing import get_args, get_origin, Literal, Optional, Tuple, Union
+from typing_extensions import TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -11,7 +12,6 @@ import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree
-from typing_extensions import TypeAlias
 
 from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike, sentinel
 from .._solution import is_okay, RESULTS, update_result

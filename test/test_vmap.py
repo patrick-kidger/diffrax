@@ -1,9 +1,10 @@
-import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
 import pytest
+
+import diffrax
 
 
 @pytest.mark.parametrize(

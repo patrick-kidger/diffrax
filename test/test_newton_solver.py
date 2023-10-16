@@ -1,11 +1,12 @@
 import operator
 
-import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
+
+import diffrax
 
 from .helpers import shaped_allclose
 

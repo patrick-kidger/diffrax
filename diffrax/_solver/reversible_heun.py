@@ -1,9 +1,9 @@
 from typing import Tuple
+from typing_extensions import TypeAlias
 
 import jax.lax as lax
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree
-from typing_extensions import TypeAlias
 
 from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._local_interpolation import LocalLinearInterpolation

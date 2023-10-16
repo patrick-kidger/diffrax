@@ -1,8 +1,8 @@
 from typing import Tuple
+from typing_extensions import TypeAlias
 
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree
-from typing_extensions import TypeAlias
 
 from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
 from .._heuristics import is_sde
