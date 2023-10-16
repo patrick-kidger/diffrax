@@ -183,3 +183,10 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
         return b
     else:
         return lax.select(pred, a, b)
+
+
+def default_floating_dtype():
+    if jax.config.jax_enable_x64:  # pyright: ignore
+        return jnp.float64
+    else:
+        return jnp.float32
