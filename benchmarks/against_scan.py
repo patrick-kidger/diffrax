@@ -2,10 +2,11 @@
 
 import timeit
 
-import diffrax as dfx
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
+
+import diffrax as dfx
 
 
 # SETUP

@@ -2,12 +2,13 @@ import functools as ft
 import operator
 from typing import Tuple
 
-import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
+
+import diffrax
 
 from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, shaped_allclose
 

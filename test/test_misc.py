@@ -1,5 +1,6 @@
-import diffrax
 import jax.numpy as jnp
+
+import diffrax
 
 from .helpers import shaped_allclose
 
