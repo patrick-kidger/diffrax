@@ -561,7 +561,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
             at_dtmin = jnp.array(False)
         else:
             if not self.force_dtmin:
-                result = jnp.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
+                result = RESULTS.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
             at_dtmin = dt <= self.dtmin
             dt = jnp.maximum(dt, self.dtmin)
 

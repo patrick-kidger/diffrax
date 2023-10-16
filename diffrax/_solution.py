@@ -1,16 +1,15 @@
 from typing import Any, Dict, Optional
 
-import equinox.internal as eqxi
+import equinox as eqx
 import jax
-from jaxtyping import Array, PyTree, Shaped
+from jaxtyping import Array, Bool, PyTree, Shaped
 
 from ._custom_types import BoolScalarLike, Real, RealScalarLike
 from ._global_interpolation import DenseInterpolation
-from ._misc import static_select
 from ._path import AbstractPath
 
 
-class RESULTS(metaclass=eqxi.ContainerMeta):
+class RESULTS(eqx.Enumeration):
     successful = ""
     discrete_terminating_event_occurred = (
         "Terminating differential equation solve because a discrete terminating event "
@@ -29,21 +28,19 @@ class RESULTS(metaclass=eqxi.ContainerMeta):
     )
 
 
-def is_okay(result: RESULTS) -> BoolScalarLike:
-    with jax.ensure_compile_time_eval():
+def is_okay(result: RESULTS) -> Bool[Array, ""]:
+    with jax.ensure_compile_time_eval():  # for the `|` between two `Bool[Array, ""]`.
         return is_successful(result) | is_event(result)
 
 
-def is_successful(result: RESULTS) -> BoolScalarLike:
-    with jax.ensure_compile_time_eval():
-        return result == RESULTS.successful
+def is_successful(result: RESULTS) -> Bool[Array, ""]:
+    return result == RESULTS.successful
 
 
 # TODO: In the future we may support other event types, in which case this function
 # should be updated.
-def is_event(result: RESULTS) -> BoolScalarLike:
-    with jax.ensure_compile_time_eval():
-        return result == RESULTS.discrete_terminating_event_occurred
+def is_event(result: RESULTS) -> Bool[Array, ""]:
+    return result == RESULTS.discrete_terminating_event_occurred
 
 
 def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
@@ -57,11 +54,10 @@ def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
     event_n | event_n event_o error_o
     error_n | error_n error_n error_o
     """
+    out_result = RESULTS.where(is_okay(old_result), new_result, old_result)
     with jax.ensure_compile_time_eval():
-        out_result = static_select(is_okay(old_result), new_result, old_result)
-        return static_select(
-            is_okay(new_result) & is_event(old_result), old_result, out_result
-        )
+        pred = is_okay(new_result) & is_event(old_result)
+    return RESULTS.where(pred, old_result, out_result)
 
 
 class Solution(AbstractPath):

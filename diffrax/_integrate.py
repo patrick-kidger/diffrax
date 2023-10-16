@@ -205,7 +205,7 @@ def loop(
     def _handle_static(state):
         # We can improve runtime by resolving `result` at trace time if possible.
         # We can improve compiletime by resolving `made_jump` at trace time if possible.
-        result = _maybe_static(static_result, state.result)
+        result = jtu.tree_map(_maybe_static, static_result, state.result)
         made_jump = _maybe_static(static_made_jump, state.made_jump)
         return eqx.tree_at(
             lambda s: (s.result, s.made_jump), state, (result, made_jump)
@@ -278,7 +278,7 @@ def loop(
         y = jtu.tree_map(keep, y, state.y)
         solver_state = jtu.tree_map(keep, solver_state, state.solver_state)
         made_jump = static_select(keep_step, made_jump, state.made_jump)
-        solver_result = static_select(keep_step, solver_result, RESULTS.successful)
+        solver_result = RESULTS.where(keep_step, solver_result, RESULTS.successful)
 
         # TODO: if we ever support non-terminating events, then they should go in here.
         # In particular the thing to be careful about is in the `if saveat.steps`
@@ -287,8 +287,8 @@ def loop(
         # previous step's `tnext`, i.e. immediately before the jump.)
 
         # Store the first unsuccessful result we get whilst iterating (if any).
-        result = static_select(is_okay(state.result), solver_result, state.result)
-        result = static_select(is_okay(result), stepsize_controller_result, result)
+        result = RESULTS.where(is_okay(state.result), solver_result, state.result)
+        result = RESULTS.where(is_okay(result), stepsize_controller_result, result)
 
         # Count the number of steps, just for statistical purposes.
         num_steps = state.num_steps + 1
@@ -421,7 +421,7 @@ def loop(
                 terms=terms,
                 args=args,
             )
-            result = static_select(
+            result = RESULTS.where(
                 discrete_terminating_event_occurred,
                 RESULTS.discrete_terminating_event_occurred,
                 result,
@@ -920,12 +920,6 @@ def diffeqsolve(
         made_jump=made_jump,
     )
 
-    error_index = eqxi.unvmap_max(result)
     if throw:
-        sol = eqxi.branched_error_if(
-            sol,
-            jnp.invert(is_okay(result)),
-            error_index,
-            RESULTS.reverse_lookup,
-        )
+        sol = result.error_if(sol, jnp.invert(is_okay(result)))
     return sol
