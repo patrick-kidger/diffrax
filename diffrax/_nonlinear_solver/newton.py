@@ -81,7 +81,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     norm: Callable = rms_norm
     tolerate_nonconvergence: bool = False
 
-    def __post_init__(self):
+    def __check_init__(self):
         if self.max_steps is not None and self.max_steps < 2:
             raise ValueError("max_steps must be at least 2.")
 

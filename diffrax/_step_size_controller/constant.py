@@ -1,5 +1,6 @@
 from typing import Callable, Optional, Tuple
 
+import equinox as eqx
 import equinox.internal as eqxi
 import jax.numpy as jnp
 from jaxtyping import Array, ArrayLike, PyTree
@@ -62,10 +63,9 @@ class ConstantStepSize(AbstractStepSizeController):
 class StepTo(AbstractStepSizeController):
     """Make steps to just prespecified times."""
 
-    ts: Real[Array, " times"]
+    ts: Real[Array, " times"] = eqx.field(converter=jnp.asarray)
 
-    def __post_init__(self):
-        object.__setattr__(self, "ts", jnp.asarray(self.ts))
+    def __check_init__(self):
         if self.ts.ndim != 1:
             raise ValueError("`ts` must be one-dimensional.")
         if len(self.ts) < 2:
