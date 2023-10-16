@@ -1,5 +1,5 @@
 import typing
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -80,7 +80,7 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     rtol: Optional[RealScalarLike] = None
     atol: Optional[RealScalarLike] = None
 
-    def __post_init__(self):
+    def __check_init__(self):
         if self.rtol is None or self.atol is None:
             raise ValueError(
                 "The default values for `rtol` and `atol` were removed in Diffrax "
@@ -119,15 +119,23 @@ _ControllerState = Tuple[
 ]
 
 
-if getattr(typing, "GENERATING_DOCUMENTATION", False):
-    # We can't use `rms_norm` itself as a default attribute value. This is because it is
-    # a callable, and then the doc stack thinks that it is a method.
-    class _RmsNorm:
-        def __repr__(self):
-            return "<function rms_norm>"
+def _none_or_array(x):
+    if x is None:
+        return None
+    else:
+        return jnp.asarray(x)
 
-    old_rms_norm = rms_norm
-    rms_norm = _RmsNorm()
+
+if not TYPE_CHECKING:
+    if getattr(typing, "GENERATING_DOCUMENTATION", False):
+        # We can't use `rms_norm` itself as a default attribute value. This is because
+        # it is a callable, and then the doc stack thinks that it is a method.
+        class _RmsNorm:
+            def __repr__(self):
+                return "<function rms_norm>"
+
+        old_rms_norm = rms_norm
+        rms_norm = _RmsNorm()
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
@@ -293,20 +301,17 @@ class PIDController(AbstractAdaptiveStepSizeController):
     dtmin: Optional[RealScalarLike] = None
     dtmax: Optional[RealScalarLike] = None
     force_dtmin: bool = True
-    step_ts: Optional[Real[Array, " steps"]] = None
-    jump_ts: Optional[Real[Array, " jumps"]] = None
+    step_ts: Optional[Real[Array, " steps"]] = eqx.field(
+        default=None, converter=_none_or_array
+    )
+    jump_ts: Optional[Real[Array, " jumps"]] = eqx.field(
+        default=None, converter=_none_or_array
+    )
     factormin: RealScalarLike = 0.2
     factormax: RealScalarLike = 10.0
     norm: Callable[[PyTree], RealScalarLike] = rms_norm
     safety: RealScalarLike = 0.9
     error_order: Optional[RealScalarLike] = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        step_ts = None if self.step_ts is None else jnp.asarray(self.step_ts)
-        jump_ts = None if self.jump_ts is None else jnp.asarray(self.jump_ts)
-        object.__setattr__(self, "step_ts", step_ts)
-        object.__setattr__(self, "jump_ts", jump_ts)
 
     def wrap(self, direction: IntScalarLike):
         step_ts = None if self.step_ts is None else self.step_ts * direction

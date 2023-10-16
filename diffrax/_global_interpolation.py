@@ -7,6 +7,7 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox import AbstractVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree, Shaped
 
@@ -17,19 +18,17 @@ from ._path import AbstractPath
 
 
 class AbstractGlobalInterpolation(AbstractPath):
-    ts: Real[Array, " times"]
+    ts: AbstractVar[Real[Array, " times"]]
+    ts_size: AbstractVar[IntScalarLike]
 
-    def __post_init__(self):
+    def __check_init__(self):
         if self.ts.ndim != 1:
             raise ValueError("`ts` must be one dimensional.")
-
-    def _ts_size(self):
-        return self.ts.shape[0]
 
     def _interpret_t(
         self, t: RealScalarLike, left: bool
     ) -> Tuple[IntScalarLike, RealScalarLike]:
-        maxlen = self._ts_size() - 2
+        maxlen = self.ts_size - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
         index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
         # Will never access the final element of `ts`; this is correct behaviour.
@@ -67,11 +66,10 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         ```
     """
 
+    ts: Real[Array, " times"]
     ys: PyTree[Shaped[Array, "times ..."]]
 
-    def __post_init__(self):
-        super().__post_init__()
-
+    def __check_init__(self):
         def _check(_ys):
             if _ys.shape[0] != self.ts.shape[0]:
                 raise ValueError(
@@ -80,6 +78,10 @@ class LinearInterpolation(AbstractGlobalInterpolation):
                 )
 
         jtu.tree_map(_check, self.ys)
+
+    @property
+    def ts_size(self) -> IntScalarLike:
+        return self.ts.shape[0]
 
     @eqx.filter_jit
     def evaluate(
@@ -175,6 +177,7 @@ interpolate over these.
 class CubicInterpolation(AbstractGlobalInterpolation):
     """Piecewise cubic spline interpolation over the interval $[t_0, t_1]$."""
 
+    ts: Real[Array, " times"]
     # d, c, b, a
     coeffs: Tuple[
         PyTree[Shaped[Array, "times-1 ..."]],
@@ -183,9 +186,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         PyTree[Shaped[Array, "times-1 ..."]],
     ]
 
-    def __post_init__(self):
-        super().__post_init__()
-
+    def __check_init__(self):
         def _check(d, c, b, a):
             error_msg = (
                 "Each cubic coefficient must have `times - 1` entries, where "
@@ -201,6 +202,10 @@ class CubicInterpolation(AbstractGlobalInterpolation):
                 raise ValueError(error_msg)
 
         jtu.tree_map(_check, *self.coeffs)
+
+    @property
+    def ts_size(self) -> IntScalarLike:
+        return self.ts.shape[0]
 
     @eqx.filter_jit
     def evaluate(
@@ -292,6 +297,10 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 
 
 class DenseInterpolation(AbstractGlobalInterpolation):
+    ts: Real[Array, " times"]
+    # DenseInterpolations typically get `ts` and `infos` that are way longer than they
+    # need to be, and padded with `nan`s. This means the normal way of measuring how
+    # many entries we have - ts.shape[0] - won't be correct.
     ts_size: IntScalarLike  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
     interpolation_cls: Type[AbstractLocalInterpolation] = eqx.field(static=True)
@@ -299,19 +308,11 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     t0_if_trivial: RealScalarLike
     y0_if_trivial: PyTree[Array]
 
-    def __post_init__(self):
-        super().__post_init__()
-
+    def __check_init__(self):
         def _check(_infos):
             assert _infos.shape[0] + 1 == self.ts.shape[0]
 
         jtu.tree_map(_check, self.infos)
-
-    # DenseInterpolations typically get `ts` and `infos` that are way longer than they
-    # need to be, and padded with `nan`s. This means the normal way of measuring how
-    # many entries we have - ts.shape[0] - won't be correct.
-    def _ts_size(self):
-        return self.ts_size
 
     def _get_local_interpolation(self, t: RealScalarLike, left: bool):
         index, _ = self._interpret_t(t, left)

@@ -11,6 +11,15 @@ def save_y(t, y, args):
     return y
 
 
+def _convert_ts(
+    ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]]
+) -> Optional[Real[Array, " times"]]:
+    if ts is None or len(ts) == 0:
+        return None
+    else:
+        return jnp.asarray(ts)
+
+
 class SubSaveAt(eqx.Module):
     """Used for finer-grained control over what is saved. A PyTree of these should be
     passed to `SaveAt(subs=...)`.
@@ -21,17 +30,11 @@ class SubSaveAt(eqx.Module):
 
     t0: bool = False
     t1: bool = False
-    ts: Optional[Real[Array, " times"]] = None
+    ts: Optional[Real[Array, " times"]] = eqx.field(default=None, converter=_convert_ts)
     steps: bool = False
     fn: Callable = save_y
 
-    def __post_init__(self):
-        if self.ts is not None:
-            if len(self.ts) == 0:
-                ts = None
-            else:
-                ts = jnp.asarray(self.ts)
-            self.ts = ts
+    def __check_init__(self):
         if not self.t0 and not self.t1 and self.ts is None and not self.steps:
             raise ValueError("Empty saveat -- nothing will be saved.")
 
