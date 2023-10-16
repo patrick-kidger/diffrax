@@ -1,4 +1,3 @@
-from dataclasses import field
 from typing import Optional, Tuple, Union
 
 import equinox as eqx
@@ -58,8 +57,8 @@ class VirtualBrownianTree(AbstractBrownianPath):
         corrects a small bias in the generated samples.)
     """
 
-    t0: RealScalarLike = field(init=True)
-    t1: RealScalarLike = field(init=True)  # override init=False in AbstractPath
+    t0: RealScalarLike
+    t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     key: PRNGKeyArray

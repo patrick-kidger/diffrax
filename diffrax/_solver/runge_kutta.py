@@ -10,6 +10,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree
 
@@ -307,8 +308,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     scan_kind: Union[None, Literal["lax", "checkpointed", "bounded"]] = None
 
-    tableau: eqxi.AbstractClassVar[Union[ButcherTableau, MultiButcherTableau]]
-    calculate_jacobian: eqxi.AbstractClassVar[CalculateJacobian]
+    tableau: AbstractClassVar[Union[ButcherTableau, MultiButcherTableau]]
+    calculate_jacobian: AbstractClassVar[CalculateJacobian]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

@@ -1,10 +1,10 @@
 import abc
-from dataclasses import field
 from typing import Optional
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from equinox import AbstractVar
 from jaxtyping import Array, PyTree
 
 from ._custom_types import RealScalarLike
@@ -37,8 +37,8 @@ class AbstractPath(eqx.Module):
         ```
     """
 
-    t0: RealScalarLike = field(init=False, repr=False)
-    t1: RealScalarLike = field(init=False, repr=False)
+    t0: AbstractVar[RealScalarLike]
+    t1: AbstractVar[RealScalarLike]
 
     @abc.abstractmethod
     def evaluate(
@@ -71,8 +71,6 @@ class AbstractPath(eqx.Module):
 
         The increment of the path between `t0` and `t1`.
         """
-
-        pass
 
     def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
         r"""Evaluate the derivative of the path. Essentially equivalent

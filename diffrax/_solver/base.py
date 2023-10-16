@@ -2,10 +2,10 @@ import abc
 from typing import Callable, Optional, Tuple, Type, TypeVar
 
 import equinox as eqx
-import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox import AbstractClassVar, AbstractVar
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree
 
@@ -45,9 +45,9 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     """
 
     # What PyTree structure `terms` should have when used with this solver.
-    term_structure: eqxi.AbstractClassVar[PyTree[Type[AbstractTerm]]]
+    term_structure: AbstractClassVar[PyTree[Type[AbstractTerm]]]
     # How to interpolate the solution in between steps.
-    interpolation_cls: eqxi.AbstractClassVar[Callable[..., AbstractLocalInterpolation]]
+    interpolation_cls: AbstractVar[Callable[..., AbstractLocalInterpolation]]
 
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         """Order of the solver for solving ODEs."""

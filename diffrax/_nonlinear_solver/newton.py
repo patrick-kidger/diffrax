@@ -76,6 +76,8 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
         assumes that the forward pass converged.
     """
 
+    rtol: Optional[RealScalarLike] = None
+    atol: Optional[RealScalarLike] = None
     max_steps: Optional[int] = 10
     kappa: RealScalarLike = 1e-2
     norm: Callable = rms_norm

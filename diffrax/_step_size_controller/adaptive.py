@@ -6,6 +6,7 @@ import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from equinox import AbstractVar
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree
 
@@ -77,8 +78,8 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     implicit solver, if they are not specified manually.
     """
 
-    rtol: Optional[RealScalarLike] = None
-    atol: Optional[RealScalarLike] = None
+    rtol: AbstractVar[Optional[RealScalarLike]]
+    atol: AbstractVar[Optional[RealScalarLike]]
 
     def __check_init__(self):
         if self.rtol is None or self.atol is None:
@@ -295,6 +296,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
         ```
     """
 
+    rtol: Optional[RealScalarLike]
+    atol: Optional[RealScalarLike]
     pcoeff: RealScalarLike = 0
     icoeff: RealScalarLike = 1
     dcoeff: RealScalarLike = 0
