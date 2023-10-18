@@ -58,8 +58,8 @@ class State(eqx.Module):
     tprev: FloatScalarLike
     tnext: FloatScalarLike
     made_jump: BoolScalarLike
-    solver_state: PyTree[Array]
-    controller_state: PyTree[Array]
+    solver_state: PyTree[ArrayLike]
+    controller_state: PyTree[ArrayLike]
     result: RESULTS
     num_steps: IntScalarLike
     num_accepted_steps: IntScalarLike
@@ -68,7 +68,7 @@ class State(eqx.Module):
     save_state: PyTree[SaveState]
     dense_ts: Optional[Float[Array, " times+1"]]
     dense_infos: Optional[DenseInfos]
-    dense_save_index: IntScalarLike
+    dense_save_index: Optional[IntScalarLike]
 
 
 def _is_none(x):
@@ -155,16 +155,15 @@ def _clip_to_end(tprev, tnext, t1, keep_step):
     return jnp.where(clip, tclip, tnext)
 
 
-def _maybe_static(static_x: ArrayLike, x: Array) -> ArrayLike:
+def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
     # Some values (made_jump and result) are not used in many common use-cases. If we
     # detect that they're unused then we make sure they're non-Array Python values, so
     # that we can special case on them at trace time and get a performance boost.
     if isinstance(static_x, (bool, int, float, complex)):
         return static_x
     elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
-        with jax.ensure_compile_time_eval():
-            return static_x.item()
-    else:
+        return static_x
+    else:  # including `static_x is None`
         return x
 
 
@@ -221,7 +220,7 @@ def loop(
         state = _handle_static(state)
         return out & is_successful(state.result)
 
-    def body_fun(state):
+    def body_fun_aux(state):
         state = _handle_static(state)
 
         #
@@ -352,15 +351,7 @@ def loop(
         )
 
         def maybe_inplace(i, u, x):
-            # Annoying hack. We normally call this with `x` wrapped into a buffer
-            # (from Equinox's while loops). However we do also first trace through to
-            # see if we can resolve some values statically, in which case normal JAX
-            # arrays don't support the extra `pred` argument. We don't then use the
-            # result of this so we just skip it.
-            if _filtering:
-                return x
-            else:
-                return x.at[i].set(u, pred=keep_step)
+            return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.steps:
@@ -428,21 +419,30 @@ def loop(
             )
             new_state = eqx.tree_at(lambda s: s.result, new_state, result)
 
-        if not _filtering:
-            # This is only necessary for Equinox <0.11.1.
-            # After that, this fix has been upstreamed to Equinox.
-            # TODO: remove once we make Equinox >=0.11.1 required.
-            new_state = jtu.tree_map(jnp.array, new_state)
-        return new_state
+        return (
+            new_state,
+            (type(new_state.made_jump) is not bool),
+            new_state.result.is_traced(),
+        )
 
-    _filtering = True
     static_made_jump = init_state.made_jump
     static_result = init_state.result
-    filter_state = eqx.filter_eval_shape(body_fun, init_state)
-    _filtering = False
-    static_made_jump = filter_state.made_jump
-    static_result = filter_state.result
-    del filter_state
+    _, traced_jump, traced_result = eqx.filter_eval_shape(body_fun_aux, init_state)
+    if traced_jump:
+        static_made_jump = None
+    if traced_result:
+        static_result = None
+    if traced_jump or traced_result:
+        # In case changing one changes the other.
+        _, traced_jump, traced_result = eqx.filter_eval_shape(body_fun_aux, init_state)
+        if traced_jump:
+            static_made_jump = None
+        if traced_result:
+            static_result = None
+
+    def body_fun(state):
+        new_state, _, _ = body_fun_aux(state)
+        return new_state
 
     final_state = outer_while_loop(
         cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
@@ -467,7 +467,7 @@ def loop(
     )
 
     final_state = _handle_static(final_state)
-    result = jnp.where(
+    result = RESULTS.where(
         cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
     )
     aux_stats = dict()
@@ -490,8 +490,8 @@ def diffeqsolve(
     t0: RealScalarLike,
     t1: RealScalarLike,
     dt0: Optional[RealScalarLike],
-    y0: PyTree[Array],
-    args: PyTree = None,
+    y0: PyTree[ArrayLike],
+    args: PyTree[Any] = None,
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
@@ -499,8 +499,8 @@ def diffeqsolve(
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 4096,
     throw: bool = True,
-    solver_state: Optional[PyTree] = None,
-    controller_state: Optional[PyTree] = None,
+    solver_state: Optional[PyTree[ArrayLike]] = None,
+    controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
 ) -> Solution:
     """Solves a differential equation.

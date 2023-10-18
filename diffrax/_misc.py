@@ -181,6 +181,8 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
         return a
     elif pred is False:
         return b
+    elif a is b:
+        return a
     else:
         return lax.select(pred, a, b)
 

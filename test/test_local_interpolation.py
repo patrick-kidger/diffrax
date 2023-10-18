@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-import diffrax.local_interpolation
+import diffrax
 
 from .helpers import shaped_allclose
 
