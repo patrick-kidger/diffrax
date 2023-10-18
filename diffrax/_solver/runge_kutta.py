@@ -117,11 +117,15 @@ class ButcherTableau:
                 assert a_lower_i.shape == a_predictor_i.shape
                 assert np.allclose(sum(a_predictor_i), 1.0)
 
-        lower_b_sol_equal = (self.b_sol[:-1] == self.a_lower[-1]).all()
+        lower_b_sol_equal = (self.b_sol[:-1] == self.a_lower[-1]).all().item()
         last_diagonal = 0 if self.a_diagonal is None else self.a_diagonal[-1]
-        diagonal_b_sol_equal = self.b_sol[-1] == last_diagonal
-        explicit_first_stage = self.a_diagonal is None or (self.a_diagonal[0] == 0)
-        explicit_last_stage = self.a_diagonal is None or (self.a_diagonal[-1] == 0)
+        diagonal_b_sol_equal = (self.b_sol[-1] == last_diagonal).item()
+        explicit_first_stage = (
+            self.a_diagonal is None or (self.a_diagonal[0] == 0).item()
+        )
+        explicit_last_stage = (
+            self.a_diagonal is None or (self.a_diagonal[-1] == 0).item()
+        )
         # (vector field)-control product `k1` is the same across first/last stages.
         object.__setattr__(
             self,
@@ -781,6 +785,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         def rk_stage(val):
             stage_index, _, _, jac_f, jac_k, fs, ks, result = val
+            old_result = result
             #
             # Start by getting the linear combination of previous stages.
             #
@@ -962,6 +967,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 assert ki is not _unused
                 assert ks is not _unused
                 ks = ty_map(lambda x, xs: xs.at[stage_index].set(x), ki, ks)
+            nonlocal const_result
+            if const_result is const_result_sentinel:
+                const_result = result is old_result
+            else:
+                const_result = const_result and (result is old_result)
             return (
                 stage_index + 1,
                 yi,
@@ -1036,6 +1046,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             ks,
             RESULTS.successful,
         )
+        const_result = const_result_sentinel = object()
         # Needs to be an `eqxi.while_loop` as:
         # (a) we may have variable length: e.g. an FSAL explicit RK scheme will have one
         #     more stage on the first step.
@@ -1053,6 +1064,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             base=num_stages,
         )
         _, y1, f1_for_fsal, _, _, fs, ks, result = final_val
+        assert const_result is not const_result_sentinel
+        if const_result:
+            result = RESULTS.successful
 
         #
         # Calculate outputs: the final `y1` from our step, any dense information, etc.

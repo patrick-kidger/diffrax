@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 urls = {repository = "https://github.com/patrick-kidger/diffrax" }
-dependencies = ["jax>=0.4.18", "jaxtyping>=0.2.23", "typing_extensions>=4.5.0", "equinox>=0.11.1"]
+dependencies = ["jax>=0.4.18", "jaxtyping>=0.2.23", "typing_extensions>=4.5.0", "equinox>=0.11.2"]
 
 [build-system]
 requires = ["hatchling"]
