@@ -1,5 +1,5 @@
 import typing
-from typing import Any, Dict, TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING, Union
 
 import equinox.internal as eqxi
 import jax.tree_util as jtu
@@ -39,8 +39,9 @@ else:
 
 
 RealScalarLike = Union[FloatScalarLike, IntScalarLike]
-DenseInfo = Dict[str, PyTree[Array]]
-DenseInfos = Dict[str, PyTree[Shaped[Array, "times ..."]]]
+DenseInfo = dict[str, PyTree[Array]]
+DenseInfos = dict[str, PyTree[Shaped[Array, "times ..."]]]
+BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
 del Array, ArrayLike, PyTree, Bool, Int, Shaped, Float, AbstractDtype

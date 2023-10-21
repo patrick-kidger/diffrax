@@ -1,6 +1,5 @@
 import functools as ft
 import operator
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -319,7 +318,7 @@ def _test_dense_interpolation(solver, key, t1):
     dt0 = t1 / 1e3
     if (
         solver.term_structure
-        == diffrax.MultiTerm[Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
+        == diffrax.MultiTerm[tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
     ):
         term = diffrax.MultiTerm(
             diffrax.ODETerm(lambda t, y, args: -0.7 * y),

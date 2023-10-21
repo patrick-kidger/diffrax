@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -68,7 +68,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t0: RealScalarLike,
         t1: RealScalarLike,
         tol: RealScalarLike,
-        shape: Union[Tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
     ):
         self.t0 = t0

@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -275,7 +273,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
 def test_sil3():
     class ReferenceSil3(diffrax.AbstractImplicitSolver):
         term_structure = diffrax.MultiTerm[
-            Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]
+            tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]
         ]
         interpolation_cls = diffrax.LocalLinearInterpolation
 

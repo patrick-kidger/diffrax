@@ -1,4 +1,5 @@
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
+from typing import Optional
 
 import jax
 import jax.core
@@ -31,7 +32,7 @@ def force_bitcast_convert_type(val, new_type):
 
 def _fill_forward(
     last_observed_yi: Shaped[Array, " *channels"], yi: Shaped[Array, " *channels"]
-) -> Tuple[Shaped[Array, " *channels"], Shaped[Array, " *channels"]]:
+) -> tuple[Shaped[Array, " *channels"], Shaped[Array, " *channels"]]:
     yi = jnp.where(jnp.isnan(yi), last_observed_yi, yi)
     return yi, yi
 
@@ -111,7 +112,7 @@ def _rms_norm_jvp(x, tx):
     return out, jnp.real(t_out)
 
 
-def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> RealScalarLike:
+def adjoint_rms_seminorm(x: tuple[PyTree, PyTree, PyTree, PyTree]) -> RealScalarLike:
     """Defines an adjoint seminorm. This can frequently be used to increase the
     efficiency of backpropagation via [`diffrax.BacksolveAdjoint`][], as follows:
 

@@ -1,5 +1,6 @@
 import abc
-from typing import Callable, Optional, Tuple, Type, TypeVar
+from collections.abc import Callable
+from typing import Optional, Type, TypeVar
 
 import equinox as eqx
 import jax.lax as lax
@@ -110,7 +111,7 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -281,7 +282,7 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree, Optional[PyTree[ArrayLike]], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree, Optional[PyTree[ArrayLike]], DenseInfo, _SolverState, RESULTS]:
 
         original_solver_state = solver_state
         thalf = t0 + 0.5 * (t1 - t0)

@@ -181,7 +181,7 @@ class MultiButcherTableau(eqx.Module):
         might yet adapt this to implement Stochastic Runge--Kutta methods.)
     """
 
-    tableaus: Tuple[ButcherTableau, ...]
+    tableaus: tuple[ButcherTableau, ...]
 
     def __init__(self, *tableaus: ButcherTableau):
         self.tableaus = tableaus
@@ -338,7 +338,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     terms = tuple(
                         AbstractTerm for _ in range(len(cls.tableau.tableaus))
                     )
-                    cls.term_structure = MultiTerm[Tuple[terms]]
+                    cls.term_structure = MultiTerm[tuple[terms]]
             else:
                 assert False
 

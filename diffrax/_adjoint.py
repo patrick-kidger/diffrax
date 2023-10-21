@@ -1,7 +1,7 @@
 import abc
 import functools as ft
 import warnings
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -704,7 +704,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         [`diffrax.diffeqsolve`][]. (That is to say, `jax.jvp` will not work.)
     """  # noqa: E501
 
-    kwargs: Dict[str, Any]
+    kwargs: dict[str, Any]
 
     def __init__(self, **kwargs):
         """

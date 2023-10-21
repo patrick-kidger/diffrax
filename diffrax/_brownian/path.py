@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -45,7 +45,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     def __init__(
         self,
-        shape: Union[Tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
     ):
         self.shape = (

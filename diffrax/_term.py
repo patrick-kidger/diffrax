@@ -1,6 +1,7 @@
 import abc
 import operator
-from typing import Callable, Generic, Tuple, TypeVar
+from collections.abc import Callable
+from typing import Generic, TypeVar
 
 import equinox as eqx
 import jax
@@ -341,7 +342,7 @@ def _sum(*x):
     return sum(x[1:], x[0])
 
 
-_Terms = TypeVar("_Terms", bound=Tuple[AbstractTerm, ...])
+_Terms = TypeVar("_Terms", bound=tuple[AbstractTerm, ...])
 
 
 class MultiTerm(AbstractTerm, Generic[_Terms]):
@@ -374,16 +375,16 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
 
     def vf(
         self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> Tuple[PyTree[ArrayLike], ...]:
+    ) -> tuple[PyTree[ArrayLike], ...]:
         return tuple(term.vf(t, y, args) for term in self.terms)
 
     def contr(
         self, t0: RealScalarLike, t1: RealScalarLike
-    ) -> Tuple[PyTree[ArrayLike], ...]:
+    ) -> tuple[PyTree[ArrayLike], ...]:
         return tuple(term.contr(t0, t1) for term in self.terms)
 
     def prod(
-        self, vf: Tuple[PyTree[ArrayLike], ...], control: Tuple[PyTree[ArrayLike], ...]
+        self, vf: tuple[PyTree[ArrayLike], ...], control: tuple[PyTree[ArrayLike], ...]
     ) -> PyTree[ArrayLike]:
         out = [
             term.prod(vf_, control_)
@@ -396,7 +397,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         t: RealScalarLike,
         y: PyTree[ArrayLike],
         args: PyTree,
-        control: Tuple[PyTree[ArrayLike], ...],
+        control: tuple[PyTree[ArrayLike], ...],
     ) -> PyTree:
         out = [
             term.vf_prod(t, y, args, control_)
@@ -463,7 +464,7 @@ class AdjointTerm(AbstractTerm):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y: Tuple[
+        y: tuple[
             PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
         ],
         args: PyTree,
@@ -475,7 +476,7 @@ class AdjointTerm(AbstractTerm):
             return True
 
     def vf(
-        self, t: RealScalarLike, y: Tuple[PyTree, PyTree, PyTree, PyTree], args: PyTree
+        self, t: RealScalarLike, y: tuple[PyTree, PyTree, PyTree, PyTree], args: PyTree
     ) -> PyTree[ArrayLike]:
         # We compute the vector field via `self.vf_prod`. We could also do it manually,
         # but this is relatively painless.
@@ -534,7 +535,7 @@ class AdjointTerm(AbstractTerm):
 
     def prod(
         self, vf: PyTree[ArrayLike], control: PyTree[ArrayLike]
-    ) -> Tuple[
+    ) -> tuple[
         PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
     ]:
         # As per what is returned from `self.vf`, then `vf` has a PyTree structure of
@@ -571,12 +572,12 @@ class AdjointTerm(AbstractTerm):
     def vf_prod(
         self,
         t: RealScalarLike,
-        y: Tuple[
+        y: tuple[
             PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
         ],
         args: PyTree,
         control: PyTree[ArrayLike],
-    ) -> Tuple[
+    ) -> tuple[
         PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
     ]:
         # Note the inclusion of "implicit" parameters (as `term` might be a callable

@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 import jax
@@ -42,7 +41,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
+    term_structure = MultiTerm[tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -53,7 +52,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
@@ -63,14 +62,14 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
         dt = drift.contr(t0, t1)
@@ -90,7 +89,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def func(
         self,
-        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm, AbstractTerm]],
         t0: RealScalarLike,
         y0: PyTree,
         args: PyTree,
@@ -114,7 +113,7 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
+    term_structure = MultiTerm[tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -125,7 +124,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def init(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
@@ -135,14 +134,14 @@ class ItoMilstein(AbstractItoSolver):
 
     def step(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
         Δt = drift.contr(t0, t1)
@@ -356,7 +355,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         y0: PyTree[ArrayLike],
         args: PyTree,

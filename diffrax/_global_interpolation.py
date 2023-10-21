@@ -1,5 +1,5 @@
 import functools as ft
-from typing import Optional, Tuple, Type
+from typing import Optional, Type
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -27,7 +27,7 @@ class AbstractGlobalInterpolation(AbstractPath):
 
     def _interpret_t(
         self, t: RealScalarLike, left: bool
-    ) -> Tuple[IntScalarLike, RealScalarLike]:
+    ) -> tuple[IntScalarLike, RealScalarLike]:
         maxlen = self.ts_size - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
         index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
@@ -179,7 +179,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
     ts: Real[Array, " times"]
     # d, c, b, a
-    coeffs: Tuple[
+    coeffs: tuple[
         PyTree[Shaped[Array, "times-1 ..."]],
         PyTree[Shaped[Array, "times-1 ..."]],
         PyTree[Shaped[Array, "times-1 ..."]],
@@ -391,11 +391,11 @@ def _check_ts(ts: Real[Array, " times"]) -> Real[Array, " times"]:
 
 
 def _interpolation_reverse(
-    carry: Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
-    value: Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
-) -> Tuple[
-    Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
-    Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    carry: tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    value: tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+) -> tuple[
+    tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
 ]:
     next_ti, next_yi = carry
     ti, yi = value
@@ -406,15 +406,15 @@ def _interpolation_reverse(
 
 
 def _linear_interpolation_forward(
-    carry: Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
-    value: Tuple[
+    carry: tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+    value: tuple[
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
     ],
-) -> Tuple[
-    Tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
+) -> tuple[
+    tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
     Shaped[Array, " *channels"],
 ]:
 
@@ -500,7 +500,7 @@ def _rectilinear_interpolation(
     ts: Real[Array, " times"],
     replace_nans_at_start: Optional[Shaped[Array, " *channels"]],
     ys: Shaped[Array, " times *channels"],
-) -> Tuple[Real[Array, " 2*times-1"], Shaped[Array, " 2*times-1 *channels"]]:
+) -> tuple[Real[Array, " 2*times-1"], Shaped[Array, " 2*times-1 *channels"]]:
     ts = jnp.repeat(ts, 2, axis=0)[1:]
     ys = fill_forward(ys, replace_nans_at_start)
     ys = jnp.repeat(ys, 2, axis=0)[:-1]
@@ -512,7 +512,7 @@ def rectilinear_interpolation(
     ts: Real[Array, " times"],
     ys: PyTree[Shaped[Array, "times ..."]],
     replace_nans_at_start: Optional[PyTree[Array]] = None,
-) -> Tuple[Real[Array, " 2*times-1"], PyTree[Shaped[Array, " 2*times-1 ..."]]]:
+) -> tuple[Real[Array, " 2*times-1"], PyTree[Shaped[Array, " 2*times-1 ..."]]]:
     """Rectilinearly interpolates the input. This is a variant of linear interpolation
     that is particularly useful when using neural CDEs in a real-time scenario.
 
@@ -589,24 +589,24 @@ def rectilinear_interpolation(
 
 
 def _hermite_forward(
-    carry: Tuple[
+    carry: tuple[
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
         Shaped[Array, " *channels"],
     ],
-    value: Tuple[
+    value: tuple[
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
     ],
-) -> Tuple[
-    Tuple[
+) -> tuple[
+    tuple[
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
         Shaped[Array, " *channels"],
     ],
-    Tuple[
+    tuple[
         Real[Array, " *channels"],
         Shaped[Array, " *channels"],
         Shaped[Array, " *channels"],
@@ -656,7 +656,7 @@ def _backward_hermite_coefficients(
     ys: Shaped[Array, " times *channels"],
     deriv0: Optional[Shaped[Array, " *channels"]] = None,
     replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
-) -> Tuple[
+) -> tuple[
     Shaped[Array, " *channels"],
     Shaped[Array, " *channels"],
     Shaped[Array, " *channels"],
@@ -705,7 +705,7 @@ def backward_hermite_coefficients(
     deriv0: Optional[PyTree[Array]] = None,
     fill_forward_nans_at_end: bool = False,
     replace_nans_at_start: Optional[PyTree[Array]] = None,
-) -> Tuple[
+) -> tuple[
     PyTree[Shaped[Array, "times-1 ..."]],
     PyTree[Shaped[Array, "times-1 ..."]],
     PyTree[Shaped[Array, "times-1 ..."]],

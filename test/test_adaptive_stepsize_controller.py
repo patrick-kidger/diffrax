@@ -63,12 +63,12 @@ def test_jump_ts():
     sol_no_jump_ts = run()
     sol_with_jump_ts = run(jump_ts=[7.5])
     assert sol_no_jump_ts.stats["num_steps"] > sol_with_jump_ts.stats["num_steps"]
-    assert sol_with_jump_ts.result == 0
+    assert sol_with_jump_ts.result == diffrax.RESULTS.successful
 
     sol = run(jump_ts=[7.5], step_ts=[7.5])
-    assert sol.result == 0
+    assert sol.result == diffrax.RESULTS.successful
     sol = run(jump_ts=[7.5], step_ts=[3.5, 8])
-    assert sol.result == 0
+    assert sol.result == diffrax.RESULTS.successful
     assert 3.5 in sol.ts
     assert 8 in sol.ts
 

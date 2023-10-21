@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -12,7 +11,7 @@ from .base import AbstractSolver
 
 
 _ErrorEstimate: TypeAlias = None
-_SolverState: TypeAlias = Tuple[RealScalarLike, PyTree]
+_SolverState: TypeAlias = tuple[RealScalarLike, PyTree]
 
 
 # TODO: support arbitrary linear multistep methods
@@ -70,7 +69,7 @@ class LeapfrogMidpoint(AbstractSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del made_jump
         tm1, ym1 = solver_state
         control = terms.contr(tm1, t1)

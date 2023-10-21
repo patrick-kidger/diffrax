@@ -1,7 +1,8 @@
 import functools as ft
 import typing
 import warnings
-from typing import Any, Callable, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from collections.abc import Callable
+from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -14,7 +15,7 @@ from jaxtyping import Array, ArrayLike, Float, PyTree
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
     BoolScalarLike,
-    DenseInfos,
+    BufferDenseInfos,
     FloatScalarLike,
     IntScalarLike,
     Real,
@@ -47,8 +48,8 @@ from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 
 class SaveState(eqx.Module):
     saveat_ts_index: IntScalarLike
-    ts: Real[Array, " times"]
-    ys: PyTree[Float[Array, "times ..."]]
+    ts: eqxi.MaybeBuffer[Real[Array, " times"]]
+    ys: PyTree[eqxi.MaybeBuffer[Float[Array, "times ..."]]]
     save_index: IntScalarLike
 
 
@@ -66,8 +67,8 @@ class State(eqx.Module):
     num_rejected_steps: IntScalarLike
     # Output that is .at[].set() updated during the solve (and their indices)
     save_state: PyTree[SaveState]
-    dense_ts: Optional[Float[Array, " times+1"]]
-    dense_infos: Optional[DenseInfos]
+    dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
+    dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
 
 
@@ -161,9 +162,11 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
     # that we can special case on them at trace time and get a performance boost.
     if isinstance(static_x, (bool, int, float, complex)):
         return static_x
+    elif static_x is None:
+        return x
     elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
         return static_x
-    else:  # including `static_x is None`
+    else:
         return x
 
 
@@ -204,7 +207,10 @@ def loop(
     def _handle_static(state):
         # We can improve runtime by resolving `result` at trace time if possible.
         # We can improve compiletime by resolving `made_jump` at trace time if possible.
-        result = jtu.tree_map(_maybe_static, static_result, state.result)
+        if static_result is None:
+            result = state.result
+        else:
+            result = jtu.tree_map(_maybe_static, static_result, state.result)
         made_jump = _maybe_static(static_made_jump, state.made_jump)
         return eqx.tree_at(
             lambda s: (s.result, s.made_jump), state, (result, made_jump)

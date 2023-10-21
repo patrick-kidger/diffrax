@@ -1,5 +1,6 @@
 import abc
-from typing import Callable, Optional, Tuple, TypeVar
+from collections.abc import Callable
+from typing import Optional, TypeVar
 
 import equinox as eqx
 import jax
@@ -53,7 +54,7 @@ class AbstractNonlinearSolver(eqx.Module):
         jac: Optional[LU_Jacobian],
         nondiff_args: PyTree,
         diff_args: PyTree,
-    ) -> Tuple[PyTree, RESULTS]:
+    ) -> tuple[PyTree, RESULTS]:
         pass
 
     def __call__(
