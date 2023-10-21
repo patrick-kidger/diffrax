@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import equinox as eqx
 import jax
@@ -97,7 +97,7 @@ class Solution(AbstractPath):
     ts: Optional[Real[Array, " times"]]
     ys: Optional[PyTree[Shaped[Array, "times ..."]]]
     interpolation: Optional[DenseInterpolation]
-    stats: Dict[str, Any]
+    stats: dict[str, Any]
     result: RESULTS
     solver_state: Optional[PyTree]
     controller_state: Optional[PyTree]

@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -30,7 +29,7 @@ class SemiImplicitEuler(AbstractSolver):
 
     def init(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: tuple[AbstractTerm, AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
@@ -40,15 +39,15 @@ class SemiImplicitEuler(AbstractSolver):
 
     def step(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: tuple[AbstractTerm, AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: Tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
+        y0: tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[
-        Tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
+    ) -> tuple[
+        tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
         _ErrorEstimate,
         DenseInfo,
         _SolverState,
@@ -70,11 +69,11 @@ class SemiImplicitEuler(AbstractSolver):
 
     def func(
         self,
-        terms: Tuple[AbstractTerm, AbstractTerm],
+        terms: tuple[AbstractTerm, AbstractTerm],
         t0: RealScalarLike,
-        y0: Tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
+        y0: tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
         args: PyTree,
-    ) -> Tuple[PyTree[ArrayLike], PyTree[ArrayLike]]:
+    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike]]:
 
         term_1, term_2 = terms
         y0_1, y0_2 = y0

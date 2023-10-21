@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -85,7 +85,7 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike
     t1: RealScalarLike
     y0: PyTree[Array]
-    k: Tuple[PyTree[Shaped[Array, "order ..."]], PyTree[Shaped[Array, "order ..."]]]
+    k: tuple[PyTree[Shaped[Array, "order ..."]], PyTree[Shaped[Array, "order ..."]]]
 
     coeffs: AbstractClassVar[np.ndarray]
 

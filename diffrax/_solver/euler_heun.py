@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -26,7 +25,7 @@ class EulerHeun(AbstractStratonovichSolver):
     Used to solve SDEs, and converges to the Stratonovich solution.
     """
 
-    term_structure = MultiTerm[Tuple[ODETerm, AbstractTerm]]
+    term_structure = MultiTerm[tuple[ODETerm, AbstractTerm]]
     interpolation_cls = LocalLinearInterpolation
 
     def order(self, terms):
@@ -37,7 +36,7 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
@@ -47,14 +46,14 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: MultiTerm[Tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[ArrayLike],
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
 
         drift, diffusion = terms.terms
@@ -74,7 +73,7 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def func(
         self,
-        terms: MultiTerm[Tuple[AbstractTerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm, AbstractTerm]],
         t0: RealScalarLike,
         y0: PyTree,
         args: PyTree,

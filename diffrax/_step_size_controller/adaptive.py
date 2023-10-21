@@ -1,5 +1,6 @@
 import typing
-from typing import Callable, Optional, Tuple, TYPE_CHECKING
+from collections.abc import Callable
+from typing import Optional, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -115,7 +116,7 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
         return solver
 
 
-_ControllerState = Tuple[
+_ControllerState = tuple[
     BoolScalarLike, BoolScalarLike, RealScalarLike, RealScalarLike, RealScalarLike
 ]
 
@@ -336,7 +337,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         args: PyTree,
         func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
         error_order: Optional[RealScalarLike],
-    ) -> Tuple[RealScalarLike, _ControllerState]:
+    ) -> tuple[RealScalarLike, _ControllerState]:
         del t1
         if dt0 is None:
             error_order = self._get_error_order(error_order)
@@ -408,7 +409,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         y_error: Optional[PyTree[ArrayLike]],
         error_order: RealScalarLike,
         controller_state: _ControllerState,
-    ) -> Tuple[
+    ) -> tuple[
         BoolScalarLike,
         RealScalarLike,
         RealScalarLike,
@@ -630,7 +631,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
     def _clip_jump_ts(
         self, t0: RealScalarLike, t1: RealScalarLike
-    ) -> Tuple[RealScalarLike, BoolScalarLike]:
+    ) -> tuple[RealScalarLike, BoolScalarLike]:
         if self.jump_ts is None:
             return t1, False
         if self.jump_ts is not None and not jnp.issubdtype(

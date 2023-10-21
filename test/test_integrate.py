@@ -1,6 +1,5 @@
 import math
 import operator
-from typing import Tuple
 
 import equinox as eqx
 import jax
@@ -142,7 +141,7 @@ def test_ode_order(solver):
 
     if (
         solver.term_structure
-        == diffrax.MultiTerm[Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
+        == diffrax.MultiTerm[tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
     ):
 
         def f1(t, y, args):

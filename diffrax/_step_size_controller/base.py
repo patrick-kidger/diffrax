@@ -1,5 +1,6 @@
 import abc
-from typing import Callable, Optional, Tuple, TypeVar
+from collections.abc import Callable
+from typing import Optional, TypeVar
 
 import equinox as eqx
 from jaxtyping import ArrayLike, PyTree
@@ -62,7 +63,7 @@ class AbstractStepSizeController(eqx.Module):
         args: PyTree,
         func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
         error_order: Optional[RealScalarLike],
-    ) -> Tuple[RealScalarLike, _ControllerState]:
+    ) -> tuple[RealScalarLike, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
 
@@ -96,7 +97,7 @@ class AbstractStepSizeController(eqx.Module):
         y_error: Optional[PyTree[ArrayLike]],
         error_order: RealScalarLike,
         controller_state: _ControllerState,
-    ) -> Tuple[
+    ) -> tuple[
         BoolScalarLike,
         RealScalarLike,
         RealScalarLike,

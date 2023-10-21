@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 import jax.lax as lax
@@ -12,7 +11,7 @@ from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 
 
-_SolverState: TypeAlias = Tuple[PyTree, PyTree]
+_SolverState: TypeAlias = tuple[PyTree, PyTree]
 
 
 class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
@@ -65,7 +64,7 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
 
         yhat0, vf0 = solver_state
 

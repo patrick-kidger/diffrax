@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -64,7 +63,7 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
         del made_jump
         control = terms.contr(t0, t1)
         # Could use FSAL here but that would mean we'd need to switch to working with

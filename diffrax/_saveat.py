@@ -1,4 +1,5 @@
-from typing import Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp

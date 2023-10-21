@@ -1,4 +1,3 @@
-from typing import Tuple
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -52,7 +51,7 @@ class Euler(AbstractItoSolver):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> Tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
         control = terms.contr(t0, t1)
         y1 = (y0**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω

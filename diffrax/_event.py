@@ -1,5 +1,6 @@
 import abc
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 import equinox as eqx
 from jaxtyping import PyTree
