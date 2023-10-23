@@ -67,6 +67,8 @@ class LinearInterpolation(AbstractGlobalInterpolation):
     ys: PyTree[Array["times", ...]]  # noqa: F821
 
     def __post_init__(self):
+        super().__post_init__()
+
         def _check(_ys):
             if _ys.shape[0] != self.ts.shape[0]:
                 raise ValueError(
@@ -179,6 +181,8 @@ class CubicInterpolation(AbstractGlobalInterpolation):
     ]
 
     def __post_init__(self):
+        super().__post_init__()
+
         def _check(d, c, b, a):
             error_msg = (
                 "Each cubic coefficient must have `times - 1` entries, where "
@@ -287,12 +291,14 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 class DenseInterpolation(AbstractGlobalInterpolation):
     ts_size: Int  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
-    interpolation_cls: Type[AbstractLocalInterpolation] = eqx.static_field()
+    interpolation_cls: Type[AbstractLocalInterpolation] = eqx.field(static=True)
     direction: Scalar
     t0_if_trivial: Array
     y0_if_trivial: PyTree[Array]
 
     def __post_init__(self):
+        super().__post_init__()
+
         def _check(_infos):
             assert _infos.shape[0] + 1 == self.ts.shape[0]
 
