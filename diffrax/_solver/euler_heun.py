@@ -1,9 +1,8 @@
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree
 
-from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm, MultiTerm, ODETerm
@@ -39,8 +38,8 @@ class EulerHeun(AbstractStratonovichSolver):
         terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
     ) -> _SolverState:
         return None
 
@@ -49,11 +48,11 @@ class EulerHeun(AbstractStratonovichSolver):
         terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[PyTree, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
 
         drift, diffusion = terms.terms
@@ -75,8 +74,8 @@ class EulerHeun(AbstractStratonovichSolver):
         self,
         terms: MultiTerm[tuple[AbstractTerm, AbstractTerm]],
         t0: RealScalarLike,
-        y0: PyTree,
-        args: PyTree,
-    ) -> PyTree:
+        y0: Y,
+        args: Args,
+    ) -> VF:
         drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)

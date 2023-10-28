@@ -11,7 +11,7 @@ import numpy as np
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree
 
-from ._custom_types import IntScalarLike, RealScalarLike
+from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
 from ._path import AbstractPath
 
 
@@ -27,9 +27,7 @@ class AbstractTerm(eqx.Module):
     """
 
     @abc.abstractmethod
-    def vf(
-        self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> PyTree[ArrayLike]:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         """The vector field.
 
         Represents a function $f(t, y(t), args)$.
@@ -47,7 +45,7 @@ class AbstractTerm(eqx.Module):
         pass
 
     @abc.abstractmethod
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> PyTree[ArrayLike]:
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> Control:
         r"""The control.
 
         Represents the $\mathrm{d}t$ in an ODE, or the $\mathrm{d}w(t)$ in an SDE, etc.
@@ -72,9 +70,7 @@ class AbstractTerm(eqx.Module):
         pass
 
     @abc.abstractmethod
-    def prod(
-        self, vf: PyTree[ArrayLike], control: PyTree[ArrayLike]
-    ) -> PyTree[ArrayLike]:
+    def prod(self, vf: VF, control: Control) -> Y:
         r"""Determines the interaction between vector field and control.
 
         With a solution $y$ to a differential equation with vector field $f$ and
@@ -97,13 +93,7 @@ class AbstractTerm(eqx.Module):
         """
         pass
 
-    def vf_prod(
-        self,
-        t: RealScalarLike,
-        y: PyTree[ArrayLike],
-        args: PyTree,
-        control: PyTree[ArrayLike],
-    ) -> PyTree[ArrayLike]:
+    def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: Control) -> Y:
         r"""The composition of [`diffrax.AbstractTerm.vf`][] and
         [`diffrax.AbstractTerm.prod`][].
 
@@ -153,8 +143,8 @@ class AbstractTerm(eqx.Module):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y: PyTree[ArrayLike],
-        args: PyTree,
+        y: Y,
+        args: Args,
     ) -> bool:
         """Specifies whether evaluating the vector field is "expensive", in the
         specific sense that it is cheaper to evaluate `vf_prod` twice than `vf` once.
@@ -179,13 +169,9 @@ class ODETerm(AbstractTerm):
         diffeqsolve(ode_term, ...)
         ```
     """
-    vector_field: Callable[
-        [RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]
-    ]
+    vector_field: Callable[[RealScalarLike, Y, Args], VF]
 
-    def vf(
-        self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> PyTree[ArrayLike]:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         out = self.vector_field(t, y, args)
         if jtu.tree_structure(out) != jtu.tree_structure(y):
             raise ValueError(
@@ -194,12 +180,10 @@ class ODETerm(AbstractTerm):
             )
         return jtu.tree_map(lambda o, yi: jnp.broadcast_to(o, jnp.shape(yi)), out, y)
 
-    @staticmethod
-    def contr(t0: RealScalarLike, t1: RealScalarLike) -> RealScalarLike:
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> RealScalarLike:
         return t1 - t0
 
-    @staticmethod
-    def prod(vf: PyTree[ArrayLike], control: RealScalarLike) -> PyTree[ArrayLike]:
+    def prod(self, vf: VF, control: RealScalarLike) -> Y:
         return jtu.tree_map(lambda v: control * v, vf)
 
 
@@ -220,17 +204,13 @@ def _prod(vf, control):
 
 
 class _ControlTerm(AbstractTerm):
-    vector_field: Callable[
-        [RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]
-    ]
+    vector_field: Callable[[RealScalarLike, Y, Args], VF]
     control: AbstractPath
 
-    def vf(
-        self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> PyTree[ArrayLike]:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> PyTree[ArrayLike]:
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> Control:
         return self.control.evaluate(t0, t1)
 
     def to_ode(self) -> ODETerm:
@@ -296,8 +276,7 @@ class ControlTerm(_ControlTerm):
         ```
     """
 
-    @staticmethod
-    def prod(vf: PyTree[ArrayLike], control: PyTree[ArrayLike]) -> PyTree[ArrayLike]:
+    def prod(self, vf: VF, control: Control) -> Y:
         return jtu.tree_map(_prod, vf, control)
 
 
@@ -323,17 +302,14 @@ class WeaklyDiagonalControlTerm(_ControlTerm):
         without the "weak". (This stronger property is useful in some SDE solvers.)
     """
 
-    @staticmethod
-    def prod(vf: PyTree[ArrayLike], control: PyTree[ArrayLike]) -> PyTree[ArrayLike]:
+    def prod(self, vf: VF, control: Control) -> Y:
         return jtu.tree_map(operator.mul, vf, control)
 
 
 class _ControlToODE(eqx.Module):
-    control_term: ControlTerm
+    control_term: _ControlTerm
 
-    def __call__(
-        self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> PyTree[ArrayLike]:
+    def __call__(self, t: RealScalarLike, y: Y, args: Args) -> Y:
         control = self.control_term.control.derivative(t)
         return self.control_term.vf_prod(t, y, args, control)
 
@@ -373,9 +349,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         """
         self.terms = terms
 
-    def vf(
-        self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> tuple[PyTree[ArrayLike], ...]:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> tuple[PyTree[ArrayLike], ...]:
         return tuple(term.vf(t, y, args) for term in self.terms)
 
     def contr(
@@ -385,7 +359,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
 
     def prod(
         self, vf: tuple[PyTree[ArrayLike], ...], control: tuple[PyTree[ArrayLike], ...]
-    ) -> PyTree[ArrayLike]:
+    ) -> Y:
         out = [
             term.prod(vf_, control_)
             for term, vf_, control_ in zip(self.terms, vf, control)
@@ -395,10 +369,10 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
     def vf_prod(
         self,
         t: RealScalarLike,
-        y: PyTree[ArrayLike],
-        args: PyTree,
+        y: Y,
+        args: Args,
         control: tuple[PyTree[ArrayLike], ...],
-    ) -> PyTree:
+    ) -> Y:
         out = [
             term.vf_prod(t, y, args, control_)
             for term, control_ in zip(self.terms, control)
@@ -409,8 +383,8 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y: PyTree[ArrayLike],
-        args: PyTree,
+        y: Y,
+        args: Args,
     ) -> bool:
         return any(term.is_vf_expensive(t0, t1, y, args) for term in self.terms)
 
@@ -419,29 +393,19 @@ class WrapTerm(AbstractTerm):
     term: AbstractTerm
     direction: IntScalarLike
 
-    def vf(
-        self, t: RealScalarLike, y: PyTree[ArrayLike], args: PyTree
-    ) -> PyTree[ArrayLike]:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         t = t * self.direction
         return self.term.vf(t, y, args)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> PyTree[ArrayLike]:
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> Control:
         _t0 = jnp.where(self.direction == 1, t0, -t1)
         _t1 = jnp.where(self.direction == 1, t1, -t0)
         return (self.direction * self.term.contr(_t0, _t1) ** ω).ω
 
-    def prod(
-        self, vf: PyTree[ArrayLike], control: PyTree[ArrayLike]
-    ) -> PyTree[ArrayLike]:
+    def prod(self, vf: VF, control: Control) -> Y:
         return self.term.prod(vf, control)
 
-    def vf_prod(
-        self,
-        t: RealScalarLike,
-        y: PyTree[ArrayLike],
-        args: PyTree,
-        control: PyTree[ArrayLike],
-    ) -> PyTree[ArrayLike]:
+    def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: Control) -> Y:
         t = t * self.direction
         return self.term.vf_prod(t, y, args, control)
 
@@ -449,8 +413,8 @@ class WrapTerm(AbstractTerm):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y: PyTree[ArrayLike],
-        args: PyTree,
+        y: Y,
+        args: Args,
     ) -> bool:
         _t0 = jnp.where(self.direction == 1, t0, -t1)
         _t1 = jnp.where(self.direction == 1, t1, -t0)
@@ -467,7 +431,7 @@ class AdjointTerm(AbstractTerm):
         y: tuple[
             PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
         ],
-        args: PyTree,
+        args: Args,
     ) -> bool:
         control_struct = jax.eval_shape(self.contr, t0, t1)
         if sum(c.size for c in jtu.tree_leaves(control_struct)) in (0, 1):
@@ -476,7 +440,12 @@ class AdjointTerm(AbstractTerm):
             return True
 
     def vf(
-        self, t: RealScalarLike, y: tuple[PyTree, PyTree, PyTree, PyTree], args: PyTree
+        self,
+        t: RealScalarLike,
+        y: tuple[
+            PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
+        ],
+        args: Args,
     ) -> PyTree[ArrayLike]:
         # We compute the vector field via `self.vf_prod`. We could also do it manually,
         # but this is relatively painless.
@@ -534,7 +503,7 @@ class AdjointTerm(AbstractTerm):
         return self.term.contr(t0, t1)
 
     def prod(
-        self, vf: PyTree[ArrayLike], control: PyTree[ArrayLike]
+        self, vf: PyTree[ArrayLike], control: Control
     ) -> tuple[
         PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
     ]:
@@ -575,8 +544,8 @@ class AdjointTerm(AbstractTerm):
         y: tuple[
             PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
         ],
-        args: PyTree,
-        control: PyTree[ArrayLike],
+        args: Args,
+        control: Control,
     ) -> tuple[
         PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike], PyTree[ArrayLike]
     ]:

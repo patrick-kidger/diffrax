@@ -9,9 +9,17 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox import AbstractVar
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import Array, PyTree
 
-from .._custom_types import BoolScalarLike, IntScalarLike, Real, RealScalarLike
+from .._custom_types import (
+    Args,
+    BoolScalarLike,
+    IntScalarLike,
+    Real,
+    RealScalarLike,
+    VF,
+    Y,
+)
 from .._misc import rms_norm
 from .._solution import RESULTS
 from .._solver import AbstractImplicitSolver, AbstractSolver
@@ -22,11 +30,11 @@ from .base import AbstractStepSizeController
 def _select_initial_step(
     terms: PyTree[AbstractTerm],
     t0: RealScalarLike,
-    y0: PyTree,
-    args: PyTree,
+    y0: Y,
+    args: Args,
     func: Callable[
-        [PyTree[AbstractTerm], RealScalarLike, PyTree[ArrayLike], PyTree],
-        PyTree[ArrayLike],
+        [PyTree[AbstractTerm], RealScalarLike, Y, Args],
+        VF,
     ],
     error_order: RealScalarLike,
     rtol: RealScalarLike,
@@ -332,10 +340,10 @@ class PIDController(AbstractAdaptiveStepSizeController):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
+        y0: Y,
         dt0: Optional[RealScalarLike],
-        args: PyTree,
-        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        args: Args,
+        func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
         error_order: Optional[RealScalarLike],
     ) -> tuple[RealScalarLike, _ControllerState]:
         del t1
@@ -403,10 +411,10 @@ class PIDController(AbstractAdaptiveStepSizeController):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        y1_candidate: PyTree[ArrayLike],
-        args: PyTree,
-        y_error: Optional[PyTree[ArrayLike]],
+        y0: Y,
+        y1_candidate: Y,
+        args: Args,
+        y_error: Optional[Y],
         error_order: RealScalarLike,
         controller_state: _ControllerState,
     ) -> tuple[

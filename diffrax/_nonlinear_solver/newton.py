@@ -7,7 +7,7 @@ import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jaxtyping import Array, PyTree
+from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import BoolScalarLike, RealScalarLike
 from .._misc import rms_norm
@@ -91,7 +91,7 @@ class NewtonNonlinearSolver(AbstractNonlinearSolver):
     def _solve(
         self,
         fn: Callable,
-        x: PyTree[Array],
+        x: PyTree[ArrayLike],
         jac: Optional[LU_Jacobian],
         nondiff_args: PyTree,
         diff_args: PyTree,

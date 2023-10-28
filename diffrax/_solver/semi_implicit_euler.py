@@ -1,9 +1,9 @@
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree
+from jaxtyping import ArrayLike, Float, PyTree
 
-from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
@@ -12,6 +12,9 @@ from .base import AbstractSolver
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = None
+
+Ya: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]
+Yb: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]
 
 
 class SemiImplicitEuler(AbstractSolver):
@@ -32,8 +35,8 @@ class SemiImplicitEuler(AbstractSolver):
         terms: tuple[AbstractTerm, AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: tuple[Ya, Yb],
+        args: Args,
     ) -> _SolverState:
         return None
 
@@ -42,17 +45,11 @@ class SemiImplicitEuler(AbstractSolver):
         terms: tuple[AbstractTerm, AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
-        args: PyTree,
+        y0: tuple[Ya, Yb],
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[
-        tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
-        _ErrorEstimate,
-        DenseInfo,
-        _SolverState,
-        RESULTS,
-    ]:
+    ) -> tuple[tuple[Ya, Yb], _ErrorEstimate, DenseInfo, _SolverState, RESULTS,]:
         del solver_state, made_jump
 
         term_1, term_2 = terms
@@ -71,9 +68,9 @@ class SemiImplicitEuler(AbstractSolver):
         self,
         terms: tuple[AbstractTerm, AbstractTerm],
         t0: RealScalarLike,
-        y0: tuple[PyTree[ArrayLike], PyTree[ArrayLike]],
-        args: PyTree,
-    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike]]:
+        y0: tuple[Ya, Yb],
+        args: Args,
+    ) -> VF:
 
         term_1, term_2 = terms
         y0_1, y0_2 = y0

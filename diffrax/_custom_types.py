@@ -39,6 +39,12 @@ else:
 
 
 RealScalarLike = Union[FloatScalarLike, IntScalarLike]
+
+Y = PyTree[Float[ArrayLike, "?*y"], "Y"]
+VF = PyTree[Float[ArrayLike, "?*vf"], "VF"]
+Control = PyTree[Float[ArrayLike, "?*control"], "C"]
+Args = PyTree[Any]
+
 DenseInfo = dict[str, PyTree[Array]]
 DenseInfos = dict[str, PyTree[Shaped[Array, "times ..."]]]
 BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]

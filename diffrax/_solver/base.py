@@ -8,9 +8,9 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox import AbstractClassVar, AbstractVar
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree
+from jaxtyping import PyTree
 
-from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
 from .._local_interpolation import AbstractLocalInterpolation
 from .._nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
@@ -89,8 +89,8 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree,
-        args: PyTree,
+        y0: Y,
+        args: Args,
     ) -> _SolverState:
         """Initialises any hidden state for the solver.
 
@@ -107,11 +107,11 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree,
-        args: PyTree,
+        y0: Y,
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[PyTree, Optional[PyTree], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -150,9 +150,9 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         self,
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
-    ) -> PyTree[ArrayLike]:
+        y0: Y,
+        args: Args,
+    ) -> VF:
         """Evaluate the vector field at a point. (This is unlike
         [`diffrax.AbstractSolver.step`][], which operates over an interval.)
 
@@ -268,8 +268,8 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
     ) -> _SolverState:
         return self.solver.init(terms, t0, t1, y0, args)
 
@@ -278,11 +278,11 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[PyTree, Optional[PyTree[ArrayLike]], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
 
         original_solver_state = solver_state
         thalf = t0 + 0.5 * (t1 - t0)
@@ -305,12 +305,8 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         return y1, y_error, dense_info, solver_state, result
 
     def func(
-        self,
-        terms: PyTree[AbstractTerm],
-        t0: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
-    ) -> PyTree[ArrayLike]:
+        self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args
+    ) -> VF:
         return self.solver.func(terms, t0, y0, args)
 
 

@@ -1,5 +1,6 @@
 import functools as ft
-from typing import Optional, Type
+from collections.abc import Callable
+from typing import Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,9 +10,9 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox import AbstractVar
 from equinox.internal import ω
-from jaxtyping import Array, PyTree, Shaped
+from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
-from ._custom_types import DenseInfos, IntScalarLike, Real, RealScalarLike
+from ._custom_types import DenseInfos, IntScalarLike, Real, RealScalarLike, Y
 from ._local_interpolation import AbstractLocalInterpolation
 from ._misc import fill_forward, left_broadcast_to
 from ._path import AbstractPath
@@ -180,10 +181,10 @@ class CubicInterpolation(AbstractGlobalInterpolation):
     ts: Real[Array, " times"]
     # d, c, b, a
     coeffs: tuple[
-        PyTree[Shaped[Array, "times-1 ..."]],
-        PyTree[Shaped[Array, "times-1 ..."]],
-        PyTree[Shaped[Array, "times-1 ..."]],
-        PyTree[Shaped[Array, "times-1 ..."]],
+        PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
+        PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
+        PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
+        PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
     ]
 
     def __check_init__(self):
@@ -210,7 +211,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
     @eqx.filter_jit
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
+    ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         r"""Evaluate the cubic interpolation.
 
         **Arguments:**
@@ -252,7 +253,9 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         ).ω
 
     @eqx.filter_jit
-    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
+    def derivative(
+        self, t: RealScalarLike, left: bool = True
+    ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         r"""Evaluate the derivative of the cubic interpolation. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))`.
 
@@ -303,10 +306,12 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     # many entries we have - ts.shape[0] - won't be correct.
     ts_size: IntScalarLike  # Takes values in {1, 2, 3, ...}
     infos: DenseInfos
-    interpolation_cls: Type[AbstractLocalInterpolation] = eqx.field(static=True)
+    interpolation_cls: Callable[..., AbstractLocalInterpolation] = eqx.field(
+        static=True
+    )
     direction: IntScalarLike
     t0_if_trivial: RealScalarLike
-    y0_if_trivial: PyTree[Array]
+    y0_if_trivial: Y
 
     def __check_init__(self):
         def _check(_infos):
@@ -324,7 +329,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
     @eqx.filter_jit
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
+    ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         t = t0 * self.direction
@@ -336,7 +341,9 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         return jtu.tree_map(keep, self.y0_if_trivial, out)
 
     @eqx.filter_jit
-    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
+    def derivative(
+        self, t: RealScalarLike, left: bool = True
+    ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         t = t * self.direction
         t = self._nan_if_out_of_bounds(t)
         out = self._get_local_interpolation(t, left).derivative(t, left=left)
@@ -434,7 +441,7 @@ def _linear_interpolation(
     fill_forward_nans_at_end: bool,
     ts: Real[Array, " times"],
     ys: Shaped[Array, " times *channels"],
-    replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
+    replace_nans_at_start: Optional[Shaped[ArrayLike, " *#channels"]] = None,
 ) -> Shaped[Array, " times *channels"]:
 
     ts = left_broadcast_to(ts, ys.shape)
@@ -458,11 +465,11 @@ def _linear_interpolation(
 @eqx.filter_jit
 def linear_interpolation(
     ts: Real[Array, " times"],
-    ys: PyTree[Shaped[Array, "times ..."]],
+    ys: PyTree[Shaped[Array, "times ?*shape"], "Y"],
     *,
     fill_forward_nans_at_end: bool = False,
-    replace_nans_at_start: Optional[PyTree[Array]] = None,
-) -> PyTree[Shaped[Array, "times ..."]]:
+    replace_nans_at_start: Optional[PyTree[Shaped[ArrayLike, "?#*shape"], "Y"]] = None,
+) -> PyTree[Shaped[Array, "times ?*shape"], "Y"]:
     """Fill in any missing values via linear interpolation.
 
     Any missing values in `ys` (represented as `NaN`) are filled in by looking at the
@@ -497,22 +504,20 @@ def linear_interpolation(
 
 
 def _rectilinear_interpolation(
-    ts: Real[Array, " times"],
-    replace_nans_at_start: Optional[Shaped[Array, " *channels"]],
+    replace_nans_at_start: Optional[Shaped[ArrayLike, " *channels"]],
     ys: Shaped[Array, " times *channels"],
-) -> tuple[Real[Array, " 2*times-1"], Shaped[Array, " 2*times-1 *channels"]]:
-    ts = jnp.repeat(ts, 2, axis=0)[1:]
+) -> Shaped[Array, " 2*times-1 *channels"]:
     ys = fill_forward(ys, replace_nans_at_start)
     ys = jnp.repeat(ys, 2, axis=0)[:-1]
-    return ts, ys
+    return ys
 
 
 @eqx.filter_jit
 def rectilinear_interpolation(
     ts: Real[Array, " times"],
-    ys: PyTree[Shaped[Array, "times ..."]],
-    replace_nans_at_start: Optional[PyTree[Array]] = None,
-) -> tuple[Real[Array, " 2*times-1"], PyTree[Shaped[Array, " 2*times-1 ..."]]]:
+    ys: PyTree[Shaped[Array, "times ?*shape"], "Y"],
+    replace_nans_at_start: Optional[PyTree[Shaped[ArrayLike, "?#*shape"], "Y"]] = None,
+) -> tuple[Real[Array, " 2*times-1"], PyTree[Shaped[Array, " 2*times-1 ?*shape"], "Y"]]:
     """Rectilinearly interpolates the input. This is a variant of linear interpolation
     that is particularly useful when using neural CDEs in a real-time scenario.
 
@@ -577,15 +582,13 @@ def rectilinear_interpolation(
     """
 
     ts = _check_ts(ts)
+    new_ts = jnp.repeat(ts, 2, axis=0)[1:]
     if replace_nans_at_start is None:
-        fn = ft.partial(_rectilinear_interpolation, ts, None)
-        out = jtu.tree_map(fn, ys)
+        fn = ft.partial(_rectilinear_interpolation, None)
+        new_ys = jtu.tree_map(fn, ys)
     else:
-        fn = ft.partial(_rectilinear_interpolation, ts)
-        out = jtu.tree_map(fn, replace_nans_at_start, ys)
-    ys_treedef = jtu.tree_structure(ys)
-    interp_treedef = jtu.tree_structure((0, 0))
-    return jtu.tree_transpose(ys_treedef, interp_treedef, out)
+        new_ys = jtu.tree_map(_rectilinear_interpolation, replace_nans_at_start, ys)
+    return new_ts, new_ys
 
 
 def _hermite_forward(
@@ -654,13 +657,13 @@ def _backward_hermite_coefficients(
     fill_forward_nans_at_end: bool,
     ts: Real[Array, " times"],
     ys: Shaped[Array, " times *channels"],
-    deriv0: Optional[Shaped[Array, " *channels"]] = None,
-    replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
+    deriv0: Optional[Shaped[Array, " *#channels"]] = None,
+    replace_nans_at_start: Optional[Shaped[ArrayLike, " *#channels"]] = None,
 ) -> tuple[
-    Shaped[Array, " *channels"],
-    Shaped[Array, " *channels"],
-    Shaped[Array, " *channels"],
-    Shaped[Array, " *channels"],
+    Shaped[Array, " times-1 *channels"],
+    Shaped[Array, " times-1 *channels"],
+    Shaped[Array, " times-1 *channels"],
+    Shaped[Array, " times-1 *channels"],
 ]:
     ts = left_broadcast_to(ts, ys.shape)
 
@@ -700,16 +703,16 @@ def _backward_hermite_coefficients(
 @eqx.filter_jit
 def backward_hermite_coefficients(
     ts: Real[Array, " times"],
-    ys: PyTree[Shaped[Array, "times ..."]],
+    ys: PyTree[Shaped[Array, "times ?*shape"], "Y"],
     *,
-    deriv0: Optional[PyTree[Array]] = None,
+    deriv0: Optional[PyTree[Shaped[Array, "?#*shape"], "Y"]] = None,
+    replace_nans_at_start: Optional[PyTree[Shaped[ArrayLike, "?#*shape"], "Y"]] = None,
     fill_forward_nans_at_end: bool = False,
-    replace_nans_at_start: Optional[PyTree[Array]] = None,
 ) -> tuple[
-    PyTree[Shaped[Array, "times-1 ..."]],
-    PyTree[Shaped[Array, "times-1 ..."]],
-    PyTree[Shaped[Array, "times-1 ..."]],
-    PyTree[Shaped[Array, "times-1 ..."]],
+    PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
+    PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
+    PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
+    PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],
 ]:
     """Interpolates the data with a cubic spline. Specifically, this calculates the
     coefficients for Hermite cubic splines with backward differences.

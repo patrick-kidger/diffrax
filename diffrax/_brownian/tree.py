@@ -7,7 +7,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
 from .._custom_types import RealScalarLike
 from .._misc import default_floating_dtype, is_tuple_of_ints, split_by_tree
@@ -30,9 +30,9 @@ class _State(eqx.Module):
     s: RealScalarLike
     t: RealScalarLike
     u: RealScalarLike
-    w_s: RealScalarLike
-    w_t: RealScalarLike
-    w_u: RealScalarLike
+    w_s: Float[Array, " *shape"]
+    w_t: Float[Array, " *shape"]
+    w_u: Float[Array, " *shape"]
     key: PRNGKeyArray
 
 
@@ -61,7 +61,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    key: PRNGKeyArray
+    key: PyTree[PRNGKeyArray]
 
     def __init__(
         self,

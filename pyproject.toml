@@ -34,6 +34,7 @@ include = ["diffrax/*"]
 
 [tool.pytest.ini_options]
 addopts = "--jaxtyping-packages=diffrax,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
+markers = ["slow"]
 
 [tool.ruff]
 select = ["E", "F", "I001"]

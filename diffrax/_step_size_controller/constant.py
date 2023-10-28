@@ -4,9 +4,9 @@ from typing import Optional
 import equinox as eqx
 import equinox.internal as eqxi
 import jax.numpy as jnp
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import Array, PyTree
 
-from .._custom_types import IntScalarLike, Real, RealScalarLike
+from .._custom_types import Args, IntScalarLike, Real, RealScalarLike, VF, Y
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractStepSizeController
@@ -25,10 +25,10 @@ class ConstantStepSize(AbstractStepSizeController):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree,
+        y0: Y,
         dt0: Optional[RealScalarLike],
-        args: PyTree,
-        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        args: Args,
+        func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
         error_order: Optional[RealScalarLike],
     ) -> tuple[RealScalarLike, RealScalarLike]:
         del terms, t1, y0, args, func, error_order
@@ -43,10 +43,10 @@ class ConstantStepSize(AbstractStepSizeController):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        y1_candidate: PyTree[ArrayLike],
-        args: PyTree,
-        y_error: PyTree,
+        y0: Y,
+        y1_candidate: Y,
+        args: Args,
+        y_error: Optional[Y],
         error_order: RealScalarLike,
         controller_state: RealScalarLike,
     ) -> tuple[bool, RealScalarLike, RealScalarLike, bool, RealScalarLike, RESULTS]:
@@ -88,12 +88,12 @@ class StepTo(AbstractStepSizeController):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree,
+        y0: Y,
         dt0: None,
-        args: PyTree,
-        func: Callable[[RealScalarLike, PyTree[ArrayLike], PyTree], PyTree[ArrayLike]],
+        args: Args,
+        func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], Y],
         error_order: Optional[RealScalarLike],
-    ) -> tuple[RealScalarLike, int]:
+    ) -> tuple[RealScalarLike, IntScalarLike]:
         del y0, args, func, error_order
         if dt0 is not None:
             raise ValueError(
@@ -111,12 +111,12 @@ class StepTo(AbstractStepSizeController):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: Real[Array, " state"],
-        y1_candidate: Real[Array, " state"],
-        args: PyTree,
-        y_error: Real[Array, " state"],
+        y0: Y,
+        y1_candidate: Y,
+        args: Args,
+        y_error: Optional[Y],
         error_order: Optional[RealScalarLike],
-        controller_state: int,
+        controller_state: IntScalarLike,
     ) -> tuple[bool, RealScalarLike, RealScalarLike, bool, IntScalarLike, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, error_order
         return (

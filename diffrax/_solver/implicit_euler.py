@@ -1,9 +1,8 @@
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree
 
-from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
@@ -49,8 +48,8 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
     ) -> _SolverState:
         return None
 
@@ -59,11 +58,11 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
         del made_jump
         control = terms.contr(t0, t1)
         # Could use FSAL here but that would mean we'd need to switch to working with
@@ -90,7 +89,7 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         self,
         terms: AbstractTerm,
         t0: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
-    ) -> PyTree[ArrayLike]:
+        y0: Y,
+        args: Args,
+    ) -> VF:
         return terms.vf(t0, y0, args)
