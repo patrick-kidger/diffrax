@@ -25,6 +25,7 @@ class _VectorField(eqx.Module):
         return jnp.stack([dya, dyb])
 
 
+@pytest.mark.slow
 def test_against(getkey):
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)

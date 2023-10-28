@@ -6,7 +6,7 @@ import numpy as np
 from equinox.internal import ω
 from jaxtyping import Array, PyTree, Shaped
 
-from .._custom_types import RealScalarLike
+from .._custom_types import RealScalarLike, Y
 from .._local_interpolation import AbstractLocalInterpolation
 from .._misc import linear_rescale
 from .base import vector_tree_dot
@@ -190,8 +190,8 @@ _vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
 class _Dopri8Interpolation(AbstractLocalInterpolation):
     t0: RealScalarLike
     t1: RealScalarLike
-    y0: PyTree[Array]
-    k: PyTree[Shaped[Array, "14 ..."]]
+    y0: Y
+    k: PyTree[Shaped[Array, "14 ?*y"], "Y"]
 
     def __init__(self, *, t0, t1, y0, y1, k):
         del y1  # exists for API compatibility
@@ -291,7 +291,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree:  # noqa: F821
+    ) -> Y:
         del left
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)

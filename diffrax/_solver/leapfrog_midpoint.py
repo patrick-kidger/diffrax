@@ -1,9 +1,9 @@
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree
+from jaxtyping import PyTree
 
-from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
@@ -53,8 +53,8 @@ class LeapfrogMidpoint(AbstractSolver):
         terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
     ) -> _SolverState:
         del terms, t1, args
         # Corresponds to making an explicit Euler step on the first step.
@@ -65,11 +65,11 @@ class LeapfrogMidpoint(AbstractSolver):
         terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[PyTree[ArrayLike], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del made_jump
         tm1, ym1 = solver_state
         control = terms.contr(tm1, t1)
@@ -78,11 +78,5 @@ class LeapfrogMidpoint(AbstractSolver):
         solver_state = (t0, y0)
         return y1, None, dense_info, solver_state, RESULTS.successful
 
-    def func(
-        self,
-        terms: AbstractTerm,
-        t0: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
-    ) -> PyTree[ArrayLike]:
+    def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
         return terms.vf(t0, y0, args)

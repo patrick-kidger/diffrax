@@ -13,9 +13,17 @@ import jax.tree_util as jtu
 import numpy as np
 from equinox import AbstractClassVar
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import Array, PyTree
 
-from .._custom_types import BoolScalarLike, DenseInfo, RealScalarLike, sentinel
+from .._custom_types import (
+    Args,
+    BoolScalarLike,
+    DenseInfo,
+    RealScalarLike,
+    sentinel,
+    VF,
+    Y,
+)
 from .._solution import is_okay, RESULTS, update_result
 from .._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
@@ -360,9 +368,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         self,
         terms: AbstractTerm,
         t0: RealScalarLike,
-        y0: PyTree,
-        args: PyTree,
-    ) -> PyTree:
+        y0: Y,
+        args: Args,
+    ) -> VF:
         return terms.vf(t0, y0, args)
 
     def init(
@@ -370,8 +378,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
     ) -> _SolverState:
         _, fsal = self._common(terms, t0, t1, y0, args)
         if fsal:
@@ -401,11 +409,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[ArrayLike],
-        args: PyTree,
+        y0: Y,
+        args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[PyTree[ArrayLike], PyTree[ArrayLike], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
         #
         # Alright, settle in for what is probably the most advanced Runge-Kutta
         # implementation on the planet.

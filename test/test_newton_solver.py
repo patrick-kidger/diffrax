@@ -84,7 +84,7 @@ def test_newton_solver():
         # Newton's method
         zero = jtu.tree_map(jnp.zeros_like, x)
         sol = solver(fn, x, args)
-        assert sol.result == 0
+        assert sol.result == diffrax.RESULTS.successful
         assert shaped_allclose(fn(sol.root, args), zero, rtol=tol, atol=tol)
 
         # Chord method
@@ -94,7 +94,7 @@ def test_newton_solver():
             sol = mega_solver(fn, x, args, jac)
         else:
             sol = solver(fn, x, args, jac)
-        assert sol.result == 0
+        assert sol.result == diffrax.RESULTS.successful
         assert shaped_allclose(fn(sol.root, args), zero, rtol=tol, atol=tol)
 
         def _fn(y, a):

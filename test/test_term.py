@@ -92,7 +92,7 @@ def test_weakly_diagional_control_term(getkey):
 def test_ode_adjoint_term(getkey):
     vector_field = lambda t, y, args: -y
     term = diffrax.ODETerm(vector_field)
-    adjoint_term = diffrax.term.AdjointTerm(term)
+    adjoint_term = diffrax._term.AdjointTerm(term)
     t, y, a_y, dt = jrandom.normal(getkey(), (4,))
     aug = (y, a_y, None, diffrax.ODETerm(None))
     args = None
@@ -118,7 +118,7 @@ def test_cde_adjoint_term(getkey):
         evaluate=lambda t0, t1: (jrandom.normal(getkey(), (3,)),)
     )
     term = diffrax.ControlTerm(vector_field, control)
-    adjoint_term = diffrax.term.AdjointTerm(term)
+    adjoint_term = diffrax._term.AdjointTerm(term)
     t = jrandom.normal(getkey(), ())
     y = (jrandom.normal(getkey(), (2,)),)
     args = (jrandom.normal(getkey(), (1,)), jrandom.normal(getkey(), (1,)))

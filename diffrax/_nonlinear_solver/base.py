@@ -9,7 +9,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from equinox import AbstractVar
-from jaxtyping import Array, PyTree
+from jaxtyping import ArrayLike, PyTree
 
 from .._ad import implicit_jvp
 from .._custom_types import IntScalarLike, RealScalarLike
@@ -50,7 +50,7 @@ class AbstractNonlinearSolver(eqx.Module):
     def _solve(
         self,
         fn: Callable,
-        x: PyTree[Array],
+        x: PyTree[ArrayLike],
         jac: Optional[LU_Jacobian],
         nondiff_args: PyTree,
         diff_args: PyTree,
@@ -60,7 +60,7 @@ class AbstractNonlinearSolver(eqx.Module):
     def __call__(
         self,
         fn: Callable,
-        x: PyTree[Array],
+        x: PyTree[ArrayLike],
         args: PyTree,
         jac: Optional[LU_Jacobian] = None,
     ) -> NonlinearSolution:
@@ -102,7 +102,7 @@ class AbstractNonlinearSolver(eqx.Module):
         )
 
     @staticmethod
-    def jac(fn: Callable, x: PyTree[Array], args: PyTree) -> LU_Jacobian:
+    def jac(fn: Callable, x: PyTree[ArrayLike], args: PyTree) -> LU_Jacobian:
         """Computes the LU decomposition of the Jacobian `d(fn)/dx`.
 
         Arguments as [`diffrax.AbstractNonlinearSolver.__call__`][].

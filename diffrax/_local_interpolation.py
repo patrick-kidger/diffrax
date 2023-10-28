@@ -1,13 +1,13 @@
-import abc
 from typing import Optional
 
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+from equinox import AbstractVar
 from equinox.internal import ω
-from jaxtyping import Array, PyTree, Shaped
+from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
-from ._custom_types import RealScalarLike
+from ._custom_types import RealScalarLike, Y
 from ._misc import linear_rescale
 from ._path import AbstractPath
 
@@ -19,12 +19,12 @@ class AbstractLocalInterpolation(AbstractPath):
 class LocalLinearInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike
     t1: RealScalarLike
-    y0: PyTree[Array]
-    y1: PyTree[Array]
+    y0: Y
+    y1: Y
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
+    ) -> PyTree[ArrayLike]:
         del left
         if t1 is None:
             coeff = linear_rescale(self.t0, t0, self.t1)
@@ -37,17 +37,10 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
 class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike
     t1: RealScalarLike
-    coeffs: PyTree[Shaped[Array, " 4 *dims"]]
+    coeffs: PyTree[Shaped[Array, "4 ?*dims"], "Y"]
 
     def __init__(
-        self,
-        *,
-        t0: RealScalarLike,
-        t1: RealScalarLike,
-        y0: PyTree[Shaped[Array, " *dims"]],
-        y1: PyTree[Shaped[Array, " *dims"]],
-        k0: PyTree[Shaped[Array, " *dims"]],
-        k1: PyTree[Shaped[Array, " *dims"]],
+        self, *, t0: RealScalarLike, t1: RealScalarLike, y0: Y, y1: Y, k0: Y, k1: Y
     ):
         def _calculate(_y0, _y1, _k0, _k1):
             _a = _k0 + _k1 + 2 * _y0 - 2 * _y1
@@ -62,12 +55,13 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
     def from_k(
         cls,
         *,
-        y0: PyTree[Shaped[Array, " *dims"]],
-        y1: PyTree[Shaped[Array, " *dims"]],
-        k: PyTree[Shaped[Array, " order *dims"]],
-        **kwargs,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"],
+        y1: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"],
+        k: PyTree[Shaped[Array, "order ?*dims"], "Y"],
     ):
-        return cls(y0=y0, y1=y1, k0=ω(k)[0].ω, k1=ω(k)[-1].ω, **kwargs)
+        return cls(t0=t0, t1=t1, y0=y0, y1=y1, k0=ω(k)[0].ω, k1=ω(k)[-1].ω)
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
@@ -87,16 +81,18 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
 class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike
     t1: RealScalarLike
-    coeffs: PyTree[Shaped[Array, " 5 *dims"]]
+    coeffs: PyTree[Shaped[Array, "5 ?*y"], "Y"]
+
+    c_mid: AbstractVar[np.ndarray]
 
     def __init__(
         self,
         *,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: PyTree[Shaped[Array, " *dims"]],
-        y1: PyTree[Shaped[Array, " *dims"]],
-        k: PyTree[Shaped[Array, " order *dims"]],
+        y0: Y,
+        y1: Y,
+        k: PyTree[Shaped[Array, "order ?*y"], "Y"],
     ):
         def _calculate(_y0, _y1, _k):
             _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1)
@@ -111,11 +107,6 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         self.t0 = t0
         self.t1 = t1
         self.coeffs = jtu.tree_map(_calculate, y0, y1, k)
-
-    @property
-    @abc.abstractmethod
-    def c_mid(self) -> np.ndarray:
-        pass
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True

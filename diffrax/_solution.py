@@ -95,7 +95,7 @@ class Solution(AbstractPath):
     t0: RealScalarLike
     t1: RealScalarLike
     ts: Optional[Real[Array, " times"]]
-    ys: Optional[PyTree[Shaped[Array, "times ..."]]]
+    ys: Optional[PyTree[Shaped[Array, "times ?*shape"], " Y"]]
     interpolation: Optional[DenseInterpolation]
     stats: dict[str, Any]
     result: RESULTS
@@ -105,7 +105,7 @@ class Solution(AbstractPath):
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
+    ) -> PyTree[Shaped[Array, "?*shape"]]:
         """If dense output was saved, then evaluate the solution at any point in the
         region of integration `self.t0` to `self.t1`.
 
@@ -123,7 +123,9 @@ class Solution(AbstractPath):
             )
         return self.interpolation.evaluate(t0, t1, left)
 
-    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
+    def derivative(
+        self, t: RealScalarLike, left: bool = True
+    ) -> PyTree[Shaped[Array, "?*shape"]]:
         r"""If dense output was saved, then calculate an **approximation** to the
         derivative of the solution at any point in the region of integration `self.t0`
         to `self.t1`.

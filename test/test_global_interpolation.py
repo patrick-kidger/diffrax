@@ -127,7 +127,7 @@ def test_rectilinear_interpolation_coeffs():
     )
     assert shaped_allclose(interp_ts, true_ts)
     assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ts,), (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
+    interp_ts, (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
     assert shaped_allclose(interp_ts, true_ts)
     assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
 
@@ -159,7 +159,7 @@ def test_rectilinear_interpolation_coeffs():
     )
     assert shaped_allclose(interp_ts, true_ts)
     assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ts,), (interp_ys,) = diffrax.rectilinear_interpolation(
+    interp_ts, (interp_ys,) = diffrax.rectilinear_interpolation(
         ts, (ys,), replace_nans_at_start=(5.5,)
     )
     assert shaped_allclose(interp_ts, true_ts)

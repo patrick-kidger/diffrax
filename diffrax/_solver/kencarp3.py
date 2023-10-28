@@ -7,7 +7,7 @@ from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree, Shaped
 
-from .._custom_types import RealScalarLike
+from .._custom_types import RealScalarLike, Y
 from .._local_interpolation import AbstractLocalInterpolation
 from .._misc import linear_rescale
 from .base import AbstractImplicitSolver, vector_tree_dot
@@ -84,8 +84,10 @@ _implicit_tableau = ButcherTableau(
 class KenCarpInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike
     t1: RealScalarLike
-    y0: PyTree[Array]
-    k: tuple[PyTree[Shaped[Array, "order ..."]], PyTree[Shaped[Array, "order ..."]]]
+    y0: Y
+    k: tuple[
+        PyTree[Shaped[Array, "order ?*y"], "Y"], PyTree[Shaped[Array, "order ?*y"]], "Y"
+    ]
 
     coeffs: AbstractClassVar[np.ndarray]
 
