@@ -667,7 +667,6 @@ def diffeqsolve(
     t1 = jnp.asarray(t1, dtype=dtype)
     if dt0 is not None:
         dt0 = jnp.asarray(dt0, dtype=dtype)
-    timelikes.append(dtype)
 
     def _get_subsaveat_ts(saveat):
         out = [s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)]
