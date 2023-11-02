@@ -394,3 +394,49 @@ def test_dense_interpolation_vmap(solver, getkey):
         diffrax.Ralston: 1e-3,
     }.get(type(solver), 1e-6)
     assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
+
+
+@pytest.mark.parametrize("mode", ["linear", "rectilinear", "cubic"])
+@pytest.mark.parametrize(
+    "nans, expected",
+    [
+        (
+            jnp.array([0, 3, 4, 6, 9]),
+            jnp.array([20.0, 1.0, 2.0, 23.0, 24.0, 5.0, 26.0, 7.0, 8.0, 29.0]),
+        ),
+        (jnp.arange(0, 10, 1), jnp.arange(20, 30, 1)),
+    ],
+)
+@pytest.mark.parametrize("init_nan", [True, False])
+def test_replace_nans_at_start(mode, nans, expected, init_nan):
+    ts = jnp.linspace(0, 1, 15)
+    if init_nan:
+        ys = jnp.empty((15, 10)).at[:].set(jnp.nan)
+    else:
+        ys = jrandom.normal(jrandom.PRNGKey(0), (15, 10))
+    ys = ys.at[0, :].set(jnp.arange(0, 10, 1))
+    nan_ys = ys.at[0, nans].set(jnp.nan)
+    replace_nans_at_start = jnp.arange(20, 30, 1)
+
+    if mode == "cubic":
+        coeffs = diffrax.backward_hermite_coefficients(
+            ts,
+            nan_ys,
+            replace_nans_at_start=replace_nans_at_start,
+            fill_forward_nans_at_end=True,
+        )
+        interp = diffrax.CubicInterpolation(ts, coeffs)
+    elif mode == "linear":
+        interp = diffrax.linear_interpolation(
+            ts,
+            nan_ys,
+            replace_nans_at_start=replace_nans_at_start,
+            fill_forward_nans_at_end=True,
+        )
+        interp = diffrax.LinearInterpolation(ts, interp)
+    elif mode == "rectilinear":
+        ts, coeffs = diffrax.rectilinear_interpolation(
+            ts, nan_ys, replace_nans_at_start=replace_nans_at_start
+        )
+        interp = diffrax.LinearInterpolation(ts, coeffs)
+    assert shaped_allclose(interp.evaluate(0), expected)

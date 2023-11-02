@@ -438,11 +438,15 @@ def _linear_interpolation(
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
-        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
+        y0 = jnp.broadcast_to(
+            jnp.where(jnp.isnan(ys[0]), replace_nans_at_start, ys[0]), ys[0].shape
+        )
+        ys = ys.at[0].set(y0)
 
     _, (next_ts, next_ys) = lax.scan(
         _interpolation_reverse, (ts[-1], ys[-1]), (ts, ys), reverse=True
     )
+
     if fill_forward_nans_at_end:
         next_ys = fill_forward(next_ys)
     _, ys = lax.scan(
@@ -657,18 +661,26 @@ def _backward_hermite_coefficients(
 ]:
     ts = left_broadcast_to(ts, ys.shape)
 
+    if replace_nans_at_start is None:
+        y0 = ys[0]
+    else:
+        y0 = jnp.broadcast_to(
+            jnp.where(jnp.isnan(ys[0]), replace_nans_at_start, ys[0]), ys[0].shape
+        )
+        ys = ys.at[0].set(y0)
+
     _, (next_ts, next_ys) = lax.scan(
-        _interpolation_reverse, (ts[-1], ys[-1]), (ts[1:], ys[1:]), reverse=True
+        _interpolation_reverse, (ts[-1], ys[-1]), (ts, ys), reverse=True
     )
 
     if fill_forward_nans_at_end:
         next_ys = fill_forward(next_ys)
 
+    next_ts = next_ts[1:]
+    next_ys = next_ys[1:]
+
     t0 = ts[0]
-    if replace_nans_at_start is None:
-        y0 = ys[0]
-    else:
-        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
+
     if deriv0 is None:
         deriv0 = (next_ys[0] - y0) / (next_ts[0] - t0)
     else:
