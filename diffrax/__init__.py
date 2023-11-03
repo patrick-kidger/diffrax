@@ -71,6 +71,7 @@ from .solver import (
     Midpoint,
     MultiButcherTableau,
     Ralston,
+    Rattle,
     ReversibleHeun,
     SemiImplicitEuler,
     Sil3,

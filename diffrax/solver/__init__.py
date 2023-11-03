@@ -24,6 +24,7 @@ from .leapfrog_midpoint import LeapfrogMidpoint
 from .midpoint import Midpoint
 from .milstein import ItoMilstein, StratonovichMilstein
 from .ralston import Ralston
+from .rattle import Rattle
 from .reversible_heun import ReversibleHeun
 from .runge_kutta import (
     AbstractDIRK,
