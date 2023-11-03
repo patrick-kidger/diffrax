@@ -14,7 +14,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._heuristics import is_sde
 from .._local_interpolation import AbstractLocalInterpolation
 from .._nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
-from .._solution import RESULTS
+from .._solution import RESULTS, update_result
 from .._term import AbstractTerm
 
 
@@ -300,7 +300,7 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         )
 
         y_error = (y1**ω - y1_alt**ω).call(jnp.abs).ω
-        result = jnp.maximum(result1, jnp.maximum(result2, result3))
+        result = update_result(result1, update_result(result2, result3))
 
         return y1, y_error, dense_info, solver_state, result
 

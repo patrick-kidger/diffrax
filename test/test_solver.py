@@ -225,7 +225,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         def interpolation_cls(*, t0, t1, y0, y1, k):
             k_left, k_right = k
             k = {"y": k_left["y"] + k_right["y"]}
-            return diffrax.solver.dopri5._Dopri5Interpolation(
+            return diffrax._solver.dopri5._Dopri5Interpolation(
                 t0=t0, t1=t1, y0=y0, y1=y1, k=k
             )
 
@@ -359,7 +359,7 @@ def test_sil3():
             ks = (jnp.stack(fs), jnp.stack(gs))
             dense_info = dict(y0=y0, y1=y1, k=ks)
             state = (False, (f3 / dt, g3 / dt))
-            return y1, y_error, dense_info, state, jnp.array(diffrax.RESULTS.successful)
+            return y1, y_error, dense_info, state, diffrax.RESULTS.successful
 
     reference_solver = ReferenceSil3(
         nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-8, atol=1e-8)

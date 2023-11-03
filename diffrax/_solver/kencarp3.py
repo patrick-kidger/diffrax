@@ -86,7 +86,7 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
     t1: RealScalarLike
     y0: Y
     k: tuple[
-        PyTree[Shaped[Array, "order ?*y"], "Y"], PyTree[Shaped[Array, "order ?*y"]], "Y"
+        PyTree[Shaped[Array, "order ?*y"], "Y"], PyTree[Shaped[Array, "order ?*y"], "Y"]
     ]
 
     coeffs: AbstractClassVar[np.ndarray]

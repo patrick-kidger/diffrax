@@ -40,9 +40,9 @@ else:
 
 RealScalarLike = Union[FloatScalarLike, IntScalarLike]
 
-Y = PyTree[Float[ArrayLike, "?*y"], "Y"]
-VF = PyTree[Float[ArrayLike, "?*vf"], "VF"]
-Control = PyTree[Float[ArrayLike, "?*control"], "C"]
+Y = PyTree[Shaped[ArrayLike, "?*y"], "Y"]
+VF = PyTree[Shaped[ArrayLike, "?*vf"], "VF"]
+Control = PyTree[Shaped[ArrayLike, "?*control"], "C"]
 Args = PyTree[Any]
 
 DenseInfo = dict[str, PyTree[Array]]

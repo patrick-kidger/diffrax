@@ -71,8 +71,8 @@ def test_shape_and_dtype(ctr, getkey):
 
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape, getkey())
-            assert path.t0 is None
-            assert path.t1 is None
+            assert path.t0 == -jnp.inf
+            assert path.t1 == jnp.inf
         elif ctr is diffrax.VirtualBrownianTree:
             tol = 2**-5
             path = ctr(t0, t1, tol, shape, getkey())

@@ -62,11 +62,11 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     @property
     def t0(self):
-        return None
+        return -jnp.inf
 
     @property
     def t1(self):
-        return None
+        return jnp.inf
 
     @eqx.filter_jit
     def evaluate(

@@ -94,8 +94,12 @@ class Solution(AbstractPath):
 
     t0: RealScalarLike
     t1: RealScalarLike
-    ts: Optional[Real[Array, " times"]]
-    ys: Optional[PyTree[Shaped[Array, "times ?*shape"], " Y"]]
+    # SaveAt(subs=...) means that the pytree structures of `ts` and `ys` will lead with
+    # the structure of `subs`.
+    # SaveAt(fn=...) means that `ys` will then follow with arbitrary sub-dependent
+    # PyTree structures.
+    ts: Optional[PyTree[Real[Array, " ?times"], " S"]]
+    ys: Optional[PyTree[Shaped[Array, "?times ?*shape"], "S ..."]]
     interpolation: Optional[DenseInterpolation]
     stats: dict[str, Any]
     result: RESULTS
@@ -105,7 +109,7 @@ class Solution(AbstractPath):
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Shaped[Array, "?*shape"]]:
+    ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:
         """If dense output was saved, then evaluate the solution at any point in the
         region of integration `self.t0` to `self.t1`.
 
@@ -125,7 +129,7 @@ class Solution(AbstractPath):
 
     def derivative(
         self, t: RealScalarLike, left: bool = True
-    ) -> PyTree[Shaped[Array, "?*shape"]]:
+    ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:
         r"""If dense output was saved, then calculate an **approximation** to the
         derivative of the solution at any point in the region of integration `self.t0`
         to `self.t1`.
