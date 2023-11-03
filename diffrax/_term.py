@@ -1,7 +1,7 @@
 import abc
 import operator
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import Generic, Optional, TypeVar, Union
 
 import equinox as eqx
 import jax
@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree
+from jaxtyping import Array, ArrayLike, PyTree
 
 from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
 from ._path import AbstractPath
@@ -196,6 +196,30 @@ ODETerm.__init__.__doc__ = """**Arguments:**
 """
 
 
+class _CallableToPath(AbstractPath):
+    fn: Callable
+
+    @property
+    def t0(self):
+        return -jnp.inf
+
+    @property
+    def t1(self):
+        return jnp.inf
+
+    def evaluate(
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+    ) -> PyTree[Array]:
+        return self.fn(t0, t1)
+
+
+def _callable_to_path(x):
+    if isinstance(x, AbstractPath):
+        return x
+    else:
+        return _CallableToPath(x)
+
+
 # vf: Shaped[Array, "*state *control"]
 # control: Shaped[Array, "*control"]
 # return: Shaped[Array, "*state"]
@@ -205,7 +229,7 @@ def _prod(vf, control):
 
 class _ControlTerm(AbstractTerm):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
-    control: AbstractPath
+    control: Union[AbstractPath, Callable] = eqx.field(converter=_callable_to_path)
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)

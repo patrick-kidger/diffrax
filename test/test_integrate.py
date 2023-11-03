@@ -196,38 +196,44 @@ def _solvers():
     yield diffrax.StratonovichMilstein, True, 1
 
 
+def _drift(t, y, args):
+    drift_mlp, _, _ = args
+    return 0.5 * drift_mlp(y)
+
+
+def _diffusion(t, y, args):
+    _, diffusion_mlp, noise_dim = args
+    return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
+
+
 @pytest.mark.parametrize("solver_ctr,commutative,theoretical_order", _solvers())
 def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
-    key = jrandom.PRNGKey(5678)
-    driftkey, diffusionkey, ykey, bmkey = jrandom.split(key, 4)
-
     if commutative:
         noise_dim = 1
     else:
         noise_dim = 5
 
-    def drift(t, y, args):
-        mlp = eqx.nn.MLP(
-            in_size=3,
-            out_size=3,
-            width_size=8,
-            depth=1,
-            activation=_squareplus,
-            key=driftkey,
-        )
-        return 0.5 * mlp(y)
+    key = jrandom.PRNGKey(5678)
+    driftkey, diffusionkey, ykey, bmkey = jrandom.split(key, 4)
+    drift_mlp = eqx.nn.MLP(
+        in_size=3,
+        out_size=3,
+        width_size=8,
+        depth=1,
+        activation=_squareplus,
+        key=driftkey,
+    )
+    diffusion_mlp = eqx.nn.MLP(
+        in_size=3,
+        out_size=3 * noise_dim,
+        width_size=8,
+        depth=1,
+        activation=_squareplus,
+        final_activation=jnp.tanh,
+        key=diffusionkey,
+    )
 
-    def diffusion(t, y, args):
-        mlp = eqx.nn.MLP(
-            in_size=3,
-            out_size=3 * noise_dim,
-            width_size=8,
-            depth=1,
-            activation=_squareplus,
-            final_activation=jnp.tanh,
-            key=diffusionkey,
-        )
-        return 0.25 * mlp(y).reshape(3, noise_dim)
+    args = (drift_mlp, diffusion_mlp, noise_dim)
 
     t0 = 0
     t1 = 2
@@ -237,10 +243,10 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     )
     if solver_ctr.term_structure == diffrax.AbstractTerm:
         terms = diffrax.MultiTerm(
-            diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
+            diffrax.ODETerm(_drift), diffrax.ControlTerm(_diffusion, bm)
         )
     else:
-        terms = (diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm))
+        terms = (diffrax.ODETerm(_drift), diffrax.ControlTerm(_diffusion, bm))
 
     # Reference solver is always an ODE-viable solver, so its implementation has been
     # verified by the ODE tests like test_ode_order.
@@ -251,10 +257,10 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     else:
         assert False
     ref_terms = diffrax.MultiTerm(
-        diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, bm)
+        diffrax.ODETerm(_drift), diffrax.ControlTerm(_diffusion, bm)
     )
     true_sol = diffrax.diffeqsolve(
-        ref_terms, ref_solver, t0, t1, dt0=2**-14, y0=y0, max_steps=None
+        ref_terms, ref_solver, t0, t1, dt0=2**-14, y0=y0, args=args, max_steps=None
     )
     true_yT = true_sol.ys[-1]
 
@@ -262,7 +268,9 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     errors = []
     for exponent in [-3, -4, -5, -6, -7, -8, -9, -10]:
         dt0 = 2**exponent
-        sol = diffrax.diffeqsolve(terms, solver_ctr(), t0, t1, dt0, y0, max_steps=None)
+        sol = diffrax.diffeqsolve(
+            terms, solver_ctr(), t0, t1, dt0, y0, args=args, max_steps=None
+        )
         yT = sol.ys[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2**-28:

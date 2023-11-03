@@ -13,12 +13,11 @@ from .helpers import shaped_allclose
 
 def test_results():
     assert len(diffrax.RESULTS) > 5
-    for i in range(len(diffrax.RESULTS)):
-        assert isinstance(diffrax.RESULTS[i], str)
+    assert isinstance(diffrax.RESULTS[diffrax.RESULTS.max_steps_reached], str)
 
     # In principle no code should rely on this, but in practice something may slip
     # through the cracks so it's worth checking anyway.
-    assert diffrax.RESULTS.successful == 0
+    assert diffrax.RESULTS.successful._value == 0
 
 
 _t0 = jnp.array(0.1)

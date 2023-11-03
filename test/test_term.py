@@ -1,5 +1,3 @@
-import types
-
 import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jrandom
@@ -94,7 +92,9 @@ def test_ode_adjoint_term(getkey):
     term = diffrax.ODETerm(vector_field)
     adjoint_term = diffrax._term.AdjointTerm(term)
     t, y, a_y, dt = jrandom.normal(getkey(), (4,))
-    aug = (y, a_y, None, diffrax.ODETerm(None))
+    ode_term = diffrax.ODETerm(lambda t, y, args: None)
+    ode_term = eqx.tree_at(lambda m: m.vector_field, ode_term, None)
+    aug = (y, a_y, None, ode_term)
     args = None
     vf_prod1 = adjoint_term.vf_prod(t, aug, args, dt)
     vf = adjoint_term.vf(t, aug, args)
@@ -114,9 +114,7 @@ def test_cde_adjoint_term(getkey):
 
     mlp = eqx.nn.MLP(in_size=5, out_size=6, width_size=3, depth=1, key=getkey())
     vector_field = VF(mlp)
-    control = types.SimpleNamespace(
-        evaluate=lambda t0, t1: (jrandom.normal(getkey(), (3,)),)
-    )
+    control = lambda t0, t1: (jrandom.normal(getkey(), (3,)),)
     term = diffrax.ControlTerm(vector_field, control)
     adjoint_term = diffrax._term.AdjointTerm(term)
     t = jrandom.normal(getkey(), ())
