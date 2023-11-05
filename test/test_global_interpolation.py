@@ -411,7 +411,7 @@ def test_dense_interpolation_vmap(solver, getkey):
 def test_replace_nans_at_start(mode, nans, expected, init_nan):
     ts = jnp.linspace(0, 1, 15)
     if init_nan:
-        ys = jnp.empty((15, 10)).at[:].set(jnp.nan)
+        ys = jnp.full((15, 10), jnp.nan)
     else:
         ys = jrandom.normal(jrandom.PRNGKey(0), (15, 10))
     ys = ys.at[0, :].set(jnp.arange(0, 10, 1))
