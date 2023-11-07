@@ -109,8 +109,8 @@ def _rms_norm_jvp(x, tx):
     pred = (out == 0) | jnp.isinf(out)
     numerator = jnp.where(pred, 0, x)
     denominator = jnp.where(pred, 1, out * x.size)
-    t_out = jnp.dot(numerator / denominator, tx)
-    return out, t_out
+    t_out = jnp.dot(numerator / denominator, jnp.conj(tx))
+    return out, jnp.real(t_out)
 
 
 def adjoint_rms_seminorm(x: Tuple[PyTree, PyTree, PyTree, PyTree]) -> Scalar:
