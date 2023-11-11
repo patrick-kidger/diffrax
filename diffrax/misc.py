@@ -66,7 +66,9 @@ def fill_forward(
     if replace_nans_at_start is None:
         y0 = ys[0]
     else:
-        y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
+        y0 = jnp.broadcast_to(
+            jnp.where(jnp.isnan(ys[0]), replace_nans_at_start, ys[0]), ys[0].shape
+        )
     _, ys = lax.scan(_fill_forward, y0, ys)
     return ys
 

@@ -424,7 +424,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         # ε_n     = atol + norm(y) * rtol with y on the nth step
         # r_n     = norm(y_error) with y_error on the nth step
         # δ_{n,m} = norm(y_error / (atol + norm(y) * rtol))^(-1) with y_error on the nth
-        # step and y on the mth step
+        #                                                     step and y on the mth step
         # β_1     = pcoeff + icoeff + dcoeff
         # β_2     = -(pcoeff + 2 * dcoeff)
         # β_3     = dcoeff
