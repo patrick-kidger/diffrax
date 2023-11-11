@@ -15,6 +15,7 @@ from equinox.internal import ω
 from .helpers import (
     all_ode_solvers,
     all_split_solvers,
+    all_symplectic_solvers,
     implicit_tol,
     random_pytree,
     shaped_allclose,
@@ -178,6 +179,59 @@ def test_ode_order(solver):
     # We accept quite a wide range. Improving this test would be nice.
     assert -0.9 < order - solver.order(term) < 0.9
 
+
+@pytest.mark.parametrize("solver", all_symplectic_solvers)
+def test_symplectic_ode_order(solver):
+    solver = implicit_tol(solver)
+    key = jrandom.PRNGKey(17)
+    p_key, q_key, k_key = jrandom.split(key, 3)
+    p0 = jrandom.uniform(p_key, shape=(), minval=0, maxval=1)
+    q0 = jrandom.uniform(q_key, shape=(), minval=0, maxval=1)
+    k = jrandom.uniform(k_key, shape=(), minval=0.1, maxval=10)
+    y0 = (p0, q0)
+    t0 = 0
+    t1 = 4
+
+    def p_vector_field(t, q, k):
+        return q
+
+    def q_vector_field(t, p, k):
+        return -k * p
+
+    def analytic_solution(t, k, p0, q0):
+        φ = jnp.sqrt(k)
+        p_t = p0 * jnp.cos(φ * t) + (q0/φ) * jnp.sin(φ * t)
+        q_t = -p0 * φ * jnp.sin(φ * t) + q0 * jnp.cos(φ * t)
+        return p_t, q_t
+
+        
+    term = (
+        diffrax.ODETerm(p_vector_field),
+        diffrax.ODETerm(q_vector_field),
+    )
+
+    true_pT, true_qT = analytic_solution(t1, k, p0, q0)
+    exponents = []
+    errors_p = []
+    errors_q = []
+    for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
+        dt0 = 2**exponent
+        sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, k, max_steps=None)
+        pT, qT = sol.ys
+        error_p = jnp.sum(jnp.abs(pT - true_pT))
+        error_q = jnp.sum(jnp.abs(qT - true_qT))
+        if error_p < 2**-28 and error_q < 2**-28:
+            break
+        exponents.append(exponent)
+        errors_p.append(jnp.log2(error_q))
+        errors_q.append(jnp.log2(error_q))
+
+    order_p = scipy.stats.linregress(exponents, errors_p). slope
+    order_q = scipy.stats.linregress(exponents, errors_q). slope
+    # Same wide range as for general ODE solvers, but we
+    # require this approximate order both for `p` and `q`
+    assert -0.9 < order_p - solver.order(term) < 0.9
+    assert -0.9 < order_q - solver.order(term) < 0.9
 
 def _squareplus(x):
     return 0.5 * (x + jnp.sqrt(x**2 + 4))
@@ -352,14 +406,15 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
             assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
 
-def test_semi_implicit_euler():
+@pytest.mark.parametrize("solver", all_symplectic_solvers)
+def test_symplectic_solvers(solver):
     term1 = diffrax.ODETerm(lambda t, y, args: -y)
     term2 = diffrax.ODETerm(lambda t, y, args: y)
     y0 = (1.0, -0.5)
     dt0 = 0.00001
     sol1 = diffrax.diffeqsolve(
         (term1, term2),
-        diffrax.SemiImplicitEuler(),
+        solver,
         0,
         1,
         dt0,

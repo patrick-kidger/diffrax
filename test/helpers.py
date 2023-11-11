@@ -7,7 +7,6 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 
-
 all_ode_solvers = (
     diffrax.Bosh3(),
     diffrax.Dopri5(),
@@ -30,6 +29,11 @@ all_split_solvers = (
     diffrax.KenCarp3(),
     diffrax.KenCarp4(),
     diffrax.KenCarp5(),
+)
+
+all_symplectic_solvers = (
+    diffrax.SemiImplicitEuler(),
+    diffrax.StormerVerlet(),
 )
 
 

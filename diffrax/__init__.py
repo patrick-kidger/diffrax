@@ -73,6 +73,7 @@ from .solver import (
     Ralston,
     ReversibleHeun,
     SemiImplicitEuler,
+    StormerVerlet,
     Sil3,
     StratonovichMilstein,
     Tsit5,
