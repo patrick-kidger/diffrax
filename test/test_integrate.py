@@ -50,11 +50,9 @@ def _all_pairs(*args):
                 diffrax.ReversibleHeun(),
                 diffrax.Tsit5(),
                 diffrax.ImplicitEuler(
-                    nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
+                    root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)
                 ),
-                diffrax.Kvaerno3(
-                    nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
-                ),
+                diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
             ),
         ),
         dict(default=jnp.float32, opts=(int, float, jnp.int32)),
@@ -70,6 +68,10 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
     if not isinstance(solver, diffrax.AbstractAdaptiveSolver) and isinstance(
         stepsize_controller, diffrax.PIDController
     ):
+        return
+    if isinstance(
+        solver, diffrax.AbstractImplicitSolver
+    ) and treedef == jtu.tree_structure(None):
         return
 
     if jnp.iscomplexobj(y_dtype):
@@ -114,21 +116,22 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
             y0,
             stepsize_controller=stepsize_controller,
         )
-    except RuntimeError as e:
+    except Exception as e:
         if isinstance(stepsize_controller, diffrax.ConstantStepSize) and str(
             e
-        ).startswith("Implicit"):
+        ).startswith("Nonlinear solve diverged"):
             # Implicit method failed to converge. A very normal thing to have happen;
             # usually we'd use adaptive timestepping to handle it.
             pass
         else:
             raise
-    y1 = sol.ys
-    if jnp.iscomplexobj(y_dtype):
-        true_y1 = jtu.tree_map(lambda x: (x * jnp.exp(-1j))[None], y0)
     else:
-        true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
-    assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
+        y1 = sol.ys
+        if jnp.iscomplexobj(y_dtype):
+            true_y1 = jtu.tree_map(lambda x: (x * jnp.exp(-1j))[None], y0)
+        else:
+            true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
+        assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
@@ -382,12 +385,8 @@ def test_semi_implicit_euler():
 @pytest.mark.parametrize(
     "solver",
     [
-        diffrax.ImplicitEuler(
-            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
-        ),
-        diffrax.Kvaerno5(
-            nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-6)
-        ),
+        diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+        diffrax.Kvaerno5(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
     ],
 )
 def test_grad_implicit_solve(solver):

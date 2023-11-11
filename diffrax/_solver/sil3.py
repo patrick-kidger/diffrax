@@ -1,7 +1,9 @@
 import numpy as np
+import optimistix as optx
 from equinox.internal import ω
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
+from .._root_finder import VeryChord, with_stepsize_controller_tols
 from .base import AbstractImplicitSolver
 from .runge_kutta import (
     AbstractRungeKutta,
@@ -81,6 +83,9 @@ class Sil3(AbstractRungeKutta, AbstractImplicitSolver):
         return ThirdOrderHermitePolynomialInterpolation(
             t0=t0, t1=t1, y0=y0, y1=y1, k0=k0, k1=k1
         )
+
+    root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
+    root_find_max_steps: int = 10
 
     def order(self, terms):
         return 2

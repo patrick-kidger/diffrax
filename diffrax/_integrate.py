@@ -10,7 +10,7 @@ import jax
 import jax.core
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from jaxtyping import Array, ArrayLike, Float, PyTree
+from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
@@ -25,6 +25,7 @@ from ._event import AbstractDiscreteTerminatingEvent
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import static_select
+from ._root_finder import use_stepsize_tol
 from ._saveat import SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
 from ._solver import (
@@ -49,7 +50,7 @@ from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 class SaveState(eqx.Module):
     saveat_ts_index: IntScalarLike
     ts: eqxi.MaybeBuffer[Real[Array, " times"]]
-    ys: PyTree[eqxi.MaybeBuffer[Float[Array, "times ..."]]]
+    ys: PyTree[eqxi.MaybeBuffer[Inexact[Array, "times ..."]]]
     save_index: IntScalarLike
 
 
@@ -626,7 +627,10 @@ def diffeqsolve(
         dt0 = eqxi.error_if(jnp.array(dt0), pred, msg)
 
     # Error checking and warning for complex dtypes
-    if any(jtu.tree_leaves(jtu.tree_map(jnp.iscomplexobj, y0))):
+    if any(
+        eqx.is_array(xi) and jnp.iscomplexobj(xi)
+        for xi in jtu.tree_leaves((terms, y0, args))
+    ):
         if isinstance(solver, AbstractImplicitSolver):
             raise ValueError(
                 "Implicit solvers in conjunction with complex dtypes is currently not "
@@ -727,10 +731,26 @@ def diffeqsolve(
         is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
 
-    # Stepsize controller gets an opportunity to modify the solver.
-    # Note that at this point the solver could be anything so we must check any
-    # abstract base classes of the solver before this.
-    solver = stepsize_controller.wrap_solver(solver)
+    if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+        if isinstance(solver, AbstractImplicitSolver):
+            if solver.root_finder.rtol is use_stepsize_tol:
+                solver = eqx.tree_at(
+                    lambda s: s.root_finder.rtol,
+                    solver,
+                    stepsize_controller.rtol,
+                )
+            if solver.root_finder.atol is use_stepsize_tol:
+                solver = eqx.tree_at(
+                    lambda s: s.root_finder.atol,
+                    solver,
+                    stepsize_controller.atol,
+                )
+            if solver.root_finder.norm is use_stepsize_tol:
+                solver = eqx.tree_at(
+                    lambda s: s.root_finder.norm,
+                    solver,
+                    stepsize_controller.norm,
+                )
 
     # Error checking
     def _check_subsaveat_ts(ts):

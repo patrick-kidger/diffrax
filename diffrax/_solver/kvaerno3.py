@@ -1,6 +1,8 @@
 import numpy as np
+import optimistix as optx
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
+from .._root_finder import VeryChord, with_stepsize_controller_tols
 from .runge_kutta import AbstractESDIRK, ButcherTableau
 
 
@@ -61,6 +63,9 @@ class Kvaerno3(AbstractESDIRK):
     """
     tableau = _kvaerno3_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
+
+    root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
+    root_find_max_steps: int = 10
 
     def order(self, terms):
         return 3

@@ -1,10 +1,12 @@
 from typing_extensions import TypeAlias
 
+import optimistix as optx
 from equinox.internal import ω
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
 from .._local_interpolation import LocalLinearInterpolation
+from .._root_finder import with_stepsize_controller_tols
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
@@ -33,6 +35,9 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     # We don't use it as this seems to be quite a bad choice for low-order solvers: it
     # produces very oscillatory interpolations.
     interpolation_cls = LocalLinearInterpolation
+
+    root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(optx.Chord)()
+    root_find_max_steps: int = 10
 
     def order(self, terms):
         return 1
@@ -71,19 +76,23 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         # If we wanted FSAL then really the correct thing to do would just be to
         # write out a `ButcherTableau` and use `AbstractSDIRK`.
         k0 = terms.vf_prod(t0, y0, args, control)
-        jac = self.nonlinear_solver.jac(
-            _implicit_relation, k0, (terms.vf_prod, t1, y0, args, control)
+        args = (terms.vf_prod, t1, y0, args, control)
+        nonlinear_sol = optx.root_find(
+            _implicit_relation,
+            self.root_finder,
+            k0,
+            args,
+            throw=False,
+            max_steps=self.root_find_max_steps,
         )
-        nonlinear_sol = self.nonlinear_solver(
-            _implicit_relation, k0, (terms.vf_prod, t1, y0, args, control), jac
-        )
-        k1 = nonlinear_sol.root
+        k1 = nonlinear_sol.value
         y1 = (y0**ω + k1**ω).ω
         # Use the trapezoidal rule for adaptive step sizing.
         y_error = (0.5 * (k1**ω - k0**ω)).ω
         dense_info = dict(y0=y0, y1=y1)
         solver_state = None
-        return y1, y_error, dense_info, solver_state, nonlinear_sol.result
+        result = RESULTS.promote(nonlinear_sol.result)
+        return y1, y_error, dense_info, solver_state, result
 
     def func(
         self,

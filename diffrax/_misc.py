@@ -3,10 +3,10 @@ from typing import Optional
 
 import jax
 import jax.core
-import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import optimistix as optx
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
 from ._custom_types import BoolScalarLike, RealScalarLike
@@ -86,32 +86,6 @@ def linear_rescale(t0, t, t1):
     return numerator / denominator
 
 
-def rms_norm(x: PyTree) -> RealScalarLike:
-    x, _ = fu.ravel_pytree(x)
-    if x.size == 0:
-        return 0
-    return _rms_norm(x)
-
-
-@jax.custom_jvp
-def _rms_norm(x):
-    x_sq = jnp.real(x * jnp.conj(x))
-    return jnp.sqrt(jnp.mean(x_sq))
-
-
-@_rms_norm.defjvp
-def _rms_norm_jvp(x, tx):
-    (x,) = x
-    (tx,) = tx
-    out = _rms_norm(x)
-    # Get zero gradient, rather than NaN gradient, in these cases
-    pred = (out == 0) | jnp.isinf(out)
-    numerator = jnp.where(pred, 0, x)
-    denominator = jnp.where(pred, 1, out * x.size)
-    t_out = jnp.dot(numerator / denominator, jnp.conj(tx))
-    return out, jnp.real(t_out)
-
-
 def adjoint_rms_seminorm(x: tuple[PyTree, PyTree, PyTree, PyTree]) -> RealScalarLike:
     """Defines an adjoint seminorm. This can frequently be used to increase the
     efficiency of backpropagation via [`diffrax.BacksolveAdjoint`][], as follows:
@@ -143,7 +117,7 @@ def adjoint_rms_seminorm(x: tuple[PyTree, PyTree, PyTree, PyTree]) -> RealScalar
     assert len(x) == 4
     y, a_y, a_args, a_terms = x
     del a_args, a_terms  # whole point
-    return rms_norm((y, a_y))
+    return optx.rms_norm((y, a_y))
 
 
 def left_broadcast_to(arr, shape):
