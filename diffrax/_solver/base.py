@@ -6,6 +6,7 @@ import equinox as eqx
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import optimistix as optx
 from equinox import AbstractClassVar, AbstractVar
 from equinox.internal import ω
 from jaxtyping import PyTree
@@ -13,7 +14,6 @@ from jaxtyping import PyTree
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
 from .._local_interpolation import AbstractLocalInterpolation
-from .._nonlinear_solver import AbstractNonlinearSolver, NewtonNonlinearSolver
 from .._solution import RESULTS, update_result
 from .._term import AbstractTerm
 
@@ -170,16 +170,11 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
 
 class AbstractImplicitSolver(AbstractSolver):
     """Indicates that this is an implicit differential equation solver, and as such
-    that it should take a nonlinear solver as an argument.
+    that it should take a root finder as an argument.
     """
 
-    nonlinear_solver: AbstractNonlinearSolver = NewtonNonlinearSolver()
-
-
-AbstractImplicitSolver.__init__.__doc__ = """**Arguments:**
-
-- `nonlinear_solver`: The nonlinear solver to use. Defaults to a Newton solver.
-"""
+    root_finder: AbstractVar[optx.AbstractRootFinder]
+    root_find_max_steps: AbstractVar[int]
 
 
 class AbstractItoSolver(AbstractSolver):

@@ -1,5 +1,7 @@
 import numpy as np
+import optimistix as optx
 
+from .._root_finder import VeryChord, with_stepsize_controller_tols
 from .base import AbstractImplicitSolver
 from .kencarp3 import KenCarpInterpolation
 from .runge_kutta import (
@@ -226,6 +228,9 @@ class KenCarp5(AbstractRungeKutta, AbstractImplicitSolver):
     tableau = MultiButcherTableau(_explicit_tableau, _implicit_tableau)
     calculate_jacobian = CalculateJacobian.second_stage
     interpolation_cls = _KenCarp5Interpolation
+
+    root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
+    root_find_max_steps: int = 10
 
     def order(self, terms):
         return 5

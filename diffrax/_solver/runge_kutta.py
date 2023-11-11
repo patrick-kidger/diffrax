@@ -7,10 +7,12 @@ from typing_extensions import TypeAlias
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
+import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+import optimistix as optx
 from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree
@@ -296,6 +298,27 @@ def _filter_stop_gradient(x):
     dynamic, static = eqx.partition(x, eqx.is_inexact_array)
     dynamic = lax.stop_gradient(dynamic)
     return eqx.combine(dynamic, static)
+
+
+def _is_jaxpr(x):
+    return isinstance(x, (jax.core.Jaxpr, jax.core.ClosedJaxpr))
+
+
+def _filter_maybe_cond(pred, branch, value):
+    dynamic, static = eqx.partition(value, eqx.is_array)
+    jaxpr_static = eqx.filter(static, _is_jaxpr, inverse=True)
+
+    def branch1():
+        new_dynamic, new_static = eqx.partition(branch(), eqx.is_array)
+        new_jaxpr_static = eqx.filter(new_static, _is_jaxpr, inverse=True)
+        assert eqx.tree_equal(jaxpr_static, new_jaxpr_static, typematch=True) is True
+        return new_dynamic
+
+    def branch2():
+        return dynamic
+
+    dynamic_out = lax.cond(pred, branch1, branch2)
+    return eqx.combine(dynamic_out, static)
 
 
 def _assert_same_structure(x, y):
@@ -792,7 +815,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             return stage_index < num_stages
 
         def rk_stage(val):
-            stage_index, _, _, jac_f, jac_k, fs, ks, result = val
+            stage_index, _, _, dyn_jac_f, dyn_jac_k, fs, ks, result = val
+            jac_f = eqx.combine(dyn_jac_f, static_jac_f)
+            jac_k = eqx.combine(dyn_jac_k, static_jac_k)
             old_result = result
             #
             # Start by getting the linear combination of previous stages.
@@ -860,7 +885,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         implicit_predictor_i, get_implicit(unsafe_ks)
                     )
                     if not fsal:
-                        # FSAL => explicit first stage so the choice of predictor
+                        # FSAL implies explicit first stage so the choice of predictor
                         # doesn't matter.
                         k_pred = jtu.tree_map(if_first_stage, k0_for_jac, k_pred)
                     k_implicit_args = (
@@ -874,17 +899,25 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     )
 
                 def eval_f_jac():
-                    return self.nonlinear_solver.jac(
-                        _implicit_relation_f,
+                    return self.root_finder.init(
+                        lambda y, a: (_implicit_relation_f(y, a), None),
                         lax.stop_gradient(f_pred),
                         _filter_stop_gradient(f_implicit_args),
+                        options={},
+                        f_struct=jax.eval_shape(lambda: f_pred),
+                        aux_struct=None,
+                        tags=frozenset(),
                     )
 
                 def eval_k_jac():
-                    return self.nonlinear_solver.jac(
-                        _implicit_relation_k,
+                    return self.root_finder.init(
+                        lambda y, a: (_implicit_relation_k(y, a), None),
                         lax.stop_gradient(k_pred),
                         _filter_stop_gradient(k_implicit_args),
+                        options={},
+                        f_struct=jax.eval_shape(lambda: k_pred),
+                        aux_struct=None,
+                        tags=frozenset(),
                     )
 
                 if self.calculate_jacobian == CalculateJacobian.every_stage:
@@ -907,37 +940,49 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     # These `stop_gradients` are needed to work around the lack of
                     # symbolic zeros in `custom_vjp`s.
                     if eval_fs:
-                        jac_f = lax.stop_gradient(jac_f)
-                        jac_f = lax.cond(
-                            stage_index == jac_stage_index, eval_f_jac, lambda: jac_f
+                        jac_f = _filter_stop_gradient(jac_f)
+                        jac_f = _filter_maybe_cond(
+                            stage_index == jac_stage_index, eval_f_jac, jac_f
                         )
                         jac_k = _unused
                     else:
                         jac_f = _unused
-                        jac_k = lax.stop_gradient(jac_k)
-                        jac_k = lax.cond(
-                            stage_index == jac_stage_index, eval_k_jac, lambda: jac_k
+                        jac_k = _filter_stop_gradient(jac_k)
+                        jac_k = _filter_maybe_cond(
+                            stage_index == jac_stage_index, eval_k_jac, jac_k
                         )
                 if eval_fs:
                     jac_f = eqxi.nondifferentiable(jac_f, name="jac_f")
-                    nonlinear_sol = self.nonlinear_solver(
-                        _implicit_relation_f, f_pred, f_implicit_args, jac_f
+                    nonlinear_sol = optx.root_find(
+                        _implicit_relation_f,
+                        self.root_finder,
+                        f_pred,
+                        f_implicit_args,
+                        options=dict(init_state=jac_f),
+                        throw=False,
+                        max_steps=self.root_find_max_steps,
                     )
-                    implicit_fi = nonlinear_sol.root
+                    implicit_fi = nonlinear_sol.value
                     implicit_ki = _unused
                     implicit_inc = implicit_term.prod(implicit_fi, implicit_control)
                 else:
                     assert not fsal
                     jac_k = eqxi.nondifferentiable(jac_k, name="jac_k")
-                    nonlinear_sol = self.nonlinear_solver(
-                        _implicit_relation_k, k_pred, k_implicit_args, jac_k
+                    nonlinear_sol = optx.root_find(
+                        _implicit_relation_k,
+                        self.root_finder,
+                        k_pred,
+                        k_implicit_args,
+                        options=dict(init_state=jac_k),
+                        throw=False,
+                        max_steps=self.root_find_max_steps,
                     )
                     implicit_fi = _unused
-                    implicit_ki = implicit_inc = nonlinear_sol.root
+                    implicit_ki = implicit_inc = nonlinear_sol.value
                 yi = y_map(
                     lambda a, b: a + implicit_diagonal_i * b, yi_partial, implicit_inc
                 )
-                result = update_result(result, nonlinear_sol.result)
+                result = update_result(result, RESULTS.promote(nonlinear_sol.result))
             #
             # Now evaluate our vector field at the value yi.
             # If we had an implicit tableau then we can skip evaluating the vector field
@@ -980,12 +1025,14 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 const_result = result is old_result
             else:
                 const_result = const_result and (result is old_result)
+            dyn_jac_f = eqx.filter(jac_f, eqx.is_array)
+            dyn_jac_k = eqx.filter(jac_k, eqx.is_array)
             return (
                 stage_index + 1,
                 yi,
                 f1_for_fsal,
-                jac_f,
-                jac_k,
+                dyn_jac_f,
+                dyn_jac_k,
                 fs,
                 ks,
                 result,
@@ -1021,10 +1068,14 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     args,
                     implicit_control,
                 )
-                jac_f = self.nonlinear_solver.jac(
-                    _implicit_relation_f,
+                jac_f = self.root_finder.init(
+                    lambda y, a: (_implicit_relation_f(y, a), None),
                     jtu.tree_map(jnp.zeros_like, get_implicit(f0)),
                     _filter_stop_gradient(f_implicit_args),
+                    options={},
+                    f_struct=jax.eval_shape(lambda: get_implicit(f0)),
+                    aux_struct=None,
+                    tags=frozenset(),
                 )
                 jac_k = _unused
             else:
@@ -1039,17 +1090,23 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     implicit_control,
                 )
                 jac_f = _unused
-                jac_k = self.nonlinear_solver.jac(
-                    _implicit_relation_k,
+                jac_k = self.root_finder.init(
+                    lambda y, a: (_implicit_relation_k(y, a), None),
                     jtu.tree_map(jnp.zeros_like, y0),
                     _filter_stop_gradient(k_implicit_args),
+                    options={},
+                    f_struct=jax.eval_shape(lambda: y0),
+                    aux_struct=None,
+                    tags=frozenset(),
                 )
+        dyn_jac_f, static_jac_f = eqx.partition(jac_f, eqx.is_array)
+        dyn_jac_k, static_jac_k = eqx.partition(jac_k, eqx.is_array)
         init_val = (
             init_stage_index,
             y0,
             dummy_f,
-            jac_f,
-            jac_k,
+            dyn_jac_f,
+            dyn_jac_k,
             fs,
             ks,
             RESULTS.successful,

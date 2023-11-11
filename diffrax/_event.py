@@ -3,10 +3,10 @@ from collections.abc import Callable
 from typing import Optional
 
 import equinox as eqx
+import optimistix as optx
 from jaxtyping import Array, PyTree
 
 from ._custom_types import BoolScalarLike, RealScalarLike
-from ._misc import rms_norm
 from ._step_size_controller import AbstractAdaptiveStepSizeController
 
 
@@ -55,7 +55,7 @@ class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
 
     rtol: Optional[float] = None
     atol: Optional[float] = None
-    norm: Callable[[PyTree[Array]], RealScalarLike] = rms_norm
+    norm: Callable[[PyTree[Array]], RealScalarLike] = optx.rms_norm
 
     def __call__(self, state, *, terms, args, solver, stepsize_controller, **kwargs):
         del kwargs

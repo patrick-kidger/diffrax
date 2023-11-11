@@ -7,6 +7,7 @@ import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import optimistix as optx
 from equinox import AbstractVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree
@@ -20,9 +21,7 @@ from .._custom_types import (
     VF,
     Y,
 )
-from .._misc import rms_norm
 from .._solution import RESULTS
-from .._solver import AbstractImplicitSolver, AbstractSolver
 from .._term import AbstractTerm, ODETerm
 from .base import AbstractStepSizeController
 
@@ -89,6 +88,7 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
 
     rtol: AbstractVar[Optional[RealScalarLike]]
     atol: AbstractVar[Optional[RealScalarLike]]
+    norm: AbstractVar[Callable[[PyTree], RealScalarLike]]
 
     def __check_init__(self):
         if self.rtol is None or self.atol is None:
@@ -104,25 +104,6 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
                 "```\n"
             )
 
-    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
-        # Poor man's multiple dispatch
-        if isinstance(solver, AbstractImplicitSolver):
-            if solver.nonlinear_solver.rtol is None:
-                solver = eqx.tree_at(
-                    lambda s: s.nonlinear_solver.rtol,
-                    solver,
-                    self.rtol,
-                    is_leaf=lambda x: x is None,
-                )
-            if solver.nonlinear_solver.atol is None:
-                solver = eqx.tree_at(
-                    lambda s: s.nonlinear_solver.atol,
-                    solver,
-                    self.atol,
-                    is_leaf=lambda x: x is None,
-                )
-        return solver
-
 
 _ControllerState = tuple[
     BoolScalarLike, BoolScalarLike, RealScalarLike, RealScalarLike, RealScalarLike
@@ -136,16 +117,21 @@ def _none_or_array(x):
         return jnp.asarray(x)
 
 
-if not TYPE_CHECKING:
+if TYPE_CHECKING:
+    rms_norm = optx.rms_norm
+else:
+    # We can't use `optx.rms_norm` itself as a default attribute value. This is because
+    # it is a callable, and then the doc stack thinks that it is a method.
     if getattr(typing, "GENERATING_DOCUMENTATION", False):
-        # We can't use `rms_norm` itself as a default attribute value. This is because
-        # it is a callable, and then the doc stack thinks that it is a method.
+
         class _RmsNorm:
             def __repr__(self):
                 return "<function rms_norm>"
 
-        old_rms_norm = rms_norm
+        old_rms_norm = optx.rms_norm
         rms_norm = _RmsNorm()
+    else:
+        rms_norm = optx.rms_norm
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
@@ -693,6 +679,3 @@ PIDController.__init__.__doc__ = """**Arguments:**
     to override the error order determined automatically, if extra structure is known
     about this particular problem. (Typically when solving SDEs with known structure.)
 """
-
-if getattr(typing, "GENERATING_DOCUMENTATION", False):
-    rms_norm = old_rms_norm

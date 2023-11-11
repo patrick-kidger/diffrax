@@ -17,7 +17,6 @@ The list of step size controllers is as follows. The most common cases are fixed
         selection:
             members:
                 - wrap
-                - wrap_solver
                 - init
                 - adapt_step_size
 

@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
-import equinox as eqx
 import jax
+import optimistix as optx
 from jaxtyping import Array, Bool, PyTree, Shaped
 
 from ._custom_types import BoolScalarLike, Real, RealScalarLike
@@ -9,22 +9,17 @@ from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 
 
-class RESULTS(eqx.Enumeration):
+class RESULTS(optx.RESULTS):
     successful = ""
     discrete_terminating_event_occurred = (
         "Terminating differential equation solve because a discrete terminating event "
         "occurred."
     )
     max_steps_reached = (
-        "The maximum number of steps was reached in the differential equation solver. "
-        "Try increasing `diffrax.diffeqsolve(..., max_steps=...)`."
+        "The maximum number of solver steps was reached. Try increasing `max_steps`."
     )
     dt_min_reached = (
         "The minimum step size was reached in the differential equation solver."
-    )
-    implicit_divergence = "Implicit method diverged."
-    implicit_nonconvergence = (
-        "Implicit method did not converge within the required number of iterations."
     )
 
 

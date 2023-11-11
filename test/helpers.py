@@ -5,6 +5,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
+import optimistix as optx
 
 import diffrax
 
@@ -37,10 +38,9 @@ all_split_solvers = (
 def implicit_tol(solver):
     if isinstance(solver, diffrax.AbstractImplicitSolver):
         return eqx.tree_at(
-            lambda s: (s.nonlinear_solver.rtol, s.nonlinear_solver.atol),
+            lambda s: (s.root_finder.rtol, s.root_finder.atol, s.root_finder.norm),
             solver,
-            (1e-3, 1e-6),
-            is_leaf=lambda x: x is None,
+            (1e-3, 1e-6, optx.rms_norm),
         )
     return solver
 

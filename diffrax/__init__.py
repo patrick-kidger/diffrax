@@ -35,13 +35,11 @@ from ._local_interpolation import (
     ThirdOrderHermitePolynomialInterpolation as ThirdOrderHermitePolynomialInterpolation,  # noqa: E501
 )
 from ._misc import adjoint_rms_seminorm as adjoint_rms_seminorm
-from ._nonlinear_solver import (
-    AbstractNonlinearSolver as AbstractNonlinearSolver,
-    AffineNonlinearSolver as AffineNonlinearSolver,
-    NewtonNonlinearSolver as NewtonNonlinearSolver,
-    NonlinearSolution as NonlinearSolution,
-)
 from ._path import AbstractPath as AbstractPath
+from ._root_finder import (
+    VeryChord as VeryChord,
+    with_stepsize_controller_tols as with_stepsize_controller_tols,
+)
 from ._saveat import SaveAt as SaveAt, SubSaveAt as SubSaveAt
 from ._solution import (
     is_event as is_event,

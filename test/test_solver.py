@@ -2,6 +2,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import optimistix as optx
 import pytest
 
 import diffrax
@@ -29,9 +30,7 @@ def test_instance_check():
 
 def test_implicit_euler_adaptive():
     term = diffrax.ODETerm(lambda t, y, args: -10 * y**3)
-    solver1 = diffrax.ImplicitEuler(
-        nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-5, atol=1e-5)
-    )
+    solver1 = diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-5, atol=1e-5))
     solver2 = diffrax.ImplicitEuler()
     t0 = 0
     t1 = 1
@@ -49,7 +48,7 @@ def test_implicit_euler_adaptive():
         stepsize_controller=stepsize_controller,
         throw=False,
     )
-    assert out1.result == diffrax.RESULTS.implicit_nonconvergence
+    assert out1.result == diffrax.RESULTS.nonlinear_divergence
     assert out2.result == diffrax.RESULTS.successful
 
 
@@ -219,7 +218,10 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         tableau = diffrax.MultiButcherTableau(diffrax.Dopri5.tableau, tableau_)
         calculate_jacobian = calculate_jacobian_
         if implicit:
-            nonlinear_solver = diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-3)
+            root_finder: optx.AbstractRootFinder = diffrax.VeryChord(
+                rtol=1e-3, atol=1e-3
+            )
+            root_find_max_steps: int = 10
 
         @staticmethod
         def interpolation_cls(*, t0, t1, y0, y1, k):
@@ -277,6 +279,9 @@ def test_sil3():
         ]
         interpolation_cls = diffrax.LocalLinearInterpolation
 
+        root_finder: optx.AbstractRootFinder
+        root_find_max_steps: int = 10
+
         def order(self, terms):
             return 2
 
@@ -306,7 +311,7 @@ def test_sil3():
                 return ya - (y0 + (1 / 3) * f0 + (1 / 6) * g0 + (1 / 6) * g1)
 
             ta = t0 + (1 / 3) * dt
-            ya = self.nonlinear_solver(_second_stage, y0, None).root
+            ya = optx.root_find(_second_stage, self.root_finder, y0).value
             fs.append(ex_vf_prod(ta, ya))
             gs.append(im_vf_prod(ta, ya))
 
@@ -319,7 +324,7 @@ def test_sil3():
                 )
 
             tb = t0 + (2 / 3) * dt
-            yb = self.nonlinear_solver(_third_stage, ya, None).root
+            yb = optx.root_find(_third_stage, self.root_finder, ya).value
             fs.append(ex_vf_prod(tb, yb))
             gs.append(im_vf_prod(tb, yb))
 
@@ -338,7 +343,7 @@ def test_sil3():
                 )
 
             tc = t1
-            yc = self.nonlinear_solver(_fourth_stage, yb, None).root
+            yc = optx.root_find(_fourth_stage, self.root_finder, yb).value
             fs.append(ex_vf_prod(tc, yc))
             gs.append(im_vf_prod(tc, yc))
 
@@ -361,12 +366,8 @@ def test_sil3():
             state = (False, (f3 / dt, g3 / dt))
             return y1, y_error, dense_info, state, diffrax.RESULTS.successful
 
-    reference_solver = ReferenceSil3(
-        nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-8, atol=1e-8)
-    )
-    solver = diffrax.Sil3(
-        nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-8, atol=1e-8)
-    )
+    reference_solver = ReferenceSil3(root_finder=optx.Newton(rtol=1e-8, atol=1e-8))
+    solver = diffrax.Sil3(root_finder=diffrax.VeryChord(rtol=1e-8, atol=1e-8))
 
     key = jr.PRNGKey(5678)
     mlpkey1, mlpkey2, ykey = jr.split(key, 3)

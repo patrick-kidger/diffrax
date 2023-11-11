@@ -3,6 +3,7 @@ from typing import Optional
 import jax
 import jax.numpy as jnp
 import numpy as np
+import optimistix as optx
 from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree, Shaped
@@ -10,6 +11,7 @@ from jaxtyping import Array, PyTree, Shaped
 from .._custom_types import RealScalarLike, Y
 from .._local_interpolation import AbstractLocalInterpolation
 from .._misc import linear_rescale
+from .._root_finder import VeryChord, with_stepsize_controller_tols
 from .base import AbstractImplicitSolver, vector_tree_dot
 from .runge_kutta import (
     AbstractRungeKutta,
@@ -152,6 +154,9 @@ class KenCarp3(AbstractRungeKutta, AbstractImplicitSolver):
     tableau = MultiButcherTableau(_explicit_tableau, _implicit_tableau)
     calculate_jacobian = CalculateJacobian.second_stage
     interpolation_cls = _KenCarp3Interpolation
+
+    root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
+    root_find_max_steps: int = 10
 
     def order(self, terms):
         return 3

@@ -52,7 +52,7 @@ These methods are suitable for most problems.
 
 These methods are suitable for stiff problems.
 
-Each of these takes a `nonlinear_solver` argument at initialisation, defaulting to a Newton solver, which is used to solve the implicit problem at each step. See the page on [nonlinear solvers](../nonlinear_solver.md).
+Each of these takes a `root_finder` argument at initialisation, defaulting to a Newton solver, which is used to solve the implicit problem at each step. See the page on [root finders](../nonlinear_solver.md).
 
 ::: diffrax.ImplicitEuler
     selection:

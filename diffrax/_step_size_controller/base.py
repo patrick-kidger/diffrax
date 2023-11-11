@@ -7,7 +7,6 @@ from jaxtyping import PyTree
 
 from .._custom_types import Args, BoolScalarLike, IntScalarLike, RealScalarLike, VF, Y
 from .._solution import RESULTS
-from .._solver import AbstractSolver
 from .._term import AbstractTerm
 
 
@@ -34,23 +33,6 @@ class AbstractStepSizeController(eqx.Module):
         A copy of the the step size controller, updated to reflect the additional
         information.
         """
-
-    def wrap_solver(self, solver: AbstractSolver) -> AbstractSolver:
-        """Remakes the solver, adding additional information.
-
-        Some step size controllers need to modify the solver slightly. For example,
-        adaptive step size controllers can automatically set the tolerances used in
-        implicit solvers.
-
-        **Arguments:**
-
-        - `solver`: The solver to modify.
-
-        **Returns:**
-
-        The modified solver.
-        """
-        return solver
 
     @abc.abstractmethod
     def init(
