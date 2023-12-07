@@ -1,7 +1,9 @@
 import typing
-from typing import Any, TYPE_CHECKING, Union
+from typing import Any, Optional, TYPE_CHECKING, Union
 
+import equinox as eqx
 import equinox.internal as eqxi
+import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 from jaxtyping import AbstractDtype, Array, ArrayLike, Bool, Float, Int, PyTree, Shaped
@@ -49,5 +51,55 @@ DenseInfo = dict[str, PyTree[Array]]
 DenseInfos = dict[str, PyTree[Shaped[Array, "times ..."]]]
 BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
+
+
+class LevyVal(eqx.Module):
+    dt: PyTree
+    W: PyTree
+    H: Optional[PyTree]
+    bar_H: Optional[PyTree]
+    K: Optional[PyTree]
+    bar_K: Optional[PyTree]
+
+
+def levy_tree_transpose(tree_shape, levy_area, tree):
+    """Helper that takes a PyTree of LevyVals and transposes
+    into a LevyVal of PyTrees.
+
+    **Arguments:**
+        - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
+
+        - `levy_area`: can be "", "space-time" or "space-time-time", which indicates
+        which fields of the LevyVal will have values.
+
+        - `tree`: the PyTree of LevyVals to transpose.
+
+    **Returns:**
+        A `LevyVal` of PyTrees.
+    """
+    if levy_area in ["space-time", "space-time-time"]:
+        hh_default_val = jnp.zeros(())
+        if levy_area == "space-time-time":
+            kk_default_val = jnp.zeros(())
+        else:
+            kk_default_val = None
+    else:
+        hh_default_val = None
+        kk_default_val = None
+    return jtu.tree_transpose(
+        outer_treedef=jtu.tree_structure(tree_shape),
+        inner_treedef=jtu.tree_structure(
+            LevyVal(
+                dt=0.0,
+                W=jnp.zeros(()),
+                H=hh_default_val,
+                bar_H=None,
+                K=kk_default_val,
+                bar_K=None,
+            )
+        ),
+        pytree_to_transpose=tree,
+    )
+
 
 del Array, ArrayLike, PyTree, Bool, Int, Shaped, Float, AbstractDtype
