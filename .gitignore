@@ -6,3 +6,4 @@ dist/
 site/
 .all_objects.cache
 .pymon
+.idea/
