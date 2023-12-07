@@ -1,4 +1,4 @@
-from typing import cast, Optional, Union
+from typing import Literal, Optional, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,8 +9,8 @@ import jax.random as jr
 import jax.tree_util as jtu
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
-from .._custom_types import RealScalarLike
-from .._misc import default_floating_dtype, is_tuple_of_ints, split_by_tree
+from .._custom_types import IntScalarLike, levy_tree_transpose, LevyVal, RealScalarLike
+from .._misc import is_tuple_of_ints, linear_rescale, split_by_tree
 from .base import AbstractBrownianPath
 
 
@@ -25,20 +25,82 @@ from .base import AbstractBrownianPath
 # }
 #
 
+# We define
+# H_{s,t} = 1/(t-s) ( \int_s^t ( W_u - (u-s)/(t-s) W_{s,t} ) du ).
+# bhh_t = t * H_{0,t}
+# For more details see Definition 4.2.1 and Theorem 6.1.4 of
+#
+# Foster, J. M. (2020). Numerical approximations for stochastic
+# differential equations [PhD thesis]. University of Oxford.
+
+
+FloatDouble = tuple[Float[Array, " *shape"], Float[Array, " *shape"]]
+FloatTriple = tuple[
+    Float[Array, " *shape"], Float[Array, " *shape"], Float[Array, " *shape"]
+]
+
 
 class _State(eqx.Module):
-    s: RealScalarLike
-    t: RealScalarLike
-    u: RealScalarLike
-    w_s: Float[Array, " *shape"]
-    w_t: Float[Array, " *shape"]
-    w_u: Float[Array, " *shape"]
+    level: IntScalarLike  # level of the tree
+    s: RealScalarLike  # starting time of the interval
+    w_s_u_su: FloatTriple  # W_s, W_u, W_{s,u}
     key: PRNGKeyArray
+    bhh_s_u_su: Optional[FloatTriple]  # \bar{H}_s, _u, _{s,u}
+    bkk_s_u_su: Optional[FloatTriple]  # \bar{K}_s, _u, _{s,u}
+
+
+def _levy_diff(x0: LevyVal, x1: LevyVal) -> LevyVal:
+    r"""Computes $(W_{s,u}, H_{s,u})$ from $(W_s, \bar{H}_{s,u})$ and
+    $(W_u, \bar{H}_u)$, where $\bar{H}_u = u * H_u$.
+
+    **Arguments:**
+
+    - `x0`: `LevyVal` at time `s`
+
+    - `x1`: `LevyVal` at time `u`
+
+    **Returns:**
+
+    `LevyVal(W_su, H_su)`
+    """
+
+    su = jnp.asarray(x1.dt - x0.dt, dtype=x0.W.dtype)
+    w_su = x1.W - x0.W
+    if x0.H is None or x1.H is None:  # BM only case
+        return LevyVal(dt=su, W=w_su, H=None, bar_H=None, K=None, bar_K=None)
+
+    assert (x0.bar_H is not None) and (x1.bar_H is not None)
+    # if we are at this point levy_area == "space-time"
+    _su = jnp.where(jnp.abs(su) < jnp.finfo(su).eps, jnp.inf, su)
+    inverse_su = 1 / _su
+    u_bb_s = x1.dt * x0.W - x0.dt * x1.W
+    bhh_su = x1.bar_H - x0.bar_H - 0.5 * u_bb_s  # bhh_su = H_{s,u} * (u-s)
+    hh_su = inverse_su * bhh_su
+
+    return LevyVal(dt=su, W=w_su, H=hh_su, bar_H=None, K=None, bar_K=None)
+
+
+def _split_interval(
+    _cond,
+    x_stu: FloatTriple,
+    x_st_tu: tuple[Float[Array, " *shape"], Float[Array, " *shape"]],
+) -> FloatTriple:
+    x_s, x_t, x_u = x_stu
+    x_st, x_tu = x_st_tu
+    x_s = jnp.where(_cond, x_t, x_s)
+    x_u = jnp.where(_cond, x_u, x_t)
+    x_su = jnp.where(_cond, x_tu, x_st)
+    return x_s, x_u, x_su
 
 
 class VirtualBrownianTree(AbstractBrownianPath):
     """Brownian simulation that discretises the interval `[t0, t1]` to tolerance `tol`,
     and is piecewise quadratic at that discretisation.
+
+    Can be initialised with `levy_area` set to `""`, or `"space-time"`.
+    If `levy_area=="space_time"`, then it also computes space-time Lévy area `H`.
+    This will impact the Brownian path, so even with the same key, the trajectory will
+    be different depending on the value of `levy_area`.
 
     ??? cite "Reference"
 
@@ -52,16 +114,16 @@ class VirtualBrownianTree(AbstractBrownianPath):
         }
         ```
 
-        (The implementation here is a slight improvement on the reference
-        implementation, by being piecwise quadratic rather than piecewise linear. This
-        corrects a small bias in the generated samples.)
+        (The implementation here is a slight improvement on the reference implementation
+        by using an interpolation method which ensures all the 2nd moments are correct.)
     """
 
     t0: RealScalarLike
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    key: PyTree[PRNGKeyArray]
+    levy_area: Literal["", "space-time"] = eqx.field(static=True)
+    key: PyTree[PRNGKeyArray]  # noqa: F821
 
     def __init__(
         self,
@@ -69,13 +131,23 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t1: RealScalarLike,
         tol: RealScalarLike,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
-        key: PRNGKeyArray,
+        key: PyTree[PRNGKeyArray],
+        levy_area: Literal["", "space-time"] = "",
     ):
+        (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
         self.t0 = t0
         self.t1 = t1
-        self.tol = tol
+        # Since we rescale the interval to [0,1],
+        # we need to rescale the tolerance too.
+        self.tol = tol / (self.t1 - self.t0)
+
+        if levy_area not in ["", "space-time"]:
+            raise ValueError(
+                f"levy_area must be one of '', 'space-time', but got {levy_area}."
+            )
+        self.levy_area = levy_area
         self.shape = (
-            jax.ShapeDtypeStruct(shape, default_floating_dtype())
+            jax.ShapeDtypeStruct(shape, jax.dtypes.canonicalize_dtype(None))
             if is_tuple_of_ints(shape)
             else shape
         )
@@ -88,70 +160,199 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
         self.key = split_by_tree(key, self.shape)
 
+    def _denormalise_bm_inc(self, x: LevyVal) -> LevyVal:
+        # TODO: demonstrate rescaling actually helps
+
+        # Rescaling back from [0, 1] to the original interval [t0, t1].
+        interval_len = self.t1 - self.t0  # can be any dtype
+        sqrt_len = jnp.sqrt(interval_len)
+
+        def sqrt_mult(z):
+            # need to cast to dtype of each leaf in PyTree
+            dtype = jnp.dtype(z)
+            return z * jnp.asarray(sqrt_len, dtype)
+
+        def mult(z):
+            dtype = jnp.dtype(z)
+            return (interval_len * z).astype(dtype)
+
+        return LevyVal(
+            dt=jtu.tree_map(mult, x.dt),
+            W=jtu.tree_map(sqrt_mult, x.W),
+            H=jtu.tree_map(sqrt_mult, x.H),
+            bar_H=None,
+            K=jtu.tree_map(sqrt_mult, x.K),
+            bar_K=None,
+        )
+
     @eqx.filter_jit
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
-        del left
-        t0 = eqxi.nondifferentiable(t0, name="t0")
-        if t1 is None:
-            return self._evaluate(t0)
-        else:
-            t1 = cast(RealScalarLike, eqxi.nondifferentiable(t1, name="t1"))
-            return jtu.tree_map(
-                lambda x, y: x - y,
-                self._evaluate(t1),
-                self._evaluate(t0),
-            )
+        self,
+        t0: RealScalarLike,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+        use_levy: bool = False,
+    ) -> Union[PyTree[Array], LevyVal]:
+        def _is_levy_val(obj):
+            return isinstance(obj, LevyVal)
 
-    def _evaluate(self, τ: RealScalarLike) -> PyTree[Array]:
-        map_func = lambda key, struct: self._evaluate_leaf(key, τ, struct)
+        t0 = eqxi.nondifferentiable(t0, name="t0")
+        # map the interval [self.t0, self.t1] onto [0,1]
+        t0 = linear_rescale(self.t0, t0, self.t1)
+        levy_0 = self._evaluate(t0)
+        if t1 is None:
+            levy_out = levy_0
+
+        else:
+            t1 = eqxi.nondifferentiable(t1, name="t1")
+            # map the interval [self.t0, self.t1] onto [0,1]
+            t1 = linear_rescale(self.t0, t1, self.t1)
+            levy_1 = self._evaluate(t1)
+
+            levy_out = jtu.tree_map(_levy_diff, levy_0, levy_1, is_leaf=_is_levy_val)
+
+        levy_out = levy_tree_transpose(self.shape, self.levy_area, levy_out)
+        # now map [0,1] back onto [self.t0, self.t1]
+        levy_out = self._denormalise_bm_inc(levy_out)
+        assert isinstance(levy_out, LevyVal)
+        return levy_out if use_levy else levy_out.W
+
+    def _evaluate(self, r: RealScalarLike) -> PyTree[LevyVal]:
+        """Maps the _evaluate_leaf function at time τ using self.key onto self.shape"""
+        r = eqxi.error_if(
+            r,
+            (r < 0) | (r > 1),
+            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
+        )
+        map_func = lambda key, shape: self._evaluate_leaf(key, r, shape)
         return jtu.tree_map(map_func, self.key, self.shape)
 
-    def _brownian_bridge(self, s, t, u, w_s, w_u, key, shape, dtype):
-        mean = w_s + (w_u - w_s) * ((t - s) / (u - s))
-        var = (u - t) * (t - s) / (u - s)
-        std = jnp.sqrt(var)
-        return mean + std * jr.normal(key, shape, dtype)
+    def _brownian_arch(
+        self, _state: _State, shape, dtype
+    ) -> tuple[
+        RealScalarLike,
+        FloatTriple,
+        FloatDouble,
+        tuple[PRNGKeyArray, PRNGKeyArray],
+        Optional[FloatTriple],
+        Optional[FloatDouble],
+        Optional[FloatTriple],
+        Optional[FloatDouble],
+    ]:
+        r"""For `t = (s+u)/2` evaluates `w_t` and (optionally) `bhh_t`
+         conditioned on `w_s`, `w_u`, `bhh_s`, `bhh_u`, where
+         `bhh_st` represents $\bar{H}_{s,t} \coloneqq (t-s) H_{s,t}$.
+         To avoid cancellation errors, requires an input of `w_su`, `bhh_su`
+         and also returns `w_st` and `w_tu` in addition to just `w_t`. Same for `bhh`
+         if it is not None.
+         Note that the inputs and outputs already contain `bkk`. These values are
+         there for the sake of a future extension with "space-time-time" Levy area
+         and should be None for now.
+
+        **Arguments:**
+
+        - `_state`: The state of the Brownian tree
+        - `shape`:
+        - `dtype`:
+
+        **Returns:**
+
+        - `t`: midpoint time
+        - `w_stu`: $(W_s, W_t, W_u)$
+        - `w_st_tu`: $(W_{s,t}, W_{t,u})$
+        - `keys`: a tuple of subinterval keys `(key_st, key_tu)`
+        - `bhh_stu`: (optional) $(\bar{H}_s, \bar{H}_t, \bar{H}_u)$
+        - `bhh_st_tu`: (optional) $(\bar{H}_{s,t}, \bar{H}_{t,u})$
+        - `bkk_stu`: (optional) $(\bar{K}_s, \bar{K}_t, \bar{K}_u)$
+        - `bkk_st_tu`: (optional) $(\bar{K}_{s,t}, \bar{K}_{t,u})$
+
+        """
+        key_st, midpoint_key, key_tu = jr.split(_state.key, 3)
+        keys = (key_st, key_tu)
+        su = 2.0**-_state.level
+        st = su / 2
+        s = _state.s
+        t = s + st
+        root_su = jnp.sqrt(su)
+
+        w_s, w_u, w_su = _state.w_s_u_su
+
+        if self.levy_area == "space-time":
+            assert _state.bhh_s_u_su is not None
+            assert _state.bkk_s_u_su is None
+            bhh_s, bhh_u, bhh_su = _state.bhh_s_u_su
+
+            z1_key, z2_key = jr.split(midpoint_key, 2)
+            z1 = jr.normal(z1_key, shape, dtype)
+            z2 = jr.normal(z2_key, shape, dtype)
+            z = z1 * (root_su / 4)
+            n = z2 * jnp.sqrt(su / 12)
+
+            w_term1 = w_su / 2
+            w_term2 = 3 / (2 * su) * bhh_su + z
+            w_st = w_term1 + w_term2
+            w_tu = w_term1 - w_term2
+            w_st_tu = (w_st, w_tu)
+
+            bhh_term1 = bhh_su / 8 - su / 4 * z
+            bhh_term2 = su / 4 * n
+            bhh_st = bhh_term1 + bhh_term2
+            bhh_tu = bhh_term1 - bhh_term2
+            bhh_st_tu = (bhh_st, bhh_tu)
+
+            w_t = w_s + w_st
+            w_stu = (w_s, w_t, w_u)
+
+            bhh_t = bhh_s + bhh_st + 0.5 * (t * w_s - s * w_t)
+            bhh_stu = (bhh_s, bhh_t, bhh_u)
+            bkk_stu = None
+            bkk_st_tu = None
+
+        else:
+            assert _state.bhh_s_u_su is None
+            assert _state.bkk_s_u_su is None
+            mean = 0.5 * w_su
+            w_term2 = root_su / 2 * jr.normal(midpoint_key, shape, dtype)
+            w_st = mean + w_term2
+            w_tu = mean - w_term2
+            w_st_tu = (w_st, w_tu)
+            w_t = w_s + w_st
+            w_stu = (w_s, w_t, w_u)
+            bhh_stu, bhh_st_tu, bkk_stu, bkk_st_tu = None, None, None, None
+        return t, w_stu, w_st_tu, keys, bhh_stu, bhh_st_tu, bkk_stu, bkk_st_tu
 
     def _evaluate_leaf(
         self,
         key,
-        τ: RealScalarLike,
+        r: RealScalarLike,
         struct: jax.ShapeDtypeStruct,
-    ) -> Array:
+    ) -> LevyVal:
         shape, dtype = struct.shape, struct.dtype
 
-        cond = self.t0 < self.t1
-        t0 = jnp.where(cond, self.t0, self.t1).astype(dtype)
-        t1 = jnp.where(cond, self.t1, self.t0).astype(dtype)
+        t0 = jnp.zeros((), dtype)
+        r = jnp.asarray(r, dtype)
 
-        t0 = eqxi.error_if(
-            t0,
-            τ < t0,
-            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
-        )
-        t1 = eqxi.error_if(
-            t1,
-            τ > t1,
-            "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
-        )
-        # Clip because otherwise the while loop below won't terminate, and the above
-        # errors are only raised after everything has finished executing.
-        τ = jnp.clip(τ, t0, t1).astype(dtype)
+        w_0 = jnp.zeros(shape, dtype)
 
-        key, init_key = jr.split(key, 2)
-        thalf = t0 + 0.5 * (t1 - t0)
-        w_t1 = jr.normal(init_key, shape, dtype) * jnp.sqrt(t1 - t0)
-        w_thalf = self._brownian_bridge(t0, thalf, t1, 0, w_t1, key, shape, dtype)
+        if self.levy_area == "space-time":
+            key, init_key_w, init_key_la = jr.split(key, 3)
+            w_1 = jr.normal(init_key_w, shape, dtype)
+
+            bhh_1 = jnp.sqrt(1 / 12) * jr.normal(init_key_la, shape, dtype)
+            bhh_0 = jnp.zeros_like(bhh_1)
+            bhh = (bhh_0, bhh_1, bhh_1)
+            bkk = None
+
+        else:
+            key, init_key_w = jr.split(key, 2)
+            w_1 = jr.normal(init_key_w, shape, dtype)
+            bhh = None
+            bkk = None
+
+        w = (w_0, w_1, w_1)
+
         init_state = _State(
-            s=t0,
-            t=thalf,
-            u=t1,
-            w_s=jnp.zeros_like(w_t1),
-            w_t=w_thalf,
-            w_u=w_t1,
-            key=key,
+            level=0, s=t0, w_s_u_su=w, key=key, bhh_s_u_su=bhh, bkk_s_u_su=bkk
         )
 
         def _cond_fun(_state):
@@ -161,67 +362,89 @@ class VirtualBrownianTree(AbstractBrownianPath):
             # jnp.abs(τ - state.s) > self.tol
             # Here, because we use quadratic splines to get better samples, we always
             # iterate down to the level of the spline.
-            return (_state.u - _state.s) > self.tol
+            return 2.0 ** (-_state.level) > self.tol
 
-        def _body_fun(_state):
-            _key1, _key2 = jr.split(_state.key, 2)
-            _cond = τ > _state.t
-            _s = jnp.where(_cond, _state.t, _state.s)
-            _u = jnp.where(_cond, _state.u, _state.t)
-            _w_s = jnp.where(_cond, _state.w_t, _state.w_s)
-            _w_u = jnp.where(_cond, _state.w_u, _state.w_t)
-            _key = jnp.where(_cond, _key1, _key2)
-            _t = _s + 0.5 * (_u - _s)
-            _w_t = self._brownian_bridge(_s, _t, _u, _w_s, _w_u, _key, shape, dtype)
-            return _State(s=_s, t=_t, u=_u, w_s=_w_s, w_t=_w_t, w_u=_w_u, key=_key)
+        def _body_fun(_state: _State):
+            """Single-step of binary search for τ."""
+
+            (
+                _t,
+                _w_stu,
+                _w_inc,
+                _keys,
+                _bhh_stu,
+                _bhh_st_tu,
+                _bkk_stu,
+                _bkk_st_tu,
+            ) = self._brownian_arch(_state, shape, dtype)
+
+            _level = _state.level + 1
+            _cond = r > _t
+            _s = jnp.where(_cond, _t, _state.s)
+            _key_st, _key_tu = _keys
+            _key = jnp.where(_cond, _key_st, _key_tu)
+
+            _w = _split_interval(_cond, _w_stu, _w_inc)
+            if not self.levy_area == "":
+                assert _bhh_stu is not None and _bhh_st_tu is not None
+                _bhh = _split_interval(_cond, _bhh_stu, _bhh_st_tu)
+                _bkk = None
+            else:
+                _bhh = None
+                _bkk = None
+
+            return _State(
+                level=_level,
+                s=_s,
+                w_s_u_su=_w,
+                key=_key,
+                bhh_s_u_su=_bhh,
+                bkk_s_u_su=_bkk,
+            )
 
         final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
-        # Quadratic interpolation.
-        # We have w_s, w_t, w_u available to us, and interpolate with the unique
-        # parabola passing through them.
-        # Why quadratic and not just "linear from w_s to w_t to w_u"? Because linear
-        # only gets the conditional mean correct at every point, but not the
-        # conditional variance. This means that the Virtual Brownian Tree will pass
-        # statistical tests comparing w(t)|(w(s),w(u)) against the true Brownian
-        # bridge. (Provided s, t, u are greater than the discretisation level `tol`.)
-        # (If you just do linear then you find that the variance is *ever so slightly*
-        # too small.)
+
         s = final_state.s
-        u = final_state.u
-        w_s = final_state.w_s
-        w_t = final_state.w_t
-        w_u = final_state.w_u
-        rescaled_τ = (τ - s) / (u - s)
-        # Fit polynomial as usual.
-        # The polynomial ax^2 + bx + c is found by solving
-        # [s^2 s 1][a]   [w_s]
-        # [t^2 t 1][b] = [w_t]
-        # [u^2 u 1][c]   [w_u]
-        #
-        # `A` is the inverse of the above matrix, with s=0, t=0.5, u=1.
-        A = jnp.array([[2, -4, 2], [-3, 4, -1], [1, 0, 0]])
-        coeffs = jnp.tensordot(A, jnp.stack([w_s, w_t, w_u]), axes=1)
-        return jnp.polyval(coeffs, rescaled_τ)
+        su = 2.0**-final_state.level
 
+        sr = r - s
+        ru = su - sr  # make sure su = sr + ru regardless of cancellation error
 
-VirtualBrownianTree.__init__.__doc__ = """
-**Arguments:**
+        w_s, w_u, w_su = final_state.w_s_u_su
 
-- `t0`: The start of the interval the Brownian motion is defined over.
-- `t1`: The start of the interval the Brownian motion is defined over.
-- `tol`: The discretisation that `[t0, t1]` is discretised to.
-- `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the shape, 
-    dtype, and PyTree structure of the output. For simplicity, `shape` can also just 
-    be a tuple of integers, describing the shape of a single JAX array. In that case
-    the dtype is chosen to be the default floating-point dtype.
-- `key`: A random key.
+        # BM only case
+        if self.levy_area == "":
+            z = jr.normal(key, shape, dtype)
+            w_sr = sr / su * w_su + jnp.sqrt(jnp.abs(sr * ru / su)) * z
+            w_r = w_s + w_sr
+            return LevyVal(dt=r, W=w_r, H=None, bar_H=None, K=None, bar_K=None)
 
-!!! info
+        elif self.levy_area == "space-time":
+            assert final_state.bhh_s_u_su is not None
+            bhh_s, bhh_u, bhh_su = final_state.bhh_s_u_su
+            sr3 = jnp.power(sr, 3)
+            ru3 = jnp.power(ru, 3)
+            su3 = jnp.power(su, 3)
+            key1, key2 = jr.split(key, 2)
+            x1 = jr.normal(key1, shape, dtype)
+            x2 = jr.normal(key2, shape, dtype)
 
-    If using this as part of an SDE solver, and you know (or have an estimate of) the
-    step sizes made in the solver, then you can optimise the computational efficiency
-    of the Virtual Brownian Tree by setting `tol` to be just slightly smaller than the
-    step size of the solver.
+            sr_ru_half = jnp.sqrt(jnp.abs(sr * ru))
+            d = jnp.sqrt(jnp.abs(sr3 + ru3))
+            d_prime = 1 / (2 * su * d)
+            a = d_prime * sr3 * sr_ru_half
+            b = d_prime * ru3 * sr_ru_half
 
-The Brownian motion is defined to equal 0 at `t0`.
-"""
+            w_sr = sr / su * w_su + 6 * sr * ru / su3 * bhh_su + 2 * (a + b) / su * x1
+            w_r = w_s + w_sr
+            c = jnp.sqrt(jnp.abs(3 * sr3 * ru3)) / (6 * d)
+            bhh_sr = sr3 / su3 * bhh_su - a * x1 + c * x2
+            bhh_r = bhh_s + bhh_sr + 0.5 * (r * w_s - s * w_r)
+
+            inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
+            hh_r = inverse_r * bhh_r
+
+        else:
+            assert False
+
+        return LevyVal(dt=r, W=w_r, H=hh_r, bar_H=bhh_r, K=None, bar_K=None)

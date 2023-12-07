@@ -689,11 +689,11 @@ def diffeqsolve(
         s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
     ]
     timelikes = [x for x in timelikes if x is not None]
-    dtype = jnp.result_type(*timelikes)
-    t0 = jnp.asarray(t0, dtype=dtype)
-    t1 = jnp.asarray(t1, dtype=dtype)
+    time_dtype = jnp.result_type(*timelikes)
+    t0 = jnp.asarray(t0, dtype=time_dtype)
+    t1 = jnp.asarray(t1, dtype=time_dtype)
     if dt0 is not None:
-        dt0 = jnp.asarray(dt0, dtype=dtype)
+        dt0 = jnp.asarray(dt0, dtype=time_dtype)
 
     def _get_subsaveat_ts(saveat):
         out = [s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)]
@@ -702,18 +702,18 @@ def diffeqsolve(
     saveat = eqx.tree_at(
         _get_subsaveat_ts,
         saveat,
-        replace_fn=lambda ts: ts.astype(dtype),  # noqa: F821
+        replace_fn=lambda ts: ts.astype(time_dtype),  # noqa: F821
     )
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
     # fixing issue with float64 and weak dtypes, see discussion at:
     # https://github.com/patrick-kidger/diffrax/pull/197#discussion_r1130173527
     def _promote(yi):
-        _dtype = jnp.result_type(yi, dtype)  # noqa: F821
+        _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
     y0 = jtu.tree_map(_promote, y0)
-    del timelikes, dtype
+    del timelikes
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
@@ -819,7 +819,7 @@ def diffeqsolve(
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
-        ts = jnp.full(out_size, jnp.inf)
+        ts = jnp.full(out_size, jnp.inf, dtype=time_dtype)
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
         ys = jtu.tree_map(
             lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
@@ -848,7 +848,7 @@ def diffeqsolve(
         ) = eqx.filter_eval_shape(
             solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
         )
-        dense_ts = jnp.full(max_steps + 1, jnp.inf)
+        dense_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
         _make_full = lambda x: jnp.full(
             (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
         )
