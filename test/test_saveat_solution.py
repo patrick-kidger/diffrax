@@ -8,7 +8,7 @@ import pytest
 
 import diffrax
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 def test_results():
@@ -69,7 +69,7 @@ def test_saveat_solution():
             assert sol.ts.shape == (1,)
             assert sol.ys.shape == (1, 1)
             assert sol.ts[0] == _t1
-            assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.5))
+            assert tree_allclose(sol.ys[0], _y0 * math.exp(-0.5))
             if controller_state:
                 assert sol.controller_state is not None
             else:
@@ -101,8 +101,8 @@ def test_saveat_solution():
     assert sol.ys.shape == (2, 1)
     assert sol.ts[0] == jnp.asarray(0.5)
     assert sol.ts[1] == jnp.asarray(0.8)
-    assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.2))
-    assert shaped_allclose(sol.ys[1], _y0 * math.exp(-0.35))
+    assert tree_allclose(sol.ys[0], _y0 * math.exp(-0.2))
+    assert tree_allclose(sol.ys[1], _y0 * math.exp(-0.35))
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -121,7 +121,7 @@ def test_saveat_solution():
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
     _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
-    assert shaped_allclose(sol.ys, _ys)
+    assert tree_allclose(sol.ys, _ys)
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -139,12 +139,10 @@ def test_saveat_solution():
     assert sol.ys is None
     assert sol.controller_state is None
     assert sol.solver_state is None
-    assert shaped_allclose(
-        sol.evaluate(0.2, 0.8), sol.evaluate(0.8) - sol.evaluate(0.2)
-    )
-    assert shaped_allclose(sol.evaluate(0.2), _y0 * math.exp(-0.05))
-    assert shaped_allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
-    assert shaped_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
+    assert tree_allclose(sol.evaluate(0.2, 0.8), sol.evaluate(0.8) - sol.evaluate(0.2))
+    assert tree_allclose(sol.evaluate(0.2), _y0 * math.exp(-0.05))
+    assert tree_allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
+    assert tree_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
@@ -164,7 +162,7 @@ def test_trivial_dense():
         saveat=saveat,
         stepsize_controller=stepsize_controller,
     )
-    assert shaped_allclose(sol.evaluate(2.0), y0)
+    assert tree_allclose(sol.evaluate(2.0), y0)
 
 
 @pytest.mark.parametrize(
@@ -237,16 +235,16 @@ def test_subsaveat(adjoint, multi_subs, with_fn, getkey):
             ts0, ts1, ts2 = sol.ts
             ys0, ys1, ys2 = sol.ys
             assert ts0.shape == (4096,)
-            assert shaped_allclose(ts1, jnp.array([0, 0.25, 0.5, 0.75, 1, 2]))
-            assert shaped_allclose(
+            assert tree_allclose(ts1, jnp.array([0, 0.25, 0.5, 0.75, 1, 2]))
+            assert tree_allclose(
                 ys0[:steps], jax.vmap(sol2.evaluate)(ts0[:steps])[:, 0]
             )
-            assert shaped_allclose(ys1, jax.vmap(sol2.evaluate)(ts1)[:, 1])
+            assert tree_allclose(ys1, jax.vmap(sol2.evaluate)(ts1)[:, 1])
         else:
             ts2 = sol.ts
             ys2 = sol.ys
-        assert shaped_allclose(ts2, jnp.array([0, 0.5, 1.0, 1.5]))
-        assert shaped_allclose(ys2, jax.vmap(mlp)(jax.vmap(sol2.evaluate)(ts2)))
+        assert tree_allclose(ts2, jnp.array([0, 0.5, 1.0, 1.5]))
+        assert tree_allclose(ys2, jax.vmap(mlp)(jax.vmap(sol2.evaluate)(ts2)))
 
 
 def test_backprop_none_subs():

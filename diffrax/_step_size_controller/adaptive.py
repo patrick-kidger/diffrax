@@ -7,6 +7,7 @@ import equinox.internal as eqxi
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax.internal as lxi
 import optimistix as optx
 from equinox import AbstractVar
 from equinox.internal import ω
@@ -391,7 +392,18 @@ class PIDController(AbstractAdaptiveStepSizeController):
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
 
-        return t1, (jump_next_step, at_dtmin, dt0, 1.0, 1.0)
+        y_leaves = jtu.tree_leaves(y0)
+        if len(y_leaves) == 0:
+            y_dtype = lxi.default_floating_dtype()
+        else:
+            y_dtype = jnp.result_type(*y_leaves)
+        return t1, (
+            jump_next_step,
+            at_dtmin,
+            dt0,
+            jnp.array(1.0, dtype=y_dtype),
+            jnp.array(1.0, dtype=y_dtype),
+        )
 
     def adapt_step_size(
         self,

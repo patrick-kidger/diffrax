@@ -5,7 +5,7 @@ import jax.tree_util as jtu
 
 import diffrax
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 def test_step_ts():
@@ -135,4 +135,4 @@ def test_grad_of_discontinuous_forcing():
     eps = 1e-5
     finite_diff = (r(0.5) - r(0.5 - eps)) / eps
     autodiff = jax.jit(jax.grad(run))(0.5)
-    assert shaped_allclose(finite_diff, autodiff)
+    assert tree_allclose(finite_diff, autodiff)

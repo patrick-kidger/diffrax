@@ -7,7 +7,7 @@ import optimistix as optx
 
 import diffrax
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 # Basic test
@@ -73,7 +73,7 @@ def test_very_chord():
         zero = jtu.tree_map(jnp.zeros_like, x)
         sol = optx.root_find(fn, solver, x, args, max_steps=100)
         assert sol.result == optx.RESULTS.successful
-        assert shaped_allclose(fn(sol.value, args), zero, rtol=tol, atol=tol)
+        assert tree_allclose(fn(sol.value, args), zero, rtol=tol, atol=tol)
 
         # Very chord method
         init_state = optx.root_find(fn, solver, x, args, max_steps=0, throw=False).state
@@ -81,4 +81,4 @@ def test_very_chord():
             fn, solver, x, args, max_steps=100, options=dict(init_state=init_state)
         )
         assert sol.result == optx.RESULTS.successful
-        assert shaped_allclose(fn(sol.value, args), zero, rtol=tol, atol=tol)
+        assert tree_allclose(fn(sol.value, args), zero, rtol=tol, atol=tol)

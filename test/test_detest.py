@@ -20,7 +20,7 @@ import scipy.integrate as integrate
 
 import diffrax
 
-from .helpers import all_ode_solvers, implicit_tol, shaped_allclose
+from .helpers import all_ode_solvers, implicit_tol, tree_allclose
 
 
 #
@@ -465,4 +465,4 @@ def _test(solver, problems, higher):
             rtol = 4e-5
             atol = 4e-5
 
-        assert shaped_allclose(y1, scipy_y1, rtol=rtol, atol=atol)
+        assert tree_allclose(y1, scipy_y1, rtol=rtol, atol=atol)

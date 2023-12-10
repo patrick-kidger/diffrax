@@ -7,6 +7,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax as lx
+import lineax.internal as lxi
 import optimistix as optx
 from equinox.internal import ω
 from jaxtyping import Array, Bool, PyTree, Scalar
@@ -88,11 +89,16 @@ class VeryChord(optx.AbstractRootFinder):
             dynamic = lax.stop_gradient(dynamic)
             init_later_state = eqx.combine(dynamic, static)
             linear_state = (jac, init_later_state)
+            y_leaves = jtu.tree_leaves(y)
+            if len(y_leaves) == 0:
+                y_dtype = lxi.default_floating_dtype()
+            else:
+                y_dtype = jnp.result_type(*y_leaves)
             init_state = _VeryChordState(
                 linear_state=linear_state,
                 diff=jtu.tree_map(lambda x: jnp.full(x.shape, jnp.inf, x.dtype), y),
-                diffsize=jnp.array(jnp.inf),
-                diffsize_prev=jnp.array(1.0),
+                diffsize=jnp.array(jnp.inf, dtype=y_dtype),
+                diffsize_prev=jnp.array(1.0, dtype=y_dtype),
                 result=optx.RESULTS.successful,
                 step=jnp.array(0),
             )
