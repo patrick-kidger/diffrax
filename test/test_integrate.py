@@ -17,7 +17,7 @@ from .helpers import (
     all_split_solvers,
     implicit_tol,
     random_pytree,
-    shaped_allclose,
+    tree_allclose,
     treedefs,
 )
 
@@ -96,13 +96,13 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
         t1 = 1.0
         dt0 = 0.01
     elif t_dtype is jnp.int32:
-        t0 = jnp.array(0)
-        t1 = jnp.array(1)
-        dt0 = jnp.array(0.01)
+        t0 = jnp.array(0, dtype=t_dtype)
+        t1 = jnp.array(1, dtype=t_dtype)
+        dt0 = jnp.array(0.01, dtype=jnp.float32)
     elif t_dtype is jnp.float32:
-        t0 = jnp.array(0.0)
-        t1 = jnp.array(1.0)
-        dt0 = jnp.array(0.01)
+        t0 = jnp.array(0, dtype=t_dtype)
+        t1 = jnp.array(1, dtype=t_dtype)
+        dt0 = jnp.array(0.01, dtype=t_dtype)
     else:
         raise ValueError
     y0 = random_pytree(getkey(), treedef, dtype=y_dtype)
@@ -127,11 +127,16 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
             raise
     else:
         y1 = sol.ys
+        # TODO: remove dtype cast, fix Diffrax internals to better respect dtypes.
         if jnp.iscomplexobj(y_dtype):
-            true_y1 = jtu.tree_map(lambda x: (x * jnp.exp(-1j))[None], y0)
+            true_y1 = jtu.tree_map(
+                lambda x, x1: (x * jnp.exp(-1j))[None].astype(x1.dtype), y0, y1
+            )
         else:
-            true_y1 = jtu.tree_map(lambda x: (x * math.exp(-1))[None], y0)
-        assert shaped_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
+            true_y1 = jtu.tree_map(
+                lambda x, x1: (x * math.exp(-1))[None].astype(x1.dtype), y0, y1
+            )
+        assert tree_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
@@ -244,12 +249,9 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     bm = diffrax.VirtualBrownianTree(
         t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
-    if solver_ctr.term_structure == diffrax.AbstractTerm:
-        terms = diffrax.MultiTerm(
-            diffrax.ODETerm(_drift), diffrax.ControlTerm(_diffusion, bm)
-        )
-    else:
-        terms = (diffrax.ODETerm(_drift), diffrax.ControlTerm(_diffusion, bm))
+    terms = diffrax.MultiTerm(
+        diffrax.ODETerm(_drift), diffrax.ControlTerm(_diffusion, bm)
+    )
 
     # Reference solver is always an ODE-viable solver, so its implementation has been
     # verified by the ODE tests like test_ode_order.
@@ -324,8 +326,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
-    assert shaped_allclose(sol1.t0, 4)
-    assert shaped_allclose(sol1.t1, 0.3)
+    assert tree_allclose(sol1.t0, jnp.array(4.0))
+    assert tree_allclose(sol1.t1, jnp.array(0.3))
 
     def f(t, y, args):
         return y
@@ -345,8 +347,8 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
-    assert shaped_allclose(sol2.t0, -4)
-    assert shaped_allclose(sol2.t1, -0.3)
+    assert tree_allclose(sol2.t0, jnp.array(-4.0))
+    assert tree_allclose(sol2.t1, jnp.array(-0.3))
 
     if saveat.subs is not None and (
         saveat.subs.t0
@@ -354,13 +356,13 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         or saveat.subs.ts is not None
         or saveat.subs.steps
     ):
-        assert shaped_allclose(sol1.ts, -sol2.ts, equal_nan=True)
-        assert shaped_allclose(sol1.ys, sol2.ys, equal_nan=True)
+        assert tree_allclose(sol1.ts, -sol2.ts, equal_nan=True)
+        assert tree_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
         t = jnp.linspace(0.3, 4, 20)
         for ti in t:
-            assert shaped_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
-            assert shaped_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
+            assert tree_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
+            assert tree_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
 
 def test_semi_implicit_euler():
@@ -379,7 +381,7 @@ def test_semi_implicit_euler():
     )
     term_combined = diffrax.ODETerm(lambda t, y, args: (-y[1], y[0]))
     sol2 = diffrax.diffeqsolve(term_combined, diffrax.Tsit5(), 0, 1, 0.001, y0)
-    assert shaped_allclose(sol1.ys, sol2.ys)
+    assert tree_allclose(sol1.ys, sol2.ys)
 
 
 @pytest.mark.parametrize(
@@ -410,7 +412,7 @@ def test_grad_implicit_solve(solver):
     val = f(1.0)
     val_eps = f(1.0 + eps)
     numerical_grads = (val_eps - val) / eps
-    assert shaped_allclose(grads, numerical_grads)
+    assert tree_allclose(grads, numerical_grads)
 
 
 def test_concrete_made_jump():

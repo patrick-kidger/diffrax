@@ -10,7 +10,7 @@ import pytest
 
 import diffrax
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 class _VectorField(eqx.Module):
@@ -133,9 +133,9 @@ def test_against(getkey):
                     inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad(inexact, saveat, diffrax.BacksolveAdjoint())
-                assert shaped_allclose(fd_grads, direct_grads[0])
-                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
-                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(fd_grads, direct_grads[0])
+                assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
                 direct_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.DirectAdjoint()
@@ -149,9 +149,9 @@ def test_against(getkey):
                 direct_grads = jtu.tree_map(_convert_float0, direct_grads)
                 recursive_grads = jtu.tree_map(_convert_float0, recursive_grads)
                 backsolve_grads = jtu.tree_map(_convert_float0, backsolve_grads)
-                assert shaped_allclose(fd_grads, direct_grads[0])
-                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
-                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(fd_grads, direct_grads[0])
+                assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
                 fd_grads = jtu.tree_map(lambda *x: jnp.stack(x), fd_grads, fd_grads)
                 direct_grads = _run_vmap_grad(
@@ -163,9 +163,9 @@ def test_against(getkey):
                 backsolve_grads = _run_vmap_grad(
                     twice_inexact, saveat, diffrax.BacksolveAdjoint()
                 )
-                assert shaped_allclose(fd_grads, direct_grads[0])
-                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
-                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(fd_grads, direct_grads[0])
+                assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
                 direct_grads = _run_grad_vmap(
                     twice_inexact, saveat, diffrax.DirectAdjoint()
@@ -176,9 +176,9 @@ def test_against(getkey):
                 backsolve_grads = _run_grad_vmap(
                     twice_inexact, saveat, diffrax.BacksolveAdjoint()
                 )
-                assert shaped_allclose(fd_grads, direct_grads[0])
-                assert shaped_allclose(direct_grads, recursive_grads, atol=1e-5)
-                assert shaped_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(fd_grads, direct_grads[0])
+                assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
 
 
 def test_adjoint_seminorm():
@@ -305,9 +305,7 @@ def test_implicit():
 
     for step in range(100):
         model, opt_state = make_step(model, opt_state, target_steady_state)
-    assert shaped_allclose(
-        model.steady_state, target_steady_state, rtol=1e-2, atol=1e-2
-    )
+    assert tree_allclose(model.steady_state, target_steady_state, rtol=1e-2, atol=1e-2)
 
 
 def test_backprop_ts(getkey):
@@ -362,5 +360,5 @@ def test_sde_against(getkey):
     grads1 = run((y0, args), diffrax.DirectAdjoint())
     grads2 = run((y0, args), diffrax.BacksolveAdjoint())
     grads3 = run((y0, args), diffrax.RecursiveCheckpointAdjoint())
-    assert shaped_allclose(grads1, grads2, rtol=1e-3, atol=1e-3)
-    assert shaped_allclose(grads1, grads3, rtol=1e-3, atol=1e-3)
+    assert tree_allclose(grads1, grads2, rtol=1e-3, atol=1e-3)
+    assert tree_allclose(grads1, grads3, rtol=1e-3, atol=1e-3)

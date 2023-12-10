@@ -4,7 +4,7 @@ import jax.random as jrandom
 
 import diffrax
 
-from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, shaped_allclose
+from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 
 
 def _test_path_derivative(path, name):
@@ -12,12 +12,12 @@ def _test_path_derivative(path, name):
         t = path.t0 + percentage * (path.t1 - path.t0)
         _, x = jax.jvp(path.evaluate, (t,), (jnp.ones_like(t),))
         y = path.derivative(t)
-        assert shaped_allclose(x, y, rtol=1e-3, atol=1e-4)
+        assert tree_allclose(x, y, rtol=1e-3, atol=1e-4)
 
 
 def _test_path_endpoints(path, name, y0, y1):
-    assert shaped_allclose(y0, path.evaluate(path.t0))
-    assert shaped_allclose(y1, path.evaluate(path.t1))
+    assert tree_allclose(y0, path.evaluate(path.t0))
+    assert tree_allclose(y1, path.evaluate(path.t1))
 
 
 def test_derivative(getkey):

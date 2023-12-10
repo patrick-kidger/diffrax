@@ -2,12 +2,13 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.tree_util as jtu
 import optimistix as optx
 import pytest
 
 import diffrax
 
-from .helpers import implicit_tol, shaped_allclose
+from .helpers import implicit_tol, tree_allclose
 
 
 def test_half_solver():
@@ -87,7 +88,7 @@ def test_multiple_tableau_single_step(vf_expensive):
         terms, t0, t1, y0, None, solver_state=solver_state2, made_jump=False
     )
     out2[2]["k"] = out2[2]["k"][0] + out2[2]["k"][1]
-    assert shaped_allclose(out1, out2)
+    assert tree_allclose(out1, out2)
 
 
 @pytest.mark.parametrize("adaptive", (True, False))
@@ -268,7 +269,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         tol = 1e-4  # same ODE but different solver
     else:
         tol = 1e-8  # should be exact same numerics, up to floating point weirdness
-    assert shaped_allclose(sol.ys, true_sol.ys, rtol=tol, atol=tol)
+    assert tree_allclose(sol.ys, true_sol.ys, rtol=tol, atol=tol)
 
 
 # Essentially used as a check that our general IMEX implementation is correct.
@@ -364,7 +365,8 @@ def test_sil3():
             ks = (jnp.stack(fs), jnp.stack(gs))
             dense_info = dict(y0=y0, y1=y1, k=ks)
             state = (False, (f3 / dt, g3 / dt))
-            return y1, y_error, dense_info, state, diffrax.RESULTS.successful
+            result = jtu.tree_map(jnp.asarray, diffrax.RESULTS.successful)
+            return y1, y_error, dense_info, state, result
 
     reference_solver = ReferenceSil3(root_finder=optx.Newton(rtol=1e-8, atol=1e-8))
     solver = diffrax.Sil3(root_finder=diffrax.VeryChord(rtol=1e-8, atol=1e-8))
@@ -394,7 +396,7 @@ def test_sil3():
     reference_out = reference_solver.step(
         terms, t0, t1, y0, args, solver_state=None, made_jump=False
     )
-    assert shaped_allclose(out, reference_out)
+    assert tree_allclose(out, reference_out)
 
 
 # Honestly not sure how meaningful this test is -- Rober isn't *that* stiff.

@@ -11,6 +11,7 @@ import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax.internal as lxi
 import numpy as np
 import optimistix as optx
 from equinox import AbstractClassVar
@@ -762,28 +763,41 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         # benchmarked.)
         #
 
+        y0_leaves = jtu.tree_leaves(y0)
+        if len(y0_leaves) == 0:
+            tableau_dtype = lxi.default_floating_dtype()
+        else:
+            tableau_dtype = jnp.result_type(*y0_leaves)
+
         def embed_a_lower(tab):
-            tab_a_lower = np.zeros((num_stages, num_stages))
+            tab_a_lower = np.zeros(
+                (num_stages, num_stages), dtype=np.result_type(*tab.a_lower)
+            )
             for i, a_lower_i in enumerate(tab.a_lower):
                 tab_a_lower[i + 1, : i + 1] = a_lower_i
-            return jnp.asarray(tab_a_lower)
+            return jnp.asarray(tab_a_lower, dtype=tableau_dtype)
 
         def embed_c(tab):
-            tab_c = np.zeros(num_stages)
+            tab_c = np.zeros(num_stages, dtype=tab.c.dtype)
             if tab.c1 is not None:
                 tab_c[0] = tab.c1
             tab_c[1:] = tab.c
-            return jnp.asarray(tab_c)
+            return jnp.asarray(tab_c, dtype=jnp.result_type(t0, t1))
 
         tableaus_a_lower = t_map(embed_a_lower, tableaus)
         tableaus_c = t_map(embed_c, tableaus)
 
         if implicit_tableau is not None:
-            implicit_diagonal = jnp.asarray(implicit_tableau.a_diagonal)
-            implicit_predictor = np.zeros((num_stages, num_stages))
+            implicit_diagonal = jnp.asarray(
+                implicit_tableau.a_diagonal, dtype=tableau_dtype
+            )
+            implicit_predictor = np.zeros(
+                (num_stages, num_stages),
+                dtype=np.result_type(*implicit_tableau.a_predictor),
+            )
             for i, a_predictor_i in enumerate(implicit_tableau.a_predictor):
                 implicit_predictor[i + 1, : i + 1] = a_predictor_i
-            implicit_predictor = jnp.asarray(implicit_predictor)
+            implicit_predictor = jnp.asarray(implicit_predictor, dtype=tableau_dtype)
             implicit_c = get_implicit(tableaus_c)
 
         if implicit_term is None:
@@ -1147,11 +1161,19 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         if any(not tableau.ssal for tableau in jtu.tree_leaves(tableaus)):
 
             def _increment(tab_i, k_i):
-                return vector_tree_dot(tab_i.b_sol, k_i)
+                return vector_tree_dot(
+                    jnp.asarray(tab_i.b_sol, dtype=tableau_dtype), k_i
+                )
 
             increment = t_map(_increment, tableaus, ks)
             y1 = y_map(_sum, y0, *t_leaves(increment))
-        y_error = t_map(lambda tab, k: vector_tree_dot(tab.b_error, k), tableaus, ks)
+        y_error = t_map(
+            lambda tab, k: vector_tree_dot(
+                jnp.asarray(tab.b_error, dtype=tableau_dtype), k
+            ),
+            tableaus,
+            ks,
+        )
         y_error = y_map(_sum, *t_leaves(y_error))
         y_error = jtu.tree_map(
             lambda _y_error: jnp.where(is_okay(result), _y_error, jnp.inf),

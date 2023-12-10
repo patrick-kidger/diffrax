@@ -5,7 +5,7 @@ import jax.tree_util as jtu
 
 import diffrax
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 def test_ode_term():
@@ -14,7 +14,7 @@ def test_ode_term():
     dt = term.contr(0, 1)
     vf = term.vf(0, 1, None)
     vf_prod = term.vf_prod(0, 1, None, dt)
-    assert shaped_allclose(vf_prod, term.prod(vf, dt))
+    assert tree_allclose(vf_prod, term.prod(vf, dt))
 
 
 def test_control_term(getkey):
@@ -41,7 +41,7 @@ def test_control_term(getkey):
     assert dx.shape == (2,)
     assert vf.shape == (3, 2)
     assert vf_prod.shape == (3,)
-    assert shaped_allclose(vf_prod, term.prod(vf, dx))
+    assert tree_allclose(vf_prod, term.prod(vf, dx))
 
     term = term.to_ode()
     dt = term.contr(0, 1)
@@ -49,7 +49,7 @@ def test_control_term(getkey):
     vf_prod = term.vf_prod(0, y, args, dt)
     assert vf.shape == (3,)
     assert vf_prod.shape == (3,)
-    assert shaped_allclose(vf_prod, term.prod(vf, dt))
+    assert tree_allclose(vf_prod, term.prod(vf, dt))
 
 
 def test_weakly_diagional_control_term(getkey):
@@ -76,7 +76,7 @@ def test_weakly_diagional_control_term(getkey):
     assert dx.shape == (3,)
     assert vf.shape == (3,)
     assert vf_prod.shape == (3,)
-    assert shaped_allclose(vf_prod, term.prod(vf, dx))
+    assert tree_allclose(vf_prod, term.prod(vf, dx))
 
     term = term.to_ode()
     dt = term.contr(0, 1)
@@ -84,7 +84,7 @@ def test_weakly_diagional_control_term(getkey):
     vf_prod = term.vf_prod(0, y, args, dt)
     assert vf.shape == (3,)
     assert vf_prod.shape == (3,)
-    assert shaped_allclose(vf_prod, term.prod(vf, dt))
+    assert tree_allclose(vf_prod, term.prod(vf, dt))
 
 
 def test_ode_adjoint_term(getkey):
@@ -99,7 +99,7 @@ def test_ode_adjoint_term(getkey):
     vf_prod1 = adjoint_term.vf_prod(t, aug, args, dt)
     vf = adjoint_term.vf(t, aug, args)
     vf_prod2 = adjoint_term.prod(vf, dt)
-    assert shaped_allclose(vf_prod1, vf_prod2)
+    assert tree_allclose(vf_prod1, vf_prod2)
 
 
 def test_cde_adjoint_term(getkey):
@@ -130,4 +130,4 @@ def test_cde_adjoint_term(getkey):
     vf_prod1 = adjoint_term.vf_prod(t, aug, args, dt)
     vf = adjoint_term.vf(t, aug, args)
     vf_prod2 = adjoint_term.prod(vf, dt)
-    assert shaped_allclose(vf_prod1, vf_prod2)
+    assert tree_allclose(vf_prod1, vf_prod2)
