@@ -2,6 +2,7 @@ import functools as ft
 
 import equinox as eqx
 import jax
+import jax.core
 import jax.flatten_util as fu
 import jax.lax as lax
 import jax.numpy as jnp

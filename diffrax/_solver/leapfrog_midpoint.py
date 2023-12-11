@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -42,8 +44,10 @@ class LeapfrogMidpoint(AbstractSolver):
         ```
     """
 
-    term_structure = AbstractTerm
-    interpolation_cls = LocalLinearInterpolation
+    term_structure: ClassVar = AbstractTerm
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
 
     def order(self, terms):
         return 2

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import numpy as np
 import optimistix as optx
 from equinox.internal import ω
@@ -72,8 +74,10 @@ class Sil3(AbstractRungeKutta, AbstractImplicitSolver):
         ```
     """
 
-    tableau = MultiButcherTableau(_explicit_tableau, _implicit_tableau)
-    calculate_jacobian = CalculateJacobian.every_stage
+    tableau: ClassVar[MultiButcherTableau] = MultiButcherTableau(
+        _explicit_tableau, _implicit_tableau
+    )
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.every_stage
 
     @staticmethod
     def interpolation_cls(t0, t1, y0, y1, k):

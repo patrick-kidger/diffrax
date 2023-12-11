@@ -1,13 +1,16 @@
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import diffrax
 import equinox as eqx
 import jax
+import jax.interpreters.ad
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import optax
 import pytest
+from jaxtyping import Array
 
 from .helpers import tree_allclose
 
@@ -37,20 +40,19 @@ def test_against(getkey):
 
     def _run(y0__args__term, saveat, adjoint):
         y0, args, term = y0__args__term
-        return jnp.sum(
-            diffrax.diffeqsolve(
-                term,
-                solver,
-                0.3,
-                9.5,
-                None,
-                y0,
-                args,
-                stepsize_controller=stepsize_controller,
-                saveat=saveat,
-                adjoint=adjoint,
-            ).ys
-        )
+        ys = diffrax.diffeqsolve(
+            term,
+            solver,
+            0.3,
+            9.5,
+            None,
+            y0,
+            args,
+            stepsize_controller=stepsize_controller,
+            saveat=saveat,
+            adjoint=adjoint,
+        ).ys
+        return jnp.sum(cast(Array, ys))
 
     # Only does gradients with respect to y0
     def _run_finite_diff(y0__args__term, saveat, adjoint):
@@ -200,7 +202,7 @@ def test_adjoint_seminorm():
             stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
             adjoint=adjoint,
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     jax.grad(solve)(2.0)
 
@@ -223,7 +225,7 @@ def test_closure_errors():
             jnp.array([1.0]),
             adjoint=diffrax.BacksolveAdjoint(),
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     with pytest.raises(jax.interpreters.ad.CustomVJPException):
         run(mlp)
@@ -233,7 +235,7 @@ def test_closure_fixed():
     mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
 
     class VectorField(eqx.Module):
-        model: eqx.Module
+        model: Callable
 
         def __call__(self, t, y, args):
             return self.model(y)
@@ -251,14 +253,14 @@ def test_closure_fixed():
             jnp.array([1.0]),
             adjoint=diffrax.BacksolveAdjoint(),
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     run(mlp)
 
 
 def test_implicit():
     class ExponentialDecayToSteadyState(eqx.Module):
-        steady_state: float
+        steady_state: Array
         non_jax_type: Any
 
         def __call__(self, t, y, args):
@@ -287,7 +289,7 @@ def test_implicit():
             discrete_terminating_event=event,
             adjoint=adjoint,
         )
-        (y1,) = sol.ys
+        (y1,) = cast(Array, sol.ys)
         return (y1 - target_steady_state) ** 2
 
     model = ExponentialDecayToSteadyState(jnp.array(0.0), object())
@@ -322,7 +324,7 @@ def test_backprop_ts(getkey):
             jnp.array([1.0]),
             saveat=diffrax.SaveAt(ts=jnp.linspace(0, 1, 5)),
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     run(mlp)
 
@@ -352,7 +354,7 @@ def test_sde_against(getkey):
     def run(y0__args, adjoint):
         y0, args = y0__args
         sol = diffrax.diffeqsolve(terms, solver, t0, t1, dt0, y0, args, adjoint=adjoint)
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     y0 = jnp.array([1.0, 2.0])
     args = (0.5, 0.1)

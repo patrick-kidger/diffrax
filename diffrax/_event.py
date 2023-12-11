@@ -16,7 +16,7 @@ class AbstractDiscreteTerminatingEvent(eqx.Module):
     """
 
     @abc.abstractmethod
-    def __call__(self, state, **kwargs):
+    def __call__(self, state, **kwargs) -> BoolScalarLike:
         """**Arguments:**
 
         - `state`: a dataclass of the evolving state of the system, including in
@@ -59,29 +59,27 @@ class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
 
     def __call__(self, state, *, terms, args, solver, stepsize_controller, **kwargs):
         del kwargs
-        _error = False
+        msg = (
+            "The `rtol` and `atol` tolerances for `SteadyStateEvent` default "
+            "to the `rtol` and `atol` used with an adaptive step size "
+            "controller (such as `diffrax.PIDController`). Either use an "
+            "adaptive step size controller, or specify these tolerances "
+            "manually."
+        )
         if self.rtol is None:
             if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
                 _rtol = stepsize_controller.rtol
             else:
-                _error = True
+                raise ValueError(msg)
         else:
             _rtol = self.rtol
         if self.atol is None:
             if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
                 _atol = stepsize_controller.atol
             else:
-                _error = True
+                raise ValueError(msg)
         else:
             _atol = self.atol
-        if _error:
-            raise ValueError(
-                "The `rtol` and `atol` tolerances for `SteadyStateEvent` default "
-                "to the `rtol` and `atol` used with an adaptive step size "
-                "controller (such as `diffrax.PIDController`). Either use an "
-                "adaptive step size controller, or specify these tolerances "
-                "manually."
-            )
 
         # TODO: this makes an additional function evaluation that in practice has
         # probably already been made by the solver.

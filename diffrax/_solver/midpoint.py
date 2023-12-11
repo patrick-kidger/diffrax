@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 import numpy as np
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
@@ -25,8 +28,10 @@ class Midpoint(AbstractERK, AbstractStratonovichSolver):
     When used to solve SDEs, converges to the Stratonovich solution.
     """
 
-    tableau = _midpoint_tableau
-    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
+    tableau: ClassVar[ButcherTableau] = _midpoint_tableau
+    interpolation_cls: ClassVar[
+        Callable[..., ThirdOrderHermitePolynomialInterpolation]
+    ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     def order(self, terms):
         return 2

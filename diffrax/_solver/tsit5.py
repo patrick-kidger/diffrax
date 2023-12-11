@@ -1,4 +1,5 @@
-from typing import Optional
+from collections.abc import Callable
+from typing import ClassVar, Optional
 
 import jax.numpy as jnp
 import numpy as np
@@ -176,8 +177,10 @@ class Tsit5(AbstractERK):
         ```
     """
 
-    tableau = _tsit5_tableau
-    interpolation_cls = _Tsit5Interpolation
+    tableau: ClassVar[ButcherTableau] = _tsit5_tableau
+    interpolation_cls: ClassVar[
+        Callable[..., _Tsit5Interpolation]
+    ] = _Tsit5Interpolation
 
     def order(self, terms):
         return 5

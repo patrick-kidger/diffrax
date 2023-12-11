@@ -1,11 +1,13 @@
 import functools as ft
 import timeit
+from typing import cast
 
 import diffrax as dfx
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jaxtyping import Array
 
 
 def _weight(in_, out, key):
@@ -30,7 +32,7 @@ class VectorField(eqx.Module):
         return jnp.stack(y)
 
 
-def run(inline: bool, scan_stages: bool, grad: bool, adjoint_name: str):
+def run(inline: bool, grad: bool, adjoint_name: str):
     if adjoint_name == "direct":
         adjoint = dfx.DirectAdjoint()
     elif adjoint_name == "recursive":
@@ -48,7 +50,7 @@ def run(inline: bool, scan_stages: bool, grad: bool, adjoint_name: str):
     if not inline:
         vf = eqx.internal.noinline(vf)
     term = dfx.ODETerm(vf)
-    solver = dfx.Dopri8(scan_stages=scan_stages)
+    solver = dfx.Dopri8()
     stepsize_controller = dfx.PIDController(rtol=1e-3, atol=1e-6)
     t0 = 0
     t1 = 1
@@ -68,43 +70,25 @@ def run(inline: bool, scan_stages: bool, grad: bool, adjoint_name: str):
             adjoint=adjoint,
             max_steps=16**2,
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     solve_ = ft.partial(solve, jnp.array([1.0]))
     compile_time = timeit.timeit(solve_, number=1)
-    print(
-        f"{inline=}, {scan_stages=}, {grad=}, adjoint={adjoint_name}, {compile_time=}"
-    )
+    print(f"{inline=}, {grad=}, adjoint={adjoint_name}, {compile_time=}")
 
 
-run(inline=False, scan_stages=False, grad=False, adjoint_name="direct")
-run(inline=False, scan_stages=False, grad=False, adjoint_name="recursive")
-run(inline=False, scan_stages=False, grad=False, adjoint_name="backsolve")
+run(inline=False, grad=False, adjoint_name="direct")
+run(inline=False, grad=False, adjoint_name="recursive")
+run(inline=False, grad=False, adjoint_name="backsolve")
 
-run(inline=False, scan_stages=False, grad=True, adjoint_name="direct")
-run(inline=False, scan_stages=False, grad=True, adjoint_name="recursive")
-run(inline=False, scan_stages=False, grad=True, adjoint_name="backsolve")
+run(inline=False, grad=True, adjoint_name="direct")
+run(inline=False, grad=True, adjoint_name="recursive")
+run(inline=False, grad=True, adjoint_name="backsolve")
 
-run(inline=False, scan_stages=True, grad=False, adjoint_name="direct")
-run(inline=False, scan_stages=True, grad=False, adjoint_name="recursive")
-run(inline=False, scan_stages=True, grad=False, adjoint_name="backsolve")
+run(inline=True, grad=False, adjoint_name="direct")
+run(inline=True, grad=False, adjoint_name="recursive")
+run(inline=True, grad=False, adjoint_name="backsolve")
 
-run(inline=False, scan_stages=True, grad=True, adjoint_name="direct")
-run(inline=False, scan_stages=True, grad=True, adjoint_name="recursive")
-run(inline=False, scan_stages=True, grad=True, adjoint_name="backsolve")
-
-run(inline=True, scan_stages=False, grad=False, adjoint_name="direct")
-run(inline=True, scan_stages=False, grad=False, adjoint_name="recursive")
-run(inline=True, scan_stages=False, grad=False, adjoint_name="backsolve")
-
-run(inline=True, scan_stages=False, grad=True, adjoint_name="direct")
-run(inline=True, scan_stages=False, grad=True, adjoint_name="recursive")
-run(inline=True, scan_stages=False, grad=True, adjoint_name="backsolve")
-
-run(inline=True, scan_stages=True, grad=False, adjoint_name="direct")
-run(inline=True, scan_stages=True, grad=False, adjoint_name="recursive")
-run(inline=True, scan_stages=True, grad=False, adjoint_name="backsolve")
-
-run(inline=True, scan_stages=True, grad=True, adjoint_name="direct")
-run(inline=True, scan_stages=True, grad=True, adjoint_name="recursive")
-run(inline=True, scan_stages=True, grad=True, adjoint_name="backsolve")
+run(inline=True, grad=True, adjoint_name="direct")
+run(inline=True, grad=True, adjoint_name="recursive")
+run(inline=True, grad=True, adjoint_name="backsolve")

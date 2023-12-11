@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 import jax.lax as lax
@@ -34,8 +36,10 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         ```
     """
 
-    term_structure = AbstractTerm
-    interpolation_cls = LocalLinearInterpolation  # TODO use something better than this?
+    term_structure: ClassVar = AbstractTerm
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation  # TODO use something better than this?
 
     def order(self, terms):
         return 2

@@ -44,7 +44,7 @@ def test_derivative(getkey):
         y0,
         saveat=diffrax.SaveAt(dense=True, t1=True),
     )
-    y1 = dense_interp.ys[-1]
+    y1 = dense_interp.ys[-1]  # pyright: ignore
     paths.append((dense_interp, "dense", y0, y1))
 
     # local interpolation
@@ -66,7 +66,7 @@ def test_derivative(getkey):
             y0,
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
-        y1 = solution.ys[-1]
+        y1 = solution.ys[-1]  # pyright: ignore
         paths.append((solution, type(solver).__name__, y0, y1))
 
     for solver in all_split_solvers:
@@ -84,7 +84,7 @@ def test_derivative(getkey):
             y0,
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
-        y1 = solution.ys[-1]
+        y1 = solution.ys[-1]  # pyright: ignore
         paths.append((solution, type(solver).__name__, y0, y1))
 
     # actually do tests

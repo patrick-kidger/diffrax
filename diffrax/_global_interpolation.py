@@ -1,6 +1,6 @@
 import functools as ft
 from collections.abc import Callable
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -8,7 +8,12 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from equinox import AbstractVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractVar
+else:
+    from equinox import AbstractVar
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 

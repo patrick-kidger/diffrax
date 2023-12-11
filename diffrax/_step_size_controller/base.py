@@ -1,6 +1,6 @@
 import abc
 from collections.abc import Callable
-from typing import Optional, TypeVar
+from typing import Generic, Optional, TypeVar
 
 import equinox as eqx
 from jaxtyping import PyTree
@@ -11,9 +11,10 @@ from .._term import AbstractTerm
 
 
 _ControllerState = TypeVar("_ControllerState")
+_Dt0 = TypeVar("_Dt0", None, RealScalarLike, Optional[RealScalarLike])
 
 
-class AbstractStepSizeController(eqx.Module):
+class AbstractStepSizeController(eqx.Module, Generic[_ControllerState, _Dt0]):
     """Abstract base class for all step size controllers."""
 
     @abc.abstractmethod
@@ -41,7 +42,7 @@ class AbstractStepSizeController(eqx.Module):
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
-        dt0: Optional[RealScalarLike],
+        dt0: _Dt0,
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
         error_order: Optional[RealScalarLike],

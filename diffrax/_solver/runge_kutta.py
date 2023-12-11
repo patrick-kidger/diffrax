@@ -1,7 +1,17 @@
 import enum
 import functools as ft
 from dataclasses import dataclass, field
-from typing import get_args, get_origin, Literal, Optional, Tuple, Union
+from typing import (
+    cast,
+    ClassVar,
+    get_args,
+    get_origin,
+    Literal,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+    Union,
+)
 from typing_extensions import TypeAlias
 
 import equinox as eqx
@@ -14,7 +24,12 @@ import jax.tree_util as jtu
 import lineax.internal as lxi
 import numpy as np
 import optimistix as optx
-from equinox import AbstractClassVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractClassVar
+else:
+    from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree
 
@@ -327,7 +342,7 @@ def _assert_same_structure(x, y):
     return eqx.tree_equal(x, y) is True
 
 
-class AbstractRungeKutta(AbstractAdaptiveSolver):
+class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
     """Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
     Runge--Kutta methods, which have a different computational structure.)
 
@@ -368,7 +383,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     terms = tuple(
                         AbstractTerm for _ in range(len(cls.tableau.tableaus))
                     )
-                    cls.term_structure = MultiTerm[tuple[terms]]
+                    cls.term_structure = MultiTerm[tuple[terms]]  # pyright: ignore
             else:
                 assert False
 
@@ -428,7 +443,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
     def step(
         self,
-        terms: AbstractTerm,
+        terms: AbstractTerm,  # pyright: ignore
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -499,7 +514,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
         else:
             assert isinstance(terms, MultiTerm)
             tableaus = self.tableau.tableaus
-            terms = terms.terms
+            terms = cast(tuple, terms.terms)
             assert len(tableaus) == len(terms)
             for tab, term in zip(tableaus, terms):
                 if tab.implicit:
@@ -509,6 +524,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             else:
                 implicit_tableau = None
                 implicit_term = None
+        terms: PyTree[AbstractTerm]
         assert jtu.tree_structure(terms, is_leaf=_is_term) == jtu.tree_structure(
             tableaus
         )
@@ -698,11 +714,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 # Sadness. The extra evaluation increases compilation time, as we must
                 # trace our vector field again.
                 if eval_fs:
-                    f0_for_jac = implicit_term.vf(t0, y0, args)
+                    f0_for_jac = implicit_term.vf(t0, y0, args)  # pyright: ignore
                     k0_for_jac = _unused
                 else:
                     f0_for_jac = _unused
-                    k0_for_jac = implicit_term.vf_prod(t0, y0, args, implicit_control)
+                    k0_for_jac = implicit_term.vf_prod(t0, y0, args, implicit_control)  # pyright: ignore
                 # (
                 # Possible sneaky sadness-ameliorating ideas which we don't do here:
                 # 1. Construct a candidate f0 or k0 by combining the stages of the
@@ -763,7 +779,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
 
         y0_leaves = jtu.tree_leaves(y0)
         if len(y0_leaves) == 0:
-            tableau_dtype = lxi.default_floating_dtype()
+            tableau_dtype = lxi.default_floating_dtype()  # pyright: ignore
         else:
             tableau_dtype = jnp.result_type(*y0_leaves)
 
@@ -791,9 +807,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
             )
             implicit_predictor = np.zeros(
                 (num_stages, num_stages),
-                dtype=np.result_type(*implicit_tableau.a_predictor),
+                dtype=np.result_type(*implicit_tableau.a_predictor),  # pyright: ignore
             )
-            for i, a_predictor_i in enumerate(implicit_tableau.a_predictor):
+            for i, a_predictor_i in enumerate(implicit_tableau.a_predictor):  # pyright: ignore
                 implicit_predictor[i + 1, : i + 1] = a_predictor_i
             implicit_predictor = jnp.asarray(implicit_predictor, dtype=tableau_dtype)
             implicit_c = get_implicit(tableaus_c)
@@ -863,9 +879,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 implicit_ki = sentinel
                 yi = yi_partial
             else:
-                implicit_diagonal_i = implicit_diagonal[stage_index]
-                implicit_predictor_i = implicit_predictor[stage_index]
-                implicit_c_i = implicit_c[stage_index]
+                implicit_diagonal_i = implicit_diagonal[stage_index]  # pyright: ignore
+                implicit_predictor_i = implicit_predictor[stage_index]  # pyright: ignore
+                implicit_c_i = implicit_c[stage_index]  # pyright: ignore
                 # No floating point error
                 implicit_ti = jnp.where(implicit_c_i == 1, t1, t0 + implicit_c_i * dt)
                 if_first_stage = ft.partial(jnp.where, stage_index == 0)
@@ -911,7 +927,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     )
 
                 def eval_f_jac():
-                    return self.root_finder.init(
+                    return self.root_finder.init(  # pyright: ignore
                         lambda y, a: (_implicit_relation_f(y, a), None),
                         lax.stop_gradient(f_pred),
                         _filter_stop_gradient(f_implicit_args),
@@ -922,7 +938,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     )
 
                 def eval_k_jac():
-                    return self.root_finder.init(
+                    return self.root_finder.init(  # pyright: ignore
                         lambda y, a: (_implicit_relation_k(y, a), None),
                         lax.stop_gradient(k_pred),
                         _filter_stop_gradient(k_implicit_args),
@@ -941,12 +957,12 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                         jac_k = eval_k_jac()
                 else:
                     if self.calculate_jacobian == CalculateJacobian.first_stage:
-                        assert len(set(implicit_tableau.a_diagonal)) == 1
+                        assert len(set(implicit_tableau.a_diagonal)) == 1  # pyright: ignore
                         jac_stage_index = 0
                     else:
                         assert self.calculate_jacobian == CalculateJacobian.second_stage
-                        assert implicit_tableau.a_diagonal[0] == 0
-                        assert len(set(implicit_tableau.a_diagonal[1:])) == 1
+                        assert implicit_tableau.a_diagonal[0] == 0  # pyright: ignore
+                        assert len(set(implicit_tableau.a_diagonal[1:])) == 1  # pyright: ignore
                         jac_stage_index = 1
                         stage_index = eqxi.nonbatchable(stage_index)
                     # These `stop_gradients` are needed to work around the lack of
@@ -967,27 +983,27 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     jac_f = eqxi.nondifferentiable(jac_f, name="jac_f")
                     nonlinear_sol = optx.root_find(
                         _implicit_relation_f,
-                        self.root_finder,
+                        self.root_finder,  # pyright: ignore
                         f_pred,
                         f_implicit_args,
                         options=dict(init_state=jac_f),
                         throw=False,
-                        max_steps=self.root_find_max_steps,
+                        max_steps=self.root_find_max_steps,  # pyright: ignore
                     )
                     implicit_fi = nonlinear_sol.value
                     implicit_ki = _unused
-                    implicit_inc = implicit_term.prod(implicit_fi, implicit_control)
+                    implicit_inc = implicit_term.prod(implicit_fi, implicit_control)  # pyright: ignore
                 else:
                     assert not fsal
                     jac_k = eqxi.nondifferentiable(jac_k, name="jac_k")
                     nonlinear_sol = optx.root_find(
                         _implicit_relation_k,
-                        self.root_finder,
+                        self.root_finder,  # pyright: ignore
                         k_pred,
                         k_implicit_args,
                         options=dict(init_state=jac_k),
                         throw=False,
-                        max_steps=self.root_find_max_steps,
+                        max_steps=self.root_find_max_steps,  # pyright: ignore
                     )
                     implicit_fi = _unused
                     implicit_ki = implicit_inc = nonlinear_sol.value
@@ -1072,7 +1088,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 f_implicit_args = (
                     jnp.array(0),
                     # zero diagonal == identity matrix as the Jacobian
-                    jnp.array(0.0, dtype=implicit_diagonal.dtype),
+                    jnp.array(0.0, dtype=implicit_diagonal.dtype),  # pyright: ignore
                     implicit_vf,
                     implicit_prod,
                     t0,
@@ -1080,7 +1096,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     args,
                     implicit_control,
                 )
-                jac_f = self.root_finder.init(
+                jac_f = self.root_finder.init(  # pyright: ignore
                     lambda y, a: (_implicit_relation_f(y, a), None),
                     jtu.tree_map(jnp.zeros_like, get_implicit(f0)),
                     _filter_stop_gradient(f_implicit_args),
@@ -1094,7 +1110,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                 k_implicit_args = (
                     jnp.array(0),
                     # zero diagonal == identity matrix as the Jacobian
-                    jnp.array(0.0, dtype=implicit_diagonal.dtype),
+                    jnp.array(0.0, dtype=implicit_diagonal.dtype),  # pyright: ignore
                     implicit_vf_prod,
                     t0,
                     y0,
@@ -1102,7 +1118,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver):
                     implicit_control,
                 )
                 jac_f = _unused
-                jac_k = self.root_finder.init(
+                jac_k = self.root_finder.init(  # pyright: ignore
                     lambda y, a: (_implicit_relation_k(y, a), None),
                     jtu.tree_map(jnp.zeros_like, y0),
                     _filter_stop_gradient(k_implicit_args),
@@ -1192,7 +1208,7 @@ class AbstractERK(AbstractRungeKutta):
     [`diffrax.ButcherTableau`][].
     """
 
-    calculate_jacobian = CalculateJacobian.never
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.never
 
 
 class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver):
@@ -1202,7 +1218,7 @@ class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver):
     [`diffrax.ButcherTableau`][].
     """
 
-    calculate_jacobian = CalculateJacobian.every_stage
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.every_stage
 
 
 class AbstractSDIRK(AbstractDIRK):
@@ -1215,10 +1231,12 @@ class AbstractSDIRK(AbstractDIRK):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if hasattr(cls, "tableau"):  # Abstract subclasses may not have a tableau.
+            assert isinstance(cls.tableau, ButcherTableau)
+            assert cls.tableau.a_diagonal is not None
             diagonal = cls.tableau.a_diagonal[0]
             assert (cls.tableau.a_diagonal == diagonal).all()
 
-    calculate_jacobian = CalculateJacobian.first_stage
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.first_stage
 
 
 class AbstractESDIRK(AbstractDIRK):
@@ -1232,8 +1250,10 @@ class AbstractESDIRK(AbstractDIRK):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if hasattr(cls, "tableau"):  # Abstract subclasses may not have a tableau.
+            assert isinstance(cls.tableau, ButcherTableau)
+            assert cls.tableau.a_diagonal is not None
             assert cls.tableau.a_diagonal[0] == 0
             diagonal = cls.tableau.a_diagonal[1]
             assert (cls.tableau.a_diagonal[1:] == diagonal).all()
 
-    calculate_jacobian = CalculateJacobian.second_stage
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.second_stage

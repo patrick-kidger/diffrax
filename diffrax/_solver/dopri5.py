@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 import numpy as np
 
 from .._local_interpolation import FourthOrderPolynomialInterpolation
@@ -30,7 +33,7 @@ _dopri5_tableau = ButcherTableau(
 
 
 class _Dopri5Interpolation(FourthOrderPolynomialInterpolation):
-    c_mid = np.array(
+    c_mid: ClassVar[np.ndarray] = np.array(
         [
             6025192743 / 30085553152 / 2,
             0,
@@ -86,8 +89,10 @@ class Dopri5(AbstractERK):
         ```
     """
 
-    tableau = _dopri5_tableau
-    interpolation_cls = _Dopri5Interpolation
+    tableau: ClassVar[ButcherTableau] = _dopri5_tableau
+    interpolation_cls: ClassVar[
+        Callable[..., _Dopri5Interpolation]
+    ] = _Dopri5Interpolation
 
     def order(self, terms):
         return 5

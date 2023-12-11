@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Optional
+from typing import Any, cast, Optional
 
 import jax
 import jax.core
@@ -12,7 +12,7 @@ from jaxtyping import Array, ArrayLike, PyTree, Shaped
 from ._custom_types import BoolScalarLike, RealScalarLike
 
 
-_itemsize_kind_type = {
+_itemsize_kind_type: dict[tuple[int, str], Any] = {
     (1, "i"): jnp.int8,
     (2, "i"): jnp.int16,
     (4, "i"): jnp.int32,
@@ -72,7 +72,7 @@ def fill_forward(
     return ys
 
 
-def linear_rescale(t0, t, t1):
+def linear_rescale(t0, t, t1) -> Array:
     """Calculates (t - t0) / (t1 - t0), assuming t0 <= t <= t1.
 
     Specially handles the edge case t0 == t1:
@@ -81,8 +81,8 @@ def linear_rescale(t0, t, t1):
     """
 
     cond = t0 == t1
-    numerator = jnp.where(cond, 0, t - t0)
-    denominator = jnp.where(cond, 1, t1 - t0)
+    numerator = cast(Array, jnp.where(cond, 0, t - t0))
+    denominator = cast(Array, jnp.where(cond, 1, t1 - t0))
     return numerator / denominator
 
 

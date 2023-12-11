@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 import numpy as np
 import optimistix as optx
 
@@ -103,8 +106,10 @@ class Kvaerno4(AbstractESDIRK):
         ```
     """
 
-    tableau = _kvaerno4_tableau
-    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
+    tableau: ClassVar[ButcherTableau] = _kvaerno4_tableau
+    interpolation_cls: ClassVar[
+        Callable[..., ThirdOrderHermitePolynomialInterpolation]
+    ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
     root_find_max_steps: int = 10

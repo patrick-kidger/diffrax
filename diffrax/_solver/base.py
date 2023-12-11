@@ -1,13 +1,18 @@
 import abc
 from collections.abc import Callable
-from typing import Optional, Type, TypeVar
+from typing import Generic, Optional, Type, TYPE_CHECKING, TypeVar
 
 import equinox as eqx
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import optimistix as optx
-from equinox import AbstractClassVar, AbstractVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractClassVar, ClassVar as AbstractVar
+else:
+    from equinox import AbstractClassVar, AbstractVar
 from equinox.internal import ω
 from jaxtyping import PyTree
 
@@ -18,18 +23,19 @@ from .._solution import RESULTS, update_result
 from .._term import AbstractTerm
 
 
-_SolverState = TypeVar("_SolverState", bound=Optional[PyTree])
+_SolverState = TypeVar("_SolverState")
 
 
 def vector_tree_dot(a, b):
     return jtu.tree_map(
-        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST), b
+        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),  # pyright: ignore
+        b,
     )
 
 
-class _MetaAbstractSolver(type(eqx.Module)):
+class _MetaAbstractSolver(type(eqx.Module), type):
     def __instancecheck__(cls, obj):
-        if super(_MetaAbstractSolver, AbstractWrappedSolver).__instancecheck__(obj):
+        if super(_MetaAbstractSolver, AbstractWrappedSolver).__instancecheck__(obj):  # pyright: ignore
             # Either one will suffice.
             return super().__instancecheck__(obj) or super().__instancecheck__(
                 obj.solver
@@ -38,7 +44,12 @@ class _MetaAbstractSolver(type(eqx.Module)):
             return super().__instancecheck__(obj)
 
 
-class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
+# Sneak the metaclass past pyright, as otherwise it disables the dataclass-ness of
+# `eqx.Module`.
+_set_metaclass = dict(metaclass=_MetaAbstractSolver)
+
+
+class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     """Abstract base class for all differential equation solvers.
 
     Subclasses should have a class-level attribute `terms`, specifying the PyTree
@@ -48,7 +59,7 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
     # What PyTree structure `terms` should have when used with this solver.
     term_structure: AbstractClassVar[PyTree[Type[AbstractTerm]]]
     # How to interpolate the solution in between steps.
-    interpolation_cls: AbstractVar[Callable[..., AbstractLocalInterpolation]]
+    interpolation_cls: AbstractClassVar[Callable[..., AbstractLocalInterpolation]]
 
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         """Order of the solver for solving ODEs."""
@@ -168,7 +179,7 @@ class AbstractSolver(eqx.Module, metaclass=_MetaAbstractSolver):
         """
 
 
-class AbstractImplicitSolver(AbstractSolver):
+class AbstractImplicitSolver(AbstractSolver[_SolverState]):
     """Indicates that this is an implicit differential equation solver, and as such
     that it should take a root finder as an argument.
     """
@@ -177,25 +188,25 @@ class AbstractImplicitSolver(AbstractSolver):
     root_find_max_steps: AbstractVar[int]
 
 
-class AbstractItoSolver(AbstractSolver):
+class AbstractItoSolver(AbstractSolver[_SolverState]):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Itô solution.
     """
 
 
-class AbstractStratonovichSolver(AbstractSolver):
+class AbstractStratonovichSolver(AbstractSolver[_SolverState]):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Stratonovich solution.
     """
 
 
-class AbstractAdaptiveSolver(AbstractSolver):
+class AbstractAdaptiveSolver(AbstractSolver[_SolverState]):
     """Indicates that this solver provides error estimates, and that as such it may be
     used with an adaptive step size controller.
     """
 
 
-class AbstractWrappedSolver(AbstractSolver):
+class AbstractWrappedSolver(AbstractSolver[_SolverState]):
     """Wraps another solver "transparently", in the sense that all `isinstance` checks
     will be forwarded on to the wrapped solver, e.g. when testing whether the solver is
     implicit/adaptive/SDE-compatible/etc.
@@ -204,16 +215,12 @@ class AbstractWrappedSolver(AbstractSolver):
     class if that is not desired behaviour.)
     """
 
-    solver: AbstractSolver
+    solver: AbstractVar[AbstractSolver]
 
 
-AbstractWrappedSolver.__init__.__doc__ = """**Arguments:**
-
-- `solver`: The solver to wrap.
-"""
-
-
-class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
+class HalfSolver(
+    AbstractAdaptiveSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+):
     """Wraps another solver, trading cost in order to provide error estimates. (That
     is, it means the solver can be used with an adaptive step size controller,
     regardless of whether the underlying solver supports adaptive step sizing.)
@@ -233,12 +240,14 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         [`diffrax.Euler`][]. Such solvers are most common when solving SDEs.
     """
 
+    solver: AbstractSolver[_SolverState]
+
     @property
     def term_structure(self):
         return self.solver.term_structure
 
     @property
-    def interpolation_cls(self):
+    def interpolation_cls(self):  # pyright: ignore
         return self.solver.interpolation_cls
 
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:

@@ -12,7 +12,7 @@ from .._term import AbstractTerm
 from .base import AbstractStepSizeController
 
 
-class ConstantStepSize(AbstractStepSizeController):
+class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike]):
     """Use a constant step size, equal to the `dt0` argument of
     [`diffrax.diffeqsolve`][].
     """
@@ -61,7 +61,7 @@ class ConstantStepSize(AbstractStepSizeController):
         )
 
 
-class StepTo(AbstractStepSizeController):
+class StepTo(AbstractStepSizeController[IntScalarLike, None]):
     """Make steps to just prespecified times."""
 
     ts: Real[Array, " times"] = eqx.field(converter=jnp.asarray)

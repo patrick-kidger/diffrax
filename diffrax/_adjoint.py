@@ -126,7 +126,7 @@ class AbstractAdjoint(eqx.Module):
         init_state,
         passed_solver_state,
         passed_controller_state,
-    ):
+    ) -> Any:
         """Runs the main solve loop. Subclasses can override this to provide custom
         backpropagation behaviour; see for example the implementation of
         [`diffrax.BacksolveAdjoint`][].

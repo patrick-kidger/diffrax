@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import diffrax
 import equinox as eqx
 import jax
@@ -52,22 +54,32 @@ def test_implicit_euler_adaptive():
     assert out2.result == diffrax.RESULTS.successful
 
 
+class _DoubleDopri5(diffrax.AbstractRungeKutta):
+    tableau: ClassVar[diffrax.MultiButcherTableau] = diffrax.MultiButcherTableau(
+        diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
+    )
+    calculate_jacobian: ClassVar[
+        diffrax.CalculateJacobian
+    ] = diffrax.CalculateJacobian.never
+
+    @staticmethod
+    def interpolation_cls(**kwargs):
+        kwargs.pop("k")
+        return diffrax.LocalLinearInterpolation(**kwargs)
+
+    def order(self, terms):
+        return 5
+
+
 @pytest.mark.parametrize("vf_expensive", (False, True))
 def test_multiple_tableau_single_step(vf_expensive):
-    class DoubleDopri5(diffrax.AbstractRungeKutta):
-        tableau = diffrax.MultiButcherTableau(
-            diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
-        )
-        interpolation_cls = None
-        calculate_jacobian = diffrax.CalculateJacobian.never
-
     mlp1 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(0))
     mlp2 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(1))
     term1 = diffrax.ODETerm(lambda t, y, args: mlp1(y))
     term2 = diffrax.ODETerm(lambda t, y, args: mlp2(y))
     terms = diffrax.MultiTerm(term1, term2)
     solver1 = diffrax.Dopri5()
-    solver2 = DoubleDopri5()
+    solver2 = _DoubleDopri5()
     t0 = 0.3
     t1 = 0.7
     y0 = jnp.array([1.0, 2.0])
@@ -92,20 +104,6 @@ def test_multiple_tableau_single_step(vf_expensive):
 
 @pytest.mark.parametrize("adaptive", (True, False))
 def test_multiple_tableau1(adaptive):
-    class DoubleDopri5(diffrax.AbstractRungeKutta):
-        tableau = diffrax.MultiButcherTableau(
-            diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
-        )
-        calculate_jacobian = diffrax.CalculateJacobian.never
-
-        @staticmethod
-        def interpolation_cls(**kwargs):
-            kwargs.pop("k")
-            return diffrax.LocalLinearInterpolation(**kwargs)
-
-        def order(self, terms):
-            return 5
-
     mlp1 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(0))
     mlp2 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(1))
 
@@ -130,19 +128,19 @@ def test_multiple_tableau1(adaptive):
     )
     out_b = diffrax.diffeqsolve(
         diffrax.MultiTerm(term1, term2),
-        DoubleDopri5(),
+        _DoubleDopri5(),
         t0,
         t1,
         dt0,
         y0,
         stepsize_controller=stepsize_controller,
     )
-    assert jnp.allclose(out_a.ys, out_b.ys, rtol=1e-8, atol=1e-8)
+    assert jnp.allclose(out_a.ys, out_b.ys, rtol=1e-8, atol=1e-8)  # pyright: ignore
 
     with pytest.raises(ValueError):
         diffrax.diffeqsolve(
             (term1, term2),
-            DoubleDopri5(),
+            _DoubleDopri5(),  # pyright: ignore
             t0,
             t1,
             dt0,
@@ -228,7 +226,11 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
             k_left, k_right = k
             k = {"y": k_left["y"] + k_right["y"]}
             return diffrax._solver.dopri5._Dopri5Interpolation(
-                t0=t0, t1=t1, y0=y0, y1=y1, k=k
+                t0=t0,
+                t1=t1,
+                y0=y0,  # pyright: ignore
+                y1=y1,  # pyright: ignore
+                k=k,  # pyright: ignore
             )
 
         def order(self, terms):
@@ -288,7 +290,7 @@ def test_sil3():
         def init(self, terms, t0, t1, y0, args):
             return None
 
-        def func(self, terms, t, y, args):
+        def func(self, terms, t0, y0, args):
             assert False
 
         def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
@@ -455,7 +457,7 @@ def test_rober(solver):
             [6.1723488239606716e-01, 6.1535912746388841e-06, 3.8275896401264059e-01],
         ]
     )
-    assert jnp.allclose(sol.ys, true_ys, rtol=1e-3, atol=1e-8)
+    assert jnp.allclose(sol.ys, true_ys, rtol=1e-3, atol=1e-8)  # pyright: ignore
 
 
 def test_implicit_closure_convert():
@@ -468,7 +470,7 @@ def test_implicit_closure_convert():
         solver = diffrax.Kvaerno3()
         solver = implicit_tol(solver)
         out = diffrax.diffeqsolve(term, solver, 0, 1, 0.1, 1.0)
-        return out.ys[0]
+        return out.ys[0]  # pyright: ignore
 
     f(1.0)
 
