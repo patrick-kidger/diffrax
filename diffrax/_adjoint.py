@@ -1,7 +1,8 @@
 import abc
 import functools as ft
 import warnings
-from typing import Any, Optional
+from collections.abc import Iterable
+from typing import Any, Optional, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,9 +10,10 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax as lx
+import optimistix.internal as optxi
 from equinox.internal import ω
 
-from ._ad import implicit_jvp
 from ._heuristics import is_sde, is_unsafe_sde
 from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solver import AbstractItoSolver, AbstractRungeKutta, AbstractStratonovichSolver
@@ -384,7 +386,7 @@ class DirectAdjoint(AbstractAdjoint):
         return final_state
 
 
-def _vf(ys, residual, args__terms, closure):
+def _vf(ys, residual, inputs):
     state_no_y, _ = residual
     t = state_no_y.tprev
 
@@ -393,14 +395,12 @@ def _vf(ys, residual, args__terms, closure):
         return _y1
 
     y = jtu.tree_map(_unpack, ys)
-    args, terms = args__terms
-    _, _, solver, _, _ = closure
+    args, terms, _, _, solver, _, _ = inputs
     return solver.func(terms, t, y, args)
 
 
-def _solve(args__terms, closure):
-    args, terms = args__terms
-    self, kwargs, solver, saveat, init_state = closure
+def _solve(inputs):
+    args, terms, self, kwargs, solver, saveat, init_state = inputs
     final_state, aux_stats = self._loop(
         **kwargs,
         args=args,
@@ -423,6 +423,15 @@ def _solve(args__terms, closure):
     )
 
 
+def _frozenset(x: Union[object, Iterable[object]]) -> frozenset[object]:
+    try:
+        iter_x = iter(x)  # pyright: ignore
+    except TypeError:
+        return frozenset([x])
+    else:
+        return frozenset(iter_x)
+
+
 class ImplicitAdjoint(AbstractAdjoint):
     r"""Backpropagate via the [implicit function theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem#Statement_of_the_theorem).
 
@@ -433,7 +442,15 @@ class ImplicitAdjoint(AbstractAdjoint):
     the solver and instead directly compute
     $\frac{\mathrm{d}y}{\mathrm{d}θ} = - (\frac{\mathrm{d}f}{\mathrm{d}y})^{-1}\frac{\mathrm{d}f}{\mathrm{d}θ}$
     via the implicit function theorem.
+
+    Observe that this involves solving a linear system with matrix given by the Jacobian
+    `df/dy`.
     """  # noqa: E501
+
+    linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=None)
+    tags: frozenset[object] = eqx.field(
+        default_factory=frozenset, converter=_frozenset, static=True
+    )
 
     def loop(
         self,
@@ -459,8 +476,10 @@ class ImplicitAdjoint(AbstractAdjoint):
         init_state = _nondiff_solver_controller_state(
             self, init_state, passed_solver_state, passed_controller_state
         )
-        closure = (self, kwargs, solver, saveat, init_state)
-        ys, residual = implicit_jvp(_solve, _vf, (args, terms), closure)
+        inputs = (args, terms, self, kwargs, solver, saveat, init_state)
+        ys, residual = optxi.implicit_jvp(
+            _solve, _vf, inputs, self.tags, self.linear_solver
+        )
 
         final_state_no_ys, aux_stats = residual
         # Note that `final_state.save_state` has type PyTree[SaveState]. To access `.ys`
@@ -471,6 +490,15 @@ class ImplicitAdjoint(AbstractAdjoint):
         )
         final_state = _only_transpose_ys(final_state)
         return final_state, aux_stats
+
+
+ImplicitAdjoint.__init__.__doc__ = """**Arguments:**
+
+- `linear_solver`: A [Lineax](https://github.com/google/lineax) solver for solving the
+    linear system.
+- `tags`: Any Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing the
+    Jacobian matrix `df/dy`.
+"""
 
 
 # Compute derivatives with respect to the first argument:

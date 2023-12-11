@@ -37,7 +37,8 @@ Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax
 
 ::: diffrax.ImplicitAdjoint
     selection:
-        members: false
+        members:
+            - __init__
 
 ::: diffrax.DirectAdjoint
     selection:
