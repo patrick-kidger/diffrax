@@ -65,7 +65,6 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
     ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
-
         yhat0, vf0 = solver_state
 
         vf0 = lax.cond(made_jump, lambda _: terms.vf(t0, y0, args), lambda _: vf0, None)

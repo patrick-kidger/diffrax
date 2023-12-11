@@ -134,9 +134,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         next_t = self.ts[index + 1]
         diff_t = next_t - prev_t
 
-        return (
-            prev_ys**ω + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t)
-        ).ω
+        return (prev_ys**ω + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t)).ω
 
     @eqx.filter_jit
     def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
@@ -424,7 +422,6 @@ def _linear_interpolation_forward(
     tuple[Real[Array, " *channels"], Shaped[Array, " *channels"]],
     Shaped[Array, " *channels"],
 ]:
-
     prev_ti, prev_yi = carry
     ti, yi, next_ti, next_yi = value
     cond = jnp.isnan(yi)
@@ -443,7 +440,6 @@ def _linear_interpolation(
     ys: Shaped[Array, " times *channels"],
     replace_nans_at_start: Optional[Shaped[ArrayLike, " *#channels"]] = None,
 ) -> Shaped[Array, " times *channels"]:
-
     ts = left_broadcast_to(ts, ys.shape)
 
     if replace_nans_at_start is None:
@@ -615,7 +611,6 @@ def _hermite_forward(
         Shaped[Array, " *channels"],
     ],
 ]:
-
     prev_ti, prev_yi, prev_deriv_i = carry
     ti, yi, next_ti, next_yi = value
     first_deriv_i = (next_yi - yi) / (next_ti - ti)

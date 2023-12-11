@@ -250,8 +250,7 @@ def _implicit_relation_f(fi, nonlinear_solve_args):
     ) = nonlinear_solve_args
     del stage_index
     diff = (
-        fi**ω
-        - vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
+        fi**ω - vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
     ).ω
     return diff
 
@@ -267,8 +266,7 @@ def _implicit_relation_k(ki, nonlinear_solve_args):
     stage_index, diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
     del stage_index
     diff = (
-        ki**ω
-        - vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
+        ki**ω - vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
     ).ω
     return diff
 

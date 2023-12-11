@@ -85,6 +85,7 @@ class Dopri5(AbstractERK):
         }
         ```
     """
+
     tableau = _dopri5_tableau
     interpolation_cls = _Dopri5Interpolation
 

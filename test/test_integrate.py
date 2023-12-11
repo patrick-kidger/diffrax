@@ -1,6 +1,7 @@
 import math
 import operator
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -9,8 +10,6 @@ import jax.tree_util as jtu
 import pytest
 import scipy.stats
 from equinox.internal import ω
-
-import diffrax
 
 from .helpers import (
     all_ode_solvers,

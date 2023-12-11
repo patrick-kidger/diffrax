@@ -1,12 +1,11 @@
 import contextlib
 import math
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
-
-import diffrax
 
 from .helpers import tree_allclose
 

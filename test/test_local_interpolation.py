@@ -1,7 +1,6 @@
+import diffrax
 import jax
 import jax.numpy as jnp
-
-import diffrax
 
 from .helpers import tree_allclose
 

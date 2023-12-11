@@ -278,7 +278,6 @@ class HalfSolver(AbstractAdaptiveSolver, AbstractWrappedSolver):
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
     ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
-
         original_solver_state = solver_state
         thalf = t0 + 0.5 * (t1 - t0)
 

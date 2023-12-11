@@ -28,11 +28,7 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
         del left
         if t1 is None:
             coeff = linear_rescale(self.t0, t0, self.t1)
-            return (
-                (self.y0**ω + coeff * (self.y1**ω - self.y0**ω))
-                .call(jnp.asarray)
-                .ω
-            )
+            return (self.y0**ω + coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
         else:
             coeff = (t1 - t0) / (self.t1 - self.t0)
             return (coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω

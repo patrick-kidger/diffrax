@@ -13,7 +13,7 @@ def save_y(t, y, args):
 
 
 def _convert_ts(
-    ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]]
+    ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]],
 ) -> Optional[Real[Array, " times"]]:
     if ts is None or len(ts) == 0:
         return None

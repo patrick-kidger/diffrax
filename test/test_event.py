@@ -1,8 +1,7 @@
+import diffrax
 import jax
 import jax.numpy as jnp
 import pytest
-
-import diffrax
 
 
 def test_discrete_terminate1():
