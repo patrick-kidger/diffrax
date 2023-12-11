@@ -3,7 +3,7 @@ import math
 import diffrax
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
@@ -100,8 +100,8 @@ def test_shape_and_dtype(ctr, getkey):
 )
 def test_statistics(ctr):
     # Deterministic key for this test; not using getkey()
-    key = jrandom.PRNGKey(5678)
-    keys = jrandom.split(key, 10000)
+    key = jr.PRNGKey(5678)
+    keys = jr.split(key, 10000)
 
     def _eval(key):
         if ctr is diffrax.UnsafeBrownianPath:
@@ -120,13 +120,13 @@ def test_statistics(ctr):
 
 
 def test_conditional_statistics():
-    key = jrandom.PRNGKey(5678)
-    bm_key, sample_key, permute_key = jrandom.split(key, 3)
+    key = jr.PRNGKey(5678)
+    bm_key, sample_key, permute_key = jr.split(key, 3)
 
     # Get >80 randomly selected points; not too close to avoid discretisation error.
     t0 = 0.3
     t1 = 8.7
-    ts = jrandom.uniform(sample_key, shape=(100,), minval=t0, maxval=t1)
+    ts = jr.uniform(sample_key, shape=(100,), minval=t0, maxval=t1)
     sorted_ts = jnp.sort(ts)
     ts = []
     prev_ti = sorted_ts[0]
@@ -137,10 +137,10 @@ def test_conditional_statistics():
         ts.append(ti)
     ts = jnp.stack(ts)
     assert len(ts) > 80
-    ts = jrandom.permutation(permute_key, ts)
+    ts = jr.permutation(permute_key, ts)
 
     # Get some random paths
-    bm_keys = jrandom.split(bm_key, 100000)
+    bm_keys = jr.split(bm_key, 100000)
     path = jax.vmap(
         lambda k: diffrax.VirtualBrownianTree(t0=t0, t1=t1, shape=(), tol=2**-12, key=k)
     )(bm_keys)

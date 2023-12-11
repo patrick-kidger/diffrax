@@ -5,7 +5,7 @@ from typing import cast
 import diffrax
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import pytest
 from jaxtyping import Array
@@ -257,7 +257,7 @@ def test_interpolation_classes(mode, getkey):
         jnp.linspace(0, 10, length),
         jnp.array([0.0, 2.0, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1]),
     ]
-    _make = lambda: jrandom.normal(getkey(), (length, num_channels))
+    _make = lambda: jr.normal(getkey(), (length, num_channels))
     ys_ = [
         _make(),
         [_make(), {"a": _make(), "b": _make()}],
@@ -309,7 +309,7 @@ def test_interpolation_classes(mode, getkey):
 
 
 def _test_dense_interpolation(solver, key, t1):
-    y0 = jrandom.uniform(key, (), minval=0.4, maxval=2)
+    y0 = jr.uniform(key, (), minval=0.4, maxval=2)
     dt0 = t1 / 1e3
     if (
         solver.term_structure
@@ -343,7 +343,7 @@ def _test_dense_interpolation(solver, key, t1):
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_dense_interpolation(solver, getkey):
     solver = implicit_tol(solver)
-    key = jrandom.PRNGKey(5678)
+    key = jr.PRNGKey(5678)
     vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver, key, 1)
     assert jnp.array_equal(vals[0], true_vals[0])
     val_tol = {
@@ -369,7 +369,7 @@ def test_dense_interpolation(solver, getkey):
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_dense_interpolation_vmap(solver, getkey):
     solver = implicit_tol(solver)
-    key = jrandom.PRNGKey(5678)
+    key = jr.PRNGKey(5678)
     _test_dense = ft.partial(_test_dense_interpolation, solver, key)
     _test_dense_vmap = jax.vmap(_test_dense)
     vals, true_vals, derivs, true_derivs = _test_dense_vmap(jnp.array([0.5, 1.0]))

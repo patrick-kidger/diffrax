@@ -1,7 +1,7 @@
 import diffrax
 import equinox as eqx
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import optimistix as optx
 
@@ -42,13 +42,13 @@ def implicit_tol(solver):
 
 
 def random_pytree(key, treedef, dtype):
-    keys = jrandom.split(key, treedef.num_leaves)
+    keys = jr.split(key, treedef.num_leaves)
     leaves = []
     for key in keys:
-        dimkey, sizekey, valuekey = jrandom.split(key, 3)
-        num_dims = jrandom.randint(dimkey, (), 0, 5).item()
-        dim_sizes = jrandom.randint(sizekey, (num_dims,), 0, 5)
-        value = jrandom.normal(valuekey, dim_sizes.item(), dtype=dtype)
+        dimkey, sizekey, valuekey = jr.split(key, 3)
+        num_dims = jr.randint(dimkey, (), 0, 5).item()
+        dim_sizes = jr.randint(sizekey, (num_dims,), 0, 5)
+        value = jr.normal(valuekey, dim_sizes.item(), dtype=dtype)
         leaves.append(value)
     return jtu.tree_unflatten(treedef, leaves)
 

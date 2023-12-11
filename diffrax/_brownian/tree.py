@@ -5,7 +5,7 @@ import equinox.internal as eqxi
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
@@ -112,7 +112,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         mean = w_s + (w_u - w_s) * ((t - s) / (u - s))
         var = (u - t) * (t - s) / (u - s)
         std = jnp.sqrt(var)
-        return mean + std * jrandom.normal(key, shape, dtype)
+        return mean + std * jr.normal(key, shape, dtype)
 
     def _evaluate_leaf(
         self,
@@ -140,9 +140,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # errors are only raised after everything has finished executing.
         τ = jnp.clip(τ, t0, t1).astype(dtype)
 
-        key, init_key = jrandom.split(key, 2)
+        key, init_key = jr.split(key, 2)
         thalf = t0 + 0.5 * (t1 - t0)
-        w_t1 = jrandom.normal(init_key, shape, dtype) * jnp.sqrt(t1 - t0)
+        w_t1 = jr.normal(init_key, shape, dtype) * jnp.sqrt(t1 - t0)
         w_thalf = self._brownian_bridge(t0, thalf, t1, 0, w_t1, key, shape, dtype)
         init_state = _State(
             s=t0,
@@ -164,7 +164,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             return (_state.u - _state.s) > self.tol
 
         def _body_fun(_state):
-            _key1, _key2 = jrandom.split(_state.key, 2)
+            _key1, _key2 = jr.split(_state.key, 2)
             _cond = τ > _state.t
             _s = jnp.where(_cond, _state.t, _state.s)
             _u = jnp.where(_cond, _state.u, _state.t)

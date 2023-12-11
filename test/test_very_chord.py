@@ -2,7 +2,7 @@ import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import optimistix as optx
 
@@ -23,7 +23,7 @@ def _fn2(x, args):
 # Nontrivial interactions between inputs
 @jax.jit
 def _fn3(x, args):
-    mlp = eqx.nn.MLP(4, 4, 256, 2, key=jrandom.PRNGKey(678))
+    mlp = eqx.nn.MLP(4, 4, 256, 2, key=jr.PRNGKey(678))
     return mlp(x) - x
 
 
