@@ -6,7 +6,7 @@ import equinox as eqx
 import jax
 import jax.interpreters.ad
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import optax
 import pytest
@@ -208,7 +208,7 @@ def test_adjoint_seminorm():
 
 
 def test_closure_errors():
-    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jr.PRNGKey(0))
 
     @eqx.filter_jit
     @eqx.filter_value_and_grad
@@ -232,7 +232,7 @@ def test_closure_errors():
 
 
 def test_closure_fixed():
-    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jr.PRNGKey(0))
 
     class VectorField(eqx.Module):
         model: Callable
@@ -310,7 +310,7 @@ def test_implicit():
 
 
 def test_backprop_ts(getkey):
-    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jrandom.PRNGKey(0))
+    mlp = eqx.nn.MLP(1, 1, 8, 2, key=jr.PRNGKey(0))
 
     @eqx.filter_jit
     @eqx.filter_value_and_grad

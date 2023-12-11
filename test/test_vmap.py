@@ -1,7 +1,7 @@
 import diffrax
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import numpy as np
 import pytest
 
@@ -15,9 +15,9 @@ def test_vmap_y0(stepsize_controller):
     t1 = 1
     dt0 = 0.1
 
-    key = jrandom.PRNGKey(5678)
+    key = jr.PRNGKey(5678)
 
-    y0 = jrandom.normal(key, (10, 2))
+    y0 = jr.normal(key, (10, 2))
     a = jnp.array([[-0.2, 1], [1, -0.2]])
 
     def f(t, y, args):

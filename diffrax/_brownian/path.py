@@ -4,7 +4,7 @@ import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
@@ -81,8 +81,8 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1 = cast(RealScalarLike, t1)
         t0_ = force_bitcast_convert_type(t0, jnp.int32)
         t1_ = force_bitcast_convert_type(t1, jnp.int32)
-        key = jrandom.fold_in(self.key, t0_)
-        key = jrandom.fold_in(key, t1_)
+        key = jr.fold_in(self.key, t0_)
+        key = jr.fold_in(key, t1_)
         key = split_by_tree(key, self.shape)
         return jtu.tree_map(
             lambda key, shape: self._evaluate_leaf(t0, t1, key, shape), key, self.shape
@@ -91,7 +91,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def _evaluate_leaf(
         self, t0: RealScalarLike, t1: RealScalarLike, key, shape: jax.ShapeDtypeStruct
     ):
-        return jrandom.normal(key, shape.shape, shape.dtype) * jnp.sqrt(t1 - t0).astype(
+        return jr.normal(key, shape.shape, shape.dtype) * jnp.sqrt(t1 - t0).astype(
             shape.dtype
         )
 

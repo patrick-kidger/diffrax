@@ -6,7 +6,7 @@ import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import pytest
 import scipy.stats
@@ -143,10 +143,10 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_ode_order(solver):
     solver = implicit_tol(solver)
-    key = jrandom.PRNGKey(5678)
-    akey, ykey = jrandom.split(key, 2)
+    key = jr.PRNGKey(5678)
+    akey, ykey = jr.split(key, 2)
 
-    A = jrandom.normal(akey, (10, 10), dtype=jnp.float64) * 0.5
+    A = jr.normal(akey, (10, 10), dtype=jnp.float64) * 0.5
 
     if (
         solver.term_structure
@@ -168,7 +168,7 @@ def test_ode_order(solver):
         term = diffrax.ODETerm(f)
     t0 = 0
     t1 = 4
-    y0 = jrandom.normal(ykey, (10,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (10,), dtype=jnp.float64)
 
     true_yT = jax.scipy.linalg.expm((t1 - t0) * A) @ y0
     exponents = []
@@ -222,8 +222,8 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     else:
         noise_dim = 5
 
-    key = jrandom.PRNGKey(5678)
-    driftkey, diffusionkey, ykey, bmkey = jrandom.split(key, 4)
+    key = jr.PRNGKey(5678)
+    driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
     drift_mlp = eqx.nn.MLP(
         in_size=3,
         out_size=3,
@@ -246,7 +246,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
 
     t0 = 0
     t1 = 2
-    y0 = jrandom.normal(ykey, (3,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (3,), dtype=jnp.float64)
     bm = diffrax.VirtualBrownianTree(
         t0=t0, t1=t1, shape=(noise_dim,), tol=2**-15, key=bmkey
     )
@@ -305,7 +305,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
 )
 def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     key = getkey()
-    y0 = jrandom.normal(key, (2, 2))
+    y0 = jr.normal(key, (2, 2))
     stepsize_controller = (
         diffrax.PIDController(rtol=1e-3, atol=1e-6)
         if dt0 is None
