@@ -187,7 +187,6 @@ def loop(
     inner_while_loop,
     outer_while_loop,
 ):
-
     if saveat.dense:
         dense_ts = init_state.dense_ts
         dense_ts = dense_ts.at[0].set(t0)
@@ -696,7 +695,9 @@ def diffeqsolve(
         return [x for x in out if x is not None]
 
     saveat = eqx.tree_at(
-        _get_subsaveat_ts, saveat, replace_fn=lambda ts: ts.astype(dtype)  # noqa: F821
+        _get_subsaveat_ts,
+        saveat,
+        replace_fn=lambda ts: ts.astype(dtype),  # noqa: F821
     )
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
@@ -831,7 +832,13 @@ def diffeqsolve(
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
-        (_, _, dense_info, _, _,) = eqx.filter_eval_shape(
+        (
+            _,
+            _,
+            dense_info,
+            _,
+            _,
+        ) = eqx.filter_eval_shape(
             solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
         )
         dense_ts = jnp.full(max_steps + 1, jnp.inf)

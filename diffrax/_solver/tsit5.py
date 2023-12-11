@@ -175,6 +175,7 @@ class Tsit5(AbstractERK):
         }
         ```
     """
+
     tableau = _tsit5_tableau
     interpolation_cls = _Tsit5Interpolation
 

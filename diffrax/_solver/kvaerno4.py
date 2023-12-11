@@ -34,7 +34,7 @@ a43 = (poly(-6, 6, -1) * poly(12, -6, 1) ** 2) / (
 )
 a51 = poly(288, -312, 120, -18, 1) / (48 * γ**2 * poly(12, -9, 2))
 a52 = poly(24, -12, 1) / (48 * γ**2 * poly(3, -1))
-a53 = -poly(12, -6, 1) ** 3 / (
+a53 = -(poly(12, -6, 1) ** 3) / (
     48 * γ**2 * poly(3, -1) * poly(12, -9, 2) * poly(6, -6, 1)
 )
 a54 = poly(-24, 36, -12, 1) / poly(24, -24, 4)
@@ -102,6 +102,7 @@ class Kvaerno4(AbstractESDIRK):
         }
         ```
     """
+
     tableau = _kvaerno4_tableau
     interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
 

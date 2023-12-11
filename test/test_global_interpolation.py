@@ -1,13 +1,12 @@
 import functools as ft
 import operator
 
+import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
-
-import diffrax
 
 from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 

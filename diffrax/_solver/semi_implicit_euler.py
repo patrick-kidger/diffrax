@@ -49,7 +49,7 @@ class SemiImplicitEuler(AbstractSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[tuple[Ya, Yb], _ErrorEstimate, DenseInfo, _SolverState, RESULTS,]:
+    ) -> tuple[tuple[Ya, Yb], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
 
         term_1, term_2 = terms
@@ -71,7 +71,6 @@ class SemiImplicitEuler(AbstractSolver):
         y0: tuple[Ya, Yb],
         args: Args,
     ) -> VF:
-
         term_1, term_2 = terms
         y0_1, y0_2 = y0
         f1 = term_1.vf(t0, y0_2, args)

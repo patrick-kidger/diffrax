@@ -337,9 +337,7 @@ def _virtual_brownian_tree(terms):
         return r"""
 % You are simulating Brownian motion using a virtual Brownian tree, which was introduced
 % in:
-""" + _parse_reference(
-            VirtualBrownianTree
-        )
+""" + _parse_reference(VirtualBrownianTree)
 
 
 @citation_rules.append
@@ -348,9 +346,7 @@ def _backsolve_rms_norm(adjoint):
         if adjoint_rms_seminorm in jtu.tree_leaves(adjoint):
             return r"""
 % You are backpropagating using adjoint seminorms, which was introduced in::
-""" + _parse_reference(
-                adjoint_rms_seminorm
-            )
+""" + _parse_reference(adjoint_rms_seminorm)
 
 
 @citation_rules.append

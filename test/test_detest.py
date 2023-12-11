@@ -11,14 +11,13 @@
 
 import math
 
+import diffrax
 import jax.flatten_util as fu
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 import pytest
 import scipy.integrate as integrate
-
-import diffrax
 
 from .helpers import all_ode_solvers, implicit_tol, tree_allclose
 

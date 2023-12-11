@@ -1,13 +1,12 @@
 import math
 
+import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
-
-import diffrax
 
 
 _vals = {
@@ -143,9 +142,7 @@ def test_conditional_statistics():
     # Get some random paths
     bm_keys = jrandom.split(bm_key, 100000)
     path = jax.vmap(
-        lambda k: diffrax.VirtualBrownianTree(
-            t0=t0, t1=t1, shape=(), tol=2**-12, key=k
-        )
+        lambda k: diffrax.VirtualBrownianTree(t0=t0, t1=t1, shape=(), tol=2**-12, key=k)
     )(bm_keys)
 
     # Sample some points

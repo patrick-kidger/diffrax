@@ -1,11 +1,10 @@
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import optimistix as optx
-
-import diffrax
 
 from .helpers import tree_allclose
 

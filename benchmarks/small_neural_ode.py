@@ -3,6 +3,7 @@
 import gc
 import time
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.experimental.ode as experimental
@@ -12,8 +13,6 @@ import jax.random as jrandom
 import numpy as np
 import torch
 import torchdiffeq
-
-import diffrax
 
 
 class FuncTorch(torch.nn.Module):

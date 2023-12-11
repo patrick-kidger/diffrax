@@ -1,12 +1,11 @@
 import functools as ft
 import timeit
 
+import diffrax as dfx
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-
-import diffrax as dfx
 
 
 def _weight(in_, out, key):

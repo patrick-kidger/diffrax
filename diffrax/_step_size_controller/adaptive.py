@@ -534,9 +534,9 @@ class PIDController(AbstractAdaptiveStepSizeController):
         coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / error_order
         coeff2 = -(self.pcoeff + 2 * self.dcoeff) / error_order
         coeff3 = self.dcoeff / error_order
-        factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
-        factor2 = 1 if _zero_coeff(coeff2) else prev_inv_scaled_error ** coeff2
-        factor3 = 1 if _zero_coeff(coeff3) else prev_prev_inv_scaled_error ** coeff3
+        factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error**coeff1
+        factor2 = 1 if _zero_coeff(coeff2) else prev_inv_scaled_error**coeff2
+        factor3 = 1 if _zero_coeff(coeff3) else prev_prev_inv_scaled_error**coeff3
         factormin = jnp.where(keep_step, 1, self.factormin)
         factor = jnp.clip(
             self.safety * factor1 * factor2 * factor3,

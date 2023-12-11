@@ -169,6 +169,7 @@ class ODETerm(AbstractTerm):
         diffeqsolve(ode_term, ...)
         ```
     """
+
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
