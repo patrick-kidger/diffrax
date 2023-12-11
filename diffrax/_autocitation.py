@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Optional
 
 import jax
+import jax.core
 import jax.tree_util as jtu
 
 from ._adjoint import BacksolveAdjoint, DirectAdjoint, RecursiveCheckpointAdjoint
@@ -148,14 +149,16 @@ _reference_regex = re.compile(r"```bibtex([^`]*)```")
 
 
 @ft.lru_cache(maxsize=None)
-def _parse_reference(obj, allow_multiple=False):
+def _parse_reference(obj) -> str:
     references = _reference_regex.findall(obj.__doc__)
-    references = [inspect.cleandoc(ref) for ref in references]
-    if allow_multiple:
-        return references
-    else:
-        [reference] = references
-        return reference
+    [reference] = [inspect.cleandoc(ref) for ref in references]
+    return reference
+
+
+@ft.lru_cache(maxsize=None)
+def _parse_reference_multi(obj) -> list[str]:
+    references = _reference_regex.findall(obj.__doc__)
+    return [inspect.cleandoc(ref) for ref in references]
 
 
 def _no_tracer(x, name):
@@ -454,7 +457,7 @@ def _solvers(solver, saveat=None):
             + _parse_reference(solver)
         )
     elif type(solver) is Dopri5:
-        ref1, ref2 = _parse_reference(Dopri5, allow_multiple=True)
+        ref1, ref2 = _parse_reference_multi(Dopri5)
         assert "Dormand" in ref1
         assert "Prince" in ref1
         assert "Shampine" in ref2
@@ -470,7 +473,7 @@ def _solvers(solver, saveat=None):
             + ref2
         )
     elif type(solver) is Dopri8:
-        ref1, ref2 = _parse_reference(Dopri8, allow_multiple=True)
+        ref1, ref2 = _parse_reference_multi(Dopri8)
         assert "Dormand" in ref1
         assert "Prince" in ref1
         assert "Bogacki" in ref2

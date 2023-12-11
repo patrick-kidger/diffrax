@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import cast, Optional, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -97,7 +97,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         if t1 is None:
             return self._evaluate(t0)
         else:
-            t1 = eqxi.nondifferentiable(t1, name="t1")
+            t1 = cast(RealScalarLike, eqxi.nondifferentiable(t1, name="t1"))
             return jtu.tree_map(
                 lambda x, y: x - y,
                 self._evaluate(t1),
@@ -105,7 +105,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
 
     def _evaluate(self, τ: RealScalarLike) -> PyTree[Array]:
-        map_func = lambda key, shape: self._evaluate_leaf(key, τ, shape)
+        map_func = lambda key, struct: self._evaluate_leaf(key, τ, struct)
         return jtu.tree_map(map_func, self.key, self.shape)
 
     def _brownian_bridge(self, s, t, u, w_s, w_u, key, shape, dtype):
@@ -118,9 +118,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
         self,
         key,
         τ: RealScalarLike,
-        shape: jax.ShapeDtypeStruct,
+        struct: jax.ShapeDtypeStruct,
     ) -> Array:
-        shape, dtype = shape.shape, shape.dtype
+        shape, dtype = struct.shape, struct.dtype
 
         cond = self.t0 < self.t1
         t0 = jnp.where(cond, self.t0, self.t1).astype(dtype)

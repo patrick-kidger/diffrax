@@ -1,5 +1,6 @@
 import math
 import operator
+from typing import cast
 
 import diffrax
 import equinox as eqx
@@ -10,6 +11,7 @@ import jax.tree_util as jtu
 import pytest
 import scipy.stats
 from equinox.internal import ω
+from jaxtyping import Array
 
 from .helpers import (
     all_ode_solvers,
@@ -174,14 +176,14 @@ def test_ode_order(solver):
     for exponent in [0, -1, -2, -3, -4, -6, -8, -12]:
         dt0 = 2**exponent
         sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, max_steps=None)
-        yT = sol.ys[-1]
+        yT = cast(Array, sol.ys)[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2**-28:
             break
         exponents.append(exponent)
         errors.append(jnp.log2(error))
 
-    order = scipy.stats.linregress(exponents, errors).slope
+    order = scipy.stats.linregress(exponents, errors).slope  # pyright: ignore
     # We accept quite a wide range. Improving this test would be nice.
     assert -0.9 < order - solver.order(term) < 0.9
 
@@ -266,7 +268,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     true_sol = diffrax.diffeqsolve(
         ref_terms, ref_solver, t0, t1, dt0=2**-14, y0=y0, args=args, max_steps=None
     )
-    true_yT = true_sol.ys[-1]
+    true_yT = cast(Array, true_sol.ys)[-1]
 
     exponents = []
     errors = []
@@ -275,14 +277,14 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
         sol = diffrax.diffeqsolve(
             terms, solver_ctr(), t0, t1, dt0, y0, args=args, max_steps=None
         )
-        yT = sol.ys[-1]
+        yT = cast(Array, sol.ys)[-1]
         error = jnp.sum(jnp.abs(yT - true_yT))
         if error < 2**-28:
             break
         exponents.append(exponent)
         errors.append(jnp.log2(error))
 
-    order = scipy.stats.linregress(exponents, errors).slope
+    order = scipy.stats.linregress(exponents, errors).slope  # pyright: ignore
     assert -0.2 < order - theoretical_order < 0.2
 
 
@@ -328,7 +330,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     assert tree_allclose(sol1.t0, jnp.array(4.0))
     assert tree_allclose(sol1.t1, jnp.array(0.3))
 
-    def f(t, y, args):
+    def g(t, y, args):
         return y
 
     t0 = -4
@@ -337,7 +339,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
     if saveat.subs is not None and saveat.subs.ts is not None:
         saveat = diffrax.SaveAt(ts=[-ti for ti in saveat.subs.ts])
     sol2 = diffrax.diffeqsolve(
-        diffrax.ODETerm(f),
+        diffrax.ODETerm(g),
         solver_ctr(),
         t0,
         t1,
@@ -355,7 +357,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, getkey):
         or saveat.subs.ts is not None
         or saveat.subs.steps
     ):
-        assert tree_allclose(sol1.ts, -sol2.ts, equal_nan=True)
+        assert tree_allclose(sol1.ts, -cast(Array, sol2.ts), equal_nan=True)
         assert tree_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
         t = jnp.linspace(0.3, 4, 20)
@@ -401,6 +403,7 @@ def test_grad_implicit_solve(solver):
     def f(args):
         y0 = (1.0, {"a": 2.0})
         ys = diffrax.diffeqsolve(term, solver, t0=0, t1=1, dt0=0.1, y0=y0, args=args).ys
+        ys = cast(Array, ys)
         return jnp.sum(ys[0] + ys[1]["a"])
 
     grads = jax.jit(jax.grad(f))(1.0)

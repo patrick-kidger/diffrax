@@ -1,10 +1,15 @@
 import abc
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from equinox import AbstractVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractVar
+else:
+    from equinox import AbstractVar
 from jaxtyping import Array, PyTree
 
 from ._custom_types import RealScalarLike

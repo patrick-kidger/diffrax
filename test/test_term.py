@@ -24,13 +24,13 @@ def test_control_term(getkey):
         t0 = 0
         t1 = 1
 
-        def evaluate(self, t0, t1):
+        def evaluate(self, t0, t1=None, left=True):
             return jrandom.normal(getkey(), (2,))
 
-        def derivative(self, t):
+        def derivative(self, t, left=True):
             return jrandom.normal(derivkey, (2,))
 
-    control = Control()
+    control = Control()  # pyright: ignore
     term = diffrax.ControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)
@@ -59,13 +59,13 @@ def test_weakly_diagional_control_term(getkey):
         t0 = 0
         t1 = 1
 
-        def evaluate(self, t0, t1):
+        def evaluate(self, t0, t1=None, left=True):
             return jrandom.normal(getkey(), (3,))
 
-        def derivative(self, t):
+        def derivative(self, t, left=True):
             return jrandom.normal(derivkey, (3,))
 
-    control = Control()
+    control = Control()  # pyright: ignore
     term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)

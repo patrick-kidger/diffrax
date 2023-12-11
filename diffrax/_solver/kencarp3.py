@@ -1,10 +1,16 @@
-from typing import Optional
+from collections.abc import Callable
+from typing import ClassVar, Optional, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optimistix as optx
-from equinox import AbstractClassVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractClassVar
+else:
+    from equinox import AbstractClassVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree, Shaped
 
@@ -151,9 +157,13 @@ class KenCarp3(AbstractRungeKutta, AbstractImplicitSolver):
         ```
     """
 
-    tableau = MultiButcherTableau(_explicit_tableau, _implicit_tableau)
-    calculate_jacobian = CalculateJacobian.second_stage
-    interpolation_cls = _KenCarp3Interpolation
+    tableau: ClassVar[MultiButcherTableau] = MultiButcherTableau(
+        _explicit_tableau, _implicit_tableau
+    )
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.second_stage
+    interpolation_cls: ClassVar[
+        Callable[..., _KenCarp3Interpolation]
+    ] = _KenCarp3Interpolation
 
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
     root_find_max_steps: int = 10

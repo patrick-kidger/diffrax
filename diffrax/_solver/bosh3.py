@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 import numpy as np
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
@@ -26,8 +29,10 @@ class Bosh3(AbstractERK):
     Also sometimes known as "Ralston's third order method".
     """
 
-    tableau = _bosh3_tableau
-    interpolation_cls = ThirdOrderHermitePolynomialInterpolation.from_k
+    tableau: ClassVar[ButcherTableau] = _bosh3_tableau
+    interpolation_cls: ClassVar[
+        Callable[..., ThirdOrderHermitePolynomialInterpolation]
+    ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     def order(self, terms):
         return 3

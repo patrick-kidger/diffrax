@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -24,8 +26,10 @@ class EulerHeun(AbstractStratonovichSolver):
     Used to solve SDEs, and converges to the Stratonovich solution.
     """
 
-    term_structure = MultiTerm[tuple[ODETerm, AbstractTerm]]
-    interpolation_cls = LocalLinearInterpolation
+    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
 
     def order(self, terms):
         return 1

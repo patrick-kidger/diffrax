@@ -1,5 +1,6 @@
 import functools as ft
 import operator
+from typing import cast
 
 import diffrax
 import jax
@@ -7,6 +8,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import jax.tree_util as jtu
 import pytest
+from jaxtyping import Array
 
 from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 
@@ -46,8 +48,8 @@ def test_interpolation_coeffs(mode, unsqueeze):
         def _merge(lef, rig):
             # Must be identical where neither of them are nan
             isnan = jnp.isnan(lef) | jnp.isnan(rig)
-            _lef = jnp.where(isnan, 0, lef)
-            _rig = jnp.where(isnan, 0, rig)
+            _lef = cast(Array, jnp.where(isnan, 0, lef))
+            _rig = cast(Array, jnp.where(isnan, 0, rig))
             assert jnp.array_equal(_lef, _rig)
             return jnp.where(jnp.isnan(rig), lef, rig)
 
@@ -297,13 +299,13 @@ def test_interpolation_classes(mode, getkey):
                     firstderiv = interp.derivative(t0, left=False)
                     derivs = jax.vmap(interp.derivative)(points[1:])
 
-                    def _test(firstderiv, derivs, y0, y1):
+                    def _test2(firstderiv, derivs, y0, y1):
                         derivs = jnp.concatenate([firstderiv[None], derivs])
                         true_derivs = (y1 - y0) / (t1 - t0)
                         true_derivs = jnp.broadcast_to(true_derivs, derivs.shape)
                         assert tree_allclose(derivs, true_derivs)
 
-                    jtu.tree_map(_test, firstderiv, derivs, y0, y1)
+                    jtu.tree_map(_test2, firstderiv, derivs, y0, y1)
 
 
 def _test_dense_interpolation(solver, key, t1):

@@ -1,4 +1,5 @@
 import abc
+from typing import Optional
 
 from jaxtyping import Array, PyTree
 
@@ -11,7 +12,7 @@ class AbstractBrownianPath(AbstractPath):
 
     @abc.abstractmethod
     def evaluate(
-        self, t0: RealScalarLike, t1: RealScalarLike, left: bool = True
+        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
     ) -> PyTree[Array]:
         r"""Samples a Brownian increment $w(t_1) - w(t_0)$.
 

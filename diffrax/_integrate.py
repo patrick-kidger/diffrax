@@ -2,7 +2,7 @@ import functools as ft
 import typing
 import warnings
 from collections.abc import Callable
-from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from typing import Any, cast, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -392,7 +392,7 @@ def loop(
             y=y,
             tprev=tprev,
             tnext=tnext,
-            made_jump=made_jump,
+            made_jump=made_jump,  # pyright: ignore
             solver_state=solver_state,
             controller_state=controller_state,
             result=result,
@@ -400,7 +400,7 @@ def loop(
             num_accepted_steps=num_accepted_steps,
             num_rejected_steps=num_rejected_steps,
             save_state=save_state,
-            dense_ts=dense_ts,
+            dense_ts=dense_ts,  # pyright: ignore
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
         )
@@ -740,12 +740,14 @@ def diffeqsolve(
                     solver,
                     stepsize_controller.rtol,
                 )
+                solver = cast(AbstractImplicitSolver, solver)
             if solver.root_finder.atol is use_stepsize_tol:
                 solver = eqx.tree_at(
                     lambda s: s.root_finder.atol,
                     solver,
                     stepsize_controller.atol,
                 )
+                solver = cast(AbstractImplicitSolver, solver)
             if solver.root_finder.norm is use_stepsize_tol:
                 solver = eqx.tree_at(
                     lambda s: s.root_finder.norm,

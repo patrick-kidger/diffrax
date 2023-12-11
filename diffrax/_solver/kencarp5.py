@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 import numpy as np
 import optimistix as optx
 
@@ -225,9 +228,13 @@ class KenCarp5(AbstractRungeKutta, AbstractImplicitSolver):
         ```
     """
 
-    tableau = MultiButcherTableau(_explicit_tableau, _implicit_tableau)
-    calculate_jacobian = CalculateJacobian.second_stage
-    interpolation_cls = _KenCarp5Interpolation
+    tableau: ClassVar[MultiButcherTableau] = MultiButcherTableau(
+        _explicit_tableau, _implicit_tableau
+    )
+    calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.second_stage
+    interpolation_cls: ClassVar[
+        Callable[..., _KenCarp5Interpolation]
+    ] = _KenCarp5Interpolation
 
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
     root_find_max_steps: int = 10

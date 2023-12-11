@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -24,8 +26,10 @@ class SemiImplicitEuler(AbstractSolver):
     linear interpolation for dense/ts output.
     """
 
-    term_structure = (AbstractTerm, AbstractTerm)
-    interpolation_cls = LocalLinearInterpolation
+    term_structure: ClassVar = (AbstractTerm, AbstractTerm)
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
 
     def order(self, terms):
         return 1

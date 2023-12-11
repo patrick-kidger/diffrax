@@ -1,8 +1,11 @@
+from typing import cast
+
 import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from jaxtyping import Array
 
 from .helpers import tree_allclose
 
@@ -26,8 +29,8 @@ def test_step_ts():
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
-    assert 3 in sol.ts
-    assert 4 in sol.ts
+    assert 3 in cast(Array, sol.ts)
+    assert 4 in cast(Array, sol.ts)
 
 
 def test_jump_ts():
@@ -68,8 +71,8 @@ def test_jump_ts():
     assert sol.result == diffrax.RESULTS.successful
     sol = run(jump_ts=[7.5], step_ts=[3.5, 8])
     assert sol.result == diffrax.RESULTS.successful
-    assert 3.5 in sol.ts
-    assert 8 in sol.ts
+    assert 3.5 in cast(Array, sol.ts)
+    assert 8 in cast(Array, sol.ts)
 
 
 def test_backprop():
@@ -126,7 +129,7 @@ def test_grad_of_discontinuous_forcing():
             args=forcing,
             stepsize_controller=stepsize_controller,
         )
-        _, sum = sol.ys
+        _, sum = cast(Array, sol.ys)
         (sum,) = sum
         return sum
 

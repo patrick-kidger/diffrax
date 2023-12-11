@@ -9,7 +9,7 @@ from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 
 
-class RESULTS(optx.RESULTS):
+class RESULTS(optx.RESULTS):  # pyright: ignore
     successful = ""
     discrete_terminating_event_occurred = (
         "Terminating differential equation solve because a discrete terminating event "

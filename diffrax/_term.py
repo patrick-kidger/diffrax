@@ -1,7 +1,7 @@
 import abc
 import operator
 from collections.abc import Callable
-from typing import Generic, Optional, TypeVar, Union
+from typing import cast, Generic, Optional, TypeVar, Union
 
 import equinox as eqx
 import jax
@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import Array, ArrayLike, PyTree, PyTreeDef
 
 from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
 from ._path import AbstractPath
@@ -372,7 +372,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
 
         - `*terms`: Any number of [`diffrax.AbstractTerm`][]s to combine.
         """
-        self.terms = terms
+        self.terms = terms  # pyright: ignore
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> tuple[PyTree[ArrayLike], ...]:
         return tuple(term.vf(t, y, args) for term in self.terms)
@@ -517,6 +517,7 @@ class AdjointTerm(AbstractTerm):
 
         jac = make_jac(_fn)(control)
         assert vf_prod_tree is not sentinel
+        vf_prod_tree = cast(PyTreeDef, vf_prod_tree)
         if jtu.tree_structure(None) in (vf_prod_tree, control_tree):
             # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
@@ -549,6 +550,7 @@ class AdjointTerm(AbstractTerm):
 
         jtu.tree_map(_get_vf_tree, control, vf)
         assert vf_prod_tree is not sentinel
+        vf_prod_tree = cast(PyTreeDef, vf_prod_tree)
 
         vf = jtu.tree_transpose(control_tree, vf_prod_tree, vf)
 

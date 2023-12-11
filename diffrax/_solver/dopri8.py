@@ -1,4 +1,5 @@
-from typing import Optional
+from collections.abc import Callable
+from typing import ClassVar, Optional
 
 import jax
 import jax.numpy as jnp
@@ -296,7 +297,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
         if t1 is not None:
             return self.evaluate(t1) - self.evaluate(t0)
         t = linear_rescale(self.t0, t0, self.t1)
-        coeffs = _vmap_polyval(self.eval_coeffs, t) * t
+        coeffs = _vmap_polyval(jnp.asarray(self.eval_coeffs, dtype=t.dtype), t) * t
         return (self.y0**ω + vector_tree_dot(coeffs, self.k) ** ω).ω
 
 
@@ -336,8 +337,10 @@ class Dopri8(AbstractERK):
         ```
     """
 
-    tableau = _dopri8_tableau
-    interpolation_cls = _Dopri8Interpolation
+    tableau: ClassVar[ButcherTableau] = _dopri8_tableau
+    interpolation_cls: ClassVar[
+        Callable[..., _Dopri8Interpolation]
+    ] = _Dopri8Interpolation
 
     def order(self, terms):
         return 8

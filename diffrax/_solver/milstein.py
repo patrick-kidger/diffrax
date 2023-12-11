@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 import jax
@@ -40,8 +42,10 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = MultiTerm[tuple[ODETerm, AbstractTerm]]
-    interpolation_cls = LocalLinearInterpolation
+    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
 
     def order(self, terms):
         raise ValueError("`StratonovichMilstein` should not used to solve ODEs.")
@@ -112,8 +116,10 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure = MultiTerm[tuple[ODETerm, AbstractTerm]]
-    interpolation_cls = LocalLinearInterpolation
+    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
 
     def order(self, terms):
         raise ValueError("`ItoMilstein` should not used to solve ODEs.")

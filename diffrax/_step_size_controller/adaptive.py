@@ -1,6 +1,6 @@
 import typing
 from collections.abc import Callable
-from typing import Optional, TYPE_CHECKING
+from typing import cast, Optional, TYPE_CHECKING, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,7 +9,12 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
 import optimistix as optx
-from equinox import AbstractVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractVar
+else:
+    from equinox import AbstractVar
 from equinox.internal import ω
 from jaxtyping import Array, PyTree
 
@@ -78,7 +83,13 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
+_ControllerState = TypeVar("_ControllerState")
+_Dt0 = TypeVar("_Dt0", None, RealScalarLike, Optional[RealScalarLike])
+
+
+class AbstractAdaptiveStepSizeController(
+    AbstractStepSizeController[_ControllerState, _Dt0]
+):
     """Indicates an adaptive step size controller.
 
     Accepts tolerances `rtol` and `atol`. When used in conjunction with an implicit
@@ -87,8 +98,8 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
     implicit solver, if they are not specified manually.
     """
 
-    rtol: AbstractVar[Optional[RealScalarLike]]
-    atol: AbstractVar[Optional[RealScalarLike]]
+    rtol: AbstractVar[RealScalarLike]
+    atol: AbstractVar[RealScalarLike]
     norm: AbstractVar[Callable[[PyTree], RealScalarLike]]
 
     def __check_init__(self):
@@ -106,7 +117,7 @@ class AbstractAdaptiveStepSizeController(AbstractStepSizeController):
             )
 
 
-_ControllerState = tuple[
+_PidState = tuple[
     BoolScalarLike, BoolScalarLike, RealScalarLike, RealScalarLike, RealScalarLike
 ]
 
@@ -139,7 +150,9 @@ else:
 # are good introductory notes on different step size control algorithms.
 # TODO: we don't currently offer a limiter, or a variant accept/reject scheme, as given
 #       in Soderlind and Wang 2006.
-class PIDController(AbstractAdaptiveStepSizeController):
+class PIDController(
+    AbstractAdaptiveStepSizeController[_PidState, Optional[RealScalarLike]]
+):
     r"""Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
 
@@ -292,8 +305,8 @@ class PIDController(AbstractAdaptiveStepSizeController):
         ```
     """
 
-    rtol: Optional[RealScalarLike]
-    atol: Optional[RealScalarLike]
+    rtol: RealScalarLike
+    atol: RealScalarLike
     pcoeff: RealScalarLike = 0
     icoeff: RealScalarLike = 1
     dcoeff: RealScalarLike = 0
@@ -332,7 +345,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
         error_order: Optional[RealScalarLike],
-    ) -> tuple[RealScalarLike, _ControllerState]:
+    ) -> tuple[RealScalarLike, _PidState]:
         del t1
         if dt0 is None:
             error_order = self._get_error_order(error_order)
@@ -394,7 +407,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
         y_leaves = jtu.tree_leaves(y0)
         if len(y_leaves) == 0:
-            y_dtype = lxi.default_floating_dtype()
+            y_dtype = lxi.default_floating_dtype()  # pyright: ignore
         else:
             y_dtype = jnp.result_type(*y_leaves)
         return t1, (
@@ -414,13 +427,13 @@ class PIDController(AbstractAdaptiveStepSizeController):
         args: Args,
         y_error: Optional[Y],
         error_order: RealScalarLike,
-        controller_state: _ControllerState,
+        controller_state: _PidState,
     ) -> tuple[
         BoolScalarLike,
         RealScalarLike,
         RealScalarLike,
         BoolScalarLike,
-        _ControllerState,
+        _PidState,
         RESULTS,
     ]:
         # Note that different implementations, and different papers, do slightly
@@ -532,7 +545,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
 
         _zero_coeff = lambda c: isinstance(c, (int, float)) and c == 0
         coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / error_order
-        coeff2 = -(self.pcoeff + 2 * self.dcoeff) / error_order
+        coeff2 = -cast(RealScalarLike, self.pcoeff + 2 * self.dcoeff) / error_order
         coeff3 = self.dcoeff / error_order
         factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error**coeff1
         factor2 = 1 if _zero_coeff(coeff2) else prev_inv_scaled_error**coeff2
@@ -649,7 +662,7 @@ class PIDController(AbstractAdaptiveStepSizeController):
         if not jnp.issubdtype(jnp.result_type(t1), jnp.inexact):
             raise ValueError(
                 "t0, t1, dt0 must be floating point when specifying jump_t. Got "
-                f"{t1.dtype}."
+                f"{jnp.result_type(t1)}."
             )
         t0_index = jnp.searchsorted(self.jump_ts, t0, side="right")
         t1_index = jnp.searchsorted(self.jump_ts, t1, side="right")

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 import optimistix as optx
@@ -29,12 +31,14 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     dense/ts output.
     """
 
-    term_structure = AbstractTerm
+    term_structure: ClassVar = AbstractTerm
     # We actually have enough information to use 3rd order Hermite interpolation.
     #
     # We don't use it as this seems to be quite a bad choice for low-order solvers: it
     # produces very oscillatory interpolations.
-    interpolation_cls = LocalLinearInterpolation
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
 
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(optx.Chord)()
     root_find_max_steps: int = 10

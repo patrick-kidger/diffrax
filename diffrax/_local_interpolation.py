@@ -1,9 +1,14 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
-from equinox import AbstractVar
+
+
+if TYPE_CHECKING:
+    from typing import ClassVar as AbstractVar
+else:
+    from equinox import AbstractVar
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
