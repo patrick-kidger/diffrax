@@ -19,6 +19,7 @@ from .misc import static_select
 from .saveat import SaveAt, SubSaveAt
 from .solution import is_okay, is_successful, RESULTS, Solution
 from .solver import (
+    AbstractImplicitSolver,
     AbstractItoSolver,
     AbstractSolver,
     AbstractStratonovichSolver,
@@ -605,6 +606,18 @@ def diffeqsolve(
             pred = (t1 - t0) * dt0 < 0
         dt0 = eqxi.error_if(jnp.array(dt0), pred, msg)
 
+    # Error checking and warning for complex dtypes
+    if any(jtu.tree_leaves(jtu.tree_map(jnp.iscomplexobj, y0))):
+        if isinstance(solver, AbstractImplicitSolver):
+            raise ValueError(
+                "Implicit solvers in conjunction with complex dtypes is currently not "
+                "supported."
+            )
+        warnings.warn(
+            "Complex dtype support is work in progress, please read "
+            "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully."
+        )
+
     # Backward compatibility
     if isinstance(
         solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
@@ -664,8 +677,10 @@ def diffeqsolve(
     )
 
     # Time will affect state, so need to promote the state dtype as well if necessary.
+    # fixing issue with float64 and weak dtypes, see discussion at:
+    # https://github.com/patrick-kidger/diffrax/pull/197#discussion_r1130173527
     def _promote(yi):
-        _dtype = jnp.result_type(yi, *timelikes)  # noqa: F821
+        _dtype = jnp.result_type(yi, dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
     y0 = jtu.tree_map(_promote, y0)
@@ -759,7 +774,9 @@ def diffeqsolve(
         save_index = 0
         ts = jnp.full(out_size, jnp.inf)
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
-        ys = jtu.tree_map(lambda y: jnp.full((out_size,) + y.shape, jnp.inf), struct)
+        ys = jtu.tree_map(
+            lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
+        )
         return SaveState(
             ts=ts, ys=ys, save_index=save_index, saveat_ts_index=saveat_ts_index
         )
@@ -779,7 +796,9 @@ def diffeqsolve(
             solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
         )
         dense_ts = jnp.full(max_steps + 1, jnp.inf)
-        _make_full = lambda x: jnp.full((max_steps,) + jnp.shape(x), jnp.inf)
+        _make_full = lambda x: jnp.full(
+            (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
+        )
         dense_infos = jtu.tree_map(_make_full, dense_info)
         dense_save_index = 0
     else:
