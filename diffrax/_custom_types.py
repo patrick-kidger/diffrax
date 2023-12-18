@@ -67,25 +67,24 @@ def levy_tree_transpose(tree_shape, levy_area, tree):
     into a LevyVal of PyTrees.
 
     **Arguments:**
-        - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
 
-        - `levy_area`: can be "", "space-time" or "space-time-time", which indicates
-        which fields of the LevyVal will have values.
-
-        - `tree`: the PyTree of LevyVals to transpose.
+    - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
+    - `levy_area`: can be `""` or `"space-time"`, which indicates
+    which fields of the LevyVal will have values.
+    - `tree`: the PyTree of LevyVals to transpose.
 
     **Returns:**
-        A `LevyVal` of PyTrees.
+
+    A `LevyVal` of PyTrees.
     """
-    if levy_area in ["space-time", "space-time-time"]:
+    if levy_area == "space-time":
         hh_default_val = jnp.zeros(())
-        if levy_area == "space-time-time":
-            kk_default_val = jnp.zeros(())
-        else:
-            kk_default_val = None
-    else:
+        kk_default_val = None
+    elif levy_area == "":
         hh_default_val = None
         kk_default_val = None
+    else:
+        assert False
     return jtu.tree_transpose(
         outer_treedef=jtu.tree_structure(tree_shape),
         inner_treedef=jtu.tree_structure(
