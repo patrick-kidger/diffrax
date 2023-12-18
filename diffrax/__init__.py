@@ -13,10 +13,7 @@ from ._brownian import (
     UnsafeBrownianPath as UnsafeBrownianPath,
     VirtualBrownianTree as VirtualBrownianTree,
 )
-from ._custom_types import (
-    levy_tree_transpose as levy_tree_transpose,
-    LevyVal as LevyVal,
-)
+from ._custom_types import LevyVal as LevyVal
 from ._event import (
     AbstractDiscreteTerminatingEvent as AbstractDiscreteTerminatingEvent,
     DiscreteTerminatingEvent as DiscreteTerminatingEvent,

@@ -1,24 +1,13 @@
-import dataclasses
 from typing import Callable, Literal
 
 import diffrax
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import optimistix as optx
-from diffrax import (
-    AbstractBrownianPath,
-    AbstractTerm,
-    ConstantStepSize,
-    diffeqsolve,
-    SaveAt,
-    UnsafeBrownianPath,
-    VirtualBrownianTree,
-)
-from diffrax._custom_types import RealScalarLike
-from jax import numpy as jnp
-from jaxtyping import PyTree
+from jaxtyping import Array, PRNGKeyArray, PyTree, Shaped
 
 
 all_ode_solvers = (
@@ -92,10 +81,13 @@ def tree_allclose(x, y, *, rtol=1e-5, atol=1e-8, equal_nan=False):
     return eqx.tree_equal(x, y, typematch=True, rtol=rtol, atol=atol)
 
 
-def path_l2_dist(ys1: PyTree[jax.Array], ys2: PyTree[jax.Array]):
+def _path_l2_dist(
+    ys1: PyTree[Shaped[Array, "repeats times ?*channels"], " T"],
+    ys2: PyTree[Shaped[Array, "repeats times ?*channels"], " T"],
+):
     # first compute the square of the difference and sum over
     # all but the first two axes (which represent the number of samples
-    # and the length of saveat). Also sum all the PyTree leaves
+    # and the length of saveat). Also sum all the PyTree leaves.
     def sum_square_diff(y1, y2):
         square_diff = jnp.square(y1 - y2)
         # sum all but the first two axes
@@ -110,87 +102,94 @@ def path_l2_dist(ys1: PyTree[jax.Array], ys2: PyTree[jax.Array]):
     return dist
 
 
-@dataclasses.dataclass
-class SDE:
-    get_terms: Callable[[AbstractBrownianPath], AbstractTerm]
-    args: PyTree
-    y0: PyTree
-    t0: RealScalarLike
-    t1: RealScalarLike
-    w_shape: tuple[int]
-
-    def get_dtype(self):
-        return jnp.result_type(*jtu.tree_leaves(self.y0))
-
-    def get_bm(
-        self,
-        key,
-        levy_area: Literal["", "space-time"] = "space-time",
-        use_tree=True,
-        tol=2**-14,
-    ):
-        shp_dtype = jax.ShapeDtypeStruct(self.w_shape, dtype=self.get_dtype())
-        if use_tree:
-            return VirtualBrownianTree(
-                t0=self.t0,
-                t1=self.t1,
-                shape=shp_dtype,
-                tol=tol,
-                key=key,
-                levy_area=levy_area,
-            )
-        else:
-            return UnsafeBrownianPath(shape=shp_dtype, key=key, levy_area=levy_area)
-
-
-def batch_sde_solve(
-    keys,
-    sde: SDE,
-    dt0,
-    solver,
-    stepsize_controller=ConstantStepSize(),
-    levy_area: Literal["", "space-time"] = "space-time",
+@eqx.filter_jit
+@eqx.filter_vmap(in_axes=(0, None, None, None, None, None, None, None, None, None))
+def _batch_sde_solve(
+    key: PRNGKeyArray,
+    get_terms: Callable[[diffrax.AbstractBrownianPath], diffrax.AbstractTerm],
+    levy_area: Literal["", "space-time"],
+    solver: diffrax.AbstractSolver,
+    w_shape: tuple[int, ...],
+    t0: float,
+    t1: float,
+    dt0: float,
+    y0: PyTree[Array],
+    args: PyTree,
 ):
-    _saveat = SaveAt(ts=[sde.t1])
-
     # TODO: add a check whether the solver needs levy area
-
-    def end_value(key):
-        path = sde.get_bm(key, levy_area=levy_area, use_tree=True)
-        terms = sde.get_terms(path)
-
-        sol = diffeqsolve(
-            terms,
-            solver,
-            sde.t0,
-            sde.t1,
-            dt0=dt0,
-            y0=sde.y0,
-            args=sde.args,
-            saveat=_saveat,
-            stepsize_controller=stepsize_controller,
-            max_steps=None,
-        )
-        return sol.ys
-
-    return jax.vmap(end_value)(keys)
-
-
-def sde_solver_order(keys, sde: SDE, solver, ref_solver, dt_precise, hs_num=5, hs=None):
-    dtype = sde.get_dtype()
-    need_stla = False  # TODO: add a check whether the solver needs levy area
-    levy_area: Literal["", "space-time"] = "space-time" if need_stla else ""
-
-    correct_sols = batch_sde_solve(
-        keys, sde, dt_precise, ref_solver, levy_area=levy_area
+    dtype = jnp.result_type(*jtu.tree_leaves(y0))
+    struct = jax.ShapeDtypeStruct(w_shape, dtype)
+    bm = diffrax.VirtualBrownianTree(
+        t0=t0,
+        t1=t1,
+        shape=struct,
+        tol=2**-14,
+        key=key,
+        levy_area=levy_area,
     )
-    if hs is None:
-        hs = jnp.power(2.0, jnp.arange(-3, -3 - hs_num, -1, dtype=dtype))
+    terms = get_terms(bm)
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        t0,
+        t1,
+        dt0=dt0,
+        y0=y0,
+        args=args,
+        max_steps=None,
+    )
+    return sol.ys
 
-    def get_single_err(h):
-        sols = batch_sde_solve(keys, sde, h, solver, levy_area=levy_area)
-        return path_l2_dist(sols, correct_sols)
 
-    errs = jax.vmap(get_single_err)(hs)
-    order, _ = jnp.polyfit(jnp.log(hs), jnp.log(errs), 1)
-    return hs, errs, order
+def sde_solver_strong_order(
+    get_terms: Callable[[diffrax.AbstractBrownianPath], diffrax.AbstractTerm],
+    w_shape: tuple[int, ...],
+    solver: diffrax.AbstractSolver,
+    ref_solver: diffrax.AbstractSolver,
+    t0: float,
+    t1: float,
+    dt_precise: float,
+    y0: PyTree[Array],
+    args: PyTree,
+    num_samples: int,
+    num_levels: int,
+    key: PRNGKeyArray,
+):
+    dtype = jnp.result_type(*jtu.tree_leaves(y0))
+    levy_area = ""  # TODO: add a check whether the solver needs levy area
+    keys = jr.split(key, num_samples)  # deliberately reused across all solves
+
+    correct_sols = _batch_sde_solve(
+        keys,
+        get_terms,
+        levy_area,
+        ref_solver,
+        w_shape,
+        t0,
+        t1,
+        dt_precise,
+        y0,
+        args,
+    )
+    dts = 2.0 ** jnp.arange(-3, -3 - num_levels, -1, dtype=dtype)
+
+    @jax.jit
+    @jax.vmap
+    def get_single_err(dt):
+        sols = _batch_sde_solve(
+            keys,
+            get_terms,
+            levy_area,
+            solver,
+            w_shape,
+            t0,
+            t1,
+            dt,
+            y0,
+            args,
+        )
+        return _path_l2_dist(sols, correct_sols)
+
+    errs = get_single_err(dts)
+    order, _ = jnp.polyfit(jnp.log(dts), jnp.log(errs), 1)
+    return dts, errs, order

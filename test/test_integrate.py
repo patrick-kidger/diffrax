@@ -19,8 +19,7 @@ from .helpers import (
     all_split_solvers,
     implicit_tol,
     random_pytree,
-    SDE,
-    sde_solver_order,
+    sde_solver_strong_order,
     tree_allclose,
     treedefs,
 )
@@ -222,8 +221,6 @@ def _diffusion(t, y, args):
 def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     key = jr.PRNGKey(5678)
     driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
-    num_samples = 20
-    bmkeys = jr.split(bmkey, num=num_samples)
 
     if commutative:
         noise_dim = 1
@@ -254,14 +251,12 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
 
     args = (drift_mlp, diffusion_mlp, noise_dim)
 
-    t0 = 0
-    t1 = 2
+    t0 = 0.0
+    t1 = 2.0
     y0 = jr.normal(ykey, (3,), dtype=jnp.float64)
 
     def get_terms(bm):
         return MultiTerm(ODETerm(_drift), ControlTerm(_diffusion, bm))
-
-    sde = SDE(get_terms, args, y0, t0, t1, (noise_dim,))
 
     # Reference solver is always an ODE-viable solver, so its implementation has been
     # verified by the ODE tests like test_ode_order.
@@ -272,8 +267,19 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     else:
         assert False
 
-    hs, errors, order = sde_solver_order(
-        bmkeys, sde, solver_ctr(), ref_solver, 2**-12, hs_num=7
+    hs, errors, order = sde_solver_strong_order(
+        get_terms,
+        (noise_dim,),
+        solver_ctr(),
+        ref_solver,
+        t0,
+        t1,
+        dt_precise=2**-12,
+        y0=y0,
+        args=args,
+        num_samples=20,
+        num_levels=7,
+        key=bmkey,
     )
     assert -0.2 < order - theoretical_order < 0.2
 

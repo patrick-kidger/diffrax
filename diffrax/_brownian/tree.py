@@ -1,4 +1,6 @@
+import math
 from typing import Literal, Optional, Union
+from typing_extensions import TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,8 +11,19 @@ import jax.random as jr
 import jax.tree_util as jtu
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
-from .._custom_types import IntScalarLike, levy_tree_transpose, LevyVal, RealScalarLike
-from .._misc import is_tuple_of_ints, linear_rescale, split_by_tree
+from .._custom_types import (
+    BoolScalarLike,
+    IntScalarLike,
+    levy_tree_transpose,
+    LevyVal,
+    RealScalarLike,
+)
+from .._misc import (
+    default_floating_dtype,
+    is_tuple_of_ints,
+    linear_rescale,
+    split_by_tree,
+)
 from .base import AbstractBrownianPath
 
 
@@ -34,8 +47,8 @@ from .base import AbstractBrownianPath
 # differential equations [PhD thesis]. University of Oxford.
 
 
-FloatDouble = tuple[Float[Array, " *shape"], Float[Array, " *shape"]]
-FloatTriple = tuple[
+FloatDouble: TypeAlias = tuple[Float[Array, " *shape"], Float[Array, " *shape"]]
+FloatTriple: TypeAlias = tuple[
     Float[Array, " *shape"], Float[Array, " *shape"], Float[Array, " *shape"]
 ]
 
@@ -55,9 +68,8 @@ def _levy_diff(x0: LevyVal, x1: LevyVal) -> LevyVal:
 
     **Arguments:**
 
-    - `x0`: `LevyVal` at time `s`
-
-    - `x1`: `LevyVal` at time `u`
+    - `x0`: `LevyVal` at time `s`.
+    - `x1`: `LevyVal` at time `u`.
 
     **Returns:**
 
@@ -76,20 +88,17 @@ def _levy_diff(x0: LevyVal, x1: LevyVal) -> LevyVal:
     u_bb_s = x1.dt * x0.W - x0.dt * x1.W
     bhh_su = x1.bar_H - x0.bar_H - 0.5 * u_bb_s  # bhh_su = H_{s,u} * (u-s)
     hh_su = inverse_su * bhh_su
-
     return LevyVal(dt=su, W=w_su, H=hh_su, bar_H=None, K=None, bar_K=None)
 
 
 def _split_interval(
-    _cond,
-    x_stu: FloatTriple,
-    x_st_tu: tuple[Float[Array, " *shape"], Float[Array, " *shape"]],
+    pred: BoolScalarLike, x_stu: FloatTriple, x_st_tu: FloatDouble
 ) -> FloatTriple:
     x_s, x_t, x_u = x_stu
     x_st, x_tu = x_st_tu
-    x_s = jnp.where(_cond, x_t, x_s)
-    x_u = jnp.where(_cond, x_u, x_t)
-    x_su = jnp.where(_cond, x_tu, x_st)
+    x_s = jnp.where(pred, x_t, x_s)
+    x_u = jnp.where(pred, x_u, x_t)
+    x_su = jnp.where(pred, x_tu, x_st)
     return x_s, x_u, x_su
 
 
@@ -98,7 +107,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     and is piecewise quadratic at that discretisation.
 
     Can be initialised with `levy_area` set to `""`, or `"space-time"`.
-    If `levy_area=="space_time"`, then it also computes space-time Lévy area `H`.
+    If `levy_area="space_time"`, then it also computes space-time Lévy area `H`.
     This will impact the Brownian path, so even with the same key, the trajectory will
     be different depending on the value of `levy_area`.
 
@@ -123,7 +132,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     levy_area: Literal["", "space-time"] = eqx.field(static=True)
-    key: PyTree[PRNGKeyArray]  # noqa: F821
+    key: PyTree[PRNGKeyArray]
 
     def __init__(
         self,
@@ -131,7 +140,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t1: RealScalarLike,
         tol: RealScalarLike,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
-        key: PyTree[PRNGKeyArray],
+        key: PRNGKeyArray,
         levy_area: Literal["", "space-time"] = "",
     ):
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
@@ -147,7 +156,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
         self.levy_area = levy_area
         self.shape = (
-            jax.ShapeDtypeStruct(shape, jax.dtypes.canonicalize_dtype(None))
+            jax.ShapeDtypeStruct(shape, default_floating_dtype())
             if is_tuple_of_ints(shape)
             else shape
         )
@@ -167,14 +176,14 @@ class VirtualBrownianTree(AbstractBrownianPath):
         interval_len = self.t1 - self.t0  # can be any dtype
         sqrt_len = jnp.sqrt(interval_len)
 
+        def mult(z):
+            dtype = jnp.result_type(z)
+            return jnp.astype(interval_len, dtype) * z
+
         def sqrt_mult(z):
             # need to cast to dtype of each leaf in PyTree
-            dtype = jnp.dtype(z)
-            return z * jnp.asarray(sqrt_len, dtype)
-
-        def mult(z):
-            dtype = jnp.dtype(z)
-            return (interval_len * z).astype(dtype)
+            dtype = jnp.result_type(z)
+            return jnp.astype(sqrt_len, dtype) * z
 
         return LevyVal(
             dt=jtu.tree_map(mult, x.dt),
@@ -208,7 +217,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
             # map the interval [self.t0, self.t1] onto [0,1]
             t1 = linear_rescale(self.t0, t1, self.t1)
             levy_1 = self._evaluate(t1)
-
             levy_out = jtu.tree_map(_levy_diff, levy_0, levy_1, is_leaf=_is_levy_val)
 
         levy_out = levy_tree_transpose(self.shape, self.levy_area, levy_out)
@@ -218,7 +226,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         return levy_out if use_levy else levy_out.W
 
     def _evaluate(self, r: RealScalarLike) -> PyTree[LevyVal]:
-        """Maps the _evaluate_leaf function at time τ using self.key onto self.shape"""
+        """Maps the _evaluate_leaf function at time r using self.key onto self.shape"""
         r = eqxi.error_if(
             r,
             (r < 0) | (r > 1),
@@ -226,6 +234,131 @@ class VirtualBrownianTree(AbstractBrownianPath):
         )
         map_func = lambda key, shape: self._evaluate_leaf(key, r, shape)
         return jtu.tree_map(map_func, self.key, self.shape)
+
+    def _evaluate_leaf(
+        self,
+        key,
+        r: RealScalarLike,
+        struct: jax.ShapeDtypeStruct,
+    ) -> LevyVal:
+        shape, dtype = struct.shape, struct.dtype
+
+        t0 = jnp.zeros((), dtype)
+        r = jnp.asarray(r, dtype)
+
+        if self.levy_area == "space-time":
+            state_key, init_key_w, init_key_la = jr.split(key, 3)
+            bhh_1 = jr.normal(init_key_la, shape, dtype) / math.sqrt(12)
+            bhh_0 = jnp.zeros_like(bhh_1)
+            bhh = (bhh_0, bhh_1, bhh_1)
+            bkk = None
+
+        else:
+            state_key, init_key_w = jr.split(key, 2)
+            bhh = None
+            bkk = None
+
+        w_0 = jnp.zeros(shape, dtype)
+        w_1 = jr.normal(init_key_w, shape, dtype)
+        w = (w_0, w_1, w_1)
+
+        init_state = _State(
+            level=0, s=t0, w_s_u_su=w, key=state_key, bhh_s_u_su=bhh, bkk_s_u_su=bkk
+        )
+
+        def _cond_fun(_state):
+            # Slight adaptation on the version of the algorithm given in the
+            # above-referenced thesis. There the returned value is snapped to one of
+            # the dyadic grid points, so they just stop once
+            # jnp.abs(τ - state.s) > self.tol
+            # Here, because we use quadratic splines to get better samples, we always
+            # iterate down to the level of the spline.
+            return 2.0 ** (-_state.level) > self.tol
+
+        def _body_fun(_state: _State):
+            """Single-step of binary search for r."""
+
+            (
+                _t,
+                _w_stu,
+                _w_inc,
+                _keys,
+                _bhh_stu,
+                _bhh_st_tu,
+                _bkk_stu,
+                _bkk_st_tu,
+            ) = self._brownian_arch(_state, shape, dtype)
+
+            _level = _state.level + 1
+            _cond = r > _t
+            _s = jnp.where(_cond, _t, _state.s)
+            _key_st, _key_tu = _keys
+            _key = jnp.where(_cond, _key_st, _key_tu)
+
+            _w = _split_interval(_cond, _w_stu, _w_inc)
+            if not self.levy_area == "":
+                assert _bhh_stu is not None and _bhh_st_tu is not None
+                _bhh = _split_interval(_cond, _bhh_stu, _bhh_st_tu)
+                _bkk = None
+            else:
+                _bhh = None
+                _bkk = None
+
+            return _State(
+                level=_level,
+                s=_s,
+                w_s_u_su=_w,
+                key=_key,
+                bhh_s_u_su=_bhh,
+                bkk_s_u_su=_bkk,
+            )
+
+        final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
+
+        s = final_state.s
+        su = 2.0**-final_state.level
+
+        sr = r - s
+        ru = su - sr  # make sure su = sr + ru regardless of cancellation error
+
+        w_s, w_u, w_su = final_state.w_s_u_su
+
+        # BM only case
+        if self.levy_area == "":
+            z = jr.normal(final_state.key, shape, dtype)
+            w_sr = sr / su * w_su + jnp.sqrt(jnp.abs(sr * ru / su)) * z
+            w_r = w_s + w_sr
+            return LevyVal(dt=r, W=w_r, H=None, bar_H=None, K=None, bar_K=None)
+
+        elif self.levy_area == "space-time":
+            assert final_state.bhh_s_u_su is not None
+            bhh_s, bhh_u, bhh_su = final_state.bhh_s_u_su
+            sr3 = jnp.power(sr, 3)
+            ru3 = jnp.power(ru, 3)
+            su3 = jnp.power(su, 3)
+            key1, key2 = jr.split(final_state.key, 2)
+            x1 = jr.normal(key1, shape, dtype)
+            x2 = jr.normal(key2, shape, dtype)
+
+            sr_ru_half = jnp.sqrt(jnp.abs(sr * ru))
+            d = jnp.sqrt(jnp.abs(sr3 + ru3))
+            d_prime = 1 / (2 * su * d)
+            a = d_prime * sr3 * sr_ru_half
+            b = d_prime * ru3 * sr_ru_half
+
+            w_sr = sr / su * w_su + 6 * sr * ru / su3 * bhh_su + 2 * (a + b) / su * x1
+            w_r = w_s + w_sr
+            c = jnp.sqrt(jnp.abs(3 * sr3 * ru3)) / (6 * d)
+            bhh_sr = sr3 / su3 * bhh_su - a * x1 + c * x2
+            bhh_r = bhh_s + bhh_sr + 0.5 * (r * w_s - s * w_r)
+
+            inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
+            hh_r = inverse_r * bhh_r
+
+        else:
+            assert False
+
+        return LevyVal(dt=r, W=w_r, H=hh_r, bar_H=bhh_r, K=None, bar_K=None)
 
     def _brownian_arch(
         self, _state: _State, shape, dtype
@@ -320,131 +453,3 @@ class VirtualBrownianTree(AbstractBrownianPath):
             w_stu = (w_s, w_t, w_u)
             bhh_stu, bhh_st_tu, bkk_stu, bkk_st_tu = None, None, None, None
         return t, w_stu, w_st_tu, keys, bhh_stu, bhh_st_tu, bkk_stu, bkk_st_tu
-
-    def _evaluate_leaf(
-        self,
-        key,
-        r: RealScalarLike,
-        struct: jax.ShapeDtypeStruct,
-    ) -> LevyVal:
-        shape, dtype = struct.shape, struct.dtype
-
-        t0 = jnp.zeros((), dtype)
-        r = jnp.asarray(r, dtype)
-
-        w_0 = jnp.zeros(shape, dtype)
-
-        if self.levy_area == "space-time":
-            key, init_key_w, init_key_la = jr.split(key, 3)
-            w_1 = jr.normal(init_key_w, shape, dtype)
-
-            bhh_1 = jnp.sqrt(1 / 12) * jr.normal(init_key_la, shape, dtype)
-            bhh_0 = jnp.zeros_like(bhh_1)
-            bhh = (bhh_0, bhh_1, bhh_1)
-            bkk = None
-
-        else:
-            key, init_key_w = jr.split(key, 2)
-            w_1 = jr.normal(init_key_w, shape, dtype)
-            bhh = None
-            bkk = None
-
-        w = (w_0, w_1, w_1)
-
-        init_state = _State(
-            level=0, s=t0, w_s_u_su=w, key=key, bhh_s_u_su=bhh, bkk_s_u_su=bkk
-        )
-
-        def _cond_fun(_state):
-            # Slight adaptation on the version of the algorithm given in the
-            # above-referenced thesis. There the returned value is snapped to one of
-            # the dyadic grid points, so they just stop once
-            # jnp.abs(τ - state.s) > self.tol
-            # Here, because we use quadratic splines to get better samples, we always
-            # iterate down to the level of the spline.
-            return 2.0 ** (-_state.level) > self.tol
-
-        def _body_fun(_state: _State):
-            """Single-step of binary search for τ."""
-
-            (
-                _t,
-                _w_stu,
-                _w_inc,
-                _keys,
-                _bhh_stu,
-                _bhh_st_tu,
-                _bkk_stu,
-                _bkk_st_tu,
-            ) = self._brownian_arch(_state, shape, dtype)
-
-            _level = _state.level + 1
-            _cond = r > _t
-            _s = jnp.where(_cond, _t, _state.s)
-            _key_st, _key_tu = _keys
-            _key = jnp.where(_cond, _key_st, _key_tu)
-
-            _w = _split_interval(_cond, _w_stu, _w_inc)
-            if not self.levy_area == "":
-                assert _bhh_stu is not None and _bhh_st_tu is not None
-                _bhh = _split_interval(_cond, _bhh_stu, _bhh_st_tu)
-                _bkk = None
-            else:
-                _bhh = None
-                _bkk = None
-
-            return _State(
-                level=_level,
-                s=_s,
-                w_s_u_su=_w,
-                key=_key,
-                bhh_s_u_su=_bhh,
-                bkk_s_u_su=_bkk,
-            )
-
-        final_state = lax.while_loop(_cond_fun, _body_fun, init_state)
-
-        s = final_state.s
-        su = 2.0**-final_state.level
-
-        sr = r - s
-        ru = su - sr  # make sure su = sr + ru regardless of cancellation error
-
-        w_s, w_u, w_su = final_state.w_s_u_su
-
-        # BM only case
-        if self.levy_area == "":
-            z = jr.normal(key, shape, dtype)
-            w_sr = sr / su * w_su + jnp.sqrt(jnp.abs(sr * ru / su)) * z
-            w_r = w_s + w_sr
-            return LevyVal(dt=r, W=w_r, H=None, bar_H=None, K=None, bar_K=None)
-
-        elif self.levy_area == "space-time":
-            assert final_state.bhh_s_u_su is not None
-            bhh_s, bhh_u, bhh_su = final_state.bhh_s_u_su
-            sr3 = jnp.power(sr, 3)
-            ru3 = jnp.power(ru, 3)
-            su3 = jnp.power(su, 3)
-            key1, key2 = jr.split(key, 2)
-            x1 = jr.normal(key1, shape, dtype)
-            x2 = jr.normal(key2, shape, dtype)
-
-            sr_ru_half = jnp.sqrt(jnp.abs(sr * ru))
-            d = jnp.sqrt(jnp.abs(sr3 + ru3))
-            d_prime = 1 / (2 * su * d)
-            a = d_prime * sr3 * sr_ru_half
-            b = d_prime * ru3 * sr_ru_half
-
-            w_sr = sr / su * w_su + 6 * sr * ru / su3 * bhh_su + 2 * (a + b) / su * x1
-            w_r = w_s + w_sr
-            c = jnp.sqrt(jnp.abs(3 * sr3 * ru3)) / (6 * d)
-            bhh_sr = sr3 / su3 * bhh_su - a * x1 + c * x2
-            bhh_r = bhh_s + bhh_sr + 0.5 * (r * w_s - s * w_r)
-
-            inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
-            hh_r = inverse_r * bhh_r
-
-        else:
-            assert False
-
-        return LevyVal(dt=r, W=w_r, H=hh_r, bar_H=bhh_r, K=None, bar_K=None)
