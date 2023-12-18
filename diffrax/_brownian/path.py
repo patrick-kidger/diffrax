@@ -1,5 +1,5 @@
 import math
-from typing import cast, Literal, Optional, Union
+from typing import cast, Optional, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,7 +9,7 @@ import jax.random as jr
 import jax.tree_util as jtu
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
-from .._custom_types import levy_tree_transpose, LevyVal, RealScalarLike
+from .._custom_types import levy_tree_transpose, LevyArea, LevyVal, RealScalarLike
 from .._misc import (
     default_floating_dtype,
     force_bitcast_convert_type,
@@ -42,14 +42,14 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: Literal["", "space-time"] = eqx.field(static=True)
+    levy_area: LevyArea = eqx.field(static=True)
     key: PRNGKeyArray
 
     def __init__(
         self,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: Literal["", "space-time"] = "",
+        levy_area: LevyArea = "",
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, default_floating_dtype())
