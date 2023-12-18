@@ -24,8 +24,8 @@ class AbstractBrownianPath(AbstractPath):
 
         **Arguments:**
 
-        - `t0`: Start of interval.
-        - `t1`: End of interval.
+        - `t0`: Any point in $[t_0, t_1]$ to evaluate the path at.
+        - `t1`: If passed, then the increment from `t1` to `t0` is evaluated instead.
         - `left`: Ignored. (This determines whether to treat the path as
             left-continuous or right-continuous at any jump points, but Brownian
             motion has no jump points.)
@@ -34,8 +34,11 @@ class AbstractBrownianPath(AbstractPath):
 
         **Returns:**
 
-        A pytree of JAX arrays corresponding to the increment $w(t_1) - w(t_0)$.
+        If `t1` is not passed:
 
-        Some subclasses may allow `t1=None`, in which case just the value $w(t_0)$ is
-        returned.
+        The value of the Brownian motion at `t0`.
+
+        If `t1` is passed:
+
+        The increment of the Brownian motion between `t0` and `t1`.
         """
