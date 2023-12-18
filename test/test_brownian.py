@@ -1,4 +1,6 @@
 import math
+from typing import Literal
+from typing_extensions import TypeAlias
 
 import diffrax
 import equinox as eqx
@@ -8,8 +10,10 @@ import jax.random as jr
 import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
+from diffrax._custom_types import LevyArea
 
 
+_Spline: TypeAlias = Literal["quad", "sqrt", "zero"]
 _vals = {
     int: [0, 2],
     float: [0.0, 2.0],
@@ -29,7 +33,7 @@ def _make_struct(shape, dtype):
 )
 @pytest.mark.parametrize("levy_area", ["", "space-time"])
 @pytest.mark.parametrize("use_levy", (False, True))
-def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
+def test_shape_and_dtype(ctr, levy_area: LevyArea, use_levy, getkey):
     t0 = 0
     t1 = 2
 
@@ -111,7 +115,7 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
 )
 @pytest.mark.parametrize("levy_area", ["", "space-time"])
 @pytest.mark.parametrize("use_levy", (False, True))
-def test_statistics(ctr, levy_area, use_levy):
+def test_statistics(ctr, levy_area: LevyArea, use_levy):
     # Deterministic key for this test; not using getkey()
     key = jr.PRNGKey(5678)
     keys = jr.split(key, 10000)
@@ -146,33 +150,34 @@ def test_statistics(ctr, levy_area, use_levy):
     assert pval > 0.1
 
 
-@pytest.mark.parametrize("levy_area", ["", "space-time"])
-@pytest.mark.parametrize("use_levy", (False, True))
-def test_conditional_statistics(levy_area, use_levy):
+def conditional_statistics(
+    levy_area: LevyArea, use_levy: bool, tol, spacing, spline: _Spline, min_num_points
+):
     key = jr.PRNGKey(5678)
     bm_key, sample_key, permute_key = jr.split(key, 3)
-
-    # Get >80 randomly selected points; not too close to avoid discretisation error.
+    # Get some randomly selected points; not too close to avoid discretisation error.
     t0 = 0.3
     t1 = 8.7
     ts = jr.uniform(sample_key, shape=(100,), minval=t0, maxval=t1)
     sorted_ts = jnp.sort(ts)
+    ts = []
     prev_ti = sorted_ts[0]
-    ts = [prev_ti]
+    ts.append(prev_ti)
     for ti in sorted_ts[1:]:
-        if ti < prev_ti + 2**-10:
+        if ti < prev_ti + spacing:
             continue
         prev_ti = ti
         ts.append(ti)
     ts = jnp.stack(ts)
-    assert len(ts) > 80
+    assert len(ts) > min_num_points
     ts = jr.permutation(permute_key, ts)
 
     # Get some random paths
     bm_keys = jr.split(bm_key, 10000)
+
     path = jax.vmap(
         lambda k: diffrax.VirtualBrownianTree(
-            t0=t0, t1=t1, shape=(), tol=2**-12, key=k, levy_area=levy_area
+            t0=t0, t1=t1, shape=(), tol=tol, key=k, levy_area=levy_area, _spline=spline
         )
     )(bm_keys)
 
@@ -182,6 +187,10 @@ def test_conditional_statistics(levy_area, use_levy):
         vals = jax.vmap(lambda p: p.evaluate(t0, ti, use_levy=use_levy))(path)
         out.append((ti, vals))
     out = sorted(out, key=lambda x: x[0])
+
+    pvals_w1 = []
+    pvals_w2 = []
+    pvals_h = []
 
     # Test their conditional statistics
     for i in range(1, len(ts) - 1):
@@ -211,7 +220,7 @@ def test_conditional_statistics(levy_area, use_levy):
         _, pval_w1 = stats.kstest(normalised_w1, stats.norm.cdf)
         # Raise if the failure is statistically significant at 10%, subject to
         # multiple-testing correction.
-        assert pval_w1 > 0.1 / (len(ts) - 2)
+        pvals_w1.append(pval_w1)
 
         if levy_area == "space-time" and use_levy:
             assert h_s is not None
@@ -234,7 +243,7 @@ def test_conditional_statistics(levy_area, use_levy):
             w_std2 = 2 * (a + b) / su
             normalised_w2 = (w_r - w_mean2) / w_std2
             _, pval_w2 = stats.kstest(normalised_w2, stats.norm.cdf)
-            assert pval_w2 > 0.1 / (len(ts) - 2)
+            pvals_w2.append(pval_w2)
 
             # Check h_r|(w_s, w_u, h_s, h_u)
             h_mean = (
@@ -247,7 +256,81 @@ def test_conditional_statistics(levy_area, use_levy):
             h_std = math.sqrt(h_var)
             normalised_hh = (h_r - h_mean) / h_std
             _, pval_h = stats.kstest(normalised_hh, stats.norm.cdf)
-            assert pval_h > 0.1 / (len(ts) - 2)
+            pvals_h.append(pval_h)
+    return jnp.array(pvals_w1), jnp.array(pvals_w2), jnp.array(pvals_h)
+
+
+@pytest.mark.parametrize("levy_area", ["", "space-time"])
+@pytest.mark.parametrize("use_levy", (False, True))
+def test_conditional_statistics(levy_area: LevyArea, use_levy):
+    pvals_w1, pvals_w2, pvals_h = conditional_statistics(
+        levy_area, use_levy, tol=2**-8, spacing=2**-10, spline="sqrt", min_num_points=90
+    )
+    assert jnp.all(pvals_w1 > 0.1 / pvals_w1.shape[0])
+    if levy_area == "space-time" and use_levy:
+        assert jnp.all(pvals_w2 > 0.1 / pvals_w2.shape[0])
+        assert jnp.all(pvals_h > 0.1 / pvals_h.shape[0])
+    else:
+        assert len(pvals_w2) == 0
+        assert len(pvals_h) == 0
+
+
+def _levy_area_spline():
+    for levy_area in ("", "space-time"):
+        for spline in ("quad", "sqrt", "zero"):
+            if levy_area == "space-time" and spline == "quad":
+                continue
+            yield levy_area, spline
+
+
+@pytest.mark.parametrize("levy_area,spline", _levy_area_spline())
+@pytest.mark.parametrize("use_levy", (False, True))
+def test_spline(levy_area: LevyArea, use_levy, spline):
+    if levy_area == "space-time" and spline == "quad":
+        pytest.skip("Quad spline is not implemented for space-time Levy area")
+
+    pvals_w1, pvals_w2, pvals_h = conditional_statistics(
+        levy_area,
+        use_levy=use_levy,
+        tol=2**-4,
+        spacing=2**-5,
+        spline=spline,
+        min_num_points=50,
+    )
+
+    if spline == "sqrt":
+        # For the correct spline, make sure that all p-values are above
+        # 0.1 (subject to multiple-testing correction) and the average
+        # p-value is above 0.3.
+        def pred(pvals):
+            return jnp.min(pvals) > 0.1 / pvals.shape[0] and jnp.mean(pvals) > 0.3
+
+    else:
+        # make sure that for incorrect splines at least one p-value is
+        # below 0.001 (subject to multiple-testing correction) and the
+        # average p-value is below 0.03 (i.e. at least 10x smaller than
+        # for the correct spline).
+        def pred(pvals):
+            return jnp.min(pvals) < 0.001 / pvals.shape[0] and jnp.mean(pvals) < 0.03
+
+    if levy_area == "space-time" and use_levy:
+        assert pred(pvals_w2)
+        assert pred(pvals_h)
+    else:
+        assert len(pvals_w2) == 0
+        assert len(pvals_h) == 0
+        if levy_area == "":
+            assert pred(pvals_w1)
+        elif spline == "sqrt":  # levy_area == "space-time"
+            assert pred(pvals_w1)
+        else:  # levy_area == "space-time" and spline == "zero"
+            # We need a milder upper bound on jnp.mean(pvals_w1) because
+            # the presence of space-time Levy area gives W_r (i.e. the output
+            # of the Brownian path) a variance very close to the correct one,
+            # even when the spline is wrong. In pvals_w2 the influence of the
+            # Levy area is subtracted in the mean, so we can use a stricter test.
+            n = pvals_w1.shape[0]
+            assert jnp.min(pvals_w1) < 0.01 / n and jnp.mean(pvals_w1) < 0.2
 
 
 def test_levy_area_reverse_time():
