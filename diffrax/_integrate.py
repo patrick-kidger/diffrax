@@ -95,17 +95,22 @@ def _term_compatible(
     args: PyTree[Any],
     terms: PyTree[AbstractTerm],
     term_structure: PyTree,
+    contr_kwargs: PyTree[dict],
 ) -> bool:
     error_msg = "term_structure"
 
-    def _check(term_cls, term, yi):
+    def _check(term_cls, term, term_contr_kwargs, yi):
         if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
             if isinstance(term, MultiTerm):
                 [_tmp] = get_args(term_cls)
                 assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
                 assert len(term.terms) == len(get_args(_tmp))
-                for term, arg in zip(term.terms, get_args(_tmp)):
-                    if not _term_compatible(yi, args, term, arg):
+                assert type(term_contr_kwargs) is tuple
+                assert len(term.terms) == len(term_contr_kwargs)
+                for term, arg, term_contr_kwarg in zip(
+                    term.terms, get_args(_tmp), term_contr_kwargs
+                ):
+                    if not _term_compatible(yi, args, term, arg, term_contr_kwarg):
                         raise ValueError
             else:
                 raise ValueError
@@ -137,7 +142,9 @@ def _term_compatible(
                 )
                 if not vf_type_compatible:
                     raise ValueError
-                control_type = jax.eval_shape(term.contr, 0.0, 0.0)
+
+                contr = ft.partial(term.contr, **term_contr_kwargs)
+                control_type = jax.eval_shape(contr, 0.0, 0.0)
                 control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
                 )
@@ -148,7 +155,7 @@ def _term_compatible(
             # If we've got to this point then the term is compatible
 
     try:
-        jtu.tree_map(_check, term_structure, terms, y)
+        jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except ValueError:
         # ValueError may also arise from mismatched tree structures
         return False
@@ -758,7 +765,9 @@ def diffeqsolve(
     # Backward compatibility
     if isinstance(
         solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(y0, args, terms, (ODETerm, AbstractTerm)):
+    ) and _term_compatible(
+        y0, args, terms, (ODETerm, AbstractTerm), solver.term_compatible_contr_kwargs
+    ):
         warnings.warn(
             "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
             f"{solver.__class__.__name__} is deprecated in favour of "
@@ -770,7 +779,9 @@ def diffeqsolve(
         terms = MultiTerm(*terms)
 
     # Error checking
-    if not _term_compatible(y0, args, terms, solver.term_structure):
+    if not _term_compatible(
+        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
+    ):
         raise ValueError(
             "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
             f"structure {solver.term_structure}"
