@@ -12,6 +12,7 @@ import jax.tree_util as jtu
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
 from .._custom_types import (
+    _LA,
     BoolScalarLike,
     IntScalarLike,
     levy_tree_transpose,
@@ -36,21 +37,27 @@ from .base import AbstractBrownianPath
 #     year={2021},
 #     school={University of Oxford},
 # }
-#
 
 # We define
 # H_{s,t} = 1/(t-s) ( \int_s^t ( W_u - (u-s)/(t-s) W_{s,t} ) du ).
 # bhh_t = t * H_{0,t}
-# For more details see Definition 4.2.1 and Theorem 6.1.4 of
-#
-# Foster, J. M. (2020). Numerical approximations for stochastic
-# differential equations [PhD thesis]. University of Oxford.
-
+# For more details see section 6.1 of
+# @phdthesis{foster2020a,
+#   publisher = {University of Oxford},
+#   school = {University of Oxford},
+#   title = {Numerical approximations for stochastic differential equations},
+#   author = {Foster, James M.},
+#   year = {2020}
+# }
+# For more about space-time Levy area see Definition 4.2.1.
+# For the midpoint rule for generating space-time Levy area see Theorem 6.1.6.
+# For the general interpolation rule for space-time Levy area see Theorem 6.1.4.
 
 FloatDouble: TypeAlias = tuple[Float[Array, " *shape"], Float[Array, " *shape"]]
 FloatTriple: TypeAlias = tuple[
     Float[Array, " *shape"], Float[Array, " *shape"], Float[Array, " *shape"]
 ]
+_Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
 
 
 class _State(eqx.Module):
@@ -130,9 +137,11 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: Literal["", "space-time"] = eqx.field(static=True)
+    levy_area: _LA = eqx.field(static=True)
     key: PyTree[PRNGKeyArray]
+    _spline: _Spline = eqx.field(static=True)
 
+    @eqxi.doc_remove_args("_spline")
     def __init__(
         self,
         t0: RealScalarLike,
@@ -140,7 +149,8 @@ class VirtualBrownianTree(AbstractBrownianPath):
         tol: RealScalarLike,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: Literal["", "space-time"] = "",
+        levy_area: _LA = "",
+        _spline: _Spline = "sqrt",
     ):
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
         self.t0 = t0
@@ -154,6 +164,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
                 f"levy_area must be one of '', 'space-time', but got {levy_area}."
             )
         self.levy_area = levy_area
+        self._spline = _spline
         self.shape = (
             jax.ShapeDtypeStruct(shape, default_floating_dtype())
             if is_tuple_of_ints(shape)
@@ -321,20 +332,43 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
         # BM only case
         if self.levy_area == "":
-            z = jr.normal(final_state.key, shape, dtype)
-            w_sr = sr / su * w_su + jnp.sqrt(sr * ru / su) * z
-            w_r = w_s + w_sr
+            w_mean = w_s + sr / su * w_su
+            if self._spline == "sqrt":
+                z = jr.normal(final_state.key, shape, dtype)
+                bb = jnp.sqrt(sr * ru / su) * z
+            elif self._spline == "quad":
+                z = jr.normal(final_state.key, shape, dtype)
+                bb = (sr * ru / su) * z
+            elif self._spline == "zero":
+                bb = jnp.zeros(shape, dtype)
+            else:
+                assert False
+            w_r = w_mean + bb
             return LevyVal(dt=r, W=w_r, H=None, bar_H=None, K=None, bar_K=None)
 
         elif self.levy_area == "space-time":
+            # This is based on Theorem 6.1.4 of Foster's thesis (see above).
+
             assert final_state.bhh_s_u_su is not None
             bhh_s, bhh_u, bhh_su = final_state.bhh_s_u_su
             sr3 = jnp.power(sr, 3)
             ru3 = jnp.power(ru, 3)
             su3 = jnp.power(su, 3)
-            key1, key2 = jr.split(final_state.key, 2)
-            x1 = jr.normal(key1, shape, dtype)
-            x2 = jr.normal(key2, shape, dtype)
+
+            # Here "quad" spline doesn't really exist, but we can still
+            # compare "sqrt" and "zero" splines.
+            if self._spline == "sqrt":
+                key1, key2 = jr.split(final_state.key, 2)
+                x1 = jr.normal(key1, shape, dtype)
+                x2 = jr.normal(key2, shape, dtype)
+            elif self._spline == "zero":
+                x1 = jnp.zeros(shape, dtype)
+                x2 = jnp.zeros(shape, dtype)
+            else:
+                raise ValueError(
+                    f"When levy_area='space-time', only 'sqrt' and"
+                    f" 'zero' splines are permitted, got {self._spline}."
+                )
 
             sr_ru_half = jnp.sqrt(sr * ru)
             d = jnp.sqrt(sr3 + ru3)
@@ -377,6 +411,21 @@ class VirtualBrownianTree(AbstractBrownianPath):
          Note that the inputs and outputs already contain `bkk`. These values are
          there for the sake of a future extension with "space-time-time" Levy area
          and should be None for now.
+
+         ??? cite "Reference"
+        Based on section 6.1 of
+        ```bibtex
+        @phdthesis{foster2020a,
+          publisher = {University of Oxford},
+          school = {University of Oxford},
+          title = {Numerical approximations for stochastic differential equations},
+          author = {Foster, James M.},
+          year = {2020}
+        }
+
+        In particular see Theorem 6.1.6.
+        ```
+
 
         **Arguments:**
 
