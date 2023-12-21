@@ -467,3 +467,44 @@ def test_no_jit():
             stepsize_controller=stepsize_controller,
             y0=y,
         )
+
+
+def test_static(capfd):
+    try:
+        diffrax._integrate._PRINT_STATIC = True
+
+        def vector_field(t, y, args):
+            return jnp.zeros_like(y)
+
+        term = diffrax.ODETerm(vector_field)
+        y = jnp.zeros((1,))
+        stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
+        capfd.readouterr()
+
+        diffrax.diffeqsolve(
+            term,
+            diffrax.Tsit5(),
+            t0=0,
+            t1=1e-2,
+            dt0=1e-3,
+            stepsize_controller=stepsize_controller,
+            y0=y,
+        )
+        text, _ = capfd.readouterr()
+        assert (
+            text == "static_made_jump=False static_result=diffrax._solution.RESULTS<>\n"
+        )
+
+        diffrax.diffeqsolve(
+            term,
+            diffrax.Kvaerno5(),
+            t0=0,
+            t1=1e-2,
+            dt0=1e-3,
+            stepsize_controller=stepsize_controller,
+            y0=y,
+        )
+        text, _ = capfd.readouterr()
+        assert text == "static_made_jump=False static_result=None\n"
+    finally:
+        diffrax._integrate._PRINT_STATIC = False

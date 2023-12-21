@@ -171,6 +171,9 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
         return x
 
 
+_PRINT_STATIC = False  # used in tests
+
+
 def loop(
     *,
     solver,
@@ -445,6 +448,8 @@ def loop(
             static_made_jump = None
         if traced_result:
             static_result = None
+    if _PRINT_STATIC:
+        print(f"{static_made_jump=} {static_result=}")
 
     def body_fun(state):
         new_state, _, _ = body_fun_aux(state)
