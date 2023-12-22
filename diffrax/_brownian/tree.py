@@ -12,10 +12,10 @@ import jax.tree_util as jtu
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
 from .._custom_types import (
-    _LA,
     BoolScalarLike,
     IntScalarLike,
     levy_tree_transpose,
+    LevyArea,
     LevyVal,
     RealScalarLike,
 )
@@ -137,7 +137,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: _LA = eqx.field(static=True)
+    levy_area: LevyArea = eqx.field(static=True)
     key: PyTree[PRNGKeyArray]
     _spline: _Spline = eqx.field(static=True)
 
@@ -149,7 +149,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         tol: RealScalarLike,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: _LA = "",
+        levy_area: LevyArea = "",
         _spline: _Spline = "sqrt",
     ):
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
@@ -413,19 +413,19 @@ class VirtualBrownianTree(AbstractBrownianPath):
          and should be None for now.
 
          ??? cite "Reference"
-        Based on section 6.1 of
-        ```bibtex
-        @phdthesis{foster2020a,
-          publisher = {University of Oxford},
-          school = {University of Oxford},
-          title = {Numerical approximations for stochastic differential equations},
-          author = {Foster, James M.},
-          year = {2020}
-        }
 
-        In particular see Theorem 6.1.6.
+            Based on section 6.1 of
+            ```bibtex
+            @phdthesis{foster2020a,
+              publisher = {University of Oxford},
+              school = {University of Oxford},
+              title = {Numerical approximations for stochastic differential equations},
+              author = {Foster, James M.},
+              year = {2020}
+            }
+
+            In particular see Theorem 6.1.6.
         ```
-
 
         **Arguments:**
 

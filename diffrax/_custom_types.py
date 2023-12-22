@@ -52,7 +52,7 @@ DenseInfos = dict[str, PyTree[Shaped[Array, "times ..."]]]
 BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
-_LA: TypeAlias = Literal["", "space-time"]
+LevyArea: TypeAlias = Literal["", "space-time"]
 
 
 class LevyVal(eqx.Module):
@@ -64,7 +64,7 @@ class LevyVal(eqx.Module):
     bar_K: Optional[PyTree]
 
 
-def levy_tree_transpose(tree_shape, levy_area: _LA, tree: PyTree):
+def levy_tree_transpose(tree_shape, levy_area: LevyArea, tree: PyTree):
     """Helper that takes a PyTree of LevyVals and transposes
     into a LevyVal of PyTrees.
 
