@@ -155,11 +155,10 @@ def conditional_statistics(
 ):
     key = jr.PRNGKey(5678)
     bm_key, sample_key, permute_key = jr.split(key, 3)
-    # Get >80 randomly selected points; not too close to avoid discretisation error.
+    # Get some randomly selected points; not too close to avoid discretisation error.
     t0 = 0.3
     t1 = 8.7
     ts = jr.uniform(sample_key, shape=(100,), minval=t0, maxval=t1)
-    # ts = jnp.array([1.0, 3.0, 6.0, 7.0])
     sorted_ts = jnp.sort(ts)
     ts = []
     prev_ti = sorted_ts[0]
