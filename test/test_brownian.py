@@ -10,7 +10,6 @@ import jax.random as jr
 import jax.tree_util as jtu
 import pytest
 import scipy.stats as stats
-from diffrax._custom_types import LevyArea
 
 
 _Spline: TypeAlias = Literal["quad", "sqrt", "zero"]
@@ -33,7 +32,7 @@ def _make_struct(shape, dtype):
 )
 @pytest.mark.parametrize("levy_area", ["", "space-time"])
 @pytest.mark.parametrize("use_levy", (False, True))
-def test_shape_and_dtype(ctr, levy_area: LevyArea, use_levy, getkey):
+def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
     t0 = 0
     t1 = 2
 
@@ -115,7 +114,7 @@ def test_shape_and_dtype(ctr, levy_area: LevyArea, use_levy, getkey):
 )
 @pytest.mark.parametrize("levy_area", ["", "space-time"])
 @pytest.mark.parametrize("use_levy", (False, True))
-def test_statistics(ctr, levy_area: LevyArea, use_levy):
+def test_statistics(ctr, levy_area, use_levy):
     # Deterministic key for this test; not using getkey()
     key = jr.PRNGKey(5678)
     keys = jr.split(key, 10000)
@@ -151,7 +150,7 @@ def test_statistics(ctr, levy_area: LevyArea, use_levy):
 
 
 def conditional_statistics(
-    levy_area: LevyArea, use_levy: bool, tol, spacing, spline: _Spline, min_num_points
+    levy_area, use_levy: bool, tol, spacing, spline: _Spline, min_num_points
 ):
     key = jr.PRNGKey(5678)
     bm_key, sample_key, permute_key = jr.split(key, 3)
@@ -262,7 +261,7 @@ def conditional_statistics(
 
 @pytest.mark.parametrize("levy_area", ["", "space-time"])
 @pytest.mark.parametrize("use_levy", (False, True))
-def test_conditional_statistics(levy_area: LevyArea, use_levy):
+def test_conditional_statistics(levy_area, use_levy):
     pvals_w1, pvals_w2, pvals_h = conditional_statistics(
         levy_area, use_levy, tol=2**-8, spacing=2**-10, spline="sqrt", min_num_points=90
     )
@@ -285,10 +284,7 @@ def _levy_area_spline():
 
 @pytest.mark.parametrize("levy_area,spline", _levy_area_spline())
 @pytest.mark.parametrize("use_levy", (False, True))
-def test_spline(levy_area: LevyArea, use_levy, spline):
-    if levy_area == "space-time" and spline == "quad":
-        pytest.skip("Quad spline is not implemented for space-time Levy area")
-
+def test_spline(levy_area, use_levy, spline):
     pvals_w1, pvals_w2, pvals_h = conditional_statistics(
         levy_area,
         use_levy=use_levy,

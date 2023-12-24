@@ -1,5 +1,14 @@
+"""
+v0.5.0 introduced a new implementation for `diffrax.VirtualBrownianTree` that is
+additionally capable of computing Levy area.
+
+Here we check the speed of the new implementation against the old implementation, to be
+sure that it is still fast.
+"""
+
 import timeit
 from typing import cast, Optional, Union
+from typing_extensions import TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -8,10 +17,13 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax.internal as lxi
+import numpy as np
 from diffrax import AbstractBrownianPath, VirtualBrownianTree
-from diffrax._custom_types import RealScalarLike
-from jaxtyping import Array, Float, PRNGKeyArray, PyTree
-from lineax.internal import default_floating_dtype
+from jaxtyping import Array, Float, PRNGKeyArray, PyTree, Real
+
+
+RealScalarLike: TypeAlias = Real[Union[int, float, Array, np.ndarray], ""]
 
 
 class _State(eqx.Module):
@@ -29,30 +41,27 @@ class OldVBT(AbstractBrownianPath):
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    key: PyTree[PRNGKeyArray]
+    key: PRNGKeyArray
 
     def __init__(
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
         tol: RealScalarLike,
-        shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        shape: tuple[int, ...],
         key: PRNGKeyArray,
-        levy_area: str = "",
+        levy_area: str,
     ):
-        del levy_area
+        assert levy_area == ""
         self.t0 = t0
         self.t1 = t1
         self.tol = tol
-        self.shape = jax.ShapeDtypeStruct(shape, default_floating_dtype())
-        if any(
-            not jnp.issubdtype(x.dtype, jnp.inexact)
-            for x in jtu.tree_leaves(self.shape)
-        ):
-            raise ValueError(
-                "VirtualBrownianTree dtypes all have to be floating-point."
-            )
+        self.shape = jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
         self.key = key
+
+    @property
+    def levy_area(self):
+        assert False
 
     @eqx.filter_jit
     def evaluate(
@@ -153,29 +162,38 @@ class OldVBT(AbstractBrownianPath):
 
 key = jr.PRNGKey(0)
 t0, t1 = 0.3, 20.3
-ts = jnp.linspace(t0, t1, 1000000)
 
 
-def time_tree(tree_cls, tol, levy_area):
-    tree = tree_cls(t0=t0, t1=t1, tol=tol, shape=(100,), key=key, levy_area=levy_area)
+def time_tree(tree_cls, num_ts, tol, levy_area):
+    tree = tree_cls(t0=t0, t1=t1, tol=tol, shape=(10,), key=key, levy_area=levy_area)
 
-    @jax.jit
-    def run(_ts):
-        return jax.vmap(lambda _t: tree.evaluate(_t, use_levy=True))(_ts)
+    if num_ts == 1:
+        ts = 11.2
+
+        @jax.jit
+        @eqx.debug.assert_max_traces(max_traces=1)
+        def run(_ts):
+            return tree.evaluate(_ts, use_levy=True)
+    else:
+        ts = jnp.linspace(t0, t1, num_ts)
+
+        @jax.jit
+        @eqx.debug.assert_max_traces(max_traces=1)
+        def run(_ts):
+            return jax.vmap(lambda _t: tree.evaluate(_t, use_levy=True))(_ts)
 
     return min(
         timeit.repeat(lambda: jax.block_until_ready(run(ts)), number=1, repeat=100)
     )
 
 
-print(f"New Shallow   BM:  {time_tree(VirtualBrownianTree, 2**-3, ''):.3f}")
-
-print(f"New Shallow STLA:  {time_tree(VirtualBrownianTree, 2**-3, 'space-time'):.3f}")
-
-print(f"New Deep      BM:  {time_tree(VirtualBrownianTree, 2**-12, ''):.3f}")
-
-print(f"New Deep    STLA:  {time_tree(VirtualBrownianTree, 2**-12, 'space-time'):.3f}")
-
-print(f"Old Shallow:       {time_tree(OldVBT, 2**-3, ''):.3f}")
-
-print(f"Old Deep:          {time_tree(OldVBT, 2**-12, ''):.3f}")
+for levy_area in ("", "space-time"):
+    print(f"-   {levy_area=}")
+    for tol in (2**-3, 2**-12):
+        print(f"--  {tol=}")
+        for num_ts in (1, 100):
+            print(f"--- {num_ts=}")
+            if levy_area == "":
+                print(f"Old: {time_tree(OldVBT, num_ts, tol, levy_area):.5f}")
+            print(f"new: {time_tree(VirtualBrownianTree, num_ts, tol, levy_area):.5f}")
+    print("")
