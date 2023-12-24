@@ -9,7 +9,7 @@ import jax.core
 import jax.tree_util as jtu
 
 from ._adjoint import BacksolveAdjoint, DirectAdjoint, RecursiveCheckpointAdjoint
-from ._brownian import VirtualBrownianTree
+from ._brownian import AbstractBrownianPath, VirtualBrownianTree
 from ._heuristics import is_cde, is_sde
 from ._integrate import diffeqsolve
 from ._misc import adjoint_rms_seminorm
@@ -208,13 +208,14 @@ def _diffrax():
 def _backsolve_adjoint(adjoint, terms=None):
     if type(adjoint) is BacksolveAdjoint:
         if is_sde(terms):
+            vbt_ref, _ = _parse_reference_multi(VirtualBrownianTree)
             return (
                 r"""
     % You are backpropagating through an SDE using optimise-then-discretise
     % (`adjoint=BacksolveAdjoint(...)`)
     % This technique was introduced in 
     """
-                + _parse_reference(VirtualBrownianTree)
+                + vbt_ref
                 + r"""
     % This technique was refined (simplified via rough path theory) in Section 5.2.3 of:
     """
@@ -337,10 +338,29 @@ def _virtual_brownian_tree(terms):
     is_vbt = lambda x: isinstance(x, VirtualBrownianTree)
     leaves = jtu.tree_leaves(terms, is_leaf=is_vbt)
     if any(is_vbt(leaf) for leaf in leaves):
-        return r"""
+        vbt_ref, _ = _parse_reference_multi(VirtualBrownianTree)
+        return (
+            r"""
 % You are simulating Brownian motion using a virtual Brownian tree, which was introduced
 % in:
-""" + _parse_reference(VirtualBrownianTree)
+"""
+            + vbt_ref
+        )
+
+
+@citation_rules.append
+def _space_time_levy_area(terms):
+    has_levy_area = lambda x: isinstance(x, AbstractBrownianPath) and x.levy_area != ""
+    leaves = jtu.tree_leaves(terms, is_leaf=has_levy_area)
+    if any(has_levy_area(leaf) for leaf in leaves):
+        _, levy_area_ref = _parse_reference_multi(VirtualBrownianTree)
+        return (
+            r"""
+% You are simulating Brownian motion using space-time Levy area, the formulae for which
+% were developed in:
+"""
+            + levy_area_ref
+        )
 
 
 @citation_rules.append
