@@ -275,9 +275,16 @@ def test_conditional_statistics(levy_area: LevyArea, use_levy):
         assert len(pvals_h) == 0
 
 
-@pytest.mark.parametrize("levy_area", ["", "space-time"])
+def _levy_area_spline():
+    for levy_area in ("", "space-time"):
+        for spline in ("quad", "sqrt", "zero"):
+            if levy_area == "space-time" and spline == "quad":
+                continue
+            yield levy_area, spline
+
+
+@pytest.mark.parametrize("levy_area,spline", _levy_area_spline())
 @pytest.mark.parametrize("use_levy", (False, True))
-@pytest.mark.parametrize("spline", ("quad", "sqrt", "zero"))
 def test_spline(levy_area: LevyArea, use_levy, spline):
     if levy_area == "space-time" and spline == "quad":
         pytest.skip("Quad spline is not implemented for space-time Levy area")

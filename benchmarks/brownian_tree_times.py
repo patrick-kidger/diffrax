@@ -8,20 +8,10 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-from diffrax import VirtualBrownianTree
-from diffrax._brownian.base import AbstractBrownianPath
+from diffrax import AbstractBrownianPath, VirtualBrownianTree
 from diffrax._custom_types import RealScalarLike
-from diffrax._misc import default_floating_dtype, is_tuple_of_ints, split_by_tree
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
-
-
-key = jr.PRNGKey(0)
-t0, t1 = 0.3, 2.3
-ts = jnp.linspace(t0, t1, 100000)
-
-
-def vec_eval(_tree, _ts):
-    return jax.vmap(lambda _t: _tree.evaluate(_t, use_levy=True))(_ts)
+from lineax.internal import default_floating_dtype
 
 
 class _State(eqx.Module):
@@ -54,11 +44,7 @@ class OldVBT(AbstractBrownianPath):
         self.t0 = t0
         self.t1 = t1
         self.tol = tol
-        self.shape = (
-            jax.ShapeDtypeStruct(shape, default_floating_dtype())
-            if is_tuple_of_ints(shape)
-            else shape
-        )
+        self.shape = jax.ShapeDtypeStruct(shape, default_floating_dtype())
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
             for x in jtu.tree_leaves(self.shape)
@@ -66,7 +52,7 @@ class OldVBT(AbstractBrownianPath):
             raise ValueError(
                 "VirtualBrownianTree dtypes all have to be floating-point."
             )
-        self.key = split_by_tree(key, self.shape)
+        self.key = key
 
     @eqx.filter_jit
     def evaluate(
@@ -165,17 +151,21 @@ class OldVBT(AbstractBrownianPath):
         return jnp.polyval(coeffs, rescaled_τ)
 
 
+key = jr.PRNGKey(0)
+t0, t1 = 0.3, 20.3
+ts = jnp.linspace(t0, t1, 1000000)
+
+
 def time_tree(tree_cls, tol, levy_area):
     tree = tree_cls(t0=t0, t1=t1, tol=tol, shape=(100,), key=key, levy_area=levy_area)
 
-    def f():
-        return jax.block_until_ready(vec_eval(tree, ts))
+    @jax.jit
+    def run(_ts):
+        return jax.vmap(lambda _t: tree.evaluate(_t, use_levy=True))(_ts)
 
-    # warmup
-    f()
-
-    # now for real
-    return timeit.timeit(f, number=100)
+    return min(
+        timeit.repeat(lambda: jax.block_until_ready(run(ts)), number=1, repeat=100)
+    )
 
 
 print(f"New Shallow   BM:  {time_tree(VirtualBrownianTree, 2**-3, ''):.3f}")
