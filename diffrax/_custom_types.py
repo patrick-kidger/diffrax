@@ -1,20 +1,22 @@
 import typing
-from typing import Any, Literal, Optional, TYPE_CHECKING, TypeAlias, Union
+from typing import Any, Literal, Optional, TYPE_CHECKING, Union
+from typing_extensions import TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.tree_util as jtu
 import numpy as np
-from jaxtyping import AbstractDtype, Array, ArrayLike, Bool, Float, Int, PyTree, Shaped
-
-
-if TYPE_CHECKING:
-    from typing import Annotated as Real
-else:
-
-    class Real(AbstractDtype):
-        dtypes = Float.dtypes + Int.dtypes  # pyright: ignore
+from jaxtyping import (
+    AbstractDtype,
+    Array,
+    ArrayLike,
+    Bool,
+    Float,
+    Int,
+    PyTree,
+    Shaped,
+)
 
 
 if TYPE_CHECKING:
@@ -35,9 +37,9 @@ elif getattr(typing, "GENERATING_DOCUMENTATION", False):
     jtu.Partial.__module__ = "jax.tree_util"
 
 else:
+    BoolScalarLike = Bool[ArrayLike, ""]
     FloatScalarLike = Float[ArrayLike, ""]
     IntScalarLike = Int[ArrayLike, ""]
-    BoolScalarLike = Bool[ArrayLike, ""]
 
 
 RealScalarLike = Union[FloatScalarLike, IntScalarLike]

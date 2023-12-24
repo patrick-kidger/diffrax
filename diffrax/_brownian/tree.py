@@ -119,6 +119,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
     ??? cite "Reference"
 
+        Virtual Brownian trees were proposed in
         ```bibtex
         @article{li2020scalable,
           title={Scalable gradients for stochastic differential equations},
@@ -129,8 +130,20 @@ class VirtualBrownianTree(AbstractBrownianPath):
         }
         ```
 
-        (The implementation here is a slight improvement on the reference implementation
-        by using an interpolation method which ensures all the 2nd moments are correct.)
+        The implementation here is an improvement on the above, in that it additionally
+        simulates space-time Levy area. This is due to Section 6.1 and Theorem 6.1.6 of
+        ```bibtex
+        @phdthesis{foster2020a,
+          publisher = {University of Oxford},
+          school = {University of Oxford},
+          title = {Numerical approximations for stochastic differential equations},
+          author = {Foster, James M.},
+          year = {2020}
+        }
+        ```
+
+        In addition, the implementation here is a further improvement on these by using
+        an interpolation method which ensures the conditional 2nd moments are correct.
     """
 
     t0: RealScalarLike
@@ -412,21 +425,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
          there for the sake of a future extension with "space-time-time" Levy area
          and should be None for now.
 
-         ??? cite "Reference"
-
-            Based on section 6.1 of
-            ```bibtex
-            @phdthesis{foster2020a,
-              publisher = {University of Oxford},
-              school = {University of Oxford},
-              title = {Numerical approximations for stochastic differential equations},
-              author = {Foster, James M.},
-              year = {2020}
-            }
-
-            In particular see Theorem 6.1.6.
-        ```
-
         **Arguments:**
 
         - `_state`: The state of the Brownian tree
@@ -443,7 +441,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
         - `bhh_st_tu`: (optional) $(\bar{H}_{s,t}, \bar{H}_{t,u})$
         - `bkk_stu`: (optional) $(\bar{K}_s, \bar{K}_t, \bar{K}_u)$
         - `bkk_st_tu`: (optional) $(\bar{K}_{s,t}, \bar{K}_{t,u})$
-
         """
         key_st, midpoint_key, key_tu = jr.split(_state.key, 3)
         keys = (key_st, key_tu)
