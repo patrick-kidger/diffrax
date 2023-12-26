@@ -2,9 +2,9 @@ from typing import Any, Optional
 
 import jax
 import optimistix as optx
-from jaxtyping import Array, Bool, PyTree, Shaped
+from jaxtyping import Array, Bool, PyTree, Real, Shaped
 
-from ._custom_types import BoolScalarLike, Real, RealScalarLike
+from ._custom_types import BoolScalarLike, RealScalarLike
 from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 

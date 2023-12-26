@@ -4,9 +4,9 @@ from typing import Optional
 import equinox as eqx
 import equinox.internal as eqxi
 import jax.numpy as jnp
-from jaxtyping import Array, PyTree
+from jaxtyping import Array, PyTree, Real
 
-from .._custom_types import Args, IntScalarLike, Real, RealScalarLike, VF, Y
+from .._custom_types import Args, IntScalarLike, RealScalarLike, VF, Y
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractStepSizeController

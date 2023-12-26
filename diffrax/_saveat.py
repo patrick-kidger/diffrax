@@ -3,9 +3,9 @@ from typing import Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Array, PyTree
+from jaxtyping import Array, PyTree, Real
 
-from ._custom_types import Real, RealScalarLike
+from ._custom_types import RealScalarLike
 
 
 def save_y(t, y, args):

@@ -10,7 +10,7 @@ import jax
 import jax.core
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree
+from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
@@ -18,7 +18,6 @@ from ._custom_types import (
     BufferDenseInfos,
     FloatScalarLike,
     IntScalarLike,
-    Real,
     RealScalarLike,
 )
 from ._event import AbstractDiscreteTerminatingEvent
