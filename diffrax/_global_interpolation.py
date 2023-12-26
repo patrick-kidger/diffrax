@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractVar
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree, Shaped
+from jaxtyping import Array, ArrayLike, PyTree, Real, Shaped
 
-from ._custom_types import DenseInfos, IntScalarLike, Real, RealScalarLike, Y
+from ._custom_types import DenseInfos, IntScalarLike, RealScalarLike, Y
 from ._local_interpolation import AbstractLocalInterpolation
 from ._misc import fill_forward, left_broadcast_to
 from ._path import AbstractPath

@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
 import optimistix as optx
+from jaxtyping import Real
 
 
 if TYPE_CHECKING:
@@ -22,7 +23,6 @@ from .._custom_types import (
     Args,
     BoolScalarLike,
     IntScalarLike,
-    Real,
     RealScalarLike,
     VF,
     Y,

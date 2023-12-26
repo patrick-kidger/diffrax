@@ -4,7 +4,6 @@ from typing_extensions import TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
-import jax
 import jax.tree_util as jtu
 import numpy as np
 from jaxtyping import (
@@ -82,7 +81,7 @@ def levy_tree_transpose(tree_shape, levy_area: LevyArea, tree: PyTree):
     A `LevyVal` of PyTrees.
     """
     inner_tree = jtu.tree_leaves(tree, is_leaf=lambda x: isinstance(x, LevyVal))[0]
-    inner_tree_shape = jax.tree_structure(inner_tree)
+    inner_tree_shape = jtu.tree_structure(inner_tree)
     return jtu.tree_transpose(
         outer_treedef=jtu.tree_structure(tree_shape),
         inner_treedef=inner_tree_shape,
