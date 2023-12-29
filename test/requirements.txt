@@ -1,0 +1,5 @@
+beartype
+jaxlib
+optax
+pytest
+scipy
