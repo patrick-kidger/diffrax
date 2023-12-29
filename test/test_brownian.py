@@ -263,7 +263,12 @@ def conditional_statistics(
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_conditional_statistics(levy_area, use_levy):
     pvals_w1, pvals_w2, pvals_h = conditional_statistics(
-        levy_area, use_levy, tol=2**-8, spacing=2**-10, spline="sqrt", min_num_points=90
+        levy_area,
+        use_levy,
+        tol=2**-10,
+        spacing=2**-8,
+        spline="sqrt",
+        min_num_points=90,
     )
     assert jnp.all(pvals_w1 > 0.1 / pvals_w1.shape[0])
     if levy_area == "space-time" and use_levy:
