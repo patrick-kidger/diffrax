@@ -290,9 +290,10 @@ def test_interpolation_classes(mode, getkey):
 
                     def _test(firstval, vals, y0, y1):
                         vals = jnp.concatenate([firstval[None], vals])
-                        true_vals = y0 + ((points - t0) / (t1 - t0))[:, None] * (
-                            y1 - y0
-                        )
+                        with jax.numpy_rank_promotion("allow"):
+                            true_vals = y0 + ((points - t0) / (t1 - t0))[:, None] * (
+                                y1 - y0
+                            )
                         assert tree_allclose(vals, true_vals)
 
                     jtu.tree_map(_test, firstval, vals, y0, y1)

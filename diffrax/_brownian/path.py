@@ -7,11 +7,11 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax.internal as lxi
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
 from .._custom_types import levy_tree_transpose, LevyArea, LevyVal, RealScalarLike
 from .._misc import (
-    default_floating_dtype,
     force_bitcast_convert_type,
     is_tuple_of_ints,
     split_by_tree,
@@ -52,7 +52,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         levy_area: LevyArea = "",
     ):
         self.shape = (
-            jax.ShapeDtypeStruct(shape, default_floating_dtype())
+            jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
             if is_tuple_of_ints(shape)
             else shape
         )
@@ -87,8 +87,14 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     ) -> Union[PyTree[Array], LevyVal]:
         del left
         if t1 is None:
+            dtype = jnp.result_type(t0)
             t1 = t0
-            t0 = 0
+            t0 = jnp.array(0, dtype)
+        else:
+            with jax.numpy_dtype_promotion("standard"):
+                dtype = jnp.result_type(t0, t1)
+            t0 = jnp.astype(t0, dtype)
+            t1 = jnp.astype(t1, dtype)
         t0 = eqxi.nondifferentiable(t0, name="t0")
         t1 = eqxi.nondifferentiable(t1, name="t1")
         t1 = cast(RealScalarLike, t1)
