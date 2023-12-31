@@ -12,6 +12,7 @@ from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, PyTreeDef
 
 from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
+from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
 
@@ -159,7 +160,8 @@ class ODETerm(AbstractTerm):
     appearing on the right hand side of an ODE, in which the control is time.
 
     `vector_field` should return some PyTree, with the same structure as the initial
-    state `y0`, and with every leaf broadcastable to the equivalent leaf in `y0`.
+    state `y0`, and with every leaf shape-broadcastable and dtype-upcastable to the
+    equivalent leaf in `y0`.
 
     !!! example
 
@@ -179,13 +181,33 @@ class ODETerm(AbstractTerm):
                 "The vector field inside `ODETerm` must return a pytree with the "
                 "same structure as `y0`."
             )
-        return jtu.tree_map(lambda o, yi: jnp.broadcast_to(o, jnp.shape(yi)), out, y)
+
+        def _broadcast_and_upcast(oi, yi):
+            oi = jnp.broadcast_to(oi, jnp.shape(yi))
+            oi = upcast_or_raise(
+                oi,
+                yi,
+                "the vector field passed to `ODETerm`",
+                "the corresponding leaf of `y`",
+            )
+            return oi
+
+        return jtu.tree_map(_broadcast_and_upcast, out, y)
 
     def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> RealScalarLike:
         return t1 - t0
 
     def prod(self, vf: VF, control: RealScalarLike) -> Y:
-        return jtu.tree_map(lambda v: control * v, vf)
+        def _mul(v):
+            c = upcast_or_raise(
+                control,
+                v,
+                "the output of `ODETerm.contr(...)`",
+                "the output of `ODETerm.vf(...)`",
+            )
+            return c * v
+
+        return jtu.tree_map(_mul, vf)
 
 
 ODETerm.__init__.__doc__ = """**Arguments:**

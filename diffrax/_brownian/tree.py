@@ -9,6 +9,7 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax.internal as lxi
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
 from .._custom_types import (
@@ -20,7 +21,6 @@ from .._custom_types import (
     RealScalarLike,
 )
 from .._misc import (
-    default_floating_dtype,
     is_tuple_of_ints,
     linear_rescale,
     split_by_tree,
@@ -179,7 +179,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         self.levy_area = levy_area
         self._spline = _spline
         self.shape = (
-            jax.ShapeDtypeStruct(shape, default_floating_dtype())
+            jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
             if is_tuple_of_ints(shape)
             else shape
         )

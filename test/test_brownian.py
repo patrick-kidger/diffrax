@@ -1,3 +1,4 @@
+import contextlib
 import math
 from typing import Literal
 from typing_extensions import TypeAlias
@@ -33,8 +34,8 @@ def _make_struct(shape, dtype):
 @pytest.mark.parametrize("levy_area", ["", "space-time"])
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
-    t0 = 0
-    t1 = 2
+    t0 = 0.0
+    t1 = 2.0
 
     shapes = (
         (),
@@ -91,11 +92,14 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
         if dtype is None:
             shape = jtu.tree_map(_make_struct, shape, dtype, is_leaf=is_tuple_of_ints)
 
-        for _t0 in _vals.values():
-            for _t1 in _vals.values():
-                t0, _ = _t0
-                _, t1 = _t1
-                out = path.evaluate(t0, t1, use_levy=use_levy)
+        for t0_dtype, (t0, _) in _vals.items():
+            for t1_dtype, (_, t2) in _vals.items():
+                if all(x in (float, jnp.float32) for x in (t0_dtype, t1_dtype)):
+                    context = contextlib.nullcontext()
+                else:
+                    context = jax.numpy_dtype_promotion("standard")
+                with context:
+                    out = path.evaluate(t0, t1, use_levy=use_levy)
                 if use_levy:
                     assert isinstance(out, diffrax.LevyVal)
                     w = out.W

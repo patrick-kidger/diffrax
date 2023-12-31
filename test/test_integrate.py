@@ -1,3 +1,4 @@
+import contextlib
 import math
 import operator
 from typing import cast
@@ -77,15 +78,16 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
     ) and treedef == jtu.tree_structure(None):
         return
 
-    if jnp.iscomplexobj(y_dtype):
-
-        def f(t, y, args):
-            return jtu.tree_map(lambda _y: operator.mul(-1j, _y), y)
-
+    if jnp.iscomplexobj(y_dtype) and treedef != jtu.tree_structure(None):
         if isinstance(solver, diffrax.AbstractImplicitSolver):
             return
+        else:
+            complex_warn = pytest.warns(match="Complex dtype")
 
+            def f(t, y, args):
+                return jtu.tree_map(lambda yi: -1j * yi, y)
     else:
+        complex_warn = contextlib.nullcontext()
 
         def f(t, y, args):
             return jtu.tree_map(operator.neg, y)
@@ -110,15 +112,16 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
         raise ValueError
     y0 = random_pytree(getkey(), treedef, dtype=y_dtype)
     try:
-        sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(f),
-            solver,
-            t0,
-            t1,
-            dt0,
-            y0,
-            stepsize_controller=stepsize_controller,
-        )
+        with complex_warn:
+            sol = diffrax.diffeqsolve(
+                diffrax.ODETerm(f),
+                solver,
+                t0,
+                t1,
+                dt0,
+                y0,
+                stepsize_controller=stepsize_controller,
+            )
     except Exception as e:
         if isinstance(stepsize_controller, diffrax.ConstantStepSize) and str(
             e

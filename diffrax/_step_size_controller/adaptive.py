@@ -27,6 +27,7 @@ from .._custom_types import (
     VF,
     Y,
 )
+from .._misc import upcast_or_raise
 from .._solution import RESULTS
 from .._term import AbstractTerm, ODETerm
 from .base import AbstractStepSizeController
@@ -324,6 +325,14 @@ class PIDController(
     norm: Callable[[PyTree], RealScalarLike] = rms_norm
     safety: RealScalarLike = 0.9
     error_order: Optional[RealScalarLike] = None
+
+    def __check_init__(self):
+        if self.jump_ts is not None and not jnp.issubdtype(
+            self.jump_ts.dtype, jnp.inexact
+        ):
+            raise ValueError(
+                f"jump_ts must be floating point, not {self.jump_ts.dtype}"
+            )
 
     def wrap(self, direction: IntScalarLike):
         step_ts = None if self.step_ts is None else self.step_ts * direction
@@ -632,10 +641,22 @@ class PIDController(
         if self.step_ts is None:
             return t1
 
+        step_ts0 = upcast_or_raise(
+            self.step_ts,
+            t0,
+            "`PIDController.step_ts`",
+            "time (the result type of `t0`, `t1`, `dt0`, `SaveAt(ts=...)` etc.)",
+        )
+        step_ts1 = upcast_or_raise(
+            self.step_ts,
+            t1,
+            "`PIDController.step_ts`",
+            "time (the result type of `t0`, `t1`, `dt0`, `SaveAt(ts=...)` etc.)",
+        )
         # TODO: it should be possible to switch this O(nlogn) for just O(n) by keeping
         # track of where we were last, and using that as a hint for the next search.
-        t0_index = jnp.searchsorted(self.step_ts, t0, side="right")
-        t1_index = jnp.searchsorted(self.step_ts, t1, side="right")
+        t0_index = jnp.searchsorted(step_ts0, t0, side="right")
+        t1_index = jnp.searchsorted(step_ts1, t1, side="right")
         # This minimum may or may not actually be necessary. The left branch is taken
         # iff t0_index < t1_index <= len(self.step_ts), so all valid t0_index s must
         # already satisfy the minimum.
@@ -643,7 +664,7 @@ class PIDController(
         # so we clamp it just to be sure we're not hitting undefined behaviour.
         t1 = jnp.where(
             t0_index < t1_index,
-            self.step_ts[jnp.minimum(t0_index, len(self.step_ts) - 1)],
+            step_ts1[jnp.minimum(t0_index, len(self.step_ts) - 1)],
             t1,
         )
         return t1
@@ -653,23 +674,35 @@ class PIDController(
     ) -> tuple[RealScalarLike, BoolScalarLike]:
         if self.jump_ts is None:
             return t1, False
-        if self.jump_ts is not None and not jnp.issubdtype(
-            self.jump_ts.dtype, jnp.inexact
-        ):
+        assert jnp.issubdtype(self.jump_ts.dtype, jnp.inexact)
+        if not jnp.issubdtype(jnp.result_type(t0), jnp.inexact):
             raise ValueError(
-                f"jump_ts must be floating point, not {self.jump_ts.dtype}"
+                "`t0`, `t1`, `dt0` must be floating point when specifying `jump_ts`. "
+                f"Got {jnp.result_type(t0)}."
             )
         if not jnp.issubdtype(jnp.result_type(t1), jnp.inexact):
             raise ValueError(
-                "t0, t1, dt0 must be floating point when specifying jump_t. Got "
-                f"{jnp.result_type(t1)}."
+                "`t0`, `t1`, `dt0` must be floating point when specifying `jump_ts`. "
+                f"Got {jnp.result_type(t1)}."
             )
-        t0_index = jnp.searchsorted(self.jump_ts, t0, side="right")
-        t1_index = jnp.searchsorted(self.jump_ts, t1, side="right")
+        jump_ts0 = upcast_or_raise(
+            self.jump_ts,
+            t0,
+            "`PIDController.jump_ts`",
+            "time (the result type of `t0`, `t1`, `dt0`, `SaveAt(ts=...)` etc.)",
+        )
+        jump_ts1 = upcast_or_raise(
+            self.jump_ts,
+            t1,
+            "`PIDController.jump_ts`",
+            "time (the result type of `t0`, `t1`, `dt0`, `SaveAt(ts=...)` etc.)",
+        )
+        t0_index = jnp.searchsorted(jump_ts0, t0, side="right")
+        t1_index = jnp.searchsorted(jump_ts1, t1, side="right")
         next_made_jump = t0_index < t1_index
         t1 = jnp.where(
             next_made_jump,
-            eqxi.prevbefore(self.jump_ts[jnp.minimum(t0_index, len(self.jump_ts) - 1)]),
+            eqxi.prevbefore(jump_ts1[jnp.minimum(t0_index, len(self.jump_ts) - 1)]),
             t1,
         )
         return t1, next_made_jump
