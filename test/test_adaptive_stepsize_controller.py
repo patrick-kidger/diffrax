@@ -83,7 +83,8 @@ def test_backprop():
         _, tprev, tnext, _, state, _ = controller.adapt_step_size(
             0, 1, y0, y1_candidate, None, y_error, 5, state
         )
-        return tprev + tnext + sum(jnp.sum(x) for x in jtu.tree_leaves(state))
+        with jax.numpy_dtype_promotion("standard"):
+            return tprev + tnext + sum(jnp.sum(x) for x in jtu.tree_leaves(state))
 
     y0 = jnp.array(1.0)
     y1_candidate = jnp.array(2.0)

@@ -162,8 +162,30 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
         return lax.select(pred, a, b)
 
 
-def default_floating_dtype():
-    if jax.config.jax_enable_x64:  # pyright: ignore
-        return jnp.float64
-    else:
-        return jnp.float32
+def upcast_or_raise(
+    x: ArrayLike, array_for_dtype: ArrayLike, x_name: str, dtype_name: str
+):
+    """If `JAX_NUMPY_DTYPE_PROMOTION=strict`, then this will raise an error if
+    `jnp.result_type(x, array_for_dtype)` is not the same as `array_for_dtype.dtype`.
+    It will then cast `x` to `jnp.result_type(x, array_for_dtype)`.
+
+    Thus if `JAX_NUMPY_DTYPE_PROMOTION=standard`, then the usual anything-goes behaviour
+    will apply. If `JAX_NUMPY_DTYPE_PROMOTION=strict` then we loosen from prohibiting
+    all dtype casting, to still allowing upcasting.
+    """
+    x_dtype = jnp.result_type(x)
+    target_dtype = jnp.result_type(array_for_dtype)
+    with jax.numpy_dtype_promotion("standard"):
+        promote_dtype = jnp.result_type(x_dtype, target_dtype)
+    config_value = jax.config.jax_numpy_dtype_promotion
+    if config_value == "strict":
+        if target_dtype != promote_dtype:
+            raise ValueError(
+                f"When `JAX_NUMPY_DTYPE_PROMOTION=strict`, then {x_name} must have "
+                f"a dtype that can be promoted to the dtype of {dtype_name}. "
+                f"However {x_name} had dtype {x_dtype} and {dtype_name} had dtype "
+                f"{target_dtype}."
+            )
+    elif config_value != "standard":
+        assert False, f"Unrecognised `JAX_NUMPY_DTYPE_PROMOTION={config_value}`"
+    return jnp.astype(x, promote_dtype)

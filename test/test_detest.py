@@ -12,6 +12,7 @@
 import math
 
 import diffrax
+import jax
 import jax.flatten_util as fu
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -147,15 +148,15 @@ def _c2():
     A = (
         jnp.zeros((10, 10))
         .at[jnp.arange(9), jnp.arange(9)]
-        .set(-jnp.arange(1, 10))
+        .set(-jnp.arange(1.0, 10.0))
         .at[jnp.arange(1, 10), jnp.arange(9)]
-        .set(jnp.arange(1, 10))
+        .set(jnp.arange(1.0, 10.0))
     )
 
     def diffeq(t, y, args):
         return A @ y
 
-    init = jnp.zeros(10).at[0].set(1)
+    init = jnp.zeros(10).at[0].set(1.0)
     return diffeq, init
 
 
@@ -215,12 +216,13 @@ def _c5():
         r_cubed_j = r_cubed_k = jnp.sum(y_ij**2, axis=0) ** 1.5
         d_cubed_jk = jnp.sum((y_ij[:, :, None] - y_ij[:, None, :]) ** 2, axis=0) ** 1.5
 
-        term1_ij = -(m0 + m_j) * y_ij / r_cubed_j
-        term2_ijk = (y_ij[:, None, :] - y_ij[:, :, None]) / d_cubed_jk
-        term3_ik = y_ik / r_cubed_k
-        term4_ijk = m_k * (term2_ijk - term3_ik[:, None])
-        term4_ijk = term4_ijk.at[:, jnp.arange(5), jnp.arange(5)].set(0)
-        term5_ij = jnp.sum(term4_ijk, axis=-1)
+        with jax.numpy_rank_promotion("allow"):
+            term1_ij = -(m0 + m_j) * y_ij / r_cubed_j
+            term2_ijk = (y_ij[:, None, :] - y_ij[:, :, None]) / d_cubed_jk
+            term3_ik = y_ik / r_cubed_k
+            term4_ijk = m_k * (term2_ijk - term3_ik[:, None])
+            term4_ijk = term4_ijk.at[:, jnp.arange(5), jnp.arange(5)].set(0)
+            term5_ij = jnp.sum(term4_ijk, axis=-1)
 
         ddy_ij = k2 * (term1_ij + term5_ij)
         return dy_ij, ddy_ij

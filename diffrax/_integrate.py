@@ -10,6 +10,7 @@ import jax
 import jax.core
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax.internal as lxi
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
@@ -299,10 +300,10 @@ def loop(
 
         # Count the number of steps, just for statistical purposes.
         num_steps = state.num_steps + 1
-        num_accepted_steps = state.num_accepted_steps + keep_step
+        num_accepted_steps = state.num_accepted_steps + jnp.where(keep_step, 1, 0)
         # Not just ~keep_step, which does the wrong thing when keep_step is a non-array
         # bool True/False.
-        num_rejected_steps = state.num_rejected_steps + jnp.invert(keep_step)
+        num_rejected_steps = state.num_rejected_steps + jnp.where(keep_step, 0, 1)
 
         #
         # Store the output produced from this numerical step.
@@ -369,7 +370,7 @@ def loop(
                     subsaveat.fn(tprev, y, args),
                     save_state.ys,
                 )
-                save_index = save_state.save_index + keep_step
+                save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
                 save_state = eqx.tree_at(
                     lambda s: [s.ts, s.ys, s.save_index],
                     save_state,
@@ -388,7 +389,7 @@ def loop(
                 dense_info,
                 dense_infos,
             )
-            dense_save_index = dense_save_index + keep_step
+            dense_save_index = dense_save_index + jnp.where(keep_step, 1, 0)
 
         new_state = State(
             y=y,
@@ -625,7 +626,7 @@ def diffeqsolve(
             f"t0 with value {t0} and type {type(t0)}, "
             f"dt0 with value {dt0} and type {type(dt0)}"
         )
-        with jax.ensure_compile_time_eval():
+        with jax.ensure_compile_time_eval(), jax.numpy_dtype_promotion("standard"):
             pred = (t1 - t0) * dt0 < 0
         dt0 = eqxi.error_if(jnp.array(dt0), pred, msg)
 
@@ -641,7 +642,8 @@ def diffeqsolve(
             )
         warnings.warn(
             "Complex dtype support is work in progress, please read "
-            "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully."
+            "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully.",
+            stacklevel=2,
         )
 
     # Backward compatibility
@@ -653,7 +655,8 @@ def diffeqsolve(
             f"{solver.__class__.__name__} is deprecated in favour of "
             "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
             "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!"
+            "solvers!",
+            stacklevel=2,
         )
         terms = MultiTerm(*terms)
 
@@ -668,7 +671,8 @@ def diffeqsolve(
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
             warnings.warn(
                 f"`{type(solver).__name__}` is not marked as converging to either the "
-                "Itô or the Stratonovich solution."
+                "Itô or the Stratonovich solution.",
+                stacklevel=2,
             )
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             # Specific check to not work even if using HalfSolver(Euler())
@@ -684,11 +688,22 @@ def diffeqsolve(
             )
 
     # Allow setting e.g. t0 as an int with dt0 as a float.
-    timelikes = [jnp.array(0.0), t0, t1, dt0] + [
+    timelikes = [t0, t1, dt0] + [
         s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
     ]
     timelikes = [x for x in timelikes if x is not None]
-    time_dtype = jnp.result_type(*timelikes)
+    with jax.numpy_dtype_promotion("standard"):
+        time_dtype = jnp.result_type(*timelikes)
+    if jnp.issubdtype(time_dtype, jnp.complexfloating):
+        raise ValueError(
+            "Cannot use complex dtype for `t0`, `t1`, `dt0`, or `SaveAt(ts=...)`."
+        )
+    elif jnp.issubdtype(time_dtype, jnp.floating):
+        pass
+    elif jnp.issubdtype(time_dtype, jnp.integer):
+        time_dtype = lxi.default_floating_dtype()
+    else:
+        raise ValueError(f"Unrecognised time dtype {time_dtype}.")
     t0 = jnp.asarray(t0, dtype=time_dtype)
     t1 = jnp.asarray(t1, dtype=time_dtype)
     if dt0 is not None:
@@ -708,7 +723,8 @@ def diffeqsolve(
     # fixing issue with float64 and weak dtypes, see discussion at:
     # https://github.com/patrick-kidger/diffrax/pull/197#discussion_r1130173527
     def _promote(yi):
-        _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
+        with jax.numpy_dtype_promotion("standard"):
+            _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
     y0 = jtu.tree_map(_promote, y0)
