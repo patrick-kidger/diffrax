@@ -193,8 +193,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
         self.key = split_by_tree(key, self.shape)
 
     def _denormalise_bm_inc(self, x: LevyVal) -> LevyVal:
-        # TODO: demonstrate rescaling actually helps
-
         # Rescaling back from [0, 1] to the original interval [t0, t1].
         interval_len = self.t1 - self.t0  # can be any dtype
         sqrt_len = jnp.sqrt(interval_len)
