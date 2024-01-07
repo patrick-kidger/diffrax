@@ -63,7 +63,7 @@ def _all_pairs(*args):
         dict(default=treedefs[0], opts=treedefs[1:]),
         dict(
             default=diffrax.ConstantStepSize(),
-            opts=(diffrax.PIDController(rtol=1e-3, atol=1e-6),),
+            opts=(diffrax.PIDController(rtol=1e-5, atol=1e-8),),
         ),
     ),
 )
