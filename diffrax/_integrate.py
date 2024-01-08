@@ -2,7 +2,7 @@ import functools as ft
 import typing
 import warnings
 from collections.abc import Callable
-from typing import Any, cast, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -736,27 +736,44 @@ def diffeqsolve(
         is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
 
-    if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-        if isinstance(solver, AbstractImplicitSolver):
-            if solver.root_finder.rtol is use_stepsize_tol:
-                solver = eqx.tree_at(
-                    lambda s: s.root_finder.rtol,
-                    solver,
-                    stepsize_controller.rtol,
-                )
-                solver = cast(AbstractImplicitSolver, solver)
-            if solver.root_finder.atol is use_stepsize_tol:
-                solver = eqx.tree_at(
-                    lambda s: s.root_finder.atol,
-                    solver,
-                    stepsize_controller.atol,
-                )
-                solver = cast(AbstractImplicitSolver, solver)
-            if solver.root_finder.norm is use_stepsize_tol:
-                solver = eqx.tree_at(
-                    lambda s: s.root_finder.norm,
-                    solver,
-                    stepsize_controller.norm,
+    if isinstance(solver, AbstractImplicitSolver):
+
+        def _get_tols(x):
+            outs = []
+            for attr in ("rtol", "atol", "norm"):
+                if getattr(solver.root_finder, attr) is use_stepsize_tol:  # pyright: ignore
+                    outs.append(getattr(x, attr))
+            return tuple(outs)
+
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            solver = eqx.tree_at(
+                lambda s: _get_tols(s.root_finder),
+                solver,
+                _get_tols(stepsize_controller),
+            )
+        else:
+            if len(_get_tols(solver.root_finder)) > 0:
+                raise ValueError(
+                    "A fixed step size controller is being used alongside an implicit "
+                    "solver, but the tolerances for the implicit solver have not been "
+                    "specified. (Being unspecified is the default in Diffrax.)\n"
+                    "The correct fix is almost always to use an adaptive step size "
+                    "controller. For example "
+                    "`diffrax.diffeqsolve(..., "
+                    "stepsize_controller=diffrax.PIDController(rtol=..., atol=...))`. "
+                    "In this case the same tolerances are used for the implicit "
+                    "solver as are used to control the adaptive stepping.\n"
+                    "(Note for advanced users: the tolerances for the implicit "
+                    "solver can also be explicitly set instead. For example "
+                    "`diffrax.diffeqsolve(..., solver=diffrax.Kvaerno5(root_finder="
+                    "diffrax.VeryChord(rtol=..., atol=..., "
+                    "norm=optimistix.max_norm)))`. In this case the norm must also be "
+                    "explicitly specified.)\n"
+                    "Adaptive step size controllers are the preferred solution, as "
+                    "sometimes the implicit solver may fail to converge, and in this "
+                    "case an adaptive step size controller can reject the step and try "
+                    "a smaller one, whilst with a fixed step size controller the "
+                    "overall differential equation solve will simply fail."
                 )
 
     # Error checking

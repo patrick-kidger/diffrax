@@ -504,3 +504,16 @@ def test_static(capfd):
         assert text == "static_made_jump=False static_result=None\n"
     finally:
         diffrax._integrate._PRINT_STATIC = False
+
+
+def test_implicit_tol_error():
+    msg = "the tolerances for the implicit solver have not been specified"
+    with pytest.raises(ValueError, match=msg):
+        diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: -y),
+            diffrax.Kvaerno5(),
+            0,
+            1,
+            0.01,
+            1.0,
+        )

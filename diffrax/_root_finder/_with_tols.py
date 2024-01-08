@@ -3,7 +3,15 @@ import jax.numpy as jnp
 import optimistix as optx
 
 
-use_stepsize_tol = object()
+class _UseStepSizeTol:
+    def __repr__(self):
+        return (
+            "<tolerance taken from `diffeqsolve(..., stepsize_controller=...)` "
+            "argument>"
+        )
+
+
+use_stepsize_tol = _UseStepSizeTol()
 
 
 def with_stepsize_controller_tols(cls: type[optx.AbstractRootFinder]):
