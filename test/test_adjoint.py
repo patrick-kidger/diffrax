@@ -363,3 +363,16 @@ def test_sde_against(getkey):
     grads3 = run((y0, args), diffrax.RecursiveCheckpointAdjoint())
     assert tree_allclose(grads1, grads2, rtol=1e-3, atol=1e-3)
     assert tree_allclose(grads1, grads3, rtol=1e-3, atol=1e-3)
+
+
+def test_implicit_runge_kutta_direct_adjoint():
+    diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: -y),
+        diffrax.Kvaerno5(),
+        0,
+        1,
+        0.01,
+        1.0,
+        adjoint=diffrax.DirectAdjoint(),
+        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
+    )
