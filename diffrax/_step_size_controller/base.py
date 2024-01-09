@@ -14,7 +14,9 @@ _ControllerState = TypeVar("_ControllerState")
 _Dt0 = TypeVar("_Dt0", None, RealScalarLike, Optional[RealScalarLike])
 
 
-class AbstractStepSizeController(eqx.Module, Generic[_ControllerState, _Dt0]):
+class AbstractStepSizeController(
+    eqx.Module, Generic[_ControllerState, _Dt0], strict=True
+):
     """Abstract base class for all step size controllers."""
 
     @abc.abstractmethod

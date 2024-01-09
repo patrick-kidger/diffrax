@@ -16,7 +16,7 @@ from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
 
-class AbstractTerm(eqx.Module):
+class AbstractTerm(eqx.Module, strict=True):
     r"""Abstract base class for all terms.
 
     Let $y$ solve some differential equation with vector field $f$ and control $x$.
@@ -155,7 +155,7 @@ class AbstractTerm(eqx.Module):
         return False
 
 
-class ODETerm(AbstractTerm):
+class ODETerm(AbstractTerm, strict=True):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
 
@@ -219,7 +219,7 @@ ODETerm.__init__.__doc__ = """**Arguments:**
 """
 
 
-class _CallableToPath(AbstractPath):
+class _CallableToPath(AbstractPath, strict=True):
     fn: Callable
 
     @property
@@ -250,7 +250,7 @@ def _prod(vf, control):
     return jnp.tensordot(vf, control, axes=jnp.ndim(control))
 
 
-class _ControlTerm(AbstractTerm):
+class _AbstractControlTerm(AbstractTerm, strict=True):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
     control: Union[AbstractPath, Callable] = eqx.field(converter=_callable_to_path)
 
@@ -273,7 +273,7 @@ class _ControlTerm(AbstractTerm):
         return ODETerm(vector_field=vector_field)
 
 
-_ControlTerm.__init__.__doc__ = """**Arguments:**
+_AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 
 - `vector_field`: A callable representing the vector field. This callable takes three
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
@@ -285,7 +285,7 @@ _ControlTerm.__init__.__doc__ = """**Arguments:**
 """
 
 
-class ControlTerm(_ControlTerm):
+class ControlTerm(_AbstractControlTerm, strict=True):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product.
 
@@ -327,7 +327,7 @@ class ControlTerm(_ControlTerm):
         return jtu.tree_map(_prod, vf, control)
 
 
-class WeaklyDiagonalControlTerm(_ControlTerm):
+class WeaklyDiagonalControlTerm(_AbstractControlTerm, strict=True):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
     matrix is square and diagonal. In this case we may represent the matrix as a vector
@@ -353,8 +353,8 @@ class WeaklyDiagonalControlTerm(_ControlTerm):
         return jtu.tree_map(operator.mul, vf, control)
 
 
-class _ControlToODE(eqx.Module):
-    control_term: _ControlTerm
+class _ControlToODE(eqx.Module, strict=True):
+    control_term: _AbstractControlTerm
 
     def __call__(self, t: RealScalarLike, y: Y, args: Args) -> Y:
         control = self.control_term.control.derivative(t)
@@ -368,7 +368,9 @@ def _sum(*x):
 _Terms = TypeVar("_Terms", bound=tuple[AbstractTerm, ...])
 
 
-class MultiTerm(AbstractTerm, Generic[_Terms]):
+class MultiTerm(
+    AbstractTerm, Generic[_Terms], strict=eqx.StrictConfig(allow_method_override=True)
+):
     r"""Accumulates multiple terms into a single term.
 
     Consider the SDE
@@ -436,7 +438,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         return any(term.is_vf_expensive(t0, t1, y, args) for term in self.terms)
 
 
-class WrapTerm(AbstractTerm):
+class WrapTerm(AbstractTerm, strict=eqx.StrictConfig(allow_method_override=True)):
     term: AbstractTerm
     direction: IntScalarLike
 
@@ -468,7 +470,7 @@ class WrapTerm(AbstractTerm):
         return self.term.is_vf_expensive(_t0, _t1, y, args)
 
 
-class AdjointTerm(AbstractTerm):
+class AdjointTerm(AbstractTerm, strict=eqx.StrictConfig(allow_method_override=True)):
     term: AbstractTerm
 
     def is_vf_expensive(

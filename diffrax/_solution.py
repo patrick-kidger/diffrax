@@ -1,5 +1,6 @@
 from typing import Any, Optional
 
+import equinox as eqx
 import jax
 import optimistix as optx
 from jaxtyping import Array, Bool, PyTree, Real, Shaped
@@ -55,7 +56,7 @@ def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
     return RESULTS.where(pred, old_result, out_result)
 
 
-class Solution(AbstractPath):
+class Solution(AbstractPath, strict=eqx.StrictConfig(allow_method_override=True)):
     """The solution to a differential equation.
 
     **Attributes:**

@@ -19,7 +19,7 @@ from .._misc import (
 from .base import AbstractBrownianPath
 
 
-class UnsafeBrownianPath(AbstractBrownianPath):
+class UnsafeBrownianPath(AbstractBrownianPath, strict=True):
     """Brownian simulation that is only suitable for certain cases.
 
     This is a very quick way to simulate Brownian motion, but can only be used when all

@@ -32,7 +32,7 @@ _dopri5_tableau = ButcherTableau(
 )
 
 
-class _Dopri5Interpolation(FourthOrderPolynomialInterpolation):
+class _Dopri5Interpolation(FourthOrderPolynomialInterpolation, strict=True):
     c_mid: ClassVar[np.ndarray] = np.array(
         [
             6025192743 / 30085553152 / 2,

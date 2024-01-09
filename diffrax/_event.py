@@ -10,7 +10,7 @@ from ._custom_types import BoolScalarLike, RealScalarLike
 from ._step_size_controller import AbstractAdaptiveStepSizeController
 
 
-class AbstractDiscreteTerminatingEvent(eqx.Module):
+class AbstractDiscreteTerminatingEvent(eqx.Module, strict=True):
     """Evaluated at the end of each integration step. If true then the solve is stopped
     at that time.
     """
@@ -30,7 +30,7 @@ class AbstractDiscreteTerminatingEvent(eqx.Module):
         """
 
 
-class DiscreteTerminatingEvent(AbstractDiscreteTerminatingEvent):
+class DiscreteTerminatingEvent(AbstractDiscreteTerminatingEvent, strict=True):
     """Terminates the solve if its condition is ever active."""
 
     cond_fn: Callable[..., BoolScalarLike]
@@ -50,7 +50,7 @@ DiscreteTerminatingEvent.__init__.__doc__ = """**Arguments:**
 """
 
 
-class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
+class SteadyStateEvent(AbstractDiscreteTerminatingEvent, strict=True):
     """Terminates the solve once it reaches a steady state."""
 
     rtol: Optional[float] = None

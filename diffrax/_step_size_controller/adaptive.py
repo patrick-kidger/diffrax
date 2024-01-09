@@ -89,7 +89,7 @@ _Dt0 = TypeVar("_Dt0", None, RealScalarLike, Optional[RealScalarLike])
 
 
 class AbstractAdaptiveStepSizeController(
-    AbstractStepSizeController[_ControllerState, _Dt0]
+    AbstractStepSizeController[_ControllerState, _Dt0], strict=True
 ):
     """Indicates an adaptive step size controller.
 
@@ -152,7 +152,7 @@ else:
 # TODO: we don't currently offer a limiter, or a variant accept/reject scheme, as given
 #       in Soderlind and Wang 2006.
 class PIDController(
-    AbstractAdaptiveStepSizeController[_PidState, Optional[RealScalarLike]]
+    AbstractAdaptiveStepSizeController[_PidState, Optional[RealScalarLike]], strict=True
 ):
     r"""Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.

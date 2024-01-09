@@ -89,7 +89,7 @@ _implicit_tableau = ButcherTableau(
 )
 
 
-class KenCarpInterpolation(AbstractLocalInterpolation):
+class AbstractKenCarpInterpolation(AbstractLocalInterpolation, strict=True):
     t0: RealScalarLike
     t1: RealScalarLike
     y0: Y
@@ -120,7 +120,7 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
         return (self.y0**ω + vector_tree_dot(coeffs, k) ** ω).ω
 
 
-class _KenCarp3Interpolation(KenCarpInterpolation):
+class _KenCarp3Interpolation(AbstractKenCarpInterpolation, strict=True):
     coeffs = np.array(
         [
             [-215264564351 / 13552729205753, 4655552711362 / 22874653954995],

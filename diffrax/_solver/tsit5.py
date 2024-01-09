@@ -98,7 +98,7 @@ _tsit5_tableau = ButcherTableau(
 )
 
 
-class _Tsit5Interpolation(AbstractLocalInterpolation):
+class _Tsit5Interpolation(AbstractLocalInterpolation, strict=True):
     t0: RealScalarLike
     t1: RealScalarLike
     y0: Y

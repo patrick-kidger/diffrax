@@ -23,7 +23,7 @@ from ._misc import fill_forward, left_broadcast_to
 from ._path import AbstractPath
 
 
-class AbstractGlobalInterpolation(AbstractPath):
+class AbstractGlobalInterpolation(AbstractPath, strict=True):
     ts: AbstractVar[Real[Array, " times"]]
     ts_size: AbstractVar[IntScalarLike]
 
@@ -52,7 +52,7 @@ class AbstractGlobalInterpolation(AbstractPath):
         return self.ts[-1]
 
 
-class LinearInterpolation(AbstractGlobalInterpolation):
+class LinearInterpolation(AbstractGlobalInterpolation, strict=True):
     """Linearly interpolates some data `ys` over the interval $[t_0, t_1]$ with knots
     at `ts`.
 
@@ -178,7 +178,7 @@ interpolate over these.
 """
 
 
-class CubicInterpolation(AbstractGlobalInterpolation):
+class CubicInterpolation(AbstractGlobalInterpolation, strict=True):
     """Piecewise cubic spline interpolation over the interval $[t_0, t_1]$."""
 
     ts: Real[Array, " times"]
@@ -302,7 +302,7 @@ d[i] * (t - ts[i]) ** 3 + c[i] * (t - ts[i]) ** 2 + b[i] * (t - ts[i]) + a[i]
 """
 
 
-class DenseInterpolation(AbstractGlobalInterpolation):
+class DenseInterpolation(AbstractGlobalInterpolation, strict=True):
     ts: Real[Array, " times"]
     # DenseInterpolations typically get `ts` and `infos` that are way longer than they
     # need to be, and padded with `nan`s. This means the normal way of measuring how
