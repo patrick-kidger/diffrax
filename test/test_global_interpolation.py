@@ -1,15 +1,16 @@
 import functools as ft
 import operator
-from typing import Tuple
+from typing import cast
 
 import diffrax
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import jax.tree_util as jtu
 import pytest
+from jaxtyping import Array
 
-from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, shaped_allclose
+from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 
 
 @pytest.mark.parametrize("mode", ["linear", "linear2", "cubic"])
@@ -47,8 +48,8 @@ def test_interpolation_coeffs(mode, unsqueeze):
         def _merge(lef, rig):
             # Must be identical where neither of them are nan
             isnan = jnp.isnan(lef) | jnp.isnan(rig)
-            _lef = jnp.where(isnan, 0, lef)
-            _rig = jnp.where(isnan, 0, rig)
+            _lef = cast(Array, jnp.where(isnan, 0, lef))
+            _rig = cast(Array, jnp.where(isnan, 0, rig))
             assert jnp.array_equal(_lef, _rig)
             return jnp.where(jnp.isnan(rig), lef, rig)
 
@@ -58,40 +59,34 @@ def test_interpolation_coeffs(mode, unsqueeze):
     true_ys = ys.at[jnp.array([0, 9])].set(jnp.nan)
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
     if unsqueeze:
         interp_ys = _interp(tree=False, duplicate=True)
-        assert shaped_allclose(
-            interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True
-        )
+        assert tree_allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
     (interp_ys,) = _interp(tree=True, duplicate=False)
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
 
     interp_ys = _interp(tree=False, duplicate=False, fill_forward_nans_at_end=True)
     true_ys = ys.at[0].set(jnp.nan).at[9].set(8.0)
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
     if unsqueeze:
         interp_ys = _interp(tree=False, duplicate=True, fill_forward_nans_at_end=True)
-        assert shaped_allclose(
-            interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True
-        )
+        assert tree_allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
     (interp_ys,) = _interp(tree=True, duplicate=False, fill_forward_nans_at_end=True)
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
 
     interp_ys = _interp(tree=False, duplicate=False, replace_nans_at_start=5.5)
     true_ys = ys.at[0].set(5.5).at[9].set(jnp.nan)
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
     if unsqueeze:
         interp_ys = _interp(tree=False, duplicate=True, replace_nans_at_start=5.5)
-        assert shaped_allclose(
-            interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True
-        )
+        assert tree_allclose(interp_ys, jnp.repeat(true_ys, 2, axis=-1), equal_nan=True)
     (interp_ys,) = _interp(tree=True, duplicate=False, replace_nans_at_start=(5.5,))
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
 
 
 def test_rectilinear_interpolation_coeffs():
@@ -125,11 +120,11 @@ def test_rectilinear_interpolation_coeffs():
             0.1,
         ]
     )
-    assert shaped_allclose(interp_ts, true_ts)
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ts,), (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
-    assert shaped_allclose(interp_ts, true_ts)
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ts, true_ts)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
+    interp_ts, (interp_ys,) = diffrax.rectilinear_interpolation(ts, (ys,))
+    assert tree_allclose(interp_ts, true_ts)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
 
     interp_ts, interp_ys = diffrax.rectilinear_interpolation(
         ts, ys, replace_nans_at_start=5.5
@@ -157,13 +152,13 @@ def test_rectilinear_interpolation_coeffs():
             0.1,
         ]
     )
-    assert shaped_allclose(interp_ts, true_ts)
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
-    (interp_ts,), (interp_ys,) = diffrax.rectilinear_interpolation(
+    assert tree_allclose(interp_ts, true_ts)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
+    interp_ts, (interp_ys,) = diffrax.rectilinear_interpolation(
         ts, (ys,), replace_nans_at_start=(5.5,)
     )
-    assert shaped_allclose(interp_ts, true_ts)
-    assert shaped_allclose(interp_ys, true_ys, equal_nan=True)
+    assert tree_allclose(interp_ts, true_ts)
+    assert tree_allclose(interp_ys, true_ys, equal_nan=True)
 
 
 @pytest.mark.parametrize("unsqueeze", [True, False])
@@ -183,11 +178,11 @@ def test_cubic_interpolation_no_deriv0(unsqueeze):
     true_ys = 0.1 + 0.4 * jnp.linspace(0, 1, 10)
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys)
+    assert tree_allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
     true_derivs = jnp.broadcast_to(0.8, true_ys.shape)
-    assert shaped_allclose(derivs, true_derivs)
+    assert tree_allclose(derivs, true_derivs)
 
     # Second piece is cubic
 
@@ -197,13 +192,13 @@ def test_cubic_interpolation_no_deriv0(unsqueeze):
     true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(points)
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys)
+    assert tree_allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
     true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)
     if unsqueeze:
         true_derivs = true_derivs[:, None]
-    assert shaped_allclose(derivs, true_derivs)
+    assert tree_allclose(derivs, true_derivs)
 
 
 @pytest.mark.parametrize("unsqueeze", [True, False])
@@ -227,7 +222,7 @@ def test_cubic_interpolation_deriv0(unsqueeze):
     )
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys)
+    assert tree_allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
     true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([-4.8, -1.6, 0.8]), p))(
@@ -235,7 +230,7 @@ def test_cubic_interpolation_deriv0(unsqueeze):
     )
     if unsqueeze:
         true_derivs = true_derivs[:, None]
-    assert shaped_allclose(derivs, true_derivs)
+    assert tree_allclose(derivs, true_derivs)
 
     # Second piece is cubic
 
@@ -245,13 +240,13 @@ def test_cubic_interpolation_deriv0(unsqueeze):
     true_ys = jax.vmap(lambda p: jnp.polyval(jnp.array([1.5, -3, 0.8, 0.5]), p))(points)
     if unsqueeze:
         true_ys = true_ys[:, None]
-    assert shaped_allclose(interp_ys, true_ys)
+    assert tree_allclose(interp_ys, true_ys)
 
     derivs = jax.vmap(interp.derivative)(points)
     true_derivs = jax.vmap(lambda p: jnp.polyval(jnp.array([4.5, -6, 0.8]), p))(points)
     if unsqueeze:
         true_derivs = true_derivs[:, None]
-    assert shaped_allclose(derivs, true_derivs)
+    assert tree_allclose(derivs, true_derivs)
 
 
 @pytest.mark.parametrize("mode", ["linear", "cubic"])
@@ -262,7 +257,7 @@ def test_interpolation_classes(mode, getkey):
         jnp.linspace(0, 10, length),
         jnp.array([0.0, 2.0, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1]),
     ]
-    _make = lambda: jrandom.normal(getkey(), (length, num_channels))
+    _make = lambda: jr.normal(getkey(), (length, num_channels))
     ys_ = [
         _make(),
         [_make(), {"a": _make(), "b": _make()}],
@@ -281,7 +276,7 @@ def test_interpolation_classes(mode, getkey):
             assert jnp.array_equal(interp.t0, ts[0])
             assert jnp.array_equal(interp.t1, ts[-1])
             pred_ys = jax.vmap(interp.evaluate)(ts)
-            assert shaped_allclose(pred_ys, ys)
+            assert tree_allclose(pred_ys, ys)
 
             if mode == "linear":
                 for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
@@ -295,30 +290,31 @@ def test_interpolation_classes(mode, getkey):
 
                     def _test(firstval, vals, y0, y1):
                         vals = jnp.concatenate([firstval[None], vals])
-                        true_vals = y0 + ((points - t0) / (t1 - t0))[:, None] * (
-                            y1 - y0
-                        )
-                        assert shaped_allclose(vals, true_vals)
+                        with jax.numpy_rank_promotion("allow"):
+                            true_vals = y0 + ((points - t0) / (t1 - t0))[:, None] * (
+                                y1 - y0
+                            )
+                        assert tree_allclose(vals, true_vals)
 
                     jtu.tree_map(_test, firstval, vals, y0, y1)
                     firstderiv = interp.derivative(t0, left=False)
                     derivs = jax.vmap(interp.derivative)(points[1:])
 
-                    def _test(firstderiv, derivs, y0, y1):
+                    def _test2(firstderiv, derivs, y0, y1):
                         derivs = jnp.concatenate([firstderiv[None], derivs])
                         true_derivs = (y1 - y0) / (t1 - t0)
                         true_derivs = jnp.broadcast_to(true_derivs, derivs.shape)
-                        assert shaped_allclose(derivs, true_derivs)
+                        assert tree_allclose(derivs, true_derivs)
 
-                    jtu.tree_map(_test, firstderiv, derivs, y0, y1)
+                    jtu.tree_map(_test2, firstderiv, derivs, y0, y1)
 
 
 def _test_dense_interpolation(solver, key, t1):
-    y0 = jrandom.uniform(key, (), minval=0.4, maxval=2)
+    y0 = jr.uniform(key, (), minval=0.4, maxval=2)
     dt0 = t1 / 1e3
     if (
         solver.term_structure
-        == diffrax.MultiTerm[Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
+        == diffrax.MultiTerm[tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
     ):
         term = diffrax.MultiTerm(
             diffrax.ODETerm(lambda t, y, args: -0.7 * y),
@@ -348,7 +344,7 @@ def _test_dense_interpolation(solver, key, t1):
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_dense_interpolation(solver, getkey):
     solver = implicit_tol(solver)
-    key = jrandom.PRNGKey(5678)
+    key = jr.PRNGKey(5678)
     vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver, key, 1)
     assert jnp.array_equal(vals[0], true_vals[0])
     val_tol = {
@@ -356,7 +352,7 @@ def test_dense_interpolation(solver, getkey):
         diffrax.ImplicitEuler: 1e-3,
         diffrax.LeapfrogMidpoint: 1e-5,
     }.get(type(solver), 1e-6)
-    assert shaped_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
+    assert tree_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
     deriv_tol = {
         diffrax.ReversibleHeun: 1e-2,
         diffrax.Midpoint: 1e-2,
@@ -365,7 +361,7 @@ def test_dense_interpolation(solver, getkey):
         diffrax.ImplicitEuler: 1e-3,
         diffrax.Ralston: 1e-3,
     }.get(type(solver), 1e-6)
-    assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
+    assert tree_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
 
 
 # When vmap'ing then it can happen that some batch elements take more steps to solve
@@ -374,7 +370,7 @@ def test_dense_interpolation(solver, getkey):
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
 def test_dense_interpolation_vmap(solver, getkey):
     solver = implicit_tol(solver)
-    key = jrandom.PRNGKey(5678)
+    key = jr.PRNGKey(5678)
     _test_dense = ft.partial(_test_dense_interpolation, solver, key)
     _test_dense_vmap = jax.vmap(_test_dense)
     vals, true_vals, derivs, true_derivs = _test_dense_vmap(jnp.array([0.5, 1.0]))
@@ -384,7 +380,7 @@ def test_dense_interpolation_vmap(solver, getkey):
         diffrax.ImplicitEuler: 1e-3,
         diffrax.LeapfrogMidpoint: 1e-5,
     }.get(type(solver), 1e-6)
-    assert shaped_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
+    assert tree_allclose(vals, true_vals, atol=val_tol, rtol=val_tol)
     deriv_tol = {
         diffrax.ReversibleHeun: 1e-2,
         diffrax.Midpoint: 1e-2,
@@ -393,4 +389,4 @@ def test_dense_interpolation_vmap(solver, getkey):
         diffrax.ImplicitEuler: 1e-3,
         diffrax.Ralston: 1e-3,
     }.get(type(solver), 1e-6)
-    assert shaped_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
+    assert tree_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)

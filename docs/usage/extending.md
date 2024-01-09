@@ -11,7 +11,7 @@ The main points of extension are as follows:
         - For singly-diagonal-implicit-Runge--Kutta methods (SDIRK) then inherit from `diffrax.AbstractSDIRK`.
         - For explicit-singly-diagonal-implicit-Runge--Kutta methods (ESDIRK) then inherit from `diffrax.AbstractESDIRK`.
     - Several abstract base classes are available to specify the behaviour of the solver:
-        - `diffrax.AbstractImplicitSolver` are those solvers that solve implicit problems (and therefore take a `nonlinear_solver` argument).
+        - `diffrax.AbstractImplicitSolver` are those solvers that solve implicit problems (and therefore take a `root_finder` argument).
         - `diffrax.AbstractAdaptiveSolver` are those solvers capable of providing error estimates (and thus can be used with adaptive step size controllers).
         - `diffrax.AbstractItoSolver` and `diffrax.AbstractStratonovichSolver` are used to specify which SDE solution a particular solver is known to converge to.
         - `diffrax.AbstractWrappedSolver` indicates that the solver is used to wrap another solver, and so e.g. it will be treated as an implicit solver/etc. if the wrapped solver is also an implicit solver/etc.
@@ -22,8 +22,6 @@ The main points of extension are as follows:
 - **Custom Brownian motion simulations** should inherit from [`diffrax.AbstractBrownianPath`][].
 
 - **Custom controls** (e.g. **custom interpolation schemes** analogous to [`diffrax.CubicInterpolation`][]) should inherit from [`diffrax.AbstractPath`][].
-
-- **Custom nonlinear solvers** (used in implicit methods) should inherit from [`diffrax.AbstractNonlinearSolver`][].
 
 - **Custom terms** should inherit from [`diffrax.AbstractTerm`][].
     - For example, if the vector field - control interaction is a matrix-vector product, but the matrix is known to have special structure, then you may wish to create a custom term that can calculate this interaction more efficiently than is given by a full matrix-vector product. For example this is done with [`diffrax.WeaklyDiagonalControlTerm`][] as compared to [`diffrax.ControlTerm`][].

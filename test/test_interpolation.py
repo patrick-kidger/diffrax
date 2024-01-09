@@ -1,9 +1,9 @@
 import diffrax
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 
-from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, shaped_allclose
+from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 
 
 def _test_path_derivative(path, name):
@@ -11,17 +11,17 @@ def _test_path_derivative(path, name):
         t = path.t0 + percentage * (path.t1 - path.t0)
         _, x = jax.jvp(path.evaluate, (t,), (jnp.ones_like(t),))
         y = path.derivative(t)
-        assert shaped_allclose(x, y, rtol=1e-3, atol=1e-4)
+        assert tree_allclose(x, y, rtol=1e-3, atol=1e-4)
 
 
 def _test_path_endpoints(path, name, y0, y1):
-    assert shaped_allclose(y0, path.evaluate(path.t0))
-    assert shaped_allclose(y1, path.evaluate(path.t1))
+    assert tree_allclose(y0, path.evaluate(path.t0))
+    assert tree_allclose(y1, path.evaluate(path.t1))
 
 
 def test_derivative(getkey):
     ts = jnp.linspace(0, 5, 8)
-    ys = jrandom.normal(getkey(), (8, 4))
+    ys = jr.normal(getkey(), (8, 4))
 
     paths = []
 
@@ -34,7 +34,7 @@ def test_derivative(getkey):
     cubic_interp = diffrax.CubicInterpolation(ts=ts, coeffs=cubic_coeffs)
     paths.append((cubic_interp, "cubic", ys[0], ys[-1]))
 
-    y0 = jrandom.normal(getkey(), (3,))
+    y0 = jr.normal(getkey(), (3,))
     dense_interp = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, p: -y),
         diffrax.Euler(),
@@ -44,7 +44,7 @@ def test_derivative(getkey):
         y0,
         saveat=diffrax.SaveAt(dense=True, t1=True),
     )
-    y1 = dense_interp.ys[-1]
+    y1 = dense_interp.ys[-1]  # pyright: ignore
     paths.append((dense_interp, "dense", y0, y1))
 
     # local interpolation
@@ -56,7 +56,7 @@ def test_derivative(getkey):
 
     for solver in all_ode_solvers:
         solver = implicit_tol(solver)
-        y0 = jrandom.normal(getkey(), (3,))
+        y0 = jr.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
             diffrax.ODETerm(lambda t, y, p: -y),
             solver,
@@ -66,12 +66,12 @@ def test_derivative(getkey):
             y0,
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
-        y1 = solution.ys[-1]
+        y1 = solution.ys[-1]  # pyright: ignore
         paths.append((solution, type(solver).__name__, y0, y1))
 
     for solver in all_split_solvers:
         solver = implicit_tol(solver)
-        y0 = jrandom.normal(getkey(), (3,))
+        y0 = jr.normal(getkey(), (3,))
         solution = diffrax.diffeqsolve(
             diffrax.MultiTerm(
                 diffrax.ODETerm(lambda t, y, p: -0.7 * y),
@@ -84,7 +84,7 @@ def test_derivative(getkey):
             y0,
             saveat=diffrax.SaveAt(dense=True, t1=True),
         )
-        y1 = solution.ys[-1]
+        y1 = solution.ys[-1]  # pyright: ignore
         paths.append((solution, type(solver).__name__, y0, y1))
 
     # actually do tests

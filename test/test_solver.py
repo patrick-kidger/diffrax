@@ -1,13 +1,15 @@
-from typing import Tuple
+from typing import ClassVar
 
 import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.tree_util as jtu
+import optimistix as optx
 import pytest
 
-from .helpers import implicit_tol, shaped_allclose
+from .helpers import implicit_tol, tree_allclose
 
 
 def test_half_solver():
@@ -30,9 +32,7 @@ def test_instance_check():
 
 def test_implicit_euler_adaptive():
     term = diffrax.ODETerm(lambda t, y, args: -10 * y**3)
-    solver1 = diffrax.ImplicitEuler(
-        nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-5, atol=1e-5)
-    )
+    solver1 = diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-5, atol=1e-5))
     solver2 = diffrax.ImplicitEuler()
     t0 = 0
     t1 = 1
@@ -50,26 +50,36 @@ def test_implicit_euler_adaptive():
         stepsize_controller=stepsize_controller,
         throw=False,
     )
-    assert out1.result == diffrax.RESULTS.implicit_nonconvergence
+    assert out1.result == diffrax.RESULTS.nonlinear_divergence
     assert out2.result == diffrax.RESULTS.successful
+
+
+class _DoubleDopri5(diffrax.AbstractRungeKutta):
+    tableau: ClassVar[diffrax.MultiButcherTableau] = diffrax.MultiButcherTableau(
+        diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
+    )
+    calculate_jacobian: ClassVar[
+        diffrax.CalculateJacobian
+    ] = diffrax.CalculateJacobian.never
+
+    @staticmethod
+    def interpolation_cls(**kwargs):
+        kwargs.pop("k")
+        return diffrax.LocalLinearInterpolation(**kwargs)
+
+    def order(self, terms):
+        return 5
 
 
 @pytest.mark.parametrize("vf_expensive", (False, True))
 def test_multiple_tableau_single_step(vf_expensive):
-    class DoubleDopri5(diffrax.AbstractRungeKutta):
-        tableau = diffrax.MultiButcherTableau(
-            diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
-        )
-        interpolation_cls = None
-        calculate_jacobian = diffrax.CalculateJacobian.never
-
     mlp1 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(0))
     mlp2 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(1))
     term1 = diffrax.ODETerm(lambda t, y, args: mlp1(y))
     term2 = diffrax.ODETerm(lambda t, y, args: mlp2(y))
     terms = diffrax.MultiTerm(term1, term2)
     solver1 = diffrax.Dopri5()
-    solver2 = DoubleDopri5()
+    solver2 = _DoubleDopri5()
     t0 = 0.3
     t1 = 0.7
     y0 = jnp.array([1.0, 2.0])
@@ -89,25 +99,11 @@ def test_multiple_tableau_single_step(vf_expensive):
         terms, t0, t1, y0, None, solver_state=solver_state2, made_jump=False
     )
     out2[2]["k"] = out2[2]["k"][0] + out2[2]["k"][1]
-    assert shaped_allclose(out1, out2)
+    assert tree_allclose(out1, out2)
 
 
 @pytest.mark.parametrize("adaptive", (True, False))
 def test_multiple_tableau1(adaptive):
-    class DoubleDopri5(diffrax.AbstractRungeKutta):
-        tableau = diffrax.MultiButcherTableau(
-            diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
-        )
-        calculate_jacobian = diffrax.CalculateJacobian.never
-
-        @staticmethod
-        def interpolation_cls(**kwargs):
-            kwargs.pop("k")
-            return diffrax.LocalLinearInterpolation(**kwargs)
-
-        def order(self, terms):
-            return 5
-
     mlp1 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(0))
     mlp2 = eqx.nn.MLP(2, 2, 32, 1, key=jr.PRNGKey(1))
 
@@ -132,19 +128,19 @@ def test_multiple_tableau1(adaptive):
     )
     out_b = diffrax.diffeqsolve(
         diffrax.MultiTerm(term1, term2),
-        DoubleDopri5(),
+        _DoubleDopri5(),
         t0,
         t1,
         dt0,
         y0,
         stepsize_controller=stepsize_controller,
     )
-    assert jnp.allclose(out_a.ys, out_b.ys, rtol=1e-8, atol=1e-8)
+    assert jnp.allclose(out_a.ys, out_b.ys, rtol=1e-8, atol=1e-8)  # pyright: ignore
 
     with pytest.raises(ValueError):
         diffrax.diffeqsolve(
             (term1, term2),
-            DoubleDopri5(),
+            _DoubleDopri5(),  # pyright: ignore
             t0,
             t1,
             dt0,
@@ -220,14 +216,21 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         tableau = diffrax.MultiButcherTableau(diffrax.Dopri5.tableau, tableau_)
         calculate_jacobian = calculate_jacobian_
         if implicit:
-            nonlinear_solver = diffrax.NewtonNonlinearSolver(rtol=1e-3, atol=1e-3)
+            root_finder: optx.AbstractRootFinder = diffrax.VeryChord(
+                rtol=1e-3, atol=1e-3
+            )
+            root_find_max_steps: int = 10
 
         @staticmethod
         def interpolation_cls(*, t0, t1, y0, y1, k):
             k_left, k_right = k
             k = {"y": k_left["y"] + k_right["y"]}
-            return diffrax.solver.dopri5._Dopri5Interpolation(
-                t0=t0, t1=t1, y0=y0, y1=y1, k=k
+            return diffrax._solver.dopri5._Dopri5Interpolation(
+                t0=t0,
+                t1=t1,
+                y0=y0,  # pyright: ignore
+                y1=y1,  # pyright: ignore
+                k=k,  # pyright: ignore
             )
 
         def order(self, terms):
@@ -267,16 +270,19 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         tol = 1e-4  # same ODE but different solver
     else:
         tol = 1e-8  # should be exact same numerics, up to floating point weirdness
-    assert shaped_allclose(sol.ys, true_sol.ys, rtol=tol, atol=tol)
+    assert tree_allclose(sol.ys, true_sol.ys, rtol=tol, atol=tol)
 
 
 # Essentially used as a check that our general IMEX implementation is correct.
 def test_sil3():
     class ReferenceSil3(diffrax.AbstractImplicitSolver):
         term_structure = diffrax.MultiTerm[
-            Tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]
+            tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]
         ]
         interpolation_cls = diffrax.LocalLinearInterpolation
+
+        root_finder: optx.AbstractRootFinder
+        root_find_max_steps: int = 10
 
         def order(self, terms):
             return 2
@@ -284,7 +290,7 @@ def test_sil3():
         def init(self, terms, t0, t1, y0, args):
             return None
 
-        def func(self, terms, t, y, args):
+        def func(self, terms, t0, y0, args):
             assert False
 
         def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
@@ -307,7 +313,7 @@ def test_sil3():
                 return ya - (y0 + (1 / 3) * f0 + (1 / 6) * g0 + (1 / 6) * g1)
 
             ta = t0 + (1 / 3) * dt
-            ya = self.nonlinear_solver(_second_stage, y0, None).root
+            ya = optx.root_find(_second_stage, self.root_finder, y0).value
             fs.append(ex_vf_prod(ta, ya))
             gs.append(im_vf_prod(ta, ya))
 
@@ -320,7 +326,7 @@ def test_sil3():
                 )
 
             tb = t0 + (2 / 3) * dt
-            yb = self.nonlinear_solver(_third_stage, ya, None).root
+            yb = optx.root_find(_third_stage, self.root_finder, ya).value
             fs.append(ex_vf_prod(tb, yb))
             gs.append(im_vf_prod(tb, yb))
 
@@ -339,7 +345,7 @@ def test_sil3():
                 )
 
             tc = t1
-            yc = self.nonlinear_solver(_fourth_stage, yb, None).root
+            yc = optx.root_find(_fourth_stage, self.root_finder, yb).value
             fs.append(ex_vf_prod(tc, yc))
             gs.append(im_vf_prod(tc, yc))
 
@@ -360,14 +366,11 @@ def test_sil3():
             ks = (jnp.stack(fs), jnp.stack(gs))
             dense_info = dict(y0=y0, y1=y1, k=ks)
             state = (False, (f3 / dt, g3 / dt))
-            return y1, y_error, dense_info, state, jnp.array(diffrax.RESULTS.successful)
+            result = jtu.tree_map(jnp.asarray, diffrax.RESULTS.successful)
+            return y1, y_error, dense_info, state, result
 
-    reference_solver = ReferenceSil3(
-        nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-8, atol=1e-8)
-    )
-    solver = diffrax.Sil3(
-        nonlinear_solver=diffrax.NewtonNonlinearSolver(rtol=1e-8, atol=1e-8)
-    )
+    reference_solver = ReferenceSil3(root_finder=optx.Newton(rtol=1e-8, atol=1e-8))
+    solver = diffrax.Sil3(root_finder=diffrax.VeryChord(rtol=1e-8, atol=1e-8))
 
     key = jr.PRNGKey(5678)
     mlpkey1, mlpkey2, ykey = jr.split(key, 3)
@@ -394,7 +397,7 @@ def test_sil3():
     reference_out = reference_solver.step(
         terms, t0, t1, y0, args, solver_state=None, made_jump=False
     )
-    assert shaped_allclose(out, reference_out)
+    assert tree_allclose(out, reference_out)
 
 
 # Honestly not sure how meaningful this test is -- Rober isn't *that* stiff.
@@ -454,7 +457,7 @@ def test_rober(solver):
             [6.1723488239606716e-01, 6.1535912746388841e-06, 3.8275896401264059e-01],
         ]
     )
-    assert jnp.allclose(sol.ys, true_ys, rtol=1e-3, atol=1e-8)
+    assert jnp.allclose(sol.ys, true_ys, rtol=1e-3, atol=1e-8)  # pyright: ignore
 
 
 def test_implicit_closure_convert():
@@ -467,6 +470,31 @@ def test_implicit_closure_convert():
         solver = diffrax.Kvaerno3()
         solver = implicit_tol(solver)
         out = diffrax.diffeqsolve(term, solver, 0, 1, 0.1, 1.0)
-        return out.ys[0]
+        return out.ys[0]  # pyright: ignore
 
     f(1.0)
+
+
+# Doesn't crash
+def test_adaptive_dt0_semiimplicit_euler():
+    f = diffrax.ODETerm(lambda t, y, args: y)
+    g = diffrax.ODETerm(lambda t, y, args: y)
+    solver = diffrax.HalfSolver(diffrax.SemiImplicitEuler())
+    y0 = (1.0, 1.0)
+    stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
+    diffrax.diffeqsolve(
+        (f, g), solver, 0, 1, None, y0, stepsize_controller=stepsize_controller
+    )
+
+
+# Doesn't crash
+def test_adaptive_dt0_milstein(getkey):
+    bm = diffrax.VirtualBrownianTree(0, 1, 1e-3, (), key=getkey())
+    f = diffrax.ODETerm(lambda t, y, args: y)
+    g = diffrax.ControlTerm(lambda t, y, args: y, bm)
+    terms = diffrax.MultiTerm(f, g)
+    solver = diffrax.HalfSolver(diffrax.ItoMilstein())
+    stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
+    diffrax.diffeqsolve(
+        terms, solver, 0, 1, None, 1, stepsize_controller=stepsize_controller
+    )

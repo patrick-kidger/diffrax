@@ -1,7 +1,10 @@
+from typing import cast
+
 import diffrax
 import jax
 import jax.numpy as jnp
 import pytest
+from jaxtyping import Array
 
 
 def test_discrete_terminate1():
@@ -20,7 +23,7 @@ def test_discrete_terminate1():
     sol = diffrax.diffeqsolve(
         term, solver, t0, t1, dt0, y0, discrete_terminating_event=event
     )
-    assert jnp.all(sol.ys > 10)
+    assert jnp.all(cast(Array, sol.ys) > 10)
 
 
 def test_discrete_terminate2():
@@ -39,7 +42,7 @@ def test_discrete_terminate2():
     sol = diffrax.diffeqsolve(
         term, solver, t0, t1, dt0, y0, discrete_terminating_event=event
     )
-    assert jnp.all(sol.ts > 10)
+    assert jnp.all(cast(Array, sol.ts) > 10)
 
 
 def test_event_backsolve():
@@ -69,7 +72,7 @@ def test_event_backsolve():
             discrete_terminating_event=event,
             adjoint=diffrax.BacksolveAdjoint(),
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
     # And in particular not some other error.
     with pytest.raises(NotImplementedError):

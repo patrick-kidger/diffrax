@@ -1,7 +1,7 @@
 import diffrax
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import numpy as np
 import pytest
 
@@ -15,9 +15,9 @@ def test_vmap_y0(stepsize_controller):
     t1 = 1
     dt0 = 0.1
 
-    key = jrandom.PRNGKey(5678)
+    key = jr.PRNGKey(5678)
 
-    y0 = jrandom.normal(key, (10, 2))
+    y0 = jr.normal(key, (10, 2))
     a = jnp.array([[-0.2, 1], [1, -0.2]])
 
     def f(t, y, args):
@@ -38,8 +38,8 @@ def test_vmap_y0(stepsize_controller):
     )(y0)
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert jnp.array_equal(sol.ts, jnp.full((10, 1), t0))
-    assert sol.ys.shape == (10, 1, 2)
+    assert jnp.array_equal(sol.ts, jnp.full((10, 1), t0))  # pyright: ignore
+    assert sol.ys.shape == (10, 1, 2)  # pyright: ignore
 
     saveat = diffrax.SaveAt(t1=True)
     sol = jax.vmap(
@@ -56,8 +56,8 @@ def test_vmap_y0(stepsize_controller):
     )(y0)
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert jnp.array_equal(sol.ts, jnp.full((10, 1), t1))
-    assert sol.ys.shape == (10, 1, 2)
+    assert jnp.array_equal(sol.ts, jnp.full((10, 1), t1))  # pyright: ignore
+    assert sol.ys.shape == (10, 1, 2)  # pyright: ignore
 
     _t = jnp.array([0, 0.3, 0.7, 1])
     saveat = diffrax.SaveAt(ts=_t)
@@ -75,8 +75,8 @@ def test_vmap_y0(stepsize_controller):
     )(y0)
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert jnp.array_equal(sol.ts, jnp.broadcast_to(_t, (10, 4)))
-    assert sol.ys.shape == (10, 4, 2)
+    assert jnp.array_equal(sol.ts, jnp.broadcast_to(_t, (10, 4)))  # pyright: ignore
+    assert sol.ys.shape == (10, 4, 2)  # pyright: ignore
 
     saveat = diffrax.SaveAt(steps=True)
     sol = jax.vmap(
@@ -97,11 +97,11 @@ def test_vmap_y0(stepsize_controller):
         assert len(set(np.asarray(num_steps))) > 1
     assert jnp.array_equal(sol.t0, jnp.full((10,), t0))
     assert jnp.array_equal(sol.t1, jnp.full((10,), t1))
-    assert sol.ts.shape == (
+    assert sol.ts.shape == (  # pyright: ignore
         10,
         4096,
     )  # 4096 is the default diffeqsolve(max_steps=...)
-    assert sol.ys.shape == (10, 4096, 2)
+    assert sol.ys.shape == (10, 4096, 2)  # pyright: ignore
 
     saveat = diffrax.SaveAt(dense=True)
     sol = jax.vmap(

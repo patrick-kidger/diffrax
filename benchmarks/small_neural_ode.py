@@ -2,6 +2,7 @@
 
 import gc
 import time
+from typing import cast
 
 import diffrax
 import equinox as eqx
@@ -9,16 +10,17 @@ import jax
 import jax.experimental.ode as experimental
 import jax.nn as jnn
 import jax.numpy as jnp
-import jax.random as jrandom
+import jax.random as jr
 import numpy as np
-import torch
-import torchdiffeq
+import torch  # pyright: ignore
+import torchdiffeq  # pyright: ignore
+from jaxtyping import Array
 
 
 class FuncTorch(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.func = torch.jit.script(
+        self.func = torch.jit.script(  # pyright: ignore
             torch.nn.Sequential(
                 torch.nn.Linear(4, 32),
                 torch.nn.Softplus(),
@@ -28,7 +30,7 @@ class FuncTorch(torch.nn.Module):
         )
 
     def forward(self, t, y):
-        return self.func(y)
+        return self.func(y)  # pyright: ignore
 
 
 class FuncJax(eqx.Module):
@@ -42,7 +44,7 @@ class FuncJax(eqx.Module):
             depth=1,
             activation=jnn.softplus,
             final_activation=jnn.tanh,
-            key=jrandom.PRNGKey(0),
+            key=jr.PRNGKey(0),
         )
 
     def __call__(self, t, y, args):
@@ -91,7 +93,7 @@ class NeuralODEDiffrax(eqx.Module):
             saveat=saveat,
             adjoint=diffrax.BacksolveAdjoint(),
         )
-        return jnp.sum(sol.ys)
+        return jnp.sum(cast(Array, sol.ys))
 
 
 class NeuralODEExperimental(eqx.Module):
@@ -175,12 +177,12 @@ def run(multiple, grad, batch_size=64, t1=100):
     with torch.no_grad():
         func_jax = neural_ode_diffrax.func.func
         func_torch = neural_ode_torch.func.func
-        func_torch[0].weight.copy_(torch.tensor(np.asarray(func_jax.layers[0].weight)))
-        func_torch[0].bias.copy_(torch.tensor(np.asarray(func_jax.layers[0].bias)))
-        func_torch[2].weight.copy_(torch.tensor(np.asarray(func_jax.layers[1].weight)))
-        func_torch[2].bias.copy_(torch.tensor(np.asarray(func_jax.layers[1].bias)))
+        func_torch[0].weight.copy_(torch.tensor(np.asarray(func_jax.layers[0].weight)))  # pyright: ignore
+        func_torch[0].bias.copy_(torch.tensor(np.asarray(func_jax.layers[0].bias)))  # pyright: ignore
+        func_torch[2].weight.copy_(torch.tensor(np.asarray(func_jax.layers[1].weight)))  # pyright: ignore
+        func_torch[2].bias.copy_(torch.tensor(np.asarray(func_jax.layers[1].bias)))  # pyright: ignore
 
-    y0_jax = jrandom.normal(jrandom.PRNGKey(1), (batch_size, 4))
+    y0_jax = jr.normal(jr.PRNGKey(1), (batch_size, 4))
     y0_torch = torch.tensor(np.asarray(y0_jax))
 
     time_torch(neural_ode_torch, y0_torch, t1, grad)

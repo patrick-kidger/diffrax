@@ -1,10 +1,13 @@
+from typing import cast
+
 import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from jaxtyping import Array
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 def test_step_ts():
@@ -26,8 +29,8 @@ def test_step_ts():
         stepsize_controller=stepsize_controller,
         saveat=saveat,
     )
-    assert 3 in sol.ts
-    assert 4 in sol.ts
+    assert 3 in cast(Array, sol.ts)
+    assert 4 in cast(Array, sol.ts)
 
 
 def test_jump_ts():
@@ -62,14 +65,14 @@ def test_jump_ts():
     sol_no_jump_ts = run()
     sol_with_jump_ts = run(jump_ts=[7.5])
     assert sol_no_jump_ts.stats["num_steps"] > sol_with_jump_ts.stats["num_steps"]
-    assert sol_with_jump_ts.result == 0
+    assert sol_with_jump_ts.result == diffrax.RESULTS.successful
 
     sol = run(jump_ts=[7.5], step_ts=[7.5])
-    assert sol.result == 0
+    assert sol.result == diffrax.RESULTS.successful
     sol = run(jump_ts=[7.5], step_ts=[3.5, 8])
-    assert sol.result == 0
-    assert 3.5 in sol.ts
-    assert 8 in sol.ts
+    assert sol.result == diffrax.RESULTS.successful
+    assert 3.5 in cast(Array, sol.ts)
+    assert 8 in cast(Array, sol.ts)
 
 
 def test_backprop():
@@ -80,7 +83,8 @@ def test_backprop():
         _, tprev, tnext, _, state, _ = controller.adapt_step_size(
             0, 1, y0, y1_candidate, None, y_error, 5, state
         )
-        return tprev + tnext + sum(jnp.sum(x) for x in jtu.tree_leaves(state))
+        with jax.numpy_dtype_promotion("standard"):
+            return tprev + tnext + sum(jnp.sum(x) for x in jtu.tree_leaves(state))
 
     y0 = jnp.array(1.0)
     y1_candidate = jnp.array(2.0)
@@ -126,7 +130,7 @@ def test_grad_of_discontinuous_forcing():
             args=forcing,
             stepsize_controller=stepsize_controller,
         )
-        _, sum = sol.ys
+        _, sum = cast(Array, sol.ys)
         (sum,) = sum
         return sum
 
@@ -134,4 +138,4 @@ def test_grad_of_discontinuous_forcing():
     eps = 1e-5
     finite_diff = (r(0.5) - r(0.5 - eps)) / eps
     autodiff = jax.jit(jax.grad(run))(0.5)
-    assert shaped_allclose(finite_diff, autodiff)
+    assert tree_allclose(finite_diff, autodiff)

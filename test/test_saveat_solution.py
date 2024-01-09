@@ -7,17 +7,16 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from .helpers import shaped_allclose
+from .helpers import tree_allclose
 
 
 def test_results():
     assert len(diffrax.RESULTS) > 5
-    for i in range(len(diffrax.RESULTS)):
-        assert isinstance(diffrax.RESULTS[i], str)
+    assert isinstance(diffrax.RESULTS[diffrax.RESULTS.max_steps_reached], str)
 
     # In principle no code should rely on this, but in practice something may slip
     # through the cracks so it's worth checking anyway.
-    assert diffrax.RESULTS.successful == 0
+    assert diffrax.RESULTS.successful._value == 0
 
 
 _t0 = jnp.array(0.1)
@@ -45,10 +44,10 @@ def test_saveat_solution():
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
-    assert sol.ts.shape == (1,)
-    assert sol.ys.shape == (1, 1)
-    assert sol.ts[0] == _t0
-    assert sol.ys[0, 0] == _y0
+    assert sol.ts.shape == (1,)  # pyright: ignore
+    assert sol.ys.shape == (1, 1)  # pyright: ignore
+    assert sol.ts[0] == _t0  # pyright: ignore
+    assert sol.ys[0, 0] == _y0  # pyright: ignore
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -66,10 +65,10 @@ def test_saveat_solution():
             sol = _integrate(saveat)
             assert sol.t0 == _t0
             assert sol.t1 == _t1
-            assert sol.ts.shape == (1,)
-            assert sol.ys.shape == (1, 1)
-            assert sol.ts[0] == _t1
-            assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.5))
+            assert sol.ts.shape == (1,)  # pyright: ignore
+            assert sol.ys.shape == (1, 1)  # pyright: ignore
+            assert sol.ts[0] == _t1  # pyright: ignore
+            assert tree_allclose(sol.ys[0], _y0 * math.exp(-0.5))  # pyright: ignore
             if controller_state:
                 assert sol.controller_state is not None
             else:
@@ -97,12 +96,12 @@ def test_saveat_solution():
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
-    assert sol.ts.shape == (2,)
-    assert sol.ys.shape == (2, 1)
-    assert sol.ts[0] == jnp.asarray(0.5)
-    assert sol.ts[1] == jnp.asarray(0.8)
-    assert shaped_allclose(sol.ys[0], _y0 * math.exp(-0.2))
-    assert shaped_allclose(sol.ys[1], _y0 * math.exp(-0.35))
+    assert sol.ts.shape == (2,)  # pyright: ignore
+    assert sol.ys.shape == (2, 1)  # pyright: ignore
+    assert sol.ts[0] == jnp.asarray(0.5)  # pyright: ignore
+    assert sol.ts[1] == jnp.asarray(0.8)  # pyright: ignore
+    assert tree_allclose(sol.ys[0], _y0 * math.exp(-0.2))  # pyright: ignore
+    assert tree_allclose(sol.ys[1], _y0 * math.exp(-0.35))  # pyright: ignore
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -116,12 +115,13 @@ def test_saveat_solution():
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
-    assert sol.ts.shape == (4096,)
-    assert sol.ys.shape == (4096, 1)
+    assert sol.ts.shape == (4096,)  # pyright: ignore
+    assert sol.ys.shape == (4096, 1)  # pyright: ignore
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
-    _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
+    with jax.numpy_rank_promotion("allow"):
+        _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
-    assert shaped_allclose(sol.ys, _ys)
+    assert tree_allclose(sol.ys, _ys)
     assert sol.controller_state is None
     assert sol.solver_state is None
     with pytest.raises(ValueError):
@@ -139,12 +139,10 @@ def test_saveat_solution():
     assert sol.ys is None
     assert sol.controller_state is None
     assert sol.solver_state is None
-    assert shaped_allclose(
-        sol.evaluate(0.2, 0.8), sol.evaluate(0.8) - sol.evaluate(0.2)
-    )
-    assert shaped_allclose(sol.evaluate(0.2), _y0 * math.exp(-0.05))
-    assert shaped_allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
-    assert shaped_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
+    assert tree_allclose(sol.evaluate(0.2, 0.8), sol.evaluate(0.8) - sol.evaluate(0.2))
+    assert tree_allclose(sol.evaluate(0.2), _y0 * math.exp(-0.05))
+    assert tree_allclose(sol.evaluate(0.8), _y0 * math.exp(-0.35))
+    assert tree_allclose(sol.derivative(0.2), -0.5 * _y0 * math.exp(-0.05))
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
@@ -164,7 +162,7 @@ def test_trivial_dense():
         saveat=saveat,
         stepsize_controller=stepsize_controller,
     )
-    assert shaped_allclose(sol.evaluate(2.0), y0)
+    assert tree_allclose(sol.evaluate(2.0), y0)
 
 
 @pytest.mark.parametrize(
@@ -182,10 +180,10 @@ def test_subsaveat(adjoint, multi_subs, with_fn, getkey):
     if with_fn:
         mlp = eqx.nn.MLP(3, 1, 32, 2, key=getkey())
         apply = lambda _, x, __: mlp(x)
-        subsaveat_kwargs = dict(fn=apply)
+        subsaveat_kwargs: dict = dict(fn=apply)
     else:
         mlp = lambda x: x
-        subsaveat_kwargs = dict()
+        subsaveat_kwargs: dict = dict()
     get2 = diffrax.SubSaveAt(t0=True, ts=jnp.linspace(0.5, 1.5, 3), **subsaveat_kwargs)
     if multi_subs:
         get0 = diffrax.SubSaveAt(steps=True, fn=lambda _, y, __: y[0])
@@ -234,19 +232,19 @@ def test_subsaveat(adjoint, multi_subs, with_fn, getkey):
         )
 
         if multi_subs:
-            ts0, ts1, ts2 = sol.ts
-            ys0, ys1, ys2 = sol.ys
+            ts0, ts1, ts2 = sol.ts  # pyright: ignore
+            ys0, ys1, ys2 = sol.ys  # pyright: ignore
             assert ts0.shape == (4096,)
-            assert shaped_allclose(ts1, jnp.array([0, 0.25, 0.5, 0.75, 1, 2]))
-            assert shaped_allclose(
+            assert tree_allclose(ts1, jnp.array([0, 0.25, 0.5, 0.75, 1, 2]))
+            assert tree_allclose(
                 ys0[:steps], jax.vmap(sol2.evaluate)(ts0[:steps])[:, 0]
             )
-            assert shaped_allclose(ys1, jax.vmap(sol2.evaluate)(ts1)[:, 1])
+            assert tree_allclose(ys1, jax.vmap(sol2.evaluate)(ts1)[:, 1])
         else:
             ts2 = sol.ts
             ys2 = sol.ys
-        assert shaped_allclose(ts2, jnp.array([0, 0.5, 1.0, 1.5]))
-        assert shaped_allclose(ys2, jax.vmap(mlp)(jax.vmap(sol2.evaluate)(ts2)))
+        assert tree_allclose(ts2, jnp.array([0, 0.5, 1.0, 1.5]))
+        assert tree_allclose(ys2, jax.vmap(mlp)(jax.vmap(sol2.evaluate)(ts2)))  # pyright: ignore
 
 
 def test_backprop_none_subs():

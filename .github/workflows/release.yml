@@ -10,12 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Release
-        uses: patrick-kidger/action_update_python_project@v1
+        uses: patrick-kidger/action_update_python_project@v2
         with:
             python-version: "3.11"
             test-script: |
-                python -m pip install pytest jax jaxlib equinox scipy optax
                 cp -r ${{ github.workspace }}/test ./test
+                cp ${{ github.workspace }}/pyproject.toml ./pyproject.toml
+                python -m pip install -r ./test/requirements.txt
                 python -m test
             pypi-token: ${{ secrets.pypi_token }}
             github-user: patrick-kidger
