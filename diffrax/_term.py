@@ -279,9 +279,10 @@ _ControlTerm.__init__.__doc__ = """**Arguments:**
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
     the evolving state of the system. `args` are any static arguments as passed to
     [`diffrax.diffeqsolve`][].
-- `control`: A callable representing the control. Should have an `evaluate(t0, t1)`
-    method. If using [`diffrax.ControlTerm.to_ode`][] then it should have a
-    `derivative(t)` method.
+- `control`: The control. Should either be (A) a [`diffrax.AbstractPath`][], in which
+    case its `evaluate(t0, t1)` method will be used to give the increment of the control
+    over a time interval `[t0, t1]`, or (B) a callable `(t0, t1) -> increment`, which
+    returns the increment directly.
 """
 
 
