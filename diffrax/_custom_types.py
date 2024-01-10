@@ -56,7 +56,7 @@ sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 LevyArea: TypeAlias = Literal["", "space-time"]
 
 
-class LevyVal(eqx.Module):
+class LevyVal(eqx.Module, strict=True):
     dt: PyTree
     W: PyTree
     H: Optional[PyTree]

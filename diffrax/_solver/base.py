@@ -49,7 +49,7 @@ class _MetaAbstractSolver(type(eqx.Module), type):
 _set_metaclass = dict(metaclass=_MetaAbstractSolver)
 
 
-class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
+class AbstractSolver(eqx.Module, Generic[_SolverState], strict=True, **_set_metaclass):
     """Abstract base class for all differential equation solvers.
 
     Subclasses should have a class-level attribute `terms`, specifying the PyTree
@@ -179,7 +179,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         """
 
 
-class AbstractImplicitSolver(AbstractSolver[_SolverState]):
+class AbstractImplicitSolver(AbstractSolver[_SolverState], strict=True):
     """Indicates that this is an implicit differential equation solver, and as such
     that it should take a root finder as an argument.
     """
@@ -188,25 +188,25 @@ class AbstractImplicitSolver(AbstractSolver[_SolverState]):
     root_find_max_steps: AbstractVar[int]
 
 
-class AbstractItoSolver(AbstractSolver[_SolverState]):
+class AbstractItoSolver(AbstractSolver[_SolverState], strict=True):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Itô solution.
     """
 
 
-class AbstractStratonovichSolver(AbstractSolver[_SolverState]):
+class AbstractStratonovichSolver(AbstractSolver[_SolverState], strict=True):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Stratonovich solution.
     """
 
 
-class AbstractAdaptiveSolver(AbstractSolver[_SolverState]):
+class AbstractAdaptiveSolver(AbstractSolver[_SolverState], strict=True):
     """Indicates that this solver provides error estimates, and that as such it may be
     used with an adaptive step size controller.
     """
 
 
-class AbstractWrappedSolver(AbstractSolver[_SolverState]):
+class AbstractWrappedSolver(AbstractSolver[_SolverState], strict=True):
     """Wraps another solver "transparently", in the sense that all `isinstance` checks
     will be forwarded on to the wrapped solver, e.g. when testing whether the solver is
     implicit/adaptive/SDE-compatible/etc.

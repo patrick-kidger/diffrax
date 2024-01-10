@@ -47,14 +47,14 @@ from ._step_size_controller import (
 from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 
 
-class SaveState(eqx.Module):
+class SaveState(eqx.Module, strict=True):
     saveat_ts_index: IntScalarLike
     ts: eqxi.MaybeBuffer[Real[Array, " times"]]
     ys: PyTree[eqxi.MaybeBuffer[Inexact[Array, "times ..."]]]
     save_index: IntScalarLike
 
 
-class State(eqx.Module):
+class State(eqx.Module, strict=True):
     # Evolving state during the solve
     y: PyTree[Array]
     tprev: FloatScalarLike

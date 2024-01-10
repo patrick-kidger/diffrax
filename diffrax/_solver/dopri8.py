@@ -188,7 +188,7 @@ _dopri8_tableau = ButcherTableau(
 _vmap_polyval = jax.vmap(jnp.polyval, in_axes=(0, None))
 
 
-class _Dopri8Interpolation(AbstractLocalInterpolation):
+class _Dopri8Interpolation(AbstractLocalInterpolation, strict=True):
     t0: RealScalarLike
     t1: RealScalarLike
     y0: Y

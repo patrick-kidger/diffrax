@@ -197,7 +197,7 @@ automatically.
 """
 
 
-class MultiButcherTableau(eqx.Module):
+class MultiButcherTableau(eqx.Module, strict=True):
     """Wraps multiple [`diffrax.ButcherTableau`][]s together. Used in some multi-tableau
     solvers, like IMEX methods.
 
@@ -342,7 +342,7 @@ def _assert_same_structure(x, y):
     return eqx.tree_equal(x, y) is True
 
 
-class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
+class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState], strict=True):
     """Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
     Runge--Kutta methods, which have a different computational structure.)
 
@@ -1201,7 +1201,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         return y1, y_error, dense_info, new_solver_state, result
 
 
-class AbstractERK(AbstractRungeKutta):
+class AbstractERK(AbstractRungeKutta, strict=True):
     """Abstract base class for all Explicit Runge--Kutta solvers.
 
     Subclasses should include a class-level attribute `tableau`, an instance of
@@ -1211,7 +1211,7 @@ class AbstractERK(AbstractRungeKutta):
     calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.never
 
 
-class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver):
+class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver, strict=True):
     """Abstract base class for all Diagonal Implicit Runge--Kutta solvers.
 
     Subclasses should include a class-level attribute `tableau`, an instance of
@@ -1221,7 +1221,7 @@ class AbstractDIRK(AbstractRungeKutta, AbstractImplicitSolver):
     calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.every_stage
 
 
-class AbstractSDIRK(AbstractDIRK):
+class AbstractSDIRK(AbstractDIRK, strict=True):
     """Abstract base class for all Singular Diagonal Implict Runge--Kutta solvers.
 
     Subclasses should include a class-level attribute `tableau`, an instance of
@@ -1239,7 +1239,7 @@ class AbstractSDIRK(AbstractDIRK):
     calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.first_stage
 
 
-class AbstractESDIRK(AbstractDIRK):
+class AbstractESDIRK(AbstractDIRK, strict=True):
     """Abstract base class for all Explicit Singular Diagonal Implicit Runge--Kutta
     solvers.
 

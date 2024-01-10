@@ -6,7 +6,7 @@ import optimistix as optx
 
 from .._root_finder import VeryChord, with_stepsize_controller_tols
 from .base import AbstractImplicitSolver
-from .kencarp3 import KenCarpInterpolation
+from .kencarp3 import AbstractKenCarpInterpolation
 from .runge_kutta import (
     AbstractRungeKutta,
     ButcherTableau,
@@ -163,7 +163,7 @@ _implicit_tableau = ButcherTableau(
 )
 
 
-class _KenCarp5Interpolation(KenCarpInterpolation):
+class _KenCarp5Interpolation(AbstractKenCarpInterpolation, strict=True):
     coeffs = np.array(
         [
             [

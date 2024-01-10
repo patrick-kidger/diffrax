@@ -21,7 +21,7 @@ def _convert_ts(
         return jnp.asarray(ts)
 
 
-class SubSaveAt(eqx.Module):
+class SubSaveAt(eqx.Module, strict=True):
     """Used for finer-grained control over what is saved. A PyTree of these should be
     passed to `SaveAt(subs=...)`.
 
@@ -53,7 +53,7 @@ SubSaveAt.__init__.__doc__ = """**Arguments:**
 """
 
 
-class SaveAt(eqx.Module):
+class SaveAt(eqx.Module, strict=True):
     """Determines what to save as output from the differential equation solve.
 
     Instances of this class should be passed as the `saveat` argument of
