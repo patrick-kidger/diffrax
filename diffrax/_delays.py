@@ -7,7 +7,6 @@ import jax.tree_util as jtu
 from equinox.internal import unvmap_any
 from jaxtyping import Array, PyTree
 from optimistix import (
-    BestSoFarFixedPoint,
     fixed_point,
     FixedPointIteration,
     Newton,
@@ -189,7 +188,7 @@ def history_extrapolation_implicit(
 
         return new_dense_info, (y, y_error, solver_state, solver_result)
 
-    solv = BestSoFarFixedPoint(FixedPointIteration(rtol=delays.rtol, atol=delays.atol))
+    solv = FixedPointIteration(rtol=delays.rtol, atol=delays.atol)
 
     nonlinear_args = (
         terms,
