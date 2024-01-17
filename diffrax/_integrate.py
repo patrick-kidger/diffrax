@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
+from tqdm import tqdm
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
@@ -229,6 +230,17 @@ def loop(
         state = _handle_static(state)
         return out & is_successful(state.result)
 
+    pbars = {}
+
+    def define_progressbar():
+        pbars[0] = tqdm(total=100)
+
+    def update_progressbar(t, t0, t1):
+        pbars[0].n = round((t-t0) / (t1-t0) * 100, 1)
+
+    def close_progressbar():
+        pbars[0].close()
+
     def body_fun_aux(state):
         state = _handle_static(state)
 
@@ -246,6 +258,8 @@ def loop(
             state.solver_state,
             state.made_jump,
         )
+
+        jax.debug.callback(update_progressbar, t=state.tnext, t0=t0, t1=t1)
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
         # we get a negative value for y, and then get a NaN vector field. (And then
@@ -455,9 +469,16 @@ def loop(
         new_state, _, _ = body_fun_aux(state)
         return new_state
 
+    # open progress bar
+    jax.debug.callback(define_progressbar)
+
+    # run outer loop
     final_state = outer_while_loop(
         cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
     )
+
+    # close progress bar
+    jax.debug.callback(close_progressbar)
 
     def _save_t1(subsaveat, save_state):
         if subsaveat.t1 and not subsaveat.steps:
