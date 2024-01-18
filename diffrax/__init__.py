@@ -37,6 +37,12 @@ from ._local_interpolation import (
 )
 from ._misc import adjoint_rms_seminorm as adjoint_rms_seminorm
 from ._path import AbstractPath as AbstractPath
+from ._progress_bar import (
+    AbstractProgressBar as AbstractProgressBar,
+    NoProgressBar as NoProgressBar,
+    TextProgressBar as TextProgressBar,
+    TqdmProgressBar as TqdmProgressBar,
+)
 from ._root_finder import (
     VeryChord as VeryChord,
     with_stepsize_controller_tols as with_stepsize_controller_tols,
