@@ -25,6 +25,10 @@ from ._event import AbstractDiscreteTerminatingEvent
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import static_select
+from ._progress_bar import (
+    AbstractProgressBar,
+    NoProgressBar,
+)
 from ._root_finder import use_stepsize_tol
 from ._saveat import SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
@@ -71,6 +75,7 @@ class State(eqx.Module):
     dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
     dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
+    progress_bar_state: Optional[PyTree]
 
 
 def _is_none(x):
@@ -189,6 +194,7 @@ def loop(
     init_state,
     inner_while_loop,
     outer_while_loop,
+    progress_bar,
 ):
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -271,6 +277,15 @@ def loop(
             state.controller_state,
         )
         assert jnp.result_type(keep_step) is jnp.dtype(bool)
+
+        #
+        # Update progress bar
+        #
+
+        progress_bar_current_progress = tprev / t1 * 100
+        progress_bar_state = progress_bar.step(
+            state.progress_bar_state, progress_bar_current_progress
+        )
 
         #
         # Do some book-keeping.
@@ -406,6 +421,7 @@ def loop(
             dense_ts=dense_ts,  # pyright: ignore
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
+            progress_bar_state=progress_bar_state,
         )
 
         if discrete_terminating_event is not None:
@@ -513,6 +529,7 @@ def diffeqsolve(
     solver_state: Optional[PyTree[ArrayLike]] = None,
     controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
+    progress_bar: AbstractProgressBar = NoProgressBar(),
 ) -> Solution:
     """Solves a differential equation.
 
@@ -891,6 +908,9 @@ def diffeqsolve(
         dense_infos = None
         dense_save_index = None
 
+    # Progress bar
+    progress_bar_state = progress_bar.init()
+
     # Initialise state
     init_state = State(
         y=y0,
@@ -907,6 +927,7 @@ def diffeqsolve(
         dense_ts=dense_ts,
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
+        progress_bar_state=progress_bar_state,
     )
 
     #
@@ -928,11 +949,14 @@ def diffeqsolve(
         throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
+        progress_bar=progress_bar,
     )
 
     #
     # Finish up
     #
+
+    progress_bar.close(final_state.progress_bar_state)
 
     is_save_state = lambda x: isinstance(x, SaveState)
     ts = jtu.tree_map(
