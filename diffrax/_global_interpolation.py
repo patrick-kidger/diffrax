@@ -758,6 +758,10 @@ def backward_hermite_coefficients(
 
     ts = _check_ts(ts)
     fn = ft.partial(_backward_hermite_coefficients, fill_forward_nans_at_end, ts)
+
+    if len(jtu.tree_leaves(ys)) == 0:
+        return ({}, {}, {}, {})
+
     if deriv0 is None:
         if replace_nans_at_start is None:
             coeffs = jtu.tree_map(fn, ys)
