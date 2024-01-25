@@ -261,6 +261,7 @@ def test_interpolation_classes(mode, getkey):
     ys_ = [
         _make(),
         [_make(), {"a": _make(), "b": _make()}],
+        {}
     ]
     for ts in ts_:
         assert len(ts) == length
