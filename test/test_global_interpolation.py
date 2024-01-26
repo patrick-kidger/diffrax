@@ -258,11 +258,7 @@ def test_interpolation_classes(mode, getkey):
         jnp.array([0.0, 2.0, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1]),
     ]
     _make = lambda: jr.normal(getkey(), (length, num_channels))
-    ys_ = [
-        _make(),
-        [_make(), {"a": _make(), "b": _make()}],
-        {}
-    ]
+    ys_ = [_make(), [_make(), {"a": _make(), "b": _make()}], {}, []]
     for ts in ts_:
         assert len(ts) == length
         for ys in ys_:

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from typing import ClassVar as AbstractVar
 else:
     from equinox import AbstractVar
+
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Real, Shaped
 
@@ -760,7 +761,7 @@ def backward_hermite_coefficients(
     fn = ft.partial(_backward_hermite_coefficients, fill_forward_nans_at_end, ts)
 
     if len(jtu.tree_leaves(ys)) == 0:
-        return ({}, {}, {}, {})
+        return tuple(ys for _ in range(4))
 
     if deriv0 is None:
         if replace_nans_at_start is None:
