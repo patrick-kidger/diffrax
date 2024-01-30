@@ -50,6 +50,22 @@ def test_control_term(getkey):
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dt))
 
+    class ControlTwo(diffrax.AbstractPath):
+        t0 = 0
+        t1 = 1
+
+        def evaluate(self, t0, t1=None, left=True):
+            return jr.normal(getkey(), (2,))
+
+        def derivative(self, t, left=True):
+            return jr.normal(derivkey, (2,))
+
+    # Used for contrapositive type checking as per:
+    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
+    term_typed: diffrax.ControlTerm[Control] = diffrax.ControlTerm(  # noqa: F841
+        vector_field, ControlTwo()
+    )  # type: ignor
+
 
 def test_weakly_diagional_control_term(getkey):
     vector_field = lambda t, y, args: jr.normal(args, (3,))
@@ -65,7 +81,7 @@ def test_weakly_diagional_control_term(getkey):
         def derivative(self, t, left=True):
             return jr.normal(derivkey, (3,))
 
-    control = Control()  # pyright: ignore
+    control = Control()
     term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)

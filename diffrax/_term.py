@@ -223,11 +223,11 @@ class _CallableToPath(AbstractPath):
     fn: Callable
 
     @property
-    def t0(self):
+    def t0(self):  # pyright: ignore[reportIncompatibleVariableOverride]
         return -jnp.inf
 
     @property
-    def t1(self):
+    def t1(self):  # pyright: ignore[reportIncompatibleVariableOverride]
         return jnp.inf
 
     def evaluate(
@@ -250,9 +250,20 @@ def _prod(vf, control):
     return jnp.tensordot(vf, control, axes=jnp.ndim(control))
 
 
-class _ControlTerm(AbstractTerm):
+_Control = TypeVar("_Control", bound=AbstractPath)
+
+
+class _ControlTerm(AbstractTerm, Generic[_Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
-    control: Union[AbstractPath, Callable] = eqx.field(converter=_callable_to_path)
+    control: _Control | AbstractPath
+
+    def __init__(
+        self,
+        vector_field: Callable[[RealScalarLike, Y, Args], VF],
+        control: Union[AbstractPath, Callable],
+    ):
+        self.vector_field = vector_field
+        self.control = _callable_to_path(control)
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
@@ -286,7 +297,7 @@ _ControlTerm.__init__.__doc__ = """**Arguments:**
 """
 
 
-class ControlTerm(_ControlTerm):
+class ControlTerm(_ControlTerm[_Control]):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product.
 
