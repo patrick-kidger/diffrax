@@ -253,7 +253,7 @@ def _prod(vf, control):
 _Control = TypeVar("_Control", bound=AbstractPath)
 
 
-class _ControlTerm(AbstractTerm, Generic[_Control]):
+class AbstractControlTerm(AbstractTerm, Generic[_Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
     control: _Control | AbstractPath
 
@@ -284,7 +284,7 @@ class _ControlTerm(AbstractTerm, Generic[_Control]):
         return ODETerm(vector_field=vector_field)
 
 
-_ControlTerm.__init__.__doc__ = """**Arguments:**
+AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 
 - `vector_field`: A callable representing the vector field. This callable takes three
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
@@ -297,7 +297,7 @@ _ControlTerm.__init__.__doc__ = """**Arguments:**
 """
 
 
-class ControlTerm(_ControlTerm[_Control]):
+class ControlTerm(AbstractControlTerm[_Control]):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product.
 
@@ -339,7 +339,7 @@ class ControlTerm(_ControlTerm[_Control]):
         return jtu.tree_map(_prod, vf, control)
 
 
-class WeaklyDiagonalControlTerm(_ControlTerm):
+class WeaklyDiagonalControlTerm(AbstractControlTerm):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
     matrix is square and diagonal. In this case we may represent the matrix as a vector
@@ -366,7 +366,7 @@ class WeaklyDiagonalControlTerm(_ControlTerm):
 
 
 class _ControlToODE(eqx.Module):
-    control_term: _ControlTerm
+    control_term: AbstractControlTerm
 
     def __call__(self, t: RealScalarLike, y: Y, args: Args) -> Y:
         control = self.control_term.control.derivative(t)

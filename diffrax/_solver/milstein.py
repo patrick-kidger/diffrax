@@ -7,10 +7,11 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
 
+from .._brownian import AbstractBrownianPath
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractControlTerm, AbstractTerm, MultiTerm, ODETerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -42,13 +43,15 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    term_structure: ClassVar = MultiTerm[
+        tuple[ODETerm, AbstractControlTerm[AbstractBrownianPath]]
+    ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`StratonovichMilstein` should not used to solve ODEs.")
+        raise ValueError("`StratonovichMilstein` should not be used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise
@@ -122,7 +125,7 @@ class ItoMilstein(AbstractItoSolver):
     ] = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`ItoMilstein` should not used to solve ODEs.")
+        raise ValueError("`ItoMilstein` should not be used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise
