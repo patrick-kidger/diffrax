@@ -30,7 +30,7 @@ def test_control_term(getkey):
         def derivative(self, t, left=True):
             return jr.normal(derivkey, (2,))
 
-    control = Control()  # pyright: ignore
+    control = Control()
     term = diffrax.ControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)
@@ -64,7 +64,7 @@ def test_control_term(getkey):
     # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
     term_typed: diffrax.ControlTerm[Control] = diffrax.ControlTerm(  # noqa: F841
         vector_field, ControlTwo()
-    )  # type: ignor
+    )  # type: ignore
 
 
 def test_weakly_diagional_control_term(getkey):

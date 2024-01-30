@@ -255,7 +255,7 @@ _Control = TypeVar("_Control", bound=AbstractPath)
 
 class AbstractControlTerm(AbstractTerm, Generic[_Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
-    control: _Control | AbstractPath
+    control: _Control
 
     def __init__(
         self,
@@ -263,7 +263,7 @@ class AbstractControlTerm(AbstractTerm, Generic[_Control]):
         control: Union[AbstractPath, Callable],
     ):
         self.vector_field = vector_field
-        self.control = _callable_to_path(control)
+        self.control = _callable_to_path(control)  # pyright: ignore
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
@@ -339,7 +339,7 @@ class ControlTerm(AbstractControlTerm[_Control]):
         return jtu.tree_map(_prod, vf, control)
 
 
-class WeaklyDiagonalControlTerm(AbstractControlTerm):
+class WeaklyDiagonalControlTerm(AbstractControlTerm[_Control]):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
     matrix is square and diagonal. In this case we may represent the matrix as a vector
@@ -365,8 +365,8 @@ class WeaklyDiagonalControlTerm(AbstractControlTerm):
         return jtu.tree_map(operator.mul, vf, control)
 
 
-class _ControlToODE(eqx.Module):
-    control_term: AbstractControlTerm
+class _ControlToODE(eqx.Module, Generic[_Control]):
+    control_term: AbstractControlTerm[_Control]
 
     def __call__(self, t: RealScalarLike, y: Y, args: Args) -> Y:
         control = self.control_term.control.derivative(t)
