@@ -8,7 +8,7 @@ from .._custom_types import LevyArea, LevyVal, RealScalarLike
 from .._path import AbstractPath
 
 
-class AbstractBrownianPath(AbstractPath):
+class AbstractBrownianPath(AbstractPath[Union[PyTree[Array], LevyVal]]):
     """Abstract base class for all Brownian paths."""
 
     levy_area: AbstractVar[LevyArea]

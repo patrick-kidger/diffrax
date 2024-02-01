@@ -11,7 +11,7 @@ from .._brownian import AbstractBrownianPath
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractControlTerm, AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractTerm, MultiTerm, ODETerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -44,7 +44,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     """  # noqa: E501
 
     term_structure: ClassVar = MultiTerm[
-        tuple[ODETerm, AbstractControlTerm[AbstractBrownianPath]]
+        tuple[ODETerm, AbstractTerm[AbstractBrownianPath]]
     ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]

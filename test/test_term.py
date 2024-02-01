@@ -3,6 +3,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+from jaxtyping import ArrayLike
 
 from .helpers import tree_allclose
 
@@ -24,7 +25,7 @@ def test_control_term(getkey):
         t0 = 0
         t1 = 1
 
-        def evaluate(self, t0, t1=None, left=True):
+        def evaluate(self, t0, t1=None, left=True) -> ArrayLike:
             return jr.normal(getkey(), (2,))
 
         def derivative(self, t, left=True):
@@ -50,19 +51,19 @@ def test_control_term(getkey):
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dt))
 
-    class ControlTwo(diffrax.AbstractPath):
+    # Used for contrapositive type checking as per:
+    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
+    class ControlTwo(diffrax.AbstractPath[diffrax.LevyVal]):
         t0 = 0
         t1 = 1
 
-        def evaluate(self, t0, t1=None, left=True):
-            return jr.normal(getkey(), (2,))
+        def evaluate(self, t0, t1=None, left=True) -> diffrax.LevyVal:
+            return jr.normal(getkey(), (3,))  # type: ignore
 
-        def derivative(self, t, left=True):
-            return jr.normal(derivkey, (2,))
+        def derivative(self, t, left=True) -> diffrax.LevyVal:
+            return jr.normal(derivkey, (3,))  # type: ignore
 
-    # Used for contrapositive type checking as per:
-    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
-    term_typed: diffrax.ControlTerm[Control] = diffrax.ControlTerm(  # noqa: F841
+    term_typed: diffrax.ControlTerm[diffrax.LevyVal] = diffrax.ControlTerm(  # noqa: F841
         vector_field, ControlTwo()
     )  # type: ignore
 
@@ -130,6 +131,7 @@ def test_cde_adjoint_term(getkey):
     mlp = eqx.nn.MLP(in_size=5, out_size=6, width_size=3, depth=1, key=getkey())
     vector_field = VF(mlp)
     control = lambda t0, t1: (jr.normal(getkey(), (3,)),)
+    #
     term = diffrax.ControlTerm(vector_field, control)
     adjoint_term = diffrax._term.AdjointTerm(term)
     t = jr.normal(getkey(), ())
