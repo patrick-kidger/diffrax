@@ -3,7 +3,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-from jaxtyping import ArrayLike
+from jaxtyping import Array, Shaped
 
 from .helpers import tree_allclose
 
@@ -21,11 +21,11 @@ def test_control_term(getkey):
     vector_field = lambda t, y, args: jr.normal(args, (3, 2))
     derivkey = getkey()
 
-    class Control(diffrax.AbstractPath):
+    class Control(diffrax.AbstractPath[Shaped[Array, "2"]]):
         t0 = 0
         t1 = 1
 
-        def evaluate(self, t0, t1=None, left=True) -> ArrayLike:
+        def evaluate(self, t0, t1=None, left=True):
             return jr.normal(getkey(), (2,))
 
         def derivative(self, t, left=True):
@@ -43,6 +43,27 @@ def test_control_term(getkey):
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dx))
 
+    # `# type: ignore` is used for contrapositive static type checking as per:
+    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
+    term_static: diffrax.ControlTerm[Array] = term  # noqa: F841
+    term_static_contra: diffrax.ControlTerm[diffrax.LevyVal] = term  # type: ignore # noqa: F841
+
+    # Enable the following runtime checks once beartype supports Generic[TypeVar].
+    # https://github.com/beartype/beartype/issues/238
+    # import pytest
+    # from beartype.door import die_if_unbearable
+    # from beartype.roar import BeartypeCallHintViolation
+
+    # control = Control()
+    # term = diffrax.ControlTerm(vector_field, control)
+
+    # die_if_unbearable(term, diffrax.ControlTerm[Shaped[Array, "2"]])
+    # with pytest.raises(BeartypeCallHintViolation):
+    #     die_if_unbearable(term, diffrax.ControlTerm[Shaped[Array, "3"]])
+
+    # with pytest.raises(BeartypeCallHintViolation):
+    #     die_if_unbearable(term, diffrax.ControlTerm[diffrax.LevyVal])
+
     term = term.to_ode()
     dt = term.contr(0, 1)
     vf = term.vf(0, y, args)
@@ -50,22 +71,6 @@ def test_control_term(getkey):
     assert vf.shape == (3,)
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dt))
-
-    # Used for contrapositive type checking as per:
-    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
-    class ControlTwo(diffrax.AbstractPath[diffrax.LevyVal]):
-        t0 = 0
-        t1 = 1
-
-        def evaluate(self, t0, t1=None, left=True) -> diffrax.LevyVal:
-            return jr.normal(getkey(), (3,))  # type: ignore
-
-        def derivative(self, t, left=True) -> diffrax.LevyVal:
-            return jr.normal(derivkey, (3,))  # type: ignore
-
-    term_typed: diffrax.ControlTerm[diffrax.LevyVal] = diffrax.ControlTerm(  # noqa: F841
-        vector_field, ControlTwo()
-    )  # type: ignore
 
 
 def test_weakly_diagional_control_term(getkey):
@@ -131,7 +136,6 @@ def test_cde_adjoint_term(getkey):
     mlp = eqx.nn.MLP(in_size=5, out_size=6, width_size=3, depth=1, key=getkey())
     vector_field = VF(mlp)
     control = lambda t0, t1: (jr.normal(getkey(), (3,)),)
-    #
     term = diffrax.ControlTerm(vector_field, control)
     adjoint_term = diffrax._term.AdjointTerm(term)
     t = jr.normal(getkey(), ())

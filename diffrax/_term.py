@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree, PyTreeDef
+from jaxtyping import ArrayLike, PyTree, PyTreeDef
 
 from ._custom_types import _Control, Args, IntScalarLike, RealScalarLike, VF, Y
 from ._misc import upcast_or_raise
@@ -219,7 +219,7 @@ ODETerm.__init__.__doc__ = """**Arguments:**
 """
 
 
-class _CallableToPath(AbstractPath):
+class _CallableToPath(AbstractPath[_Control]):
     fn: Callable
 
     @property
@@ -232,17 +232,8 @@ class _CallableToPath(AbstractPath):
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
+    ) -> _Control:
         return self.fn(t0, t1)
-
-
-def _callable_to_path(
-    x: Union[AbstractPath, Callable[[RealScalarLike, RealScalarLike], _Control]],
-) -> AbstractPath:
-    if isinstance(x, AbstractPath):
-        return x
-    else:
-        return _CallableToPath(x)
 
 
 # vf: Shaped[Array, "*state *control"]
@@ -254,17 +245,24 @@ def _prod(vf, control):
 
 class _AbstractControlTerm(AbstractTerm[_Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
-    control: AbstractPath[_Control] = eqx.field(converter=_callable_to_path)
+    _control: Union[
+        AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
+    ]
 
-    def __init__(
-        self,
-        vector_field: Callable[[RealScalarLike, Y, Args], VF],
-        control: Union[
-            AbstractPath, Callable[[RealScalarLike, RealScalarLike], _Control]
+    @property
+    def control(self) -> AbstractPath[_Control]:
+        return self._callable_to_path(self.control)
+
+    @staticmethod
+    def _callable_to_path(
+        x: Union[
+            AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
         ],
-    ):
-        self.vector_field = vector_field
-        self.control = _callable_to_path(control)
+    ) -> AbstractPath[_Control]:
+        if isinstance(x, AbstractPath):
+            return x
+        else:
+            return _CallableToPath(x)
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
@@ -366,8 +364,8 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_Control]):
         return jtu.tree_map(operator.mul, vf, control)
 
 
-class _ControlToODE(eqx.Module, Generic[_Control]):
-    control_term: _AbstractControlTerm[_Control]
+class _ControlToODE(eqx.Module):
+    control_term: _AbstractControlTerm
 
     def __call__(self, t: RealScalarLike, y: Y, args: Args) -> Y:
         control = self.control_term.control.derivative(t)
