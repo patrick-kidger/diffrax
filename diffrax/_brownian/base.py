@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Union
+from typing import Optional, TypeVar, Union
 
 from equinox.internal import AbstractVar
 from jaxtyping import Array, PyTree
@@ -8,7 +8,10 @@ from .._custom_types import LevyArea, LevyVal, RealScalarLike
 from .._path import AbstractPath
 
 
-class AbstractBrownianPath(AbstractPath[Union[PyTree[Array], LevyVal]]):
+_Control = TypeVar("_Control", bound=Union[PyTree[Array], LevyVal])
+
+
+class AbstractBrownianPath(AbstractPath[_Control]):
     """Abstract base class for all Brownian paths."""
 
     levy_area: AbstractVar[LevyArea]
@@ -20,7 +23,7 @@ class AbstractBrownianPath(AbstractPath[Union[PyTree[Array], LevyVal]]):
         t1: Optional[RealScalarLike] = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], LevyVal]:
+    ) -> _Control:
         r"""Samples a Brownian increment $w(t_1) - w(t_0)$.
 
         Each increment has distribution $\mathcal{N}(0, t_1 - t_0)$.

@@ -11,9 +11,12 @@ import numpy as np
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
 
-from ._custom_types import _Control, Args, IntScalarLike, RealScalarLike, VF, Y
+from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
 from ._misc import upcast_or_raise
 from ._path import AbstractPath
+
+
+_Control = TypeVar("_Control", bound=Control)
 
 
 class AbstractTerm(eqx.Module, Generic[_Control]):
@@ -236,6 +239,17 @@ class _CallableToPath(AbstractPath[_Control]):
         return self.fn(t0, t1)
 
 
+def _callable_to_path(
+    x: Union[
+        AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
+    ],
+) -> AbstractPath[_Control]:
+    if isinstance(x, AbstractPath):
+        return x
+    else:
+        return _CallableToPath(x)
+
+
 # vf: Shaped[Array, "*state *control"]
 # control: Shaped[Array, "*control"]
 # return: Shaped[Array, "*state"]
@@ -245,30 +259,15 @@ def _prod(vf, control):
 
 class _AbstractControlTerm(AbstractTerm[_Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
-    _control: Union[
+    control: Union[
         AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
-    ]
-
-    @property
-    def control(self) -> AbstractPath[_Control]:
-        return self._callable_to_path(self.control)
-
-    @staticmethod
-    def _callable_to_path(
-        x: Union[
-            AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
-        ],
-    ) -> AbstractPath[_Control]:
-        if isinstance(x, AbstractPath):
-            return x
-        else:
-            return _CallableToPath(x)
+    ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
 
     def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> _Control:
-        return self.control.evaluate(t0, t1)
+        return self.control.evaluate(t0, t1)  # pyright: ignore
 
     def to_ode(self) -> ODETerm:
         r"""If the control is differentiable then $f(t, y(t), args) \mathrm{d}x(t)$
@@ -368,7 +367,7 @@ class _ControlToODE(eqx.Module):
     control_term: _AbstractControlTerm
 
     def __call__(self, t: RealScalarLike, y: Y, args: Args) -> Y:
-        control = self.control_term.control.derivative(t)
+        control = self.control_term.control.derivative(t)  # pyright: ignore
         return self.control_term.vf_prod(t, y, args, control)
 
 

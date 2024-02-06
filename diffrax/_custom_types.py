@@ -1,5 +1,5 @@
 import typing
-from typing import Any, Literal, Optional, TYPE_CHECKING, TypeVar, Union
+from typing import Any, Literal, Optional, TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
 
 import equinox as eqx
@@ -46,7 +46,6 @@ RealScalarLike = Union[FloatScalarLike, IntScalarLike]
 Y = PyTree[Shaped[ArrayLike, "?*y"], "Y"]
 VF = PyTree[Shaped[ArrayLike, "?*vf"], "VF"]
 Control = PyTree[Shaped[ArrayLike, "?*control"], "C"]
-_Control = TypeVar("_Control", bound=Control)
 Args = PyTree[Any]
 
 DenseInfo = dict[str, PyTree[Array]]

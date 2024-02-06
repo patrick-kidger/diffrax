@@ -1,5 +1,5 @@
 import abc
-from typing import Generic, Optional, TYPE_CHECKING
+from typing import Generic, Optional, TYPE_CHECKING, TypeVar
 
 import equinox as eqx
 import jax
@@ -11,7 +11,10 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractVar
 
-from ._custom_types import _Control, RealScalarLike
+from ._custom_types import Control, RealScalarLike
+
+
+_Control = TypeVar("_Control", bound=Control)
 
 
 class AbstractPath(eqx.Module, Generic[_Control]):

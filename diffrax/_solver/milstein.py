@@ -7,7 +7,6 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
 
-from .._brownian import AbstractBrownianPath
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
@@ -43,9 +42,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure: ClassVar = MultiTerm[
-        tuple[ODETerm, AbstractTerm[AbstractBrownianPath]]
-    ]
+    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
