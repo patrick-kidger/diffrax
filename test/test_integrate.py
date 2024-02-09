@@ -13,7 +13,7 @@ import pytest
 import scipy.stats
 from diffrax import ControlTerm, MultiTerm, ODETerm
 from equinox.internal import ω
-from jaxtyping import Array
+from jaxtyping import Array, ArrayLike, Float
 
 from .helpers import (
     all_ode_solvers,
@@ -520,3 +520,43 @@ def test_implicit_tol_error():
             0.01,
             1.0,
         )
+
+
+def test_term_compatibility():
+    class TestControl(eqx.Module):
+        dt: Float[ArrayLike, ""]
+
+        def __rmul__(self, other):
+            return other * self.dt
+
+        def __mul__(self, other):
+            return self.dt * other
+
+    class TestSolver(diffrax.Euler):
+        term_structure = diffrax.AbstractTerm[TestControl]
+
+    solver = TestSolver()
+    vf = lambda t, y, args: y
+    incompatible_term = diffrax.WeaklyDiagonalControlTerm(vf, lambda t0, t1: t1 - t0)
+    compatible_term = diffrax.WeaklyDiagonalControlTerm(
+        vf, lambda t0, t1: TestControl(t1 - t0)
+    )
+
+    with pytest.raises(ValueError):
+        diffrax.diffeqsolve(
+            incompatible_term,
+            solver,
+            0.0,
+            1.0,
+            0.1,
+            3.0,
+        )
+
+    diffrax.diffeqsolve(
+        compatible_term,
+        solver,
+        0.1,
+        1.1,
+        0.1,
+        2.0,
+    )
