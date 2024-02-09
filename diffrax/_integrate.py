@@ -73,23 +73,27 @@ class State(eqx.Module):
     dense_save_index: Optional[IntScalarLike]
 
 
-def _is_none(x):
+def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(terms, term_structure):
+def _term_compatible(terms: PyTree[AbstractTerm], term_structure: PyTree) -> bool:
     def _check(term_cls, term):
         if get_origin(term_cls) is MultiTerm:
             if isinstance(term, MultiTerm):
                 [_tmp] = get_args(term_cls)
                 assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
-                if not _term_compatible(term.terms, get_args(_tmp)):
-                    raise ValueError
-            else:
-                raise ValueError
+                if _term_compatible(term.terms, get_args(_tmp)):
+                    return
         else:
-            if not isinstance(term, term_cls):
-                raise ValueError
+            if isinstance(term, term_cls):
+                t0 = getattr(term, "control.t0", -jnp.inf)
+                t1 = getattr(term, "control.t1", jnp.inf)
+                control = jax.eval_shape(term.contr, t0, t1)
+                type_expected = get_args(term_cls)
+                if not type_expected or isinstance(control, type_expected):
+                    return
+        raise ValueError
 
     try:
         jtu.tree_map(_check, term_structure, terms)
