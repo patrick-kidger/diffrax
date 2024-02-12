@@ -210,10 +210,13 @@ class VirtualBrownianTree(AbstractBrownianPath):
             dtype = jnp.result_type(z)
             return jnp.astype(sqrt_len, dtype) * z
 
-        leaves, treedef = jtu.tree_flatten(x)
-        dt_normalized = [mult(leaves[0])]
-        other_normalized = jtu.tree_map(sqrt_mult, leaves[1:])
-        return jtu.tree_unflatten(treedef, dt_normalized + other_normalized)
+        def is_dt(z):
+            return z is x.dt
+
+        dt, other = eqx.partition(x, is_dt)
+        dt_normalized = jtu.tree_map(mult, dt)
+        other_normalized = jtu.tree_map(sqrt_mult, other)
+        return eqx.combine(dt_normalized, other_normalized)
 
     @eqx.filter_jit
     def evaluate(
