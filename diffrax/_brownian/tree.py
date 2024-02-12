@@ -69,7 +69,6 @@ class _State(eqx.Module):
     bkk_s_u_su: Optional[FloatTriple]  # \bar{K}_s, _u, _{s,u}
 
 
-_CompatibleLevyArea = Union[TimeLevyArea, SpaceTimeLevyArea]
 _LevyArea = TypeVar("_LevyArea", TimeLevyArea, SpaceTimeLevyArea)
 
 
@@ -155,7 +154,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: type[_CompatibleLevyArea] = eqx.field(static=True)
+    levy_area: type[Union[TimeLevyArea, SpaceTimeLevyArea]] = eqx.field(static=True)
     key: PyTree[PRNGKeyArray]
     _spline: _Spline = eqx.field(static=True)
 
@@ -167,7 +166,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         tol: RealScalarLike,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: type[_CompatibleLevyArea] = TimeLevyArea,
+        levy_area: type[Union[TimeLevyArea, SpaceTimeLevyArea]] = TimeLevyArea,
         _spline: _Spline = "sqrt",
     ):
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
@@ -176,7 +175,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # Since we rescale the interval to [0,1],
         # we need to rescale the tolerance too.
         self.tol = tol / (self.t1 - self.t0)
-        if not issubclass(levy_area, _CompatibleLevyArea):
+        if levy_area not in (TimeLevyArea, SpaceTimeLevyArea):
             raise ValueError(
                 "`levy_area` must be one of `TimeLevyArea` or `SpaceTimeLevyArea`, ",
                 f"got {levy_area}.",
@@ -246,7 +245,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
         assert isinstance(levy_out, (TimeLevyArea, SpaceTimeLevyArea))
         return levy_out if use_levy else levy_out.W
 
-    def _evaluate(self, r: RealScalarLike) -> PyTree[_CompatibleLevyArea]:
+    def _evaluate(
+        self, r: RealScalarLike
+    ) -> PyTree[Union[TimeLevyArea, SpaceTimeLevyArea]]:
         """Maps the _evaluate_leaf function at time r using self.key onto self.shape"""
         r = eqxi.error_if(
             r,
@@ -261,13 +262,13 @@ class VirtualBrownianTree(AbstractBrownianPath):
         key,
         r: RealScalarLike,
         struct: jax.ShapeDtypeStruct,
-    ) -> _CompatibleLevyArea:
+    ) -> Union[TimeLevyArea, SpaceTimeLevyArea]:
         shape, dtype = struct.shape, struct.dtype
 
         t0 = jnp.zeros((), dtype)
         r = jnp.asarray(r, dtype)
 
-        if issubclass(self.levy_area, SpaceTimeLevyArea):
+        if self.levy_area is SpaceTimeLevyArea:
             state_key, init_key_w, init_key_la = jr.split(key, 3)
             bhh_1 = jr.normal(init_key_la, shape, dtype) / math.sqrt(12)
             bhh_0 = jnp.zeros_like(bhh_1)
@@ -315,7 +316,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             _w = _split_interval(_cond, _w_stu, _w_inc)
             _bhh = None
             _bkk = None
-            if not issubclass(self.levy_area, TimeLevyArea):
+            if self.levy_area is not TimeLevyArea:
                 assert _bhh_stu is not None and _bhh_st_tu is not None
                 _bhh = _split_interval(_cond, _bhh_stu, _bhh_st_tu)
 
@@ -339,7 +340,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
         w_s, w_u, w_su = final_state.w_s_u_su
 
-        if issubclass(self.levy_area, TimeLevyArea):
+        if self.levy_area is TimeLevyArea:
             w_mean = w_s + sr / su * w_su
             if self._spline == "sqrt":
                 z = jr.normal(final_state.key, shape, dtype)
@@ -352,9 +353,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
             else:
                 assert False
             w_r = w_mean + bb
-            return self.levy_area(dt=r, W=w_r)
+            return TimeLevyArea(dt=r, W=w_r)
 
-        elif issubclass(self.levy_area, SpaceTimeLevyArea):
+        elif self.levy_area is SpaceTimeLevyArea:
             # This is based on Theorem 6.1.4 of Foster's thesis (see above).
 
             assert final_state.bhh_s_u_su is not None
@@ -393,7 +394,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
             inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
             hh_r = inverse_r * bhh_r
 
-            return self.levy_area(dt=r, W=w_r, H=hh_r, bar_H=bhh_r, K=None, bar_K=None)
+            return SpaceTimeLevyArea(
+                dt=r, W=w_r, H=hh_r, bar_H=bhh_r, K=None, bar_K=None
+            )
         else:
             assert False
 
@@ -446,7 +449,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
         w_s, w_u, w_su = _state.w_s_u_su
         assert _state.bkk_s_u_su is None
-        if issubclass(self.levy_area, SpaceTimeLevyArea):
+        if self.levy_area is SpaceTimeLevyArea:
             assert _state.bhh_s_u_su is not None
             bhh_s, bhh_u, bhh_su = _state.bhh_s_u_su
 

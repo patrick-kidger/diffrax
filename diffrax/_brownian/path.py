@@ -62,7 +62,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             else shape
         )
         self.key = key
-        self.levy_area = levy_area
+        self.levy_area = levy_area  # pyright: ignore[reportIncompatibleVariableOverride]
 
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
@@ -113,7 +113,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         )
         if use_levy:
             out = levy_tree_transpose(self.shape, self.levy_area, out)
-            assert isinstance(out, Union[TimeLevyArea, SpaceTimeLevyArea])
+            assert isinstance(out, (TimeLevyArea, SpaceTimeLevyArea))
         return out
 
     @staticmethod
@@ -129,13 +129,13 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         w = jr.normal(key, shape.shape, shape.dtype) * w_std
         dt = t1 - t0
 
-        if issubclass(levy_area, SpaceTimeLevyArea):
+        if levy_area is SpaceTimeLevyArea:
             key, key_hh = jr.split(key, 2)
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
-            levy_val = levy_area(dt, w, hh)
-        elif issubclass(levy_area, TimeLevyArea):
-            levy_val = levy_area(dt, w)
+            levy_val = SpaceTimeLevyArea(dt, w, hh)
+        elif levy_area is TimeLevyArea:
+            levy_val = TimeLevyArea(dt, w)
         else:
             assert False
 
