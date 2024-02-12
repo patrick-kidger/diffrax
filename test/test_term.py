@@ -45,8 +45,8 @@ def test_control_term(getkey):
 
     # `# type: ignore` is used for contrapositive static type checking as per:
     # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
-    _term_static: diffrax.ControlTerm[Array] = term
-    _term_static_contra: diffrax.ControlTerm[diffrax.LevyVal] = term  # type: ignore
+    _: diffrax.ControlTerm[Array] = term
+    _: diffrax.ControlTerm[diffrax.LevyVal] = term  # type: ignore
 
     # Enable the following runtime checks once beartype supports Generic[TypeVar].
     # https://github.com/beartype/beartype/issues/238
