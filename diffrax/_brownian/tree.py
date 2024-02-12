@@ -225,7 +225,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         use_levy: bool = False,
     ) -> Union[PyTree[Array], Union[TimeLevyArea, SpaceTimeLevyArea]]:
         def _is_levy_area(obj):
-            return isinstance(obj, Union[TimeLevyArea, SpaceTimeLevyArea])
+            return isinstance(obj, (TimeLevyArea, SpaceTimeLevyArea))
 
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
@@ -244,7 +244,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         levy_out = levy_tree_transpose(self.shape, self.levy_area, levy_out)
         # now map [0,1] back onto [self.t0, self.t1]
         levy_out = self._denormalise_bm_inc(levy_out)
-        assert isinstance(levy_out, Union[TimeLevyArea, SpaceTimeLevyArea])
+        assert isinstance(levy_out, (TimeLevyArea, SpaceTimeLevyArea))
         return levy_out if use_levy else levy_out.W
 
     def _evaluate(self, r: RealScalarLike) -> PyTree[_CompatibleLevyArea]:
