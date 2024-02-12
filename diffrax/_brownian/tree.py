@@ -267,17 +267,21 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t0 = jnp.zeros((), dtype)
         r = jnp.asarray(r, dtype)
 
-        state_key, init_key_w, init_key_la = jr.split(key, 3)
-        w_0 = jnp.zeros(shape, dtype)
-        w_1 = jr.normal(init_key_w, shape, dtype)
-        w = (w_0, w_1, w_1)
-        bhh = None
-        bkk = None
-
         if issubclass(self.levy_area, SpaceTimeLevyArea):
+            state_key, init_key_w, init_key_la = jr.split(key, 3)
             bhh_1 = jr.normal(init_key_la, shape, dtype) / math.sqrt(12)
             bhh_0 = jnp.zeros_like(bhh_1)
             bhh = (bhh_0, bhh_1, bhh_1)
+            bkk = None
+
+        else:
+            state_key, init_key_w = jr.split(key, 2)
+            bhh = None
+            bkk = None
+
+        w_0 = jnp.zeros(shape, dtype)
+        w_1 = jr.normal(init_key_w, shape, dtype)
+        w = (w_0, w_1, w_1)
 
         init_state = _State(
             level=0, s=t0, w_s_u_su=w, key=state_key, bhh_s_u_su=bhh, bkk_s_u_su=bkk
