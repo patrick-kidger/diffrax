@@ -231,7 +231,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)
         levy_0 = self._evaluate(t0)
-        # Should this really be returning a levy area straight away?
         if t1 is None:
             levy_out = levy_0
         else:
