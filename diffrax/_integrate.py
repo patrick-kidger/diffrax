@@ -87,13 +87,12 @@ def _term_compatible(terms: PyTree[AbstractTerm], term_structure: PyTree) -> boo
                     return
         else:
             term_args_expected = get_args(term_cls)
-            control_compatible = True
-            if term_args_expected:
+            if term_args_expected != ():
                 term_cls = get_origin(term_cls)
-                t0 = getattr(term, "control.t0", -jnp.inf)
-                t1 = getattr(term, "control.t1", jnp.inf)
-                control = jax.eval_shape(term.contr, t0, t1)
+                control = jax.eval_shape(term.contr, 0.0, 0.0)
                 control_compatible = isinstance(control, term_args_expected)
+            else:
+                control_compatible = True
             if isinstance(term, term_cls) and control_compatible:
                 return
         raise ValueError
