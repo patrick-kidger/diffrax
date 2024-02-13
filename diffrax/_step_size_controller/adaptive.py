@@ -179,6 +179,52 @@ class PIDController(
         common to refer to solving an equation to specific tolerances, without
         necessarily stating which solver was used.)
 
+        !!! Example
+
+            The choice of `rtol` and `atol` can have a significant impact on the
+            accuracy of even simple systems.
+            Consider a simple pendulum with a small angle kick:
+            ```python
+            class SimplePendulum(eqx.Module):
+                def __call__(self, t, state, args=None):
+                    theta, omega = state
+                    dtheta = omega
+                    domega = - jnp.sin(theta)
+                    return jnp.array([dtheta, domega])
+            dynamics = SimplePendulum()
+            init_angle = 0.1
+            init_omega = 0
+            state0 = jnp.array([init_angle, init_omega])
+            ```
+            We can integrate this using:
+            ```python
+            def integrator(dynamics, state0, stepsize_controller):
+                term = diffrax.ODETerm(dynamics)
+                solver = diffrax.TSit5()
+                t0 = 0.0
+                dt0 = 0.1
+                t1 = 1e4 * dt0
+                ts = jnp.arange(0.0, 1e3, 0,1)
+                stepsize_controller = stepsize_controller
+                solution = diffrax.diffeqsolve(
+                    term, solver, t0, t1, dt0, state0,
+                    saveat=diffrax.SaveAt(ts=ts),
+                    stepsize_controller=stepsize_controller,
+                    max_steps=2**20,
+                )
+                return solution
+            ```
+            to compare the effect of different tolerances:
+            ```python
+            PID_controller_incorrect = diffrax.PIDController(rtol=1e-3, atol=1e-6)
+            PID_controller_correct = diffrax.PIDController(rtol=1e-7, atol=1e-9)
+            Constant_controller = diffrax.ConstantStepSize()
+            ```
+            The phase portraits of the pendulum from the different tolerances clearly
+            illustrate the impact of the choice of `rtol` and `atol` on the accuracy of
+            the solution.
+            ![Phase portrait of pendulum](../imgs/pendulum_adaptive_steps.png)
+
     ??? tip "Choosing PID coefficients"
 
         This controller can be reduced to any special case (e.g. just a PI controller,
@@ -216,6 +262,7 @@ class PIDController(
         sol = diffeqsolve(...)
         print(sol.stats["num_steps"])
         ```
+
 
     ??? cite "References"
 
