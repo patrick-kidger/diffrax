@@ -103,7 +103,7 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
                 with context:
                     out = path.evaluate(t0, t1, use_levy=use_levy)
                 if use_levy:
-                    assert isinstance(out, diffrax.AbstractLevyReturn)
+                    assert isinstance(out, diffrax.AbstractBrownianReturn)
                     w = out.W
                     if isinstance(out, diffrax.SpaceTimeLevyArea):
                         h = out.H
@@ -136,7 +136,7 @@ def test_statistics(ctr, levy_area, use_levy):
 
     values = jax.vmap(_eval)(keys)
     if use_levy:
-        assert isinstance(values, diffrax.AbstractLevyReturn)
+        assert isinstance(values, diffrax.AbstractBrownianReturn)
         w = values.W
 
         if isinstance(values, diffrax.SpaceTimeLevyArea):

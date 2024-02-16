@@ -53,17 +53,17 @@ BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
 
-class AbstractLevyReturn(eqx.Module):
+class AbstractBrownianReturn(eqx.Module):
     dt: eqx.AbstractVar[PyTree]
     W: eqx.AbstractVar[PyTree]
 
 
-class BrownianIncrement(AbstractLevyReturn):
+class BrownianIncrement(AbstractBrownianReturn):
     dt: PyTree
     W: PyTree
 
 
-class SpaceTimeLevyArea(AbstractLevyReturn):
+class SpaceTimeLevyArea(AbstractBrownianReturn):
     dt: PyTree
     W: PyTree
     H: PyTree
@@ -72,14 +72,16 @@ class SpaceTimeLevyArea(AbstractLevyReturn):
     bar_K: Optional[PyTree] = None
 
 
-def levy_tree_transpose(tree_shape, levy_area: type[AbstractLevyReturn], tree: PyTree):
+def levy_tree_transpose(
+    tree_shape, levy_area: type[AbstractBrownianReturn], tree: PyTree
+):
     """Helper that takes a PyTree of LevyVals and transposes
     into a LevyVal of PyTrees.
 
     **Arguments:**
 
     - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
-    - `levy_area`: the type of `AbstractLevyReturn`
+    - `levy_area`: the type of `AbstractBrownianReturn`.
     - `tree`: the PyTree of LevyVals to transpose.
 
     **Returns:**

@@ -107,7 +107,7 @@ def _path_l2_dist(
 def _batch_sde_solve(
     key: PRNGKeyArray,
     get_terms: Callable[[diffrax.AbstractBrownianPath], diffrax.AbstractTerm],
-    levy_area: type[diffrax.AbstractLevyReturn],
+    levy_area: type[diffrax.AbstractBrownianReturn],
     solver: diffrax.AbstractSolver,
     w_shape: tuple[int, ...],
     t0: float,
