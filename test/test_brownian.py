@@ -31,7 +31,9 @@ def _make_struct(shape, dtype):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", [diffrax.TimeLevyArea, diffrax.SpaceTimeLevyArea])
+@pytest.mark.parametrize(
+    "levy_area", [diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
     t0 = 0.0
@@ -101,7 +103,7 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
                 with context:
                     out = path.evaluate(t0, t1, use_levy=use_levy)
                 if use_levy:
-                    assert isinstance(out, diffrax.AbstractLevyArea)
+                    assert isinstance(out, diffrax.AbstractLevyReturn)
                     w = out.W
                     if isinstance(out, diffrax.SpaceTimeLevyArea):
                         h = out.H
@@ -114,7 +116,9 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", [diffrax.TimeLevyArea, diffrax.SpaceTimeLevyArea])
+@pytest.mark.parametrize(
+    "levy_area", [diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_statistics(ctr, levy_area, use_levy):
     # Deterministic key for this test; not using getkey()
@@ -132,7 +136,7 @@ def test_statistics(ctr, levy_area, use_levy):
 
     values = jax.vmap(_eval)(keys)
     if use_levy:
-        assert isinstance(values, diffrax.AbstractLevyArea)
+        assert isinstance(values, diffrax.AbstractLevyReturn)
         w = values.W
 
         if isinstance(values, diffrax.SpaceTimeLevyArea):
@@ -197,12 +201,6 @@ def conditional_statistics(
         s, bm_s = out[i - 1]
         r, bm_r = out[i]
         u, bm_u = out[i + 1]
-        w_s = bm_s
-        w_r = bm_r
-        w_u = bm_u
-        h_s = None
-        h_r = None
-        h_u = None
         if use_levy:
             w_s = bm_s.W
             w_r = bm_r.W
@@ -211,6 +209,17 @@ def conditional_statistics(
                 h_s = bm_s.H
                 h_r = bm_r.H
                 h_u = bm_u.H
+            else:
+                h_s = None
+                h_r = None
+                h_u = None
+        else:
+            w_s = bm_s
+            w_r = bm_r
+            w_u = bm_u
+            h_s = None
+            h_r = None
+            h_u = None
 
         # Check w_r|(w_s, w_u)
         w_mean1 = w_s + (w_u - w_s) * ((r - s) / (u - s))
@@ -260,7 +269,9 @@ def conditional_statistics(
     return jnp.array(pvals_w1), jnp.array(pvals_w2), jnp.array(pvals_h)
 
 
-@pytest.mark.parametrize("levy_area", [diffrax.TimeLevyArea, diffrax.SpaceTimeLevyArea])
+@pytest.mark.parametrize(
+    "levy_area", [diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_conditional_statistics(levy_area, use_levy):
     pvals_w1, pvals_w2, pvals_h = conditional_statistics(
@@ -281,7 +292,7 @@ def test_conditional_statistics(levy_area, use_levy):
 
 
 def _levy_area_spline():
-    for levy_area in (diffrax.TimeLevyArea, diffrax.SpaceTimeLevyArea):
+    for levy_area in (diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea):
         for spline in ("quad", "sqrt", "zero"):
             if levy_area is diffrax.SpaceTimeLevyArea and spline == "quad":
                 continue
@@ -321,7 +332,7 @@ def test_spline(levy_area, use_levy, spline):
     else:
         assert len(pvals_w2) == 0
         assert len(pvals_h) == 0
-        if levy_area is diffrax.TimeLevyArea:
+        if levy_area is diffrax.BrownianIncrement:
             assert pred(pvals_w1)
         elif spline == "sqrt":  # levy_area == SpaceTimeLevyArea
             assert pred(pvals_w1)

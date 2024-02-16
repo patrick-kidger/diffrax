@@ -11,10 +11,10 @@ import lineax.internal as lxi
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
 from .._custom_types import (
+    BrownianIncrement,
     levy_tree_transpose,
     RealScalarLike,
     SpaceTimeLevyArea,
-    TimeLevyArea,
 )
 from .._misc import (
     force_bitcast_convert_type,
@@ -47,14 +47,16 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: type[Union[TimeLevyArea, SpaceTimeLevyArea]] = eqx.field(static=True)
+    levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]] = eqx.field(
+        static=True
+    )
     key: PRNGKeyArray
 
     def __init__(
         self,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: type[Union[TimeLevyArea, SpaceTimeLevyArea]],
+        levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]],
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -85,7 +87,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: Optional[RealScalarLike] = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], TimeLevyArea, SpaceTimeLevyArea]:
+    ) -> Union[PyTree[Array], BrownianIncrement, SpaceTimeLevyArea]:
         del left
         if t1 is None:
             dtype = jnp.result_type(t0)
@@ -113,7 +115,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         )
         if use_levy:
             out = levy_tree_transpose(self.shape, self.levy_area, out)
-            assert isinstance(out, (TimeLevyArea, SpaceTimeLevyArea))
+            assert isinstance(out, (BrownianIncrement, SpaceTimeLevyArea))
         return out
 
     @staticmethod
@@ -122,7 +124,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: RealScalarLike,
         key,
         shape: jax.ShapeDtypeStruct,
-        levy_area: type[Union[TimeLevyArea, SpaceTimeLevyArea]],
+        levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]],
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
@@ -134,8 +136,8 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
             levy_val = SpaceTimeLevyArea(dt, w, hh)
-        elif levy_area is TimeLevyArea:
-            levy_val = TimeLevyArea(dt, w)
+        elif levy_area is BrownianIncrement:
+            levy_val = BrownianIncrement(dt, w)
         else:
             assert False
 

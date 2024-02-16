@@ -107,7 +107,7 @@ def _path_l2_dist(
 def _batch_sde_solve(
     key: PRNGKeyArray,
     get_terms: Callable[[diffrax.AbstractBrownianPath], diffrax.AbstractTerm],
-    levy_area: type[diffrax.AbstractLevyArea],
+    levy_area: type[diffrax.AbstractLevyReturn],
     solver: diffrax.AbstractSolver,
     w_shape: tuple[int, ...],
     t0: float,
@@ -157,7 +157,7 @@ def sde_solver_strong_order(
 ):
     dtype = jnp.result_type(*jtu.tree_leaves(y0))
     # TODO: add a check whether the solver needs levy area
-    levy_area = diffrax.TimeLevyArea
+    levy_area = diffrax.BrownianIncrement
     keys = jr.split(key, num_samples)  # deliberately reused across all solves
 
     correct_sols = _batch_sde_solve(
