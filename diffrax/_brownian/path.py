@@ -111,7 +111,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             self.shape,
         )
         if use_levy:
-            out = levy_tree_transpose(self.shape, self.levy_area, out)
+            out = levy_tree_transpose(self.shape, out)
             assert isinstance(out, LevyVal)
         return out
 
@@ -137,7 +137,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         w = jr.normal(key, shape.shape, shape.dtype) * w_std
 
         if use_levy:
-            return LevyVal(dt=t1 - t0, W=w, H=hh, bar_H=None, K=None, bar_K=None)
+            return LevyVal(dt=t1 - t0, W=w, H=hh, K=None)
         else:
             return w
 
