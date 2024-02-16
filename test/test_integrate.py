@@ -523,34 +523,51 @@ def test_implicit_tol_error():
 
 
 def test_term_compatibility():
+    class TestVF(eqx.Module):
+        y: Float[ArrayLike, ""]
+
+        def __rmul__(self, other):
+            return self.__mul__(other)
+
+        def __mul__(self, other):
+            return self.y * other
+
     class TestControl(eqx.Module):
         dt: Float[ArrayLike, ""]
 
         def __rmul__(self, other):
-            return other * self.dt
+            return self.__mul__(other)
 
         def __mul__(self, other):
             return self.dt * other
 
     class TestSolver(diffrax.Euler):
-        term_structure = diffrax.AbstractTerm[TestControl]
+        term_structure = diffrax.AbstractTerm[TestVF, TestControl]
 
     solver = TestSolver()
-    vf = lambda t, y, args: y
-    incompatible_term = diffrax.WeaklyDiagonalControlTerm(vf, lambda t0, t1: t1 - t0)
-    compatible_term = diffrax.WeaklyDiagonalControlTerm(
-        vf, lambda t0, t1: TestControl(t1 - t0)
-    )
+    incompatible_vf = lambda t, y, args: y
+    compatible_vf = lambda t, y, args: TestVF(y)
+    incompatible_control = lambda t0, t1: t1 - t0
+    compatible_control = lambda t0, t1: TestControl(t1 - t0)
 
-    with pytest.raises(ValueError):
-        diffrax.diffeqsolve(
-            incompatible_term,
-            solver,
-            0.0,
-            1.0,
-            0.1,
-            3.0,
-        )
+    incompatible_terms = [
+        diffrax.WeaklyDiagonalControlTerm(incompatible_vf, incompatible_control),
+        diffrax.WeaklyDiagonalControlTerm(incompatible_vf, compatible_control),
+        diffrax.WeaklyDiagonalControlTerm(compatible_vf, incompatible_control),
+    ]
+    compatible_term = diffrax.WeaklyDiagonalControlTerm(
+        compatible_vf, compatible_control
+    )
+    for term in incompatible_terms:
+        with pytest.raises(ValueError):
+            diffrax.diffeqsolve(
+                term,
+                solver,
+                0.0,
+                1.0,
+                0.1,
+                3.0,
+            )
 
     diffrax.diffeqsolve(
         compatible_term,

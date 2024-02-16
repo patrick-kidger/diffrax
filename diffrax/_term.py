@@ -16,10 +16,11 @@ from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
 
+_VF = TypeVar("_VF", bound=VF)
 _Control = TypeVar("_Control", bound=Control)
 
 
-class AbstractTerm(eqx.Module, Generic[_Control]):
+class AbstractTerm(eqx.Module, Generic[_VF, _Control]):
     r"""Abstract base class for all terms.
 
     Let $y$ solve some differential equation with vector field $f$ and control $x$.
@@ -31,7 +32,7 @@ class AbstractTerm(eqx.Module, Generic[_Control]):
     """
 
     @abc.abstractmethod
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
         """The vector field.
 
         Represents a function $f(t, y(t), args)$.
@@ -74,7 +75,7 @@ class AbstractTerm(eqx.Module, Generic[_Control]):
         pass
 
     @abc.abstractmethod
-    def prod(self, vf: VF, control: _Control) -> Y:
+    def prod(self, vf: _VF, control: _Control) -> Y:
         r"""Determines the interaction between vector field and control.
 
         With a solution $y$ to a differential equation with vector field $f$ and
@@ -158,7 +159,7 @@ class AbstractTerm(eqx.Module, Generic[_Control]):
         return False
 
 
-class ODETerm(AbstractTerm[RealScalarLike]):
+class ODETerm(AbstractTerm[_VF, RealScalarLike]):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
 
@@ -175,9 +176,9 @@ class ODETerm(AbstractTerm[RealScalarLike]):
         ```
     """
 
-    vector_field: Callable[[RealScalarLike, Y, Args], VF]
+    vector_field: Callable[[RealScalarLike, Y, Args], _VF]
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
         out = self.vector_field(t, y, args)
         if jtu.tree_structure(out) != jtu.tree_structure(y):
             raise ValueError(
@@ -200,7 +201,7 @@ class ODETerm(AbstractTerm[RealScalarLike]):
     def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> RealScalarLike:
         return t1 - t0
 
-    def prod(self, vf: VF, control: RealScalarLike) -> Y:
+    def prod(self, vf: _VF, control: RealScalarLike) -> Y:
         def _mul(v):
             c = upcast_or_raise(
                 control,
@@ -257,8 +258,8 @@ def _prod(vf, control):
     return jnp.tensordot(vf, control, axes=jnp.ndim(control))
 
 
-class _AbstractControlTerm(AbstractTerm[_Control]):
-    vector_field: Callable[[RealScalarLike, Y, Args], VF]
+class _AbstractControlTerm(AbstractTerm[_VF, _Control]):
+    vector_field: Callable[[RealScalarLike, Y, Args], _VF]
     control: Union[
         AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
     ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
@@ -295,7 +296,7 @@ _AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 """
 
 
-class ControlTerm(_AbstractControlTerm[_Control]):
+class ControlTerm(_AbstractControlTerm[_VF, _Control]):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product.
 
@@ -333,11 +334,11 @@ class ControlTerm(_AbstractControlTerm[_Control]):
         ```
     """
 
-    def prod(self, vf: VF, control: _Control) -> Y:
+    def prod(self, vf: _VF, control: _Control) -> Y:
         return jtu.tree_map(_prod, vf, control)
 
 
-class WeaklyDiagonalControlTerm(_AbstractControlTerm[_Control]):
+class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
     matrix is square and diagonal. In this case we may represent the matrix as a vector
@@ -359,7 +360,7 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_Control]):
         without the "weak". (This stronger property is useful in some SDE solvers.)
     """
 
-    def prod(self, vf: VF, control: _Control) -> Y:
+    def prod(self, vf: _VF, control: _Control) -> Y:
         return jtu.tree_map(operator.mul, vf, control)
 
 
@@ -446,11 +447,11 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         return any(term.is_vf_expensive(t0, t1, y, args) for term in self.terms)
 
 
-class WrapTerm(AbstractTerm[_Control]):
-    term: AbstractTerm[_Control]
+class WrapTerm(AbstractTerm[_VF, _Control]):
+    term: AbstractTerm[_VF, _Control]
     direction: IntScalarLike
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
         t = t * self.direction
         return self.term.vf(t, y, args)
 
@@ -459,7 +460,7 @@ class WrapTerm(AbstractTerm[_Control]):
         _t1 = jnp.where(self.direction == 1, t1, -t0)
         return (self.direction * self.term.contr(_t0, _t1) ** ω).ω
 
-    def prod(self, vf: VF, control: _Control) -> Y:
+    def prod(self, vf: _VF, control: _Control) -> Y:
         return self.term.prod(vf, control)
 
     def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: _Control) -> Y:
@@ -478,8 +479,8 @@ class WrapTerm(AbstractTerm[_Control]):
         return self.term.is_vf_expensive(_t0, _t1, y, args)
 
 
-class AdjointTerm(AbstractTerm[_Control]):
-    term: AbstractTerm[_Control]
+class AdjointTerm(AbstractTerm[_VF, _Control]):
+    term: AbstractTerm[_VF, _Control]
 
     def is_vf_expensive(
         self,

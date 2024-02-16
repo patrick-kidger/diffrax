@@ -3,18 +3,23 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-from jaxtyping import Array, Shaped
+from jaxtyping import Array, PyTree, Shaped
 
 from .helpers import tree_allclose
 
 
 def test_ode_term():
-    vector_field = lambda t, y, args: -y
+    vector_field = lambda t, y, args: jnp.astype(-y, jnp.float32)
     term = diffrax.ODETerm(vector_field)
     dt = term.contr(0, 1)
     vf = term.vf(0, 1, None)
     vf_prod = term.vf_prod(0, 1, None, dt)
     assert tree_allclose(vf_prod, term.prod(vf, dt))
+
+    # `# type: ignore` is used for contrapositive static type checking as per:
+    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
+    _: diffrax.ODETerm[Array] = term
+    __: diffrax.ODETerm[bool] = term  # type: ignore
 
 
 def test_control_term(getkey):
@@ -45,8 +50,8 @@ def test_control_term(getkey):
 
     # `# type: ignore` is used for contrapositive static type checking as per:
     # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
-    _: diffrax.ControlTerm[Array] = term
-    _: diffrax.ControlTerm[diffrax.LevyVal] = term  # type: ignore
+    _: diffrax.ControlTerm[PyTree[Array], Array] = term
+    __: diffrax.ControlTerm[PyTree[Array], diffrax.AbstractLevyArea] = term  # type: ignore
 
     # Enable the following runtime checks once beartype supports Generic[TypeVar].
     # https://github.com/beartype/beartype/issues/238
