@@ -60,12 +60,10 @@ class LevyVal(eqx.Module):
     dt: PyTree
     W: PyTree
     H: Optional[PyTree]
-    bar_H: Optional[PyTree]
     K: Optional[PyTree]
-    bar_K: Optional[PyTree]
 
 
-def levy_tree_transpose(tree_shape, levy_area: LevyArea, tree: PyTree):
+def levy_tree_transpose(tree_shape, tree: PyTree):
     """Helper that takes a PyTree of LevyVals and transposes
     into a LevyVal of PyTrees.
 
