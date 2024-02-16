@@ -9,7 +9,9 @@ from .helpers import tree_allclose
 
 
 def test_ode_term():
-    vector_field = lambda t, y, args: jnp.astype(-y, jnp.float32)
+    def vector_field(t, y, args) -> Array:
+        return -y
+
     term = diffrax.ODETerm(vector_field)
     dt = term.contr(0, 1)
     vf = term.vf(0, 1, None)
