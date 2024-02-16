@@ -523,30 +523,21 @@ def test_implicit_tol_error():
 
 
 def test_term_compatibility():
-    class TestVF(eqx.Module):
-        y: Float[ArrayLike, ""]
-
-        def __rmul__(self, other):
-            return self.__mul__(other)
-
-        def __mul__(self, other):
-            return self.y * other
-
     class TestControl(eqx.Module):
         dt: Float[ArrayLike, ""]
 
         def __rmul__(self, other):
-            return self.__mul__(other)
+            return other.__mul__(self.dt)
 
         def __mul__(self, other):
             return self.dt * other
 
     class TestSolver(diffrax.Euler):
-        term_structure = diffrax.AbstractTerm[TestVF, TestControl]
+        term_structure = diffrax.AbstractTerm[Float[Array, "n 3"], TestControl]
 
     solver = TestSolver()
-    incompatible_vf = lambda t, y, args: y
-    compatible_vf = lambda t, y, args: TestVF(y)
+    incompatible_vf = lambda t, y, args: jnp.ones((2, 1))
+    compatible_vf = lambda t, y, args: jnp.ones((2, 3))
     incompatible_control = lambda t0, t1: t1 - t0
     compatible_control = lambda t0, t1: TestControl(t1 - t0)
 
@@ -559,21 +550,7 @@ def test_term_compatibility():
         compatible_vf, compatible_control
     )
     for term in incompatible_terms:
-        with pytest.raises(ValueError):
-            diffrax.diffeqsolve(
-                term,
-                solver,
-                0.0,
-                1.0,
-                0.1,
-                3.0,
-            )
+        with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
+            diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, jnp.zeros((2, 1)))
 
-    diffrax.diffeqsolve(
-        compatible_term,
-        solver,
-        0.1,
-        1.1,
-        0.1,
-        2.0,
-    )
+    diffrax.diffeqsolve(compatible_term, solver, 0.1, 1.1, 0.1, jnp.zeros((2, 3)))
