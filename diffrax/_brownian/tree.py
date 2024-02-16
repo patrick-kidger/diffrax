@@ -451,9 +451,10 @@ class VirtualBrownianTree(AbstractBrownianPath):
         root_su = jnp.sqrt(su)
 
         w_s, w_u, w_su = _state.w_s_u_su
-        assert _state.bkk_s_u_su is None
+
         if self.levy_area is SpaceTimeLevyArea:
             assert _state.bhh_s_u_su is not None
+            assert _state.bkk_s_u_su is None
             bhh_s, bhh_u, bhh_su = _state.bhh_s_u_su
 
             z1_key, z2_key = jr.split(midpoint_key, 2)
@@ -465,6 +466,8 @@ class VirtualBrownianTree(AbstractBrownianPath):
             w_term1 = w_su / 2
             w_term2 = 3 / (2 * su) * bhh_su + z
             w_st = w_term1 + w_term2
+            w_tu = w_term1 - w_term2
+            w_st_tu = (w_st, w_tu)
 
             bhh_term1 = bhh_su / 8 - su / 4 * z
             bhh_term2 = su / 4 * n
@@ -473,20 +476,22 @@ class VirtualBrownianTree(AbstractBrownianPath):
             bhh_st_tu = (bhh_st, bhh_tu)
 
             w_t = w_s + w_st
+            w_stu = (w_s, w_t, w_u)
 
             bhh_t = bhh_s + bhh_st + 0.5 * (t * w_s - s * w_t)
             bhh_stu = (bhh_s, bhh_t, bhh_u)
+            bkk_stu = None
+            bkk_st_tu = None
 
         else:
             assert _state.bhh_s_u_su is None
-            w_term1 = 0.5 * w_su
+            assert _state.bkk_s_u_su is None
+            mean = 0.5 * w_su
             w_term2 = root_su / 2 * jr.normal(midpoint_key, shape, dtype)
-            w_st = w_term1 + w_term2
+            w_st = mean + w_term2
+            w_tu = mean - w_term2
+            w_st_tu = (w_st, w_tu)
             w_t = w_s + w_st
-            bhh_stu, bhh_st_tu = None, None
-
-        w_tu = w_term1 - w_term2
-        w_st_tu = (w_st, w_tu)
-        w_stu = (w_s, w_t, w_u)
-        bkk_stu, bkk_st_tu = None, None
+            w_stu = (w_s, w_t, w_u)
+            bhh_stu, bhh_st_tu, bkk_stu, bkk_st_tu = None, None, None, None
         return t, w_stu, w_st_tu, keys, bhh_stu, bhh_st_tu, bkk_stu, bkk_st_tu
