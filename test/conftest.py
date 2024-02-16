@@ -1,5 +1,5 @@
 import equinox.internal as eqxi
-import jax.config
+import jax
 import pytest
 
 
