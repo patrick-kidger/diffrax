@@ -69,10 +69,10 @@ class _State(eqx.Module):
     bkk_s_u_su: Optional[FloatTriple]  # \bar{K}_s, _u, _{s,u}
 
 
-_LevyArea = TypeVar("_LevyArea", BrownianIncrement, SpaceTimeLevyArea)
+_BrownianReturn = TypeVar("_BrownianReturn", BrownianIncrement, SpaceTimeLevyArea)
 
 
-def _levy_diff(x0: _LevyArea, x1: _LevyArea) -> _LevyArea:
+def _levy_diff(x0: _BrownianReturn, x1: _BrownianReturn) -> _BrownianReturn:
     r"""Computes $(W_{s,u}, H_{s,u})$ from $(W_s, \bar{H}_{s,u})$ and
     $(W_u, \bar{H}_u)$, where $\bar{H}_u = u * H_u$.
 
@@ -200,7 +200,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
         self.key = split_by_tree(key, self.shape)
 
-    def _denormalise_bm_inc(self, x: _LevyArea) -> _LevyArea:
+    def _denormalise_bm_inc(self, x: _BrownianReturn) -> _BrownianReturn:
         # Rescaling back from [0, 1] to the original interval [t0, t1].
         interval_len = self.t1 - self.t0  # can be any dtype
         sqrt_len = jnp.sqrt(interval_len)
