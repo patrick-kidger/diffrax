@@ -41,6 +41,12 @@ from ._local_interpolation import (
 )
 from ._misc import adjoint_rms_seminorm as adjoint_rms_seminorm
 from ._path import AbstractPath as AbstractPath
+from ._progress_meter import (
+    AbstractProgressMeter as AbstractProgressMeter,
+    NoProgressMeter as NoProgressMeter,
+    TextProgressMeter as TextProgressMeter,
+    TqdmProgressMeter as TqdmProgressMeter,
+)
 from ._root_finder import (
     VeryChord as VeryChord,
     with_stepsize_controller_tols as with_stepsize_controller_tols,

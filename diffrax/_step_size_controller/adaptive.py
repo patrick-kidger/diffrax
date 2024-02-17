@@ -27,7 +27,7 @@ from .._custom_types import (
     VF,
     Y,
 )
-from .._misc import upcast_or_raise
+from .._misc import static_select, upcast_or_raise
 from .._solution import RESULTS
 from .._term import AbstractTerm, ODETerm
 from .base import AbstractStepSizeController
@@ -604,7 +604,7 @@ class PIDController(
             # This is important because we don't know whether or not the jump is as a
             # result of a left- or right-discontinuity, so we have to skip the jump
             # location altogether.
-            _t1 = jnp.where(made_jump, eqxi.nextafter(eqxi.nextafter(t1)), t1)
+            _t1 = static_select(made_jump, eqxi.nextafter(eqxi.nextafter(t1)), t1)
         else:
             _t1 = t1
         next_t0 = jnp.where(keep_step, _t1, t0)

@@ -25,7 +25,11 @@ from ._custom_types import (
 from ._event import AbstractDiscreteTerminatingEvent
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
-from ._misc import static_select
+from ._misc import linear_rescale, static_select
+from ._progress_meter import (
+    AbstractProgressMeter,
+    NoProgressMeter,
+)
 from ._root_finder import use_stepsize_tol
 from ._saveat import SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
@@ -72,6 +76,7 @@ class State(eqx.Module):
     dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
     dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
+    progress_meter_state: PyTree[Array]
 
 
 def _better_isinstance(x, annotation) -> bool:
@@ -260,6 +265,7 @@ def loop(
     init_state,
     inner_while_loop,
     outer_while_loop,
+    progress_meter,
 ):
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -349,6 +355,10 @@ def loop(
 
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
+
+        progress_meter_state = progress_meter.step(
+            state.progress_meter_state, linear_rescale(t0, tprev, t1)
+        )
 
         # The other parts of the mutable state are kept/not-kept (based on whether the
         # step was accepted) by the stepsize controller. But it doesn't get access to
@@ -477,6 +487,7 @@ def loop(
             dense_ts=dense_ts,  # pyright: ignore
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
+            progress_meter_state=progress_meter_state,
         )
 
         if discrete_terminating_event is not None:
@@ -581,6 +592,7 @@ def diffeqsolve(
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 4096,
     throw: bool = True,
+    progress_meter: AbstractProgressMeter = NoProgressMeter(),
     solver_state: Optional[PyTree[ArrayLike]] = None,
     controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
@@ -657,6 +669,9 @@ def diffeqsolve(
             fails. You may prefer to set `throw=False` and inspect the `result` field
             of the returned solution object, to determine which batch elements
             succeeded and which failed.
+
+    - `progress_meter`: A progress meter to indicate how far through the solve has
+        progressed. See [the progress meters page](./progress_meter.md).
 
     - `solver_state`: Some initial state for the solver. Generally obtained by
         `SaveAt(solver_state=True)` from a previous solve.
@@ -962,6 +977,9 @@ def diffeqsolve(
         dense_infos = None
         dense_save_index = None
 
+    # Progress meter
+    progress_meter_state = progress_meter.init()
+
     # Initialise state
     init_state = State(
         y=y0,
@@ -978,6 +996,7 @@ def diffeqsolve(
         dense_ts=dense_ts,
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
+        progress_meter_state=progress_meter_state,
     )
 
     #
@@ -999,11 +1018,14 @@ def diffeqsolve(
         throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
+        progress_meter=progress_meter,
     )
 
     #
     # Finish up
     #
+
+    progress_meter.close(final_state.progress_meter_state)
 
     is_save_state = lambda x: isinstance(x, SaveState)
     ts = jtu.tree_map(

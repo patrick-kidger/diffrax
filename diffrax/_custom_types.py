@@ -66,15 +66,11 @@ class BrownianIncrement(AbstractBrownianReturn):
 class SpaceTimeLevyArea(AbstractBrownianReturn):
     dt: PyTree
     W: PyTree
-    H: PyTree
-    bar_H: Optional[PyTree] = None
-    K: Optional[PyTree] = None
-    bar_K: Optional[PyTree] = None
+    H: Optional[PyTree]
+    K: Optional[PyTree]
 
 
-def levy_tree_transpose(
-    tree_shape, levy_area: type[AbstractBrownianReturn], tree: PyTree
-):
+def levy_tree_transpose(tree_shape, tree: PyTree):
     """Helper that takes a PyTree of LevyVals and transposes
     into a LevyVal of PyTrees.
 

@@ -114,7 +114,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             self.shape,
         )
         if use_levy:
-            out = levy_tree_transpose(self.shape, self.levy_area, out)
+            out = levy_tree_transpose(self.shape, out)
             assert isinstance(out, (BrownianIncrement, SpaceTimeLevyArea))
         return out
 
