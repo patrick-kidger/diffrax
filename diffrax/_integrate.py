@@ -11,7 +11,8 @@ import jax.core
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import AbstractArray, Array, ArrayLike, Float, Inexact, PyTree, Real
+import typeguard
+from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
@@ -73,17 +74,38 @@ class State(eqx.Module):
     dense_save_index: Optional[IntScalarLike]
 
 
-class _ShapeDtypeTypeCoercer(AbstractArray):
-    def __new__(cls, term_type: Any):
-        if not issubclass(term_type, AbstractArray):
-            return term_type
+def _better_isinstance(x, annotation) -> bool:
+    """isinstance check for parameterized generics.
 
-        cls.array_type = jax.ShapeDtypeStruct
-        cls.dtypes = term_type.dtypes
-        cls.dims = term_type.dims
-        cls.index_variadic = term_type.index_variadic
-        cls.dim_str = term_type.dim_str
-        return cls
+    !!! Example
+        ```python
+        x = (1, jnp.array([2.0]))
+        y = ("test", Float[Array, "foo"])
+        expected_type = tuple[int, Float[Array, "foo"]]
+
+        assert _better_isinstance(x, expected_type) # passes as expected.
+        assert _better_isinstance(y, expected_type) # raises AssertionError as expected.
+
+        # Whereas with isinstance:
+        assert isinstance(x, expected_type) # raises TypeError
+        assert isinstance(y, expected_type) # raises TypeError
+        ```
+    """
+
+    @typeguard.typechecked
+    def f(y: annotation):
+        pass
+
+    try:
+        f(x)
+    except TypeError:
+        return False
+    else:
+        return True
+
+
+def _assert_term_arg(x, term_arg) -> bool:
+    return _better_isinstance(x, term_arg)
 
 
 def _is_none(x: Any) -> bool:
@@ -103,27 +125,42 @@ def _term_compatible(
                 assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
                 if _term_compatible(y, args, term.terms, get_args(_tmp)):
                     return
+            raise ValueError
         else:
+            # Check that `term` is an instance of `term_cls` (ignoring any generic
+            # parameterization).
+            origin_cls = get_origin(term_cls)
+            _term_cls = origin_cls if origin_cls is not None else term_cls
+            if not isinstance(term, _term_cls):
+                raise ValueError
+
+            # Now check the generic parametrization of `term_cls`; can be one of:
+            # -----------------------------------------
+            # `term_cls`                | `term_args`
+            # --------------------------|--------------
+            # AbstractTerm              | ()
+            # AbstractTerm[VF]          | (VF,)
+            # AbstractTerm[VF, Control] | (VF, Control)
+            # -----------------------------------------
             term_args = get_args(term_cls)
             n_term_args = len(term_args)
             if n_term_args >= 1:
-                _term_cls = get_origin(term_cls)
-                vector_field = jax.eval_shape(term.vf, 0.0, y, args)
-                compatible_vf_type = _ShapeDtypeTypeCoercer(term_args[0])
-                vector_field_compatible = isinstance(vector_field, compatible_vf_type)
-                if n_term_args == 2 and vector_field_compatible:
-                    control = jax.eval_shape(term.contr, 0.0, 0.0)
-                    compatible_control_type = _ShapeDtypeTypeCoercer(term_args[1])
-                    control_compatible = isinstance(control, compatible_control_type)
-                else:
-                    control_compatible = False
-                args_compatible = vector_field_compatible and control_compatible
-            else:
-                _term_cls = term_cls
-                args_compatible = True
-            if isinstance(term, _term_cls) and args_compatible:
-                return
-        raise ValueError
+                vf_type = eqx.filter_eval_shape(term.vf, 0.0, y, args)
+                vf_type_expected = term_args[0]
+                vf_type_compatible = eqx.filter_eval_shape(
+                    _assert_term_arg, vf_type, vf_type_expected
+                )
+                if not vf_type_compatible:
+                    raise ValueError
+            if n_term_args == 2:
+                control_type = jax.eval_shape(term.contr, 0.0, 0.0)
+                control_type_expected = term_args[1]
+                control_type_compatible = eqx.filter_eval_shape(
+                    _assert_term_arg, control_type, control_type_expected
+                )
+                if not control_type_compatible:
+                    raise ValueError
+            return  # If we've got to this point then the term is compatible
 
     try:
         jtu.tree_map(_check, term_structure, terms)

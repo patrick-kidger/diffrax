@@ -533,13 +533,15 @@ def test_term_compatibility():
             return self.dt * other
 
     class TestSolver(diffrax.Euler):
-        term_structure = diffrax.AbstractTerm[Float[Array, "n 3"], TestControl]
+        term_structure = diffrax.AbstractTerm[
+            tuple[Float[Array, "n 3"]], tuple[TestControl]
+        ]
 
     solver = TestSolver()
     incompatible_vf = lambda t, y, args: jnp.ones((2, 1))
-    compatible_vf = lambda t, y, args: jnp.ones((2, 3))
+    compatible_vf = lambda t, y, args: (jnp.ones((2, 3)),)
     incompatible_control = lambda t0, t1: t1 - t0
-    compatible_control = lambda t0, t1: TestControl(t1 - t0)
+    compatible_control = lambda t0, t1: (TestControl(t1 - t0),)
 
     incompatible_terms = [
         diffrax.WeaklyDiagonalControlTerm(incompatible_vf, incompatible_control),
@@ -551,6 +553,8 @@ def test_term_compatibility():
     )
     for term in incompatible_terms:
         with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
-            diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, jnp.zeros((2, 1)))
+            diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, (jnp.zeros((2, 1)),))
 
-    diffrax.diffeqsolve(compatible_term, solver, 0.1, 1.1, 0.1, jnp.zeros((2, 3)))
+    diffrax.diffeqsolve(
+        compatible_term, solver, 0.1, 1.1, 0.1, (jnp.zeros((2, 3)),), args=["str"]
+    )
