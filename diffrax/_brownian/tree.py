@@ -1,5 +1,5 @@
 import math
-from typing import Literal, Optional, TypeVar, Union
+from typing import Literal, Optional, Union
 from typing_extensions import TypeAlias
 
 import equinox as eqx
@@ -13,6 +13,7 @@ import lineax.internal as lxi
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 
 from .._custom_types import (
+    AbstractBrownianReturn,
     BoolScalarLike,
     BrownianIncrement,
     IntScalarLike,
@@ -69,8 +70,7 @@ class _State(eqx.Module):
     bkk_s_u_su: Optional[FloatTriple]  # \bar{K}_s, _u, _{s,u}
 
 
-
-def _levy_diff(_, x0: tuple, x1: tuple) -> LevyVal:
+def _levy_diff(_, x0: tuple, x1: tuple) -> Union[BrownianIncrement, SpaceTimeLevyArea]:
     r"""Computes $(W_{s,u}, H_{s,u})$ from $(W_s, \bar{H}_{s,u})$ and
     $(W_u, \bar{H}_u)$, where $\bar{H}_u = u * H_u$.
 
@@ -90,7 +90,7 @@ def _levy_diff(_, x0: tuple, x1: tuple) -> LevyVal:
         dt0, w0 = x0
         dt1, w1 = x1
         su = jnp.asarray(dt1 - dt0, dtype=w0.dtype)
-        return LevyVal(dt=su, W=w1 - w0, H=None, K=None)
+        return BrownianIncrement(dt=su, W=w1 - w0)
 
     elif len(x0) == 4:  # space-time levy area case
         assert len(x1) == 4
@@ -104,18 +104,18 @@ def _levy_diff(_, x0: tuple, x1: tuple) -> LevyVal:
         u_bb_s = dt1 * w0 - dt0 * w1
         bhh_su = bhh1 - bhh0 - 0.5 * u_bb_s  # bhh_su = H_{s,u} * (u-s)
         hh_su = inverse_su * bhh_su
-        return LevyVal(dt=su, W=w_su, H=hh_su, K=None)
+        return SpaceTimeLevyArea(dt=su, W=w_su, H=hh_su, K=None)
     else:
         assert False
 
 
-def _make_levy_val(_, x: tuple) -> LevyVal:
+def _make_levy_val(_, x: tuple) -> AbstractBrownianReturn:
     if len(x) == 2:
         dt, w = x
-        return LevyVal(dt=dt, W=w, H=None, K=None)
+        return BrownianIncrement(dt=dt, W=w)
     elif len(x) == 4:
         dt, w, hh, bhh = x
-        return LevyVal(dt=dt, W=w, H=hh, K=None)
+        return SpaceTimeLevyArea(dt=dt, W=w, H=hh, K=None)
     else:
         assert False
 
@@ -218,7 +218,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
         self.key = split_by_tree(key, self.shape)
 
-    def _denormalise_bm_inc(self, x: _BrownianReturn) -> _BrownianReturn:
+    def _denormalise_bm_inc(self, x):
         # Rescaling back from [0, 1] to the original interval [t0, t1].
         interval_len = self.t1 - self.t0  # can be any dtype
         sqrt_len = jnp.sqrt(interval_len)
@@ -247,7 +247,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t1: Optional[RealScalarLike] = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], LevyVal]:
+    ) -> Union[PyTree[Array], Union[BrownianIncrement, SpaceTimeLevyArea]]:
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)
@@ -417,11 +417,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
             inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
             hh_r = inverse_r * bhh_r
 
-            return SpaceTimeLevyArea(
-                dt=r, W=w_r, H=hh_r, bar_H=bhh_r, K=None, bar_K=None
-            )
         else:
             assert False
+
         return r, w_r, hh_r, bhh_r
 
     def _brownian_arch(

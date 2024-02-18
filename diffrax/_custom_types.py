@@ -70,21 +70,24 @@ class SpaceTimeLevyArea(AbstractBrownianReturn):
     K: Optional[PyTree]
 
 
-def levy_tree_transpose(tree_shape, tree: PyTree):
-    """Helper that takes a PyTree of LevyVals and transposes
-    into a LevyVal of PyTrees.
+def levy_tree_transpose(
+    tree_shape, tree: PyTree[AbstractBrownianReturn]
+) -> AbstractBrownianReturn:
+    """Helper that takes a PyTree of AbstractBrownianReturn and transposes
+    into an AbstractBrownianReturn of PyTrees.
 
     **Arguments:**
 
     - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
-    - `levy_area`: the type of `AbstractBrownianReturn`.
-    - `tree`: the PyTree of LevyVals to transpose.
+    - `tree`: the PyTree of AbstractBrownianReturns to transpose.
 
     **Returns:**
 
-    A `LevyVal` of PyTrees.
+    An `AbstractBrownianReturn` of PyTrees.
     """
-    inner_tree = jtu.tree_leaves(tree, is_leaf=lambda x: isinstance(x, levy_area))[0]
+    inner_tree = jtu.tree_leaves(
+        tree, is_leaf=lambda x: isinstance(x, AbstractBrownianReturn)
+    )[0]
     inner_tree_shape = jtu.tree_structure(inner_tree)
     return jtu.tree_transpose(
         outer_treedef=jtu.tree_structure(tree_shape),

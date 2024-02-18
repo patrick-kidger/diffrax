@@ -135,9 +135,9 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             key, key_hh = jr.split(key, 2)
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
-            levy_val = SpaceTimeLevyArea(dt, w, hh)
+            levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh, K=None)
         elif levy_area is BrownianIncrement:
-            levy_val = BrownianIncrement(dt, w)
+            levy_val = BrownianIncrement(dt=dt, W=w)
         else:
             assert False
 
