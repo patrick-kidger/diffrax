@@ -1,5 +1,5 @@
 import math
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, TypeVar, Union
 from typing_extensions import TypeAlias
 
 import equinox as eqx
@@ -59,6 +59,7 @@ FloatTriple: TypeAlias = tuple[
     Float[Array, " *shape"], Float[Array, " *shape"], Float[Array, " *shape"]
 ]
 _Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
+_BrownianReturn = TypeVar("_BrownianReturn", bound=AbstractBrownianReturn)
 
 
 class _State(eqx.Module):
@@ -109,7 +110,7 @@ def _levy_diff(_, x0: tuple, x1: tuple) -> Union[BrownianIncrement, SpaceTimeLev
         assert False
 
 
-def _make_levy_val(_, x: tuple) -> AbstractBrownianReturn:
+def _make_levy_val(_, x: tuple) -> Union[BrownianIncrement, SpaceTimeLevyArea]:
     if len(x) == 2:
         dt, w = x
         return BrownianIncrement(dt=dt, W=w)
@@ -197,11 +198,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # Since we rescale the interval to [0,1],
         # we need to rescale the tolerance too.
         self.tol = tol / (self.t1 - self.t0)
-        if levy_area not in (BrownianIncrement, SpaceTimeLevyArea):
-            raise ValueError(
-                "`levy_area` must be one of `TimeLevyArea` or `SpaceTimeLevyArea`, ",
-                f"got {levy_area}.",
-            )
         self.levy_area = levy_area  # pyright: ignore[reportIncompatibleVariableOverride]
         self._spline = _spline
         self.shape = (
@@ -218,7 +214,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             )
         self.key = split_by_tree(key, self.shape)
 
-    def _denormalise_bm_inc(self, x):
+    def _denormalise_bm_inc(self, x: _BrownianReturn) -> _BrownianReturn:
         # Rescaling back from [0, 1] to the original interval [t0, t1].
         interval_len = self.t1 - self.t0  # can be any dtype
         sqrt_len = jnp.sqrt(interval_len)
@@ -247,7 +243,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t1: Optional[RealScalarLike] = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], Union[BrownianIncrement, SpaceTimeLevyArea]]:
+    ) -> Union[PyTree[Array], BrownianIncrement, SpaceTimeLevyArea]:
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)
