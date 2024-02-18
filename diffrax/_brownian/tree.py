@@ -333,11 +333,12 @@ class VirtualBrownianTree(AbstractBrownianPath):
             _key = jnp.where(_cond, _key_st, _key_tu)
 
             _w = _split_interval(_cond, _w_stu, _w_inc)
-            _bhh = None
             _bkk = None
             if self.levy_area is not BrownianIncrement:
                 assert _bhh_stu is not None and _bhh_st_tu is not None
                 _bhh = _split_interval(_cond, _bhh_stu, _bhh_st_tu)
+            else:
+                _bhh = None
 
             return _State(
                 level=_level,

@@ -79,7 +79,7 @@ def levy_tree_transpose(
     **Arguments:**
 
     - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
-    - `tree`: the PyTree of AbstractBrownianReturns to transpose.
+    - `tree`: the PyTree of AbstractBrownianReturn to transpose.
 
     **Returns:**
 

@@ -52,5 +52,4 @@ order-by-type = false
 
 [tool.pyright]
 reportIncompatibleMethodOverride = true
-reportUnnecessaryTypeIgnoreComment = true
 include = ["diffrax", "tests"]

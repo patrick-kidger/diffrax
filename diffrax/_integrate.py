@@ -92,8 +92,8 @@ def _better_isinstance(x, annotation) -> bool:
         assert _better_isinstance(y, expected_type) # raises AssertionError as expected.
 
         # Whereas with isinstance:
-        assert isinstance(x, expected_type) # raises TypeError
-        assert isinstance(y, expected_type) # raises TypeError
+        assert isinstance(x, expected_type) # raises TypeError.
+        assert isinstance(y, expected_type) # raises TypeError.
         ```
     """
 
