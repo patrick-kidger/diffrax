@@ -179,40 +179,27 @@ class PIDController(
         common to refer to solving an equation to specific tolerances, without
         necessarily stating which solver was used.)
 
-        !!! Example
+        ??? Example
 
             The choice of `rtol` and `atol` can have a significant impact on the
             accuracy of even simple systems.
             Consider a simple pendulum with a small angle kick:
             ```python
-            class SimplePendulum(eqx.Module):
-                def __call__(self, t, state, args=None):
-                    theta, omega = state
-                    dtheta = omega
-                    domega = - jnp.sin(theta)
-                    return jnp.array([dtheta, domega])
-            dynamics = SimplePendulum()
-            init_angle = 0.1
-            init_omega = 0
-            state0 = jnp.array([init_angle, init_omega])
-            ```
-            We can integrate this using:
-            ```python
-            def integrator(dynamics, state0, stepsize_controller):
-                term = diffrax.ODETerm(dynamics)
-                solver = diffrax.TSit5()
-                t0 = 0.0
-                dt0 = 0.1
-                t1 = 1e4 * dt0
-                ts = jnp.arange(0.0, 1e3, 0,1)
-                stepsize_controller = stepsize_controller
-                solution = diffrax.diffeqsolve(
-                    term, solver, t0, t1, dt0, state0,
-                    saveat=diffrax.SaveAt(ts=ts),
-                    stepsize_controller=stepsize_controller,
-                    max_steps=2**20,
-                )
-                return solution
+            import diffrax as dfx
+
+            def dynamics(t, y, args):
+                dtheta = y["omega"]
+                domega = - jnp.sin(y["theta"])
+                return dict(theta=dtheta, omega=domega)
+
+            y0 = dict(theta=0.1, omega=0)
+            term = dfx.ODETerm(dynamics)
+            sol = dfx.diffeqsolve(
+                term, solver, t0=0, t1=1000, dt0=0.1, y0,
+                saveat=dfx.SaveAts(ts=jnp.linspace(0, 1000, 10000),
+                max_steps=2**20,
+                stepsize_controller=...
+            )
             ```
             to compare the effect of different tolerances:
             ```python
