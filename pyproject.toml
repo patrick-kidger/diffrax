@@ -44,7 +44,7 @@ ignore-init-module-imports = true
 select = ["E", "F", "I001"]
 src = []
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 combine-as-imports = true
 extra-standard-library = ["typing_extensions"]
 lines-after-imports = 2
