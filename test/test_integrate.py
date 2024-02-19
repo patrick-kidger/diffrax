@@ -1,7 +1,7 @@
 import contextlib
 import math
 import operator
-from typing import cast
+from typing import Any, cast
 
 import diffrax
 import equinox as eqx
@@ -558,3 +558,124 @@ def test_term_compatibility():
     diffrax.diffeqsolve(
         compatible_term, solver, 0.1, 1.1, 0.1, (jnp.zeros((2, 3)),), args=["str"]
     )
+
+
+def test_term_compatibility_pytree():
+    class TestSolver(diffrax.AbstractSolver):
+        term_structure = {
+            "a": diffrax.ODETerm,
+            "b": diffrax.ODETerm[Any],
+            "c": diffrax.ODETerm[Float[Array, " 3"]],
+            "d": diffrax.AbstractTerm[Float[Array, " 4"], Any],
+            "e": diffrax.MultiTerm[
+                tuple[diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"]]]
+            ],
+        }
+        interpolation_cls = diffrax.LocalLinearInterpolation
+
+        def init(self, terms, t0, t1, y0, args):
+            return None
+
+        def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
+            def _step(_term, _y):
+                control = _term.contr(t0, t1)
+                return _y + _term.vf_prod(t0, _y, args, control)
+
+            _is_term = lambda x: isinstance(x, diffrax.AbstractTerm)
+            y1 = jtu.tree_map(_step, terms, y0, is_leaf=_is_term)
+            dense_info = dict(y0=y0, y1=y1)
+            return y1, None, dense_info, None, diffrax.RESULTS.successful
+
+        def func(self, terms, t0, y0, args):
+            assert False
+
+    ode_term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = TestSolver()
+    compatible_term = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        "d": ode_term,
+        "e": diffrax.MultiTerm(
+            ode_term,
+            diffrax.WeaklyDiagonalControlTerm(
+                lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(5)
+            ),
+        ),
+    }
+    compatible_y0 = {
+        "a": jnp.array(1.0),
+        "b": jnp.array(2.0),
+        "c": jnp.arange(3.0),
+        "d": jnp.arange(4.0),
+        "e": jnp.arange(5.0),
+    }
+    diffrax.diffeqsolve(compatible_term, solver, 0.0, 1.0, 0.1, compatible_y0)
+
+    incompatible_term1 = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        "d": ode_term,
+        "e": diffrax.MultiTerm(
+            ode_term,
+            diffrax.WeaklyDiagonalControlTerm(
+                lambda t, y, args: -y,
+                lambda t0, t1: t1 - t0,  # wrong control shape
+            ),
+        ),
+    }
+    incompatible_term2 = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        # Missing "d" piece
+        "e": diffrax.MultiTerm(
+            ode_term,
+            diffrax.WeaklyDiagonalControlTerm(
+                lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
+            ),
+        ),
+    }
+    incompatible_term3 = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        "d": ode_term,
+        # No MultiTerm for "e"
+        "e": diffrax.WeaklyDiagonalControlTerm(
+            lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
+        ),
+    }
+
+    incompatible_y0_1 = {
+        "a": jnp.array(1.0),
+        "b": jnp.array(2.0),
+        "c": jnp.arange(4.0),  # of length 4, not 3
+        "d": jnp.arange(4.0),
+        "e": jnp.arange(5.0),
+    }
+    incompatible_y0_2 = {
+        "a": jnp.array(1.0),
+        "b": jnp.array(2.0),
+        "c": jnp.arange(3.0),
+        # Missing "d" piece
+        "e": jnp.arange(5.0),
+    }
+    incompatible_y0_3 = jnp.array(4.0)  # Completely the wrong structure!
+    for term in (
+        compatible_term,
+        incompatible_term1,
+        incompatible_term2,
+        incompatible_term3,
+    ):
+        for y0 in (
+            compatible_y0,
+            incompatible_y0_1,
+            incompatible_y0_2,
+            incompatible_y0_3,
+        ):
+            if term is compatible_term and y0 is compatible_y0:
+                continue
+            with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
+                diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, y0)
