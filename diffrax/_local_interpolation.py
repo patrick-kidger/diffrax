@@ -1,4 +1,5 @@
-from typing import Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import cast, Optional, TYPE_CHECKING
 
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -15,6 +16,9 @@ from jaxtyping import Array, ArrayLike, PyTree, Shaped
 from ._custom_types import RealScalarLike, Y
 from ._misc import linear_rescale
 from ._path import AbstractPath
+
+
+ω = cast(Callable, ω)
 
 
 class AbstractLocalInterpolation(AbstractPath):

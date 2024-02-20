@@ -2,7 +2,14 @@ import functools as ft
 import typing
 import warnings
 from collections.abc import Callable
-from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    get_args,
+    get_origin,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+)
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -49,6 +56,7 @@ from ._step_size_controller import (
     StepTo,
 )
 from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
+from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
 class SaveState(eqx.Module):
@@ -78,26 +86,69 @@ class State(eqx.Module):
     progress_meter_state: PyTree[Array]
 
 
-def _is_none(x):
+def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(terms, term_structure):
-    def _check(term_cls, term):
-        if get_origin(term_cls) is MultiTerm:
+def _term_compatible(
+    y: PyTree[ArrayLike],
+    args: PyTree[Any],
+    terms: PyTree[AbstractTerm],
+    term_structure: PyTree,
+) -> bool:
+    error_msg = "term_structure"
+
+    def _check(term_cls, term, yi):
+        if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
             if isinstance(term, MultiTerm):
                 [_tmp] = get_args(term_cls)
                 assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
-                if not _term_compatible(term.terms, get_args(_tmp)):
-                    raise ValueError
+                assert len(term.terms) == len(get_args(_tmp))
+                for term, arg in zip(term.terms, get_args(_tmp)):
+                    if not _term_compatible(yi, args, term, arg):
+                        raise ValueError
             else:
                 raise ValueError
         else:
-            if not isinstance(term, term_cls):
+            # Check that `term` is an instance of `term_cls` (ignoring any generic
+            # parameterization).
+            origin_cls = get_origin_no_specials(term_cls, error_msg)
+            if origin_cls is None:
+                origin_cls = term_cls
+            if not isinstance(term, origin_cls):
                 raise ValueError
 
+            # Now check the generic parametrization of `term_cls`; can be one of:
+            # -----------------------------------------
+            # `term_cls`                | `term_args`
+            # --------------------------|--------------
+            # AbstractTerm              | ()
+            # AbstractTerm[VF, Control] | (VF, Control)
+            # -----------------------------------------
+            term_args = get_args_of(AbstractTerm, term_cls, error_msg)
+            n_term_args = len(term_args)
+            if n_term_args == 0:
+                pass
+            elif n_term_args == 2:
+                vf_type_expected, control_type_expected = term_args
+                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                vf_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, vf_type, vf_type_expected
+                )
+                if not vf_type_compatible:
+                    raise ValueError
+                control_type = jax.eval_shape(term.contr, 0.0, 0.0)
+                control_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, control_type, control_type_expected
+                )
+                if not control_type_compatible:
+                    raise ValueError
+            else:
+                assert False, "Malformed term structure"
+            # If we've got to this point then the term is compatible
+
     try:
-        jtu.tree_map(_check, term_structure, terms)
+        jtu.tree_map(_check, term_structure, terms, y)
     except ValueError:
         # ValueError may also arise from mismatched tree structures
         return False
@@ -661,47 +712,6 @@ def diffeqsolve(
             stacklevel=2,
         )
 
-    # Backward compatibility
-    if isinstance(
-        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(terms, (ODETerm, AbstractTerm)):
-        warnings.warn(
-            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-            f"{solver.__class__.__name__} is deprecated in favour of "
-            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-            "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!",
-            stacklevel=2,
-        )
-        terms = MultiTerm(*terms)
-
-    # Error checking
-    if not _term_compatible(terms, solver.term_structure):
-        raise ValueError(
-            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
-            f"structure {solver.term_structure}"
-        )
-
-    if is_sde(terms):
-        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
-            warnings.warn(
-                f"`{type(solver).__name__}` is not marked as converging to either the "
-                "Itô or the Stratonovich solution.",
-                stacklevel=2,
-            )
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-            # Specific check to not work even if using HalfSolver(Euler())
-            if isinstance(solver, Euler):
-                raise ValueError(
-                    "An SDE should not be solved with adaptive step sizes with Euler's "
-                    "method, as it may not converge to the correct solution."
-                )
-    if is_unsafe_sde(terms):
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-            raise ValueError(
-                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
-            )
-
     # Allow setting e.g. t0 as an int with dt0 as a float.
     timelikes = [t0, t1, dt0] + [
         s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
@@ -744,6 +754,47 @@ def diffeqsolve(
 
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
+
+    # Backward compatibility
+    if isinstance(
+        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
+    ) and _term_compatible(y0, args, terms, (ODETerm, AbstractTerm)):
+        warnings.warn(
+            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+            f"{solver.__class__.__name__} is deprecated in favour of "
+            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+            "the same terms can now be passed used for both general and SDE-specific "
+            "solvers!",
+            stacklevel=2,
+        )
+        terms = MultiTerm(*terms)
+
+    # Error checking
+    if not _term_compatible(y0, args, terms, solver.term_structure):
+        raise ValueError(
+            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
+            f"structure {solver.term_structure}"
+        )
+
+    if is_sde(terms):
+        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
+            warnings.warn(
+                f"`{type(solver).__name__}` is not marked as converging to either the "
+                "Itô or the Stratonovich solution.",
+                stacklevel=2,
+            )
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            # Specific check to not work even if using HalfSolver(Euler())
+            if isinstance(solver, Euler):
+                raise ValueError(
+                    "An SDE should not be solved with adaptive step sizes with Euler's "
+                    "method, as it may not converge to the correct solution."
+                )
+    if is_unsafe_sde(terms):
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            raise ValueError(
+                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
+            )
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)

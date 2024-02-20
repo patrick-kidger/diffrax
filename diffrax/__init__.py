@@ -13,7 +13,11 @@ from ._brownian import (
     UnsafeBrownianPath as UnsafeBrownianPath,
     VirtualBrownianTree as VirtualBrownianTree,
 )
-from ._custom_types import LevyVal as LevyVal
+from ._custom_types import (
+    AbstractBrownianReturn as AbstractBrownianReturn,
+    BrownianIncrement as BrownianIncrement,
+    SpaceTimeLevyArea as SpaceTimeLevyArea,
+)
 from ._event import (
     AbstractDiscreteTerminatingEvent as AbstractDiscreteTerminatingEvent,
     DiscreteTerminatingEvent as DiscreteTerminatingEvent,
