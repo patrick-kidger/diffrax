@@ -48,7 +48,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     ] = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`StratonovichMilstein` should not used to solve ODEs.")
+        raise ValueError("`StratonovichMilstein` should not be used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise
@@ -122,7 +122,7 @@ class ItoMilstein(AbstractItoSolver):
     ] = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`ItoMilstein` should not used to solve ODEs.")
+        raise ValueError("`ItoMilstein` should not be used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise

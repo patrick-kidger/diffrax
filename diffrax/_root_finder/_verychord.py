@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import equinox as eqx
 import jax
@@ -13,6 +13,9 @@ from equinox.internal import ω
 from jaxtyping import Array, Bool, PyTree, Scalar
 
 from .._custom_types import Y
+
+
+ω = cast(Callable, ω)
 
 
 def _small(diffsize: Scalar) -> Bool[Array, ""]:
