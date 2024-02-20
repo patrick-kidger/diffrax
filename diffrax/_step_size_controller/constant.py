@@ -47,7 +47,7 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
         y1_candidate: Y,
         args: Args,
         y_error: Optional[Y],
-        error_order: RealScalarLike,
+        error_order: Optional[RealScalarLike],
         controller_state: RealScalarLike,
     ) -> tuple[bool, RealScalarLike, RealScalarLike, bool, RealScalarLike, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, error_order

@@ -1,6 +1,6 @@
 import functools as ft
 from collections.abc import Callable
-from typing import Optional, TYPE_CHECKING
+from typing import cast, Optional, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -22,6 +22,9 @@ from ._custom_types import DenseInfos, IntScalarLike, RealScalarLike, Y
 from ._local_interpolation import AbstractLocalInterpolation
 from ._misc import fill_forward, left_broadcast_to
 from ._path import AbstractPath
+
+
+ω = cast(Callable, ω)
 
 
 class AbstractGlobalInterpolation(AbstractPath):

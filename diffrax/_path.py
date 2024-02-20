@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, TYPE_CHECKING
+from typing import Generic, Optional, TYPE_CHECKING, TypeVar
 
 import equinox as eqx
 import jax
@@ -10,12 +10,14 @@ if TYPE_CHECKING:
     from typing import ClassVar as AbstractVar
 else:
     from equinox import AbstractVar
-from jaxtyping import Array, PyTree
 
-from ._custom_types import RealScalarLike
+from ._custom_types import Control, RealScalarLike
 
 
-class AbstractPath(eqx.Module):
+_Control = TypeVar("_Control", bound=Control)
+
+
+class AbstractPath(eqx.Module, Generic[_Control]):
     """Abstract base class for all paths.
 
     Every path has a start point `t0` and an end point `t1`. In between these values
@@ -48,7 +50,7 @@ class AbstractPath(eqx.Module):
     @abc.abstractmethod
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
-    ) -> PyTree[Array]:
+    ) -> _Control:
         r"""Evaluate the path at any point in the interval $[t_0, t_1]$.
 
         **Arguments:**
@@ -77,7 +79,7 @@ class AbstractPath(eqx.Module):
         The increment of the path between `t0` and `t1`.
         """
 
-    def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
+    def derivative(self, t: RealScalarLike, left: bool = True) -> _Control:
         r"""Evaluate the derivative of the path. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))` (and indeed this is its
         default implementation if no other is specified).

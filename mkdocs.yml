@@ -130,6 +130,7 @@ nav:
         - 'api/interpolation.md'
         - 'api/brownian.md'
         - 'api/nonlinear_solver.md'
+        - 'api/progress_meter.md'
     - Further details:
         - 'further_details/faq.md'
         - 'further_details/acknowledgements.md'

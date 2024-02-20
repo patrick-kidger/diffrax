@@ -1,4 +1,5 @@
-from typing import ClassVar
+from collections.abc import Callable
+from typing import cast, ClassVar
 
 import numpy as np
 import optimistix as optx
@@ -13,6 +14,9 @@ from .runge_kutta import (
     CalculateJacobian,
     MultiButcherTableau,
 )
+
+
+ω = cast(Callable, ω)
 
 
 # See
