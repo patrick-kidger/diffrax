@@ -33,6 +33,9 @@ from .._term import AbstractTerm, ODETerm
 from .base import AbstractStepSizeController
 
 
+ω = cast(Callable, ω)
+
+
 def _select_initial_step(
     terms: PyTree[AbstractTerm],
     t0: RealScalarLike,
