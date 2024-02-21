@@ -22,9 +22,7 @@ from ._custom_types import (
     SpaceTimeTimeLevyArea as SpaceTimeTimeLevyArea,
 )
 from ._event import (
-    AbstractDiscreteTerminatingEvent as AbstractDiscreteTerminatingEvent,
-    DiscreteTerminatingEvent as DiscreteTerminatingEvent,
-    SteadyStateEvent as SteadyStateEvent,
+    Event as Event,
 )
 from ._global_interpolation import (
     AbstractGlobalInterpolation as AbstractGlobalInterpolation,
