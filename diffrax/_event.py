@@ -1,10 +1,10 @@
 import abc
 from collections.abc import Callable
-from typing import Optional
+from typing import Optional, Union
 
 import equinox as eqx
 import optimistix as optx
-from jaxtyping import Array, PyTree
+from jaxtyping import Array, ArrayLike, PyTree
 
 from ._custom_types import BoolScalarLike, RealScalarLike
 from ._step_size_controller import AbstractAdaptiveStepSizeController
@@ -96,3 +96,15 @@ SteadyStateEvent.__init__.__doc__ = """**Arguments:**
 - `norm`: A function `PyTree -> Scalar`, which is called to determine whether
     the vector field is close to zero.
 """
+
+
+class EventFn(eqx.Module):
+    cond_fn: Callable[..., Union[BoolScalarLike, RealScalarLike]]
+    transition_fn: Optional[Callable[[PyTree[ArrayLike]], PyTree[ArrayLike]]] = (
+        lambda x: x
+    )
+
+
+class Event(eqx.Module):
+    event_fn: PyTree[EventFn]
+    root_finder: Optional[optx.AbstractRootFinder] = None

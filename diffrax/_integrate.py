@@ -9,26 +9,30 @@ from typing import (
     Optional,
     Tuple,
     TYPE_CHECKING,
+    Union,
 )
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.core
+import jax.flatten_util as jfu
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
+import optimistix as optx
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
     BoolScalarLike,
     BufferDenseInfos,
+    DenseInfo,
     FloatScalarLike,
     IntScalarLike,
     RealScalarLike,
 )
-from ._event import AbstractDiscreteTerminatingEvent
+from ._event import Event, EventFn
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import linear_rescale, static_select
@@ -84,6 +88,10 @@ class State(eqx.Module):
     dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
     progress_meter_state: PyTree[Array]
+    event_result: Optional[PyTree[Union[BoolScalarLike, RealScalarLike]]] = None
+    event_compare: Optional[PyTree[BoolScalarLike]] = None
+    dense_info_for_event: Optional[DenseInfo] = None
+    teventprev: Optional[FloatScalarLike] = None
 
 
 def _is_none(x: Any) -> bool:
@@ -227,6 +235,33 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
         return x
 
 
+def _is_event_fn(x: Any) -> bool:
+    return isinstance(x, EventFn)
+
+
+def _compare_events(
+    old_event_result: Union[BoolScalarLike, RealScalarLike],
+    new_event_result: Union[BoolScalarLike, RealScalarLike],
+) -> BoolScalarLike:
+    return jnp.sign(jnp.array(old_event_result, float)) != jnp.sign(
+        jnp.array(new_event_result, float)
+    )
+
+
+@jax.custom_jvp
+def _bool_event_gradient(t: RealScalarLike, result: BoolScalarLike) -> FloatScalarLike:
+    return jnp.where(result, 0.0, 1.0)
+
+
+@_bool_event_gradient.defjvp
+def _bool_event_gradient_jvp(primals, tangents):
+    t, result = primals
+    tangent_t, _ = tangents
+    out = _bool_event_gradient(t, result)
+    tangent_out = 1.0
+    return out, tangent_out
+
+
 _PRINT_STATIC = False  # used in tests
 
 
@@ -234,7 +269,7 @@ def loop(
     *,
     solver,
     stepsize_controller,
-    discrete_terminating_event,
+    event,
     saveat,
     t0,
     t1,
@@ -308,6 +343,14 @@ def loop(
         # we get a negative value for y, and then get a NaN vector field. (And then
         # everything breaks.) See #143.
         y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
+
+        # Save info for event handling
+        if event is not None:
+            teventprev = state.tprev
+            dense_info_for_event = dense_info
+        else:
+            teventprev = None
+            dense_info_for_event = None
 
         error_order = solver.error_order(terms)
         (
@@ -468,27 +511,58 @@ def loop(
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
             progress_meter_state=progress_meter_state,
+            dense_info_for_event=dense_info_for_event,
         )
 
-        if discrete_terminating_event is not None:
-            discrete_terminating_event_occurred = discrete_terminating_event(
-                new_state,
-                solver=solver,
-                stepsize_controller=stepsize_controller,
-                saveat=saveat,
-                t0=t0,
-                t1=t1,
-                dt0=dt0,
-                max_steps=max_steps,
-                terms=terms,
-                args=args,
+        if event is not None:
+
+            def _call_event(_event_fn):
+                return _event_fn.cond_fn(
+                    new_state,
+                    y=y,
+                    solver=solver,
+                    stepsize_controller=stepsize_controller,
+                    saveat=saveat,
+                    t0=t0,
+                    t1=t1,
+                    dt0=dt0,
+                    max_steps=max_steps,
+                    terms=terms,
+                    args=args,
+                )
+
+            event_result = jtu.tree_map(
+                _call_event, event.event_fn, is_leaf=_is_event_fn
+            )
+            event_comparisons = jtu.tree_map(
+                _compare_events, state.event_result, event_result
+            )
+            event_comparisons_ravel, event_comparisons_unravel = jfu.ravel_pytree(
+                event_comparisons
             )
             result = RESULTS.where(
-                discrete_terminating_event_occurred,
+                jnp.any(event_comparisons_ravel),
                 RESULTS.discrete_terminating_event_occurred,
                 result,
             )
+            # if multiple events are triggered in one step we take the first one
+            event_comparisons_ravel = jnp.arange(
+                len(event_comparisons_ravel)
+            ) == jnp.sum(jnp.cumsum(event_comparisons_ravel) <= 0)
+            event_comparisons = event_comparisons_unravel(event_comparisons_ravel)
             new_state = eqx.tree_at(lambda s: s.result, new_state, result)
+            new_state = eqx.tree_at(
+                lambda s: s.event_result, new_state, event_result, is_leaf=_is_none
+            )
+            new_state = eqx.tree_at(
+                lambda s: s.event_compare,
+                new_state,
+                event_comparisons,
+                is_leaf=_is_none,
+            )
+            new_state = eqx.tree_at(
+                lambda s: s.teventprev, new_state, teventprev, is_leaf=_is_none
+            )
 
         return (
             new_state,
@@ -569,7 +643,7 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
-    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
+    event: Optional[Event] = None,
     max_steps: Optional[int] = 4096,
     throw: bool = True,
     progress_meter: AbstractProgressMeter = NoProgressMeter(),
@@ -979,6 +1053,52 @@ def diffeqsolve(
         progress_meter_state=progress_meter_state,
     )
 
+    if event is not None:
+
+        def _call_event(_event_fn):
+            return _event_fn.cond_fn(
+                init_state,
+                y=y0,
+                solver=solver,
+                stepsize_controller=stepsize_controller,
+                saveat=saveat,
+                t0=t0,
+                t1=t1,
+                dt0=dt0,
+                max_steps=max_steps,
+                terms=terms,
+                args=args,
+            )
+
+        event_result = jtu.tree_map(_call_event, event.event_fn, is_leaf=_is_event_fn)
+        event_comparisons = jtu.tree_map(
+            lambda x: False, event.event_fn, is_leaf=_is_event_fn
+        )
+        init_state = eqx.tree_at(
+            lambda s: s.event_result, init_state, event_result, is_leaf=_is_none
+        )
+        init_state = eqx.tree_at(
+            lambda s: s.event_compare, init_state, event_comparisons, is_leaf=_is_none
+        )
+        init_state = init_state = eqx.tree_at(
+            lambda s: s.teventprev, init_state, tprev, is_leaf=_is_none
+        )
+        _, _, dense_info_for_event, _, _ = solver.step(
+            terms,
+            tprev,
+            tnext,
+            y0,
+            args,
+            solver_state,
+            made_jump,
+        )
+        init_state = eqx.tree_at(
+            lambda s: s.dense_info_for_event,
+            init_state,
+            dense_info_for_event,
+            is_leaf=_is_none,
+        )
+
     #
     # Main loop
     #
@@ -988,7 +1108,7 @@ def diffeqsolve(
         terms=terms,
         solver=solver,
         stepsize_controller=stepsize_controller,
-        discrete_terminating_event=discrete_terminating_event,
+        event=event,
         saveat=saveat,
         t0=t0,
         t1=t1,
@@ -1012,6 +1132,60 @@ def diffeqsolve(
         lambda s: s.ts * direction, final_state.save_state, is_leaf=is_save_state
     )
     ys = jtu.tree_map(lambda s: s.ys, final_state.save_state, is_leaf=is_save_state)
+
+    # Do root find for exact event times
+    if event is not None:
+        tevent = final_state.tprev
+        interpolator = solver.interpolation_cls(
+            t0=final_state.teventprev,
+            t1=final_state.tprev,
+            **final_state.dense_info_for_event,
+        )
+        if event.root_finder is not None:
+
+            def _to_root_find(t, args):
+                def _call_real(event_fn_i, event_result_i, event_compare_i):
+                    y = interpolator.evaluate(t)
+                    result = event_fn_i.cond_fn(
+                        final_state,
+                        y=y,
+                        solver=solver,
+                        stepsize_controller=stepsize_controller,
+                        saveat=saveat,
+                        t0=t0,
+                        t1=t1,
+                        dt0=dt0,
+                        max_steps=max_steps,
+                        terms=terms,
+                        args=args,
+                    )
+                    if jnp.result_type(result) == jnp.bool_:
+                        result = _bool_event_gradient(
+                            t, _compare_events(result, event_result_i)
+                        )
+                    return jnp.where(event_compare_i, result, 0)
+
+                return jtu.tree_map(
+                    _call_real,
+                    event.event_fn,
+                    final_state.event_result,
+                    final_state.event_compare,
+                    is_leaf=_is_event_fn,
+                )
+
+            options = {"lower": final_state.teventprev, "upper": final_state.tprev}
+            roots = optx.root_find(
+                _to_root_find, event.root_finder, y0=tevent, options=options
+            )
+            tevent = roots.value
+
+        yevent = interpolator.evaluate(tevent)
+        ys = jtu.tree_map(lambda _y, _yevent: _y.at[-1].set(_yevent), ys, yevent)
+        ts = ts.at[-1].set(tevent)
+        event_mask = final_state.event_compare
+    else:
+        event_mask = None
+
     # It's important that we don't do any further postprocessing on `ys` here, as
     # it is the `final_state` value that is used when backpropagating via
     # optimise-then-discretise.
@@ -1063,6 +1237,7 @@ def diffeqsolve(
         solver_state=solver_state,
         controller_state=controller_state,
         made_jump=made_jump,
+        event_mask=event_mask,
     )
 
     if throw:
