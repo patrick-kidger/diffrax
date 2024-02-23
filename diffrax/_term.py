@@ -1,7 +1,7 @@
 import abc
 import operator
 from collections.abc import Callable
-from typing import cast, Generic, Optional, TypeVar, Union
+from typing import Generic, Optional, TypeVar, Union, cast
 
 import equinox as eqx
 import jax
@@ -11,7 +11,7 @@ import numpy as np
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, PyTreeDef
 
-from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
+from ._custom_types import VF, Args, Control, IntScalarLike, RealScalarLike, Y
 from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
@@ -155,6 +155,13 @@ class AbstractTerm(eqx.Module):
         return False
 
 
+class VectorFieldWrapper(eqx.Module):
+    vector_field: Callable[[RealScalarLike, PyTree, PyTree], PyTree]
+
+    def __call__(self, t, y, args):
+        return self.vector_field(t, y, args)
+
+
 class ODETerm(AbstractTerm):
     r"""A term representing $f(t, y(t), args) \mathrm{d}t$. That is to say, the term
     appearing on the right hand side of an ODE, in which the control is time.
@@ -173,6 +180,9 @@ class ODETerm(AbstractTerm):
     """
 
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
+
+    def __init__(self, vector_field):
+        self.vector_field = VectorFieldWrapper(vector_field)
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         out = self.vector_field(t, y, args)
@@ -253,6 +263,10 @@ def _prod(vf, control):
 class _ControlTerm(AbstractTerm):
     vector_field: Callable[[RealScalarLike, Y, Args], VF]
     control: Union[AbstractPath, Callable] = eqx.field(converter=_callable_to_path)
+
+    def __init__(self, vector_field, control):
+        self.vector_field = VectorFieldWrapper(vector_field)
+        self.control = control
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)

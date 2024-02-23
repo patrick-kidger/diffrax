@@ -2,7 +2,7 @@ import functools as ft
 import typing
 import warnings
 from collections.abc import Callable
-from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, Tuple, get_args, get_origin
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -21,13 +21,14 @@ from ._custom_types import (
     IntScalarLike,
     RealScalarLike,
 )
+from ._delays import Delays, bind_history, history_extrapolation_implicit
 from ._event import AbstractDiscreteTerminatingEvent
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import static_select
 from ._root_finder import use_stepsize_tol
 from ._saveat import SaveAt, SubSaveAt
-from ._solution import is_okay, is_successful, RESULTS, Solution
+from ._solution import RESULTS, Solution, is_okay, is_successful
 from ._solver import (
     AbstractImplicitSolver,
     AbstractItoSolver,
@@ -71,6 +72,13 @@ class State(eqx.Module):
     dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
     dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
+    num_dde_implicit_step: IntScalarLike
+    num_dde_explicit_step: IntScalarLike
+    discontinuities: Optional[
+        eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]
+    ]  # noqa: F821
+    discontinuities_save_index: Optional[IntScalarLike]
+    # Output that is .at[].set() updated during the solve (and their indices)
 
 
 def _is_none(x):
@@ -121,6 +129,7 @@ def _outer_buffers(state):
         [s.ts for s in save_states]
         + [s.ys for s in save_states]
         + [state.dense_ts, state.dense_infos]
+        + [state.discontinuities]
     )
 
 
@@ -179,6 +188,7 @@ def loop(
     solver,
     stepsize_controller,
     discrete_terminating_event,
+    delays,
     saveat,
     t0,
     t1,
@@ -189,6 +199,7 @@ def loop(
     init_state,
     inner_while_loop,
     outer_while_loop,
+    y0_history,
 ):
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -236,16 +247,66 @@ def loop(
         # Actually do some differential equation solving! Make numerical steps, adapt
         # step sizes, all that jazz.
         #
+        if delays is None:
+            (y, y_error, dense_info, solver_state, solver_result) = solver.step(
+                terms,
+                state.tprev,
+                state.tnext,
+                state.y,
+                args,
+                state.solver_state,
+                state.made_jump,
+            )
+            num_dde_explicit_step = num_dde_implicit_step = 0
+        else:
+            min_delay = []
+            flat_delays = jtu.tree_leaves(delays.delays)
+            for delay in flat_delays:
+                min_delay.append(delay(state.tprev, state.y, args))
+            min_delay = jnp.stack(min_delay).min()
+            implicit_step = min_delay < (state.tnext - state.tprev)
 
-        (y, y_error, dense_info, solver_state, solver_result) = solver.step(
-            terms,
-            state.tprev,
-            state.tnext,
-            state.y,
-            args,
-            state.solver_state,
-            state.made_jump,
-        )
+            def get_struct_dense_info(init_state):
+                return jtu.tree_map(lambda x: x[0], init_state.dense_infos)
+
+            try:
+                struct_dense_info = eqx.filter_eval_shape(
+                    get_struct_dense_info, init_state
+                )
+                infos = jtu.tree_map(
+                    lambda _, x: x[...], struct_dense_info, state.dense_infos
+                )
+            except:  # noqa: E722
+                infos = state.dense_infos
+
+            init_guess = jtu.tree_map(lambda x: x[state.dense_save_index - 1], infos)
+            dense_interp = DenseInterpolation(
+                ts=state.dense_ts[...],
+                ts_size=state.dense_save_index + 1,
+                interpolation_cls=solver.interpolation_cls,
+                infos=infos,
+                direction=1,
+                y0_if_trivial=y0_history(t0),
+                t0_if_trivial=t0,
+            )
+            (
+                y,
+                y_error,
+                dense_info,
+                solver_state,
+                solver_result,
+            ) = history_extrapolation_implicit(
+                implicit_step,
+                terms,
+                dense_interp,
+                init_guess,
+                solver,
+                delays,
+                t0,
+                y0_history,
+                state,
+                args,
+            )
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
         # we get a negative value for y, and then get a NaN vector field. (And then
@@ -270,12 +331,66 @@ def loop(
             error_order,
             state.controller_state,
         )
-        assert jnp.result_type(keep_step) is jnp.dtype(bool)
+
+        # Finding all of the potential discontinuity roots
+        # if delays is not None:
+        #     _part_maybe_find_discontinuity = ft.partial(
+        #         maybe_find_discontinuity,
+        #         tprev,
+        #         tnext,
+        #         dense_info,
+        #         state,
+        #         delays,
+        #         solver,
+        #         args,
+        #     )
+
+        #     tsearch = jnp.linspace(tprev, tnext, delays.sub_intervals)
+        #     batch_tprev, batch_tnext = tsearch[:-1], tsearch[1:]
+        #     vmap_maybe_find_discontinuity_wrapper = jax.vmap(
+        #         _part_maybe_find_discontinuity, (None, 0, 0)
+        #     )
+        #     if delays.recurrent_checking:
+        #         (
+        #             tnext_candidate,
+        #             batch_discont_update,
+        #         ) = vmap_maybe_find_discontinuity_wrapper(
+        #             False, batch_tprev, batch_tnext
+        #         )
+        #     else:
+        #         (
+        #             tnext_candidate,
+        #             batch_discont_update,
+        #         ) = vmap_maybe_find_discontinuity_wrapper(
+        #             keep_step, batch_tprev, batch_tnext
+        #         )
+
+        #     proxy_tnext = jnp.where(batch_discont_update, tnext_candidate, jnp.inf)
+        #     proxy_tnext = jnp.min(proxy_tnext)
+
+        #     tnext, discont_update = jax.lax.cond(
+        #         jnp.isinf(proxy_tnext),
+        #         lambda: (tnext, False),
+        #         lambda: (proxy_tnext, True),
+        #     )
+
+        #     # Count the number of steps in DDEs, just for statistical purposes
+        #     num_dde_implicit_step = state.num_dde_implicit_step + (
+        #         keep_step & implicit_step
+        #     )
+        #     num_dde_explicit_step = state.num_dde_explicit_step + (
+        #         keep_step & jnp.invert(implicit_step)
+        #     )
+
+        #     assert jnp.result_type(discont_update) is jnp.dtype(bool)
+
+        # assert jnp.result_type(keep_step) is jnp.dtype(bool)
 
         #
         # Do some book-keeping.
         #
-
+        discont_update = False
+        num_dde_explicit_step = num_dde_implicit_step = 0
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
 
@@ -316,6 +431,8 @@ def loop(
         dense_ts = state.dense_ts
         dense_infos = state.dense_infos
         dense_save_index = state.dense_save_index
+        discontinuities = state.discontinuities
+        discontinuities_save_index = state.discontinuities_save_index
 
         def save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.ts is not None:
@@ -362,6 +479,9 @@ def loop(
         def maybe_inplace(i, u, x):
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
+        def maybe_inplace_delay(i, u, x):
+            return eqxi.buffer_at_set(x, i, u, pred=discont_update)
+
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.steps:
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
@@ -391,6 +511,21 @@ def loop(
             )
             dense_save_index = dense_save_index + jnp.where(keep_step, 1, 0)
 
+        # Updating discontinuity
+        if delays is not None:
+            if delays.recurrent_checking:
+                eqxi.error_if(
+                    discontinuities_save_index,
+                    discontinuities_save_index >= delays.max_discontinuities,
+                    "the number of discontinuities detected reached the number of"
+                    " `max_discontinuities`, please raise its value.",
+                )
+
+            discontinuities = maybe_inplace_delay(
+                discontinuities_save_index + 1, tnext, discontinuities
+            )
+            discontinuities_save_index = discontinuities_save_index + discont_update
+
         new_state = State(
             y=y,
             tprev=tprev,
@@ -403,9 +538,13 @@ def loop(
             num_accepted_steps=num_accepted_steps,
             num_rejected_steps=num_rejected_steps,
             save_state=save_state,
-            dense_ts=dense_ts,  # pyright: ignore
-            dense_infos=dense_infos,
+            num_dde_explicit_step=num_dde_explicit_step,
+            num_dde_implicit_step=num_dde_implicit_step,
+            dense_ts=dense_ts,  # type: ignore
+            dense_infos=dense_infos,  # type: ignore
             dense_save_index=dense_save_index,
+            discontinuities=discontinuities,  # type: ignore
+            discontinuities_save_index=discontinuities_save_index,
         )
 
         if discrete_terminating_event is not None:
@@ -510,6 +649,7 @@ def diffeqsolve(
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 4096,
     throw: bool = True,
+    delays: Optional[Delays] = None,
     solver_state: Optional[PyTree[ArrayLike]] = None,
     controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
@@ -559,6 +699,10 @@ def diffeqsolve(
 
     - `discrete_terminating_event`: A discrete event at which to terminate the solve
         early. See the page on [Events](./events.md) for more information.
+
+    - `delays`: A tuple of functions, which describe the delays used in a delay
+        differential equation. See the page on [Delays](./delays.md) for more
+        information.
 
     - `max_steps`: The maximum number of steps to take before quitting the computation
         unconditionally.
@@ -617,6 +761,9 @@ def diffeqsolve(
     #
     # Initial set-up
     #
+
+    if delays is not None and not saveat.dense:
+        raise ValueError("Delay differential equations require saving dense output")
 
     # Error checking
     if dt0 is not None:
@@ -727,6 +874,18 @@ def diffeqsolve(
             _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
+    if delays is None:
+        if callable(y0):
+            raise ValueError("`y0` is passed as a callable and should be an array.")
+        new_discontinuities = None
+        discontinuities_save_index = None
+        y0_history = None
+    else:
+        if not callable(y0):
+            raise ValueError("`y0` should be a callable.")
+        y0_history = y0
+        y0 = y0_history(t0)
+
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
 
@@ -757,7 +916,9 @@ def diffeqsolve(
         def _get_tols(x):
             outs = []
             for attr in ("rtol", "atol", "norm"):
-                if getattr(solver.root_finder, attr) is use_stepsize_tol:  # pyright: ignore
+                if (
+                    getattr(solver.root_finder, attr) is use_stepsize_tol
+                ):  # pyright: ignore
                     outs.append(getattr(x, attr))
             return tuple(outs)
 
@@ -825,9 +986,27 @@ def diffeqsolve(
         else:
             tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
+
+    if delays is not None:
+        terms_ = bind_history(
+            terms,
+            delays,
+            None,
+            None,
+            solver,
+            direction,
+            t0,
+            tprev,
+            tnext,
+            y0_history,
+        )
+    else:
+        terms_ = terms
+
+    # Got to init the solver
     if solver_state is None:
         passed_solver_state = False
-        solver_state = solver.init(terms, t0, tnext, y0, args)
+        solver_state = solver.init(terms_, t0, tnext, y0, args)
     else:
         passed_solver_state = True
 
@@ -864,6 +1043,8 @@ def diffeqsolve(
     num_steps = 0
     num_accepted_steps = 0
     num_rejected_steps = 0
+    num_dde_explicit_step = 0
+    num_dde_implicit_step = 0
     made_jump = False if made_jump is None else made_jump
     result = RESULTS.successful
     if saveat.dense:
@@ -878,8 +1059,22 @@ def diffeqsolve(
             _,
             _,
         ) = eqx.filter_eval_shape(
-            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
+            solver.step, terms_, tprev, tnext, y0, args, solver_state, made_jump
         )
+        if delays is not None:
+            if delays.initial_discontinuities is not None:
+                buffer = jnp.full(
+                    delays.max_discontinuities - len(delays.initial_discontinuities),
+                    jnp.inf,
+                )
+                new_discontinuities = jnp.concatenate(
+                    [delays.initial_discontinuities, buffer]
+                )
+                discontinuities_save_index = len(delays.initial_discontinuities) - 1
+            else:
+                new_discontinuities = jnp.full(delays.max_discontinuities, jnp.inf)
+                discontinuities_save_index = 0
+
         dense_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
         _make_full = lambda x: jnp.full(
             (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
@@ -907,6 +1102,11 @@ def diffeqsolve(
         dense_ts=dense_ts,
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
+        # dde specific State arguments
+        num_dde_explicit_step=num_dde_explicit_step,
+        num_dde_implicit_step=num_dde_implicit_step,
+        discontinuities=new_discontinuities,  # type: ignore
+        discontinuities_save_index=discontinuities_save_index,  # type: ignore
     )
 
     #
@@ -919,6 +1119,7 @@ def diffeqsolve(
         solver=solver,
         stepsize_controller=stepsize_controller,
         discrete_terminating_event=discrete_terminating_event,
+        delays=delays,
         saveat=saveat,
         t0=t0,
         t1=t1,
@@ -928,6 +1129,7 @@ def diffeqsolve(
         throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
+        y0_history=y0_history,
     )
 
     #
@@ -977,6 +1179,8 @@ def diffeqsolve(
         "num_accepted_steps": final_state.num_accepted_steps,
         "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
+        "num_dde_implicit_step": final_state.num_dde_implicit_step,
+        "num_dde_explicit_step": final_state.num_dde_explicit_step,
     }
     result = final_state.result
     sol = Solution(
