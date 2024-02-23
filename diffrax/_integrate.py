@@ -1135,6 +1135,8 @@ def diffeqsolve(
 
     # Do root find for exact event times
     if event is not None:
+        event_compare_ravel, _ = jfu.ravel_pytree(final_state.event_compare)
+        event_happened = jnp.any(event_compare_ravel)
         tevent = final_state.tprev
         interpolator = solver.interpolation_cls(
             t0=final_state.teventprev,
@@ -1163,15 +1165,18 @@ def diffeqsolve(
                         result = _bool_event_gradient(
                             t, _compare_events(result, event_result_i)
                         )
-                    return jnp.where(event_compare_i, result, 0)
+                    return jnp.where(event_compare_i, result, 0.0)
 
-                return jtu.tree_map(
+                results = jtu.tree_map(
                     _call_real,
                     event.event_fn,
                     final_state.event_result,
                     final_state.event_compare,
                     is_leaf=_is_event_fn,
                 )
+                results_ravel, _ = jfu.ravel_pytree(results)
+                # If no events are triggered simply push tevent towards tprev
+                return jnp.where(event_happened, results_ravel, final_state.tprev - t)
 
             options = {"lower": final_state.teventprev, "upper": final_state.tprev}
             roots = optx.root_find(
@@ -1179,6 +1184,7 @@ def diffeqsolve(
             )
             tevent = roots.value
 
+        # We might need to change this in order to get more accurate derivatives
         yevent = interpolator.evaluate(tevent)
         ys = jtu.tree_map(lambda _y, _yevent: _y.at[-1].set(_yevent), ys, yevent)
         ts = ts.at[-1].set(tevent)
