@@ -779,7 +779,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
 
         y0_leaves = jtu.tree_leaves(y0)
         if len(y0_leaves) == 0:
-            tableau_dtype = lxi.default_floating_dtype()  # pyright: ignore
+            tableau_dtype = lxi.default_floating_dtype()
         else:
             tableau_dtype = jnp.result_type(*y0_leaves)
 
@@ -807,7 +807,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             )
             implicit_predictor = np.zeros(
                 (num_stages, num_stages),
-                dtype=np.result_type(*implicit_tableau.a_predictor),  # pyright: ignore
+                dtype=np.result_type(*implicit_tableau.a_predictor),
             )
             for i, a_predictor_i in enumerate(implicit_tableau.a_predictor):  # pyright: ignore
                 implicit_predictor[i + 1, : i + 1] = a_predictor_i

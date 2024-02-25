@@ -193,12 +193,12 @@ class VirtualBrownianTree(AbstractBrownianPath):
         _spline: _Spline = "sqrt",
     ):
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
-        self.t0 = t0  # pyright: ignore[reportIncompatibleVariableOverride]
-        self.t1 = t1  # pyright: ignore[reportIncompatibleVariableOverride]
+        self.t0 = t0
+        self.t1 = t1
         # Since we rescale the interval to [0,1],
         # we need to rescale the tolerance too.
         self.tol = tol / (self.t1 - self.t0)
-        self.levy_area = levy_area  # pyright: ignore[reportIncompatibleVariableOverride]
+        self.levy_area = levy_area
         self._spline = _spline
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())

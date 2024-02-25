@@ -140,7 +140,7 @@ def test_multiple_tableau1(adaptive):
     with pytest.raises(ValueError):
         diffrax.diffeqsolve(
             (term1, term2),
-            _DoubleDopri5(),  # pyright: ignore
+            _DoubleDopri5(),
             t0,
             t1,
             dt0,

@@ -94,7 +94,7 @@ class VeryChord(optx.AbstractRootFinder):
             linear_state = (jac, init_later_state)
             y_leaves = jtu.tree_leaves(y)
             if len(y_leaves) == 0:
-                y_dtype = lxi.default_floating_dtype()  # pyright: ignore
+                y_dtype = lxi.default_floating_dtype()
             else:
                 y_dtype = jnp.result_type(*y_leaves)
             init_state = _VeryChordState(
@@ -185,7 +185,7 @@ VeryChord.__init__.__doc__ = """**Arguments:**
 
 - `rtol`: Relative tolerance for terminating the solve.
 - `atol`: Absolute tolerance for terminating the solve.
-- `norm`: The norm used to determine the difference between two iterates in the 
+- `norm`: The norm used to determine the difference between two iterates in the
     convergence criteria. Should be any function `PyTree -> Scalar`, for example
     `optimistix.max_norm`.
 - `kappa`: A tolerance for the early convergence check.
