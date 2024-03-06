@@ -16,7 +16,6 @@ import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.core
-import jax.flatten_util as jfu
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
@@ -32,7 +31,7 @@ from ._custom_types import (
     IntScalarLike,
     RealScalarLike,
 )
-from ._event import Event, EventFn
+from ._event import Event
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import linear_rescale, static_select
@@ -89,13 +88,17 @@ class State(eqx.Module):
     dense_save_index: Optional[IntScalarLike]
     progress_meter_state: PyTree[Array]
     event_result: Optional[PyTree[Union[BoolScalarLike, RealScalarLike]]] = None
-    event_compare: Optional[PyTree[BoolScalarLike]] = None
+    event_mask: Optional[PyTree[BoolScalarLike]] = None
     dense_info_for_event: Optional[DenseInfo] = None
-    teventprev: Optional[FloatScalarLike] = None
+    tprevprev: Optional[FloatScalarLike] = None
 
 
 def _is_none(x: Any) -> bool:
     return x is None
+
+
+def _is_bool(x: Any) -> bool:
+    return x is bool
 
 
 def _term_compatible(
@@ -235,8 +238,8 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
         return x
 
 
-def _is_event_fn(x: Any) -> bool:
-    return isinstance(x, EventFn)
+def _is_cond_fn(x: Any) -> bool:
+    return isinstance(x, Callable)
 
 
 def _compare_events(
@@ -246,6 +249,10 @@ def _compare_events(
     return jnp.sign(jnp.array(old_event_result, float)) != jnp.sign(
         jnp.array(new_event_result, float)
     )
+
+
+def _event_happened(event_mask: PyTree[BoolScalarLike]) -> BoolScalarLike:
+    return jnp.any(jnp.array(jtu.tree_leaves(event_mask)))
 
 
 @jax.custom_jvp
@@ -346,10 +353,10 @@ def loop(
 
         # Save info for event handling
         if event is not None:
-            teventprev = state.tprev
+            tprevprev = state.tprev
             dense_info_for_event = dense_info
         else:
-            teventprev = None
+            tprevprev = None
             dense_info_for_event = None
 
         error_order = solver.error_order(terms)
@@ -516,8 +523,8 @@ def loop(
 
         if event is not None:
 
-            def _call_event(_event_fn):
-                return _event_fn.cond_fn(
+            def _call_event(_cond_fn):
+                return _cond_fn(
                     new_state,
                     y=y,
                     solver=solver,
@@ -531,37 +538,35 @@ def loop(
                     args=args,
                 )
 
-            event_result = jtu.tree_map(
-                _call_event, event.event_fn, is_leaf=_is_event_fn
-            )
-            event_comparisons = jtu.tree_map(
-                _compare_events, state.event_result, event_result
-            )
-            event_comparisons_ravel, event_comparisons_unravel = jfu.ravel_pytree(
-                event_comparisons
-            )
+            event_result = jtu.tree_map(_call_event, event.cond_fn, is_leaf=_is_cond_fn)
+            event_mask = jtu.tree_map(_compare_events, state.event_result, event_result)
             result = RESULTS.where(
-                jnp.any(event_comparisons_ravel),
+                _event_happened(event_mask),
                 RESULTS.discrete_terminating_event_occurred,
                 result,
             )
             # if multiple events are triggered in one step we take the first one
-            event_comparisons_ravel = jnp.arange(
-                len(event_comparisons_ravel)
-            ) == jnp.sum(jnp.cumsum(event_comparisons_ravel) <= 0)
-            event_comparisons = event_comparisons_unravel(event_comparisons_ravel)
+            event_hist = []
+
+            def counter_update(x):
+                out = jnp.where(jnp.any(jnp.array(event_hist)), False, x)
+                event_hist.append(x)
+                return out
+
+            event_mask = jtu.tree_map(counter_update, event_mask, is_leaf=_is_bool)
+
             new_state = eqx.tree_at(lambda s: s.result, new_state, result)
             new_state = eqx.tree_at(
                 lambda s: s.event_result, new_state, event_result, is_leaf=_is_none
             )
             new_state = eqx.tree_at(
-                lambda s: s.event_compare,
+                lambda s: s.event_mask,
                 new_state,
-                event_comparisons,
+                event_mask,
                 is_leaf=_is_none,
             )
             new_state = eqx.tree_at(
-                lambda s: s.teventprev, new_state, teventprev, is_leaf=_is_none
+                lambda s: s.tprevprev, new_state, tprevprev, is_leaf=_is_none
             )
 
         return (
@@ -1055,8 +1060,8 @@ def diffeqsolve(
 
     if event is not None:
 
-        def _call_event(_event_fn):
-            return _event_fn.cond_fn(
+        def _call_event(_cond_fn):
+            return _cond_fn(
                 init_state,
                 y=y0,
                 solver=solver,
@@ -1070,18 +1075,16 @@ def diffeqsolve(
                 args=args,
             )
 
-        event_result = jtu.tree_map(_call_event, event.event_fn, is_leaf=_is_event_fn)
-        event_comparisons = jtu.tree_map(
-            lambda x: False, event.event_fn, is_leaf=_is_event_fn
-        )
+        event_result = jtu.tree_map(_call_event, event.cond_fn, is_leaf=_is_cond_fn)
+        event_mask = jtu.tree_map(lambda x: False, event.cond_fn, is_leaf=_is_cond_fn)
         init_state = eqx.tree_at(
             lambda s: s.event_result, init_state, event_result, is_leaf=_is_none
         )
         init_state = eqx.tree_at(
-            lambda s: s.event_compare, init_state, event_comparisons, is_leaf=_is_none
+            lambda s: s.event_mask, init_state, event_mask, is_leaf=_is_none
         )
         init_state = init_state = eqx.tree_at(
-            lambda s: s.teventprev, init_state, tprev, is_leaf=_is_none
+            lambda s: s.tprevprev, init_state, tprev, is_leaf=_is_none
         )
         _, _, dense_info_for_event, _, _ = solver.step(
             terms,
@@ -1135,20 +1138,20 @@ def diffeqsolve(
 
     # Do root find for exact event times
     if event is not None:
-        event_compare_ravel, _ = jfu.ravel_pytree(final_state.event_compare)
-        event_happened = jnp.any(event_compare_ravel)
+        event_mask = final_state.event_mask
+        event_happened = _event_happened(event_mask)
         tevent = final_state.tprev
         interpolator = solver.interpolation_cls(
-            t0=final_state.teventprev,
+            t0=final_state.tprevprev,
             t1=final_state.tprev,
             **final_state.dense_info_for_event,
         )
         if event.root_finder is not None:
 
             def _to_root_find(t, args):
-                def _call_real(event_fn_i, event_result_i, event_compare_i):
+                def _call_real(cond_fn_i, event_result_i, event_mask_i):
                     y = interpolator.evaluate(t)
-                    result = event_fn_i.cond_fn(
+                    result = cond_fn_i(
                         final_state,
                         y=y,
                         solver=solver,
@@ -1161,24 +1164,26 @@ def diffeqsolve(
                         terms=terms,
                         args=args,
                     )
+
                     if jnp.result_type(result) == jnp.bool_:
-                        result = _bool_event_gradient(
-                            t, _compare_events(result, event_result_i)
-                        )
-                    return jnp.where(event_compare_i, result, 0.0)
+                        result = final_state.tprev - t
+                    return jnp.where(event_mask_i, result, 0.0)
 
                 results = jtu.tree_map(
                     _call_real,
-                    event.event_fn,
+                    event.cond_fn,
                     final_state.event_result,
-                    final_state.event_compare,
-                    is_leaf=_is_event_fn,
+                    event_mask,
+                    is_leaf=_is_cond_fn,
                 )
-                results_ravel, _ = jfu.ravel_pytree(results)
                 # If no events are triggered simply push tevent towards tprev
-                return jnp.where(event_happened, results_ravel, final_state.tprev - t)
+                results = jtu.tree_map(
+                    lambda x: jnp.where(event_happened, x, final_state.tprev - t),
+                    results,
+                )
+                return results
 
-            options = {"lower": final_state.teventprev, "upper": final_state.tprev}
+            options = {"lower": final_state.tprevprev, "upper": final_state.tprev}
             roots = optx.root_find(
                 _to_root_find, event.root_finder, y0=tevent, options=options
             )
@@ -1188,7 +1193,6 @@ def diffeqsolve(
         yevent = interpolator.evaluate(tevent)
         ys = jtu.tree_map(lambda _y, _yevent: _y.at[-1].set(_yevent), ys, yevent)
         ts = ts.at[-1].set(tevent)
-        event_mask = final_state.event_compare
     else:
         event_mask = None
 

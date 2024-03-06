@@ -106,11 +106,11 @@ def test_continuous_terminate1():
     dt0 = 1
     y0 = 1.0
 
-    def event_fn(state, **kwargs):
+    def cond_fn(state, **kwargs):
         assert isinstance(state.y, jax.Array)
         return state.tprev > 10
 
-    event = diffrax.Event(diffrax.EventFn(event_fn))
+    event = diffrax.Event(cond_fn=cond_fn)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     assert jnp.all(cast(Array, sol.ys) > 10)
 
@@ -123,11 +123,11 @@ def test_continuous_terminate2():
     dt0 = 1
     y0 = 1.0
 
-    def event_fn(state, **kwargs):
+    def cond_fn(state, **kwargs):
         assert isinstance(state.y, jax.Array)
         return state.tprev - 10.0
 
-    event = diffrax.Event(diffrax.EventFn(event_fn))
+    event = diffrax.Event(cond_fn=cond_fn)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     assert jnp.all(cast(Array, sol.ts) >= 10)
 
@@ -145,8 +145,7 @@ def test_continuous_event_time():
         return y
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event_fn = diffrax.EventFn(cond_fn)
-    event = diffrax.Event(event_fn, root_finder)
+    event = diffrax.Event(cond_fn, root_finder)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     assert jnp.all(jnp.isclose(cast(Array, sol.ts), 10.0, 1e-5))
 
@@ -164,8 +163,7 @@ def test_continuous_event_value():
         return y
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event_fn = diffrax.EventFn(cond_fn)
-    event = diffrax.Event(event_fn, root_finder)
+    event = diffrax.Event(cond_fn, root_finder)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     assert jnp.all(jnp.isclose(cast(Array, sol.ys), 0.0, 1e-5))
 
@@ -183,8 +181,7 @@ def test_continuous_no_event():
         return y
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event_fn = diffrax.EventFn(cond_fn)
-    event = diffrax.Event(event_fn, root_finder)
+    event = diffrax.Event(cond_fn, root_finder)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     assert not cast(Array, sol.event_mask)
     assert jnp.all(jnp.isclose(cast(Array, sol.ts), 5.0, 1e-5))
@@ -207,8 +204,7 @@ def test_continuous_two_events():
         return y + 5.0
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event_fn_1, event_fn_2 = diffrax.EventFn(cond_fn_1), diffrax.EventFn(cond_fn_2)
-    event = diffrax.Event([event_fn_1, event_fn_2], root_finder)
+    event = diffrax.Event([cond_fn_1, cond_fn_2], root_finder)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     assert cast(Array, sol.event_mask)[1]
     assert not cast(Array, sol.event_mask)[0]
@@ -228,8 +224,7 @@ def test_continuous_event_time_grad():
     term = diffrax.ODETerm(vector_field)
     solver = diffrax.Tsit5()
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event_fn = diffrax.EventFn(cond_fn)
-    event = diffrax.Event(event_fn, root_finder)
+    event = diffrax.Event(cond_fn, root_finder)
     t0 = 0
     t1 = jnp.inf
     dt0 = 0.01

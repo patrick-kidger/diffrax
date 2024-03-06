@@ -20,7 +20,6 @@ from ._custom_types import (
 )
 from ._event import (
     Event as Event,
-    EventFn as EventFn,
 )
 from ._global_interpolation import (
     AbstractGlobalInterpolation as AbstractGlobalInterpolation,
