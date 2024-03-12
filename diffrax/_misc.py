@@ -188,4 +188,4 @@ def upcast_or_raise(
             )
     elif config_value != "standard":
         assert False, f"Unrecognised `JAX_NUMPY_DTYPE_PROMOTION={config_value}`"
-    return jnp.astype(x, promote_dtype)
+    return jnp.array(x, dtype=promote_dtype)
