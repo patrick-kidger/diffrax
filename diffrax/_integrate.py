@@ -1036,6 +1036,21 @@ def diffeqsolve(
         dense_infos = None
         dense_save_index = None
 
+    if event is not None:
+        tprevprev = tprev
+        _, _, dense_info_for_event, _, _ = solver.step(
+            terms,
+            tprev,
+            tnext,
+            y0,
+            args,
+            solver_state,
+            made_jump,
+        )
+    else:
+        tprevprev = None
+        dense_info_for_event = None
+
     # Progress meter
     progress_meter_state = progress_meter.init()
 
@@ -1056,6 +1071,8 @@ def diffeqsolve(
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
         progress_meter_state=progress_meter_state,
+        tprevprev=tprevprev,
+        dense_info_for_event=dense_info_for_event,
     )
 
     if event is not None:
@@ -1082,24 +1099,6 @@ def diffeqsolve(
         )
         init_state = eqx.tree_at(
             lambda s: s.event_mask, init_state, event_mask, is_leaf=_is_none
-        )
-        init_state = init_state = eqx.tree_at(
-            lambda s: s.tprevprev, init_state, tprev, is_leaf=_is_none
-        )
-        _, _, dense_info_for_event, _, _ = solver.step(
-            terms,
-            tprev,
-            tnext,
-            y0,
-            args,
-            solver_state,
-            made_jump,
-        )
-        init_state = eqx.tree_at(
-            lambda s: s.dense_info_for_event,
-            init_state,
-            dense_info_for_event,
-            is_leaf=_is_none,
         )
 
     #
