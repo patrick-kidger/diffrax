@@ -101,6 +101,7 @@ class Solution(AbstractPath):
     solver_state: Optional[PyTree]
     controller_state: Optional[PyTree]
     made_jump: Optional[BoolScalarLike]
+    event_mask: Optional[PyTree[BoolScalarLike]]
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True

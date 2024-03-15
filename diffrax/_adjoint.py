@@ -121,7 +121,7 @@ class AbstractAdjoint(eqx.Module):
         terms,
         solver,
         stepsize_controller,
-        discrete_terminating_event,
+        event,
         saveat,
         t0,
         t1,
@@ -555,7 +555,7 @@ def _loop_backsolve_bwd(
     self,
     solver,
     stepsize_controller,
-    discrete_terminating_event,
+    event,
     saveat,
     t0,
     t1,
@@ -565,7 +565,7 @@ def _loop_backsolve_bwd(
     init_state,
     progress_meter,
 ):
-    assert discrete_terminating_event is None
+    assert event is None
 
     #
     # Unpack our various arguments. Delete a lot of things just to make sure we're not
@@ -779,7 +779,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         init_state,
         passed_solver_state,
         passed_controller_state,
-        discrete_terminating_event,
+        event,
         **kwargs,
     ):
         if jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat) != jtu.tree_structure(
@@ -821,7 +821,7 @@ class BacksolveAdjoint(AbstractAdjoint):
                 "`diffrax.BacksolveAdjoint` is only compatible with solvers that take "
                 "a single term."
             )
-        if discrete_terminating_event is not None:
+        if event is not None:
             raise NotImplementedError(
                 "`diffrax.BacksolveAdjoint` is not compatible with events."
             )
@@ -838,7 +838,7 @@ class BacksolveAdjoint(AbstractAdjoint):
             saveat=saveat,
             init_state=init_state,
             solver=solver,
-            discrete_terminating_event=discrete_terminating_event,
+            event=event,
             **kwargs,
         )
         final_state = _only_transpose_ys(final_state)
