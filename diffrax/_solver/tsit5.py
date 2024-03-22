@@ -149,7 +149,10 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         b7 = 2.5 * (t - 1) * (t - 0.6) * t**2
         return (
             self.y0**ω
-            + vector_tree_dot(jnp.stack([b1, b2, b3, b4, b5, b6, b7]), self.k) ** ω
+            + vector_tree_dot(
+                jnp.stack([b1, b2, b3, b4, b5, b6, b7]).astype(self.k.dtype), self.k
+            )
+            ** ω
         ).ω
 
 
