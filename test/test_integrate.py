@@ -45,27 +45,25 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver,t_dtype,y_dtype,treedef,stepsize_controller",
-    _all_pairs(
-        dict(
-            default=diffrax.Euler(),
-            opts=(
-                diffrax.LeapfrogMidpoint(),
-                diffrax.ReversibleHeun(),
-                diffrax.Tsit5(),
-                diffrax.ImplicitEuler(
-                    root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)
-                ),
-                diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
-            ),
-        ),
-        dict(default=jnp.float32, opts=(int, float, jnp.int32)),
-        dict(default=jnp.float32, opts=(jnp.complex64,)),
-        dict(default=treedefs[0], opts=treedefs[1:]),
-        dict(
-            default=diffrax.ConstantStepSize(),
-            opts=(diffrax.PIDController(rtol=1e-5, atol=1e-8),),
-        ),
+    "solver",
+    (
+        diffrax.Euler(),
+        diffrax.LeapfrogMidpoint(),
+        diffrax.ReversibleHeun(),
+        diffrax.Tsit5(),
+        diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+        diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+    ),
+)
+@pytest.mark.parametrize("t_dtype", (jnp.float32, int, float, jnp.int32))
+@pytest.mark.parametrize("y_dtype", (jnp.float32, jnp.complex64))
+@pytest.mark.parametrize("treedef", treedefs)
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (
+        diffrax.ConstantStepSize(),
+        diffrax.PIDController(rtol=1e-5, atol=1e-8),
+        diffrax.PIDController(rtol=1e-5, atol=1e-8, pcoeff=0.3, icoeff=0.3, dcoeff=0.0),
     ),
 )
 def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
