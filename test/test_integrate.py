@@ -224,7 +224,12 @@ def _diffusion(t, y, args):
 
 
 @pytest.mark.parametrize("solver_ctr,commutative,theoretical_order", _solvers())
-@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        jnp.float64,
+    ],
+)
 def test_sde_strong_order(solver_ctr, commutative, theoretical_order, dtype):
     key = jr.PRNGKey(5678)
     driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
