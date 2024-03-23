@@ -140,7 +140,10 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         next_t = self.ts[index + 1]
         diff_t = next_t - prev_t
 
-        return (prev_ys**ω + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t)).ω
+        return (
+            prev_ys**ω
+            + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t).astype(next_ys)
+        ).ω
 
     @eqx.filter_jit
     def derivative(self, t: RealScalarLike, left: bool = True) -> PyTree[Array]:
@@ -164,7 +167,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
         return (
             (ω(self.ys)[index + 1] - ω(self.ys)[index])
-            / (self.ts[index + 1] - self.ts[index])
+            / (self.ts[index + 1] - self.ts[index]).astype(self.ys)
         ).ω
 
 
@@ -248,9 +251,8 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         index, frac = self._interpret_t(t0, left)
-
         d, c, b, a = self.coeffs
-
+        frac = jnp.array(frac, dtype=d.dtype)
         return (
             ω(a)[index]
             + frac * (ω(b)[index] + frac * (ω(c)[index] + frac * ω(d)[index]))
@@ -279,6 +281,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         index, frac = self._interpret_t(t, left)
 
         d, c, b, _ = self.coeffs
+        frac = jnp.array(frac, dtype=d.dtype)
 
         return (ω(b)[index] + frac * (2 * ω(c)[index] + frac * 3 * ω(d)[index])).ω
 
@@ -619,8 +622,8 @@ def _hermite_forward(
 ]:
     prev_ti, prev_yi, prev_deriv_i = carry
     ti, yi, next_ti, next_yi = value
-    first_deriv_i = (next_yi - yi) / (next_ti - ti)
-    later_deriv_i = (yi - prev_yi) / (ti - prev_ti)
+    first_deriv_i = (next_yi - yi) / (next_ti - ti).astype(yi)
+    later_deriv_i = (yi - prev_yi) / (ti - prev_ti).astype(yi)
     deriv_i = jnp.where(jnp.isnan(prev_yi), first_deriv_i, later_deriv_i)
     cond = jnp.isnan(yi)
     carry_ti = jnp.where(cond, prev_ti, ti)
@@ -632,13 +635,13 @@ def _hermite_forward(
 
 def _hermite_coeffs(t0, y0, deriv0, t1, y1):
     t_diff = t1 - t0
-    deriv1 = (y1 - y0) / t_diff
+    deriv1 = (y1 - y0) / t_diff.astype(y0)
     d_deriv = deriv1 - deriv0
 
     a = y0
     b = deriv0
-    c = 2 * d_deriv / t_diff
-    d = -d_deriv / t_diff**2
+    c = 2 * d_deriv / t_diff.astype(y0)
+    d = -d_deriv / (t_diff**2).astype(y0)
 
     return d, c, b, a
 
@@ -681,7 +684,7 @@ def _backward_hermite_coefficients(
     else:
         y0 = jnp.broadcast_to(replace_nans_at_start, ys[0].shape)
     if deriv0 is None:
-        deriv0 = (next_ys[0] - y0) / (next_ts[0] - t0)
+        deriv0 = (next_ys[0] - y0) / (next_ts[0] - t0).astype(y0)
     else:
         deriv0 = jnp.broadcast_to(deriv0, ys[0].shape)
     ts = ts[:-1]

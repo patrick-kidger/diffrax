@@ -31,11 +31,12 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
     ) -> PyTree[Array]:
         del left
+        input_type = jnp.result_type(*jtu.tree_leaves(self.y0))
         if t1 is None:
-            coeff = linear_rescale(self.t0, t0, self.t1)
+            coeff = linear_rescale(self.t0, t0, self.t1).astype(input_type)
             return (self.y0**ω + coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
         else:
-            coeff = (t1 - t0) / (self.t1 - self.t0)
+            coeff = jnp.array(((t1 - t0) / (self.t1 - self.t0)), dtype=input_type)
             return (coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
 
 
@@ -78,7 +79,7 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
         t = linear_rescale(self.t0, t0, self.t1)
 
         def _eval(_coeffs):
-            return jnp.polyval(_coeffs, t)
+            return jnp.polyval(_coeffs, t.astype(_coeffs))
 
         return jtu.tree_map(_eval, self.coeffs)
 
@@ -100,7 +101,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         k: PyTree[Shaped[Array, "order ?*y"], "Y"],
     ):
         def _calculate(_y0, _y1, _k):
-            _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1)
+            _ymid = _y0 + jnp.tensordot(self.c_mid.astype(_k), _k, axes=1)
             _f0 = _k[0]
             _f1 = _k[-1]
             # TODO: rewrite as matrix-vector product?
@@ -123,6 +124,6 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         t = linear_rescale(self.t0, t0, self.t1)
 
         def _eval(_coeffs):
-            return jnp.polyval(_coeffs, t)
+            return jnp.polyval(_coeffs, t.astype(_coeffs))
 
         return jtu.tree_map(_eval, self.coeffs)
