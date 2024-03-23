@@ -134,6 +134,12 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         def _index(_ys):
             return _ys[index]
 
+        y_leaves = jtu.tree_leaves(self.ys)
+        if len(y_leaves) == 0:
+            ys_dtype = jnp.float64
+        else:
+            ys_dtype = jnp.result_type(*y_leaves)
+
         prev_ys = jtu.tree_map(_index, self.ys)
         next_ys = (self.ys**ω)[index + 1].ω
         prev_t = self.ts[index]
@@ -142,7 +148,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
         return (
             prev_ys**ω
-            + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t).astype(next_ys)
+            + (next_ys**ω - prev_ys**ω) * (fractional_part / diff_t).astype(ys_dtype)
         ).ω
 
     @eqx.filter_jit
@@ -164,10 +170,14 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         """
 
         index, _ = self._interpret_t(t, left)
-
+        y_leaves = jtu.tree_leaves(self.ys)
+        if len(y_leaves) == 0:
+            ys_dtype = jnp.float64
+        else:
+            ys_dtype = jnp.result_type(*y_leaves)
         return (
             (ω(self.ys)[index + 1] - ω(self.ys)[index])
-            / (self.ts[index + 1] - self.ts[index]).astype(self.ys)
+            / (self.ts[index + 1] - self.ts[index]).astype(ys_dtype)
         ).ω
 
 
@@ -252,7 +262,13 @@ class CubicInterpolation(AbstractGlobalInterpolation):
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
         index, frac = self._interpret_t(t0, left)
         d, c, b, a = self.coeffs
-        frac = jnp.array(frac, dtype=d.dtype)
+
+        d_leaves = jtu.tree_leaves(d)
+        if len(d_leaves) == 0:
+            d_dtype = jnp.float64
+        else:
+            d_dtype = jnp.result_type(*d_leaves)
+        frac = jnp.array(frac, dtype=d_dtype)
         return (
             ω(a)[index]
             + frac * (ω(b)[index] + frac * (ω(c)[index] + frac * ω(d)[index]))
@@ -281,7 +297,8 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         index, frac = self._interpret_t(t, left)
 
         d, c, b, _ = self.coeffs
-        frac = jnp.array(frac, dtype=d.dtype)
+        d_dtype = jnp.result_type(*jtu.tree_leaves(d))
+        frac = jnp.array(frac, dtype=d_dtype)
 
         return (ω(b)[index] + frac * (2 * ω(c)[index] + frac * 3 * ω(d)[index])).ω
 
