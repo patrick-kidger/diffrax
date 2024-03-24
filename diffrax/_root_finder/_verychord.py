@@ -94,11 +94,12 @@ class VeryChord(optx.AbstractRootFinder):
                 y_dtype = lxi.default_floating_dtype()  # pyright: ignore
             else:
                 y_dtype = jnp.result_type(*y_leaves)
+            diff_dtype = jnp.finfo(y_dtype).dtype
             init_state = _VeryChordState(
                 linear_state=linear_state,
                 diff=jtu.tree_map(lambda x: jnp.full(x.shape, jnp.inf, x.dtype), y),
-                diffsize=jnp.array(jnp.inf, dtype=y_dtype),
-                diffsize_prev=jnp.array(1.0, dtype=y_dtype),
+                diffsize=jnp.array(jnp.inf, dtype=diff_dtype),
+                diffsize_prev=jnp.array(1.0, dtype=diff_dtype),
                 result=optx.RESULTS.successful,
                 step=jnp.array(0),
             )
@@ -116,6 +117,7 @@ class VeryChord(optx.AbstractRootFinder):
         tags: frozenset[object],
     ) -> tuple[Y, _VeryChordState, Any]:
         del options, tags
+        input_dtype = jnp.result_type(*jtu.tree_leaves(y))
         fx, aux = fn(y, args)
         jac, linear_state = state.linear_state
         linear_state = lax.stop_gradient(linear_state)
@@ -124,7 +126,11 @@ class VeryChord(optx.AbstractRootFinder):
         )
         diff = sol.value
         new_y = (y**ω - diff**ω).ω
-        scale = (self.atol + self.rtol * ω(new_y).call(jnp.abs)).ω
+        scale = (
+            (self.atol + self.rtol * ω(new_y).call(jnp.abs)).call(
+                lambda x: x.astype(input_dtype)
+            )
+        ).ω
         diffsize = self.norm((diff**ω / scale**ω).ω)
         new_state = _VeryChordState(
             linear_state=state.linear_state,
