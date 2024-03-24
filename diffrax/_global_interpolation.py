@@ -137,7 +137,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
         y_leaves = jtu.tree_leaves(self.ys)
         if len(y_leaves) == 0:
-            ys_dtype = jnp.float64
+            ys_dtype = default_floating_dtype()
         else:
             ys_dtype = jnp.result_type(*y_leaves)
 
@@ -173,7 +173,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         index, _ = self._interpret_t(t, left)
         y_leaves = jtu.tree_leaves(self.ys)
         if len(y_leaves) == 0:
-            ys_dtype = jnp.float64
+            ys_dtype = default_floating_dtype()
         else:
             ys_dtype = jnp.result_type(*y_leaves)
         return (

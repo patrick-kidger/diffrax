@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import Array, Complex, Float, PRNGKeyArray, PyTree
+from jaxtyping import Array, Inexact, PRNGKeyArray, PyTree
 
 from .._custom_types import (
     BoolScalarLike,
@@ -52,7 +52,7 @@ from .base import AbstractBrownianPath
 # For more about space-time Levy area see Definition 4.2.1.
 # For the midpoint rule for generating space-time Levy area see Theorem 6.1.6.
 # For the general interpolation rule for space-time Levy area see Theorem 6.1.4.
-FloatOrComplex = Union[Float[Array, " *shape"], Complex[Array, " *shape"]]
+FloatOrComplex = Inexact[Array, " *shape"]
 FloatDouble: TypeAlias = tuple[FloatOrComplex, FloatOrComplex]
 FloatTriple: TypeAlias = tuple[FloatOrComplex, FloatOrComplex, FloatOrComplex]
 _Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
