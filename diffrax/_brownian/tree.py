@@ -227,7 +227,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)
-        print(t0)
         levy_0 = self._evaluate(t0)
         if t1 is None:
             levy_out = levy_0
@@ -252,7 +251,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
             (r < 0) | (r > 1),
             "Cannot evaluate VirtualBrownianTree outside of its range [t0, t1].",
         )
-        print("r", r)
         map_func = lambda key, shape: self._evaluate_leaf(key, r, shape)
         return jtu.tree_map(map_func, self.key, self.shape)
 
@@ -309,7 +307,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
             _level = _state.level + 1
 
-            print("rt", r, _t)
             _cond = r > _t
             _s = jnp.where(_cond, _t, _state.s)
             _key_st, _key_tu = _keys
@@ -449,7 +446,6 @@ class VirtualBrownianTree(AbstractBrownianPath):
         st = su / 2
         s = _state.s
         t = s + st
-        print(s, st, t)
         root_su = jnp.sqrt(su)
 
         w_s, w_u, w_su = _state.w_s_u_su

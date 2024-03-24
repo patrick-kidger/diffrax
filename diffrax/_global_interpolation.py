@@ -8,6 +8,7 @@ import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+from lineax._norm import default_floating_dtype
 
 
 if TYPE_CHECKING:
@@ -265,7 +266,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
         d_leaves = jtu.tree_leaves(d)
         if len(d_leaves) == 0:
-            d_dtype = jnp.float64
+            d_dtype = default_floating_dtype()
         else:
             d_dtype = jnp.result_type(*d_leaves)
         frac = jnp.array(frac, dtype=d_dtype)
