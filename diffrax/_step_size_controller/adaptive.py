@@ -457,8 +457,8 @@ class PIDController(
             jump_next_step,
             at_dtmin,
             dt0,
-            jnp.array(1.0, dtype=y_dtype),
-            jnp.array(1.0, dtype=y_dtype),
+            jnp.array(1.0, dtype=jnp.finfo(y_dtype).dtype),
+            jnp.array(1.0, dtype=jnp.finfo(y_dtype).dtype),
         )
 
     def adapt_step_size(
@@ -566,7 +566,7 @@ class PIDController(
             _nan = jnp.isnan(_y1_candidate).any()
             _y1_candidate = jnp.where(_nan, _y0, _y1_candidate)
             _y = jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate))
-            return _y_error / (self.atol + _y * self.rtol)
+            return _y_error / (self.atol + _y * self.rtol).astype(_y_error.dtype)
 
         scaled_error = self.norm(jtu.tree_map(_scale, y0, y1_candidate, y_error))
         keep_step = scaled_error < 1
@@ -604,7 +604,7 @@ class PIDController(
         # a grad API boundary as part of a larger model.)
         factor = lax.stop_gradient(factor)
         factor = eqxi.nondifferentiable(factor)
-        dt = prev_dt * factor
+        dt = prev_dt * factor.astype(prev_dt)
 
         # E.g. we failed an implicit step, so y_error=inf, so inv_scaled_error=0,
         # so factor=factormin, and we shrunk our step.

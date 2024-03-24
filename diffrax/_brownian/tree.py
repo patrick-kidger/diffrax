@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import Array, Float, PRNGKeyArray, PyTree
+from jaxtyping import Array, Inexact, PRNGKeyArray, PyTree
 
 from .._custom_types import (
     BoolScalarLike,
@@ -52,11 +52,9 @@ from .base import AbstractBrownianPath
 # For more about space-time Levy area see Definition 4.2.1.
 # For the midpoint rule for generating space-time Levy area see Theorem 6.1.6.
 # For the general interpolation rule for space-time Levy area see Theorem 6.1.4.
-
-FloatDouble: TypeAlias = tuple[Float[Array, " *shape"], Float[Array, " *shape"]]
-FloatTriple: TypeAlias = tuple[
-    Float[Array, " *shape"], Float[Array, " *shape"], Float[Array, " *shape"]
-]
+FloatOrComplex = Inexact[Array, " *shape"]
+FloatDouble: TypeAlias = tuple[FloatOrComplex, FloatOrComplex]
+FloatTriple: TypeAlias = tuple[FloatOrComplex, FloatOrComplex, FloatOrComplex]
 _Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
 
 
@@ -263,9 +261,10 @@ class VirtualBrownianTree(AbstractBrownianPath):
         struct: jax.ShapeDtypeStruct,
     ) -> LevyVal:
         shape, dtype = struct.shape, struct.dtype
+        tdtype = jnp.finfo(dtype).dtype
 
-        t0 = jnp.zeros((), dtype)
-        r = jnp.asarray(r, dtype)
+        t0 = jnp.zeros((), tdtype)
+        r = jnp.asarray(r, tdtype)
 
         if self.levy_area == "space-time":
             state_key, init_key_w, init_key_la = jr.split(key, 3)
@@ -307,6 +306,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
             ) = self._brownian_arch(_state, shape, dtype)
 
             _level = _state.level + 1
+
             _cond = r > _t
             _s = jnp.where(_cond, _t, _state.s)
             _key_st, _key_tu = _keys
@@ -343,13 +343,13 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
         # BM only case
         if self.levy_area == "":
-            w_mean = w_s + sr / su * w_su
+            w_mean = w_s + (sr / su).astype(w_su) * w_su
             if self._spline == "sqrt":
                 z = jr.normal(final_state.key, shape, dtype)
-                bb = jnp.sqrt(sr * ru / su) * z
+                bb = jnp.sqrt(sr * ru / su).astype(z) * z
             elif self._spline == "quad":
                 z = jr.normal(final_state.key, shape, dtype)
-                bb = (sr * ru / su) * z
+                bb = (sr * ru / su).astype(z) * z
             elif self._spline == "zero":
                 bb = jnp.zeros(shape, dtype)
             else:

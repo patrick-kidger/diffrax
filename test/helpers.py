@@ -156,6 +156,7 @@ def sde_solver_strong_order(
     key: PRNGKeyArray,
 ):
     dtype = jnp.result_type(*jtu.tree_leaves(y0))
+    tdtype = jnp.finfo(dtype).dtype
     levy_area = ""  # TODO: add a check whether the solver needs levy area
     keys = jr.split(key, num_samples)  # deliberately reused across all solves
 
@@ -171,7 +172,7 @@ def sde_solver_strong_order(
         y0,
         args,
     )
-    dts = 2.0 ** jnp.arange(-3, -3 - num_levels, -1, dtype=dtype)
+    dts = 2.0 ** jnp.arange(-3, -3 - num_levels, -1, dtype=tdtype)
 
     @jax.jit
     @jax.vmap
@@ -191,5 +192,5 @@ def sde_solver_strong_order(
         return _path_l2_dist(sols, correct_sols)
 
     errs = get_single_err(dts)
-    order, _ = jnp.polyfit(jnp.log(dts), jnp.log(errs), 1)
+    order, _ = jnp.polyfit(jnp.log(dts).astype(dtype), jnp.log(errs), 1)
     return dts, errs, order

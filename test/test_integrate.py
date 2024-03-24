@@ -45,27 +45,25 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver,t_dtype,y_dtype,treedef,stepsize_controller",
-    _all_pairs(
-        dict(
-            default=diffrax.Euler(),
-            opts=(
-                diffrax.LeapfrogMidpoint(),
-                diffrax.ReversibleHeun(),
-                diffrax.Tsit5(),
-                diffrax.ImplicitEuler(
-                    root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)
-                ),
-                diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
-            ),
-        ),
-        dict(default=jnp.float32, opts=(int, float, jnp.int32)),
-        dict(default=jnp.float32, opts=(jnp.complex64,)),
-        dict(default=treedefs[0], opts=treedefs[1:]),
-        dict(
-            default=diffrax.ConstantStepSize(),
-            opts=(diffrax.PIDController(rtol=1e-5, atol=1e-8),),
-        ),
+    "solver",
+    (
+        diffrax.Euler(),
+        diffrax.LeapfrogMidpoint(),
+        diffrax.ReversibleHeun(),
+        diffrax.Tsit5(),
+        diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+        diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+    ),
+)
+@pytest.mark.parametrize("t_dtype", (jnp.float32, int, float, jnp.int32))
+@pytest.mark.parametrize("y_dtype", (jnp.float32, jnp.complex64))
+@pytest.mark.parametrize("treedef", treedefs)
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (
+        diffrax.ConstantStepSize(),
+        diffrax.PIDController(rtol=1e-5, atol=1e-8),
+        diffrax.PIDController(rtol=1e-5, atol=1e-8, pcoeff=0.3, icoeff=0.3, dcoeff=0.0),
     ),
 )
 def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
@@ -146,13 +144,16 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
 
 
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
-def test_ode_order(solver):
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+def test_ode_order(solver, dtype):
     solver = implicit_tol(solver)
     key = jr.PRNGKey(5678)
     akey, ykey = jr.split(key, 2)
 
-    A = jr.normal(akey, (10, 10), dtype=jnp.float64) * 0.5
+    A = jr.normal(akey, (10, 10), dtype=dtype) * 0.5
 
+    if jnp.iscomplexobj(A) and isinstance(solver, diffrax.AbstractImplicitSolver):
+        return
     if (
         solver.term_structure
         == diffrax.MultiTerm[tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
@@ -173,7 +174,7 @@ def test_ode_order(solver):
         term = diffrax.ODETerm(f)
     t0 = 0
     t1 = 4
-    y0 = jr.normal(ykey, (10,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (10,), dtype=dtype)
 
     true_yT = jax.scipy.linalg.expm((t1 - t0) * A) @ y0
     exponents = []
@@ -212,16 +213,19 @@ def _solvers():
 
 def _drift(t, y, args):
     drift_mlp, _, _ = args
-    return 0.5 * drift_mlp(y)
+    with jax.numpy_dtype_promotion("standard"):
+        return 0.5 * drift_mlp(y)
 
 
 def _diffusion(t, y, args):
     _, diffusion_mlp, noise_dim = args
-    return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
+    with jax.numpy_dtype_promotion("standard"):
+        return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
 
 
 @pytest.mark.parametrize("solver_ctr,commutative,theoretical_order", _solvers())
-def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
+@pytest.mark.parametrize("dtype", [jnp.float64])
+def test_sde_strong_order(solver_ctr, commutative, theoretical_order, dtype):
     key = jr.PRNGKey(5678)
     driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
 
@@ -256,7 +260,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
 
     t0 = 0.0
     t1 = 2.0
-    y0 = jr.normal(ykey, (3,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (3,), dtype=dtype)
 
     def get_terms(bm):
         return MultiTerm(ODETerm(_drift), ControlTerm(_diffusion, bm))
@@ -302,9 +306,10 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
         diffrax.SaveAt(dense=True),
     ),
 )
-def test_reverse_time(solver_ctr, dt0, saveat, getkey):
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
     key = getkey()
-    y0 = jr.normal(key, (2, 2))
+    y0 = jr.normal(key, (2, 2), dtype=dtype)
     stepsize_controller = (
         diffrax.PIDController(rtol=1e-3, atol=1e-6)
         if dt0 is None
