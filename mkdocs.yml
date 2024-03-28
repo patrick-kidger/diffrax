@@ -138,3 +138,4 @@ nav:
         - Developer Documentation:
             - 'devdocs/predictor_dirk.md'
             - 'devdocs/adjoint_commutative_noise.md'
+            - 'devdocs/srk_example.ipynb'

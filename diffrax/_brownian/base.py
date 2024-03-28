@@ -4,17 +4,22 @@ from typing import Optional, TypeVar, Union
 from equinox.internal import AbstractVar
 from jaxtyping import Array, PyTree
 
-from .._custom_types import AbstractBrownianReturn, RealScalarLike
+from .._custom_types import (
+    AbstractBrownianIncrement,
+    BrownianIncrement,
+    RealScalarLike,
+    SpaceTimeLevyArea,
+)
 from .._path import AbstractPath
 
 
-_Control = TypeVar("_Control", bound=Union[PyTree[Array], AbstractBrownianReturn])
+_Control = TypeVar("_Control", bound=Union[PyTree[Array], AbstractBrownianIncrement])
 
 
 class AbstractBrownianPath(AbstractPath[_Control]):
     """Abstract base class for all Brownian paths."""
 
-    levy_area: AbstractVar[type[AbstractBrownianReturn]]
+    levy_area: AbstractVar[type[Union[BrownianIncrement, SpaceTimeLevyArea]]]
 
     @abc.abstractmethod
     def evaluate(

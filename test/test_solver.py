@@ -194,7 +194,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         def vf(self, t, y, args):
             return {"f": -self.coeff * y["y"]}
 
-        def contr(self, t0, t1):
+        def contr(self, t0, t1, **kwargs):
             return {"t": t1 - t0}
 
         def prod(self, vf, control):

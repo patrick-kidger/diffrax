@@ -16,14 +16,21 @@ from ._misc import adjoint_rms_seminorm
 from ._saveat import SubSaveAt
 from ._solver import (
     AbstractImplicitSolver,
+    AbstractSRK,
     Dopri5,
     Dopri8,
+    GeneralShARK,
     Kvaerno3,
     Kvaerno4,
     Kvaerno5,
     LeapfrogMidpoint,
     ReversibleHeun,
+    SEA,
     SemiImplicitEuler,
+    ShARK,
+    SlowRK,
+    SPaRK,
+    SRA1,
     Tsit5,
 )
 from ._step_size_controller import PIDController
@@ -374,7 +381,11 @@ def _backsolve_rms_norm(adjoint):
 
 @citation_rules.append
 def _explicit_solver(solver, terms=None):
-    if not isinstance(solver, AbstractImplicitSolver) and not is_sde(terms):
+    if (
+        not isinstance(solver, AbstractImplicitSolver)
+        and not is_sde(terms)
+        and not issubclass(type(solver), AbstractSRK)
+    ):
         return r"""
 % You are using an explicit solver, and may wish to cite the standard textbook:
 @book{hairer2008solving-i,
@@ -467,6 +478,12 @@ def _solvers(solver, saveat=None):
         Kvaerno5,
         ReversibleHeun,
         LeapfrogMidpoint,
+        ShARK,
+        SRA1,
+        SlowRK,
+        GeneralShARK,
+        SPaRK,
+        SEA,
     ):
         return (
             r"""

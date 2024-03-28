@@ -1,3 +1,4 @@
+import functools
 import functools as ft
 import typing
 import warnings
@@ -22,6 +23,7 @@ from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
+    AbstractBrownianIncrement,
     BoolScalarLike,
     BufferDenseInfos,
     FloatScalarLike,
@@ -137,7 +139,17 @@ def _term_compatible(
                 )
                 if not vf_type_compatible:
                     raise ValueError
-                control_type = jax.eval_shape(term.contr, 0.0, 0.0)
+
+                try:
+                    flag = issubclass(control_type_expected, AbstractBrownianIncrement)
+                except TypeError:
+                    flag = False
+
+                if flag:
+                    contr = functools.partial(term.contr, use_levy=True)
+                else:
+                    contr = term.contr
+                control_type = jax.eval_shape(contr, 0.0, 0.0)
                 control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
                 )
