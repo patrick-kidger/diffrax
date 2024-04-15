@@ -17,6 +17,7 @@ from .._custom_types import (
     levy_tree_transpose,
     RealScalarLike,
     SpaceTimeLevyArea,
+    SpaceTimeTimeLevyArea,
 )
 from .._misc import (
     force_bitcast_convert_type,
@@ -61,16 +62,18 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]] = eqx.field(
-        static=True
-    )
+    levy_area: type[
+        Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+    ] = eqx.field(static=True)
     key: PRNGKeyArray
 
     def __init__(
         self,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]],
+        levy_area: type[
+            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+        ] = BrownianIncrement,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -129,7 +132,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         )
         if use_levy:
             out = levy_tree_transpose(self.shape, out)
-            assert isinstance(out, (BrownianIncrement, SpaceTimeLevyArea))
+            assert isinstance(out, self.levy_area)
         return out
 
     @staticmethod
@@ -138,15 +141,24 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: RealScalarLike,
         key,
         shape: jax.ShapeDtypeStruct,
-        levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]],
+        levy_area: type[
+            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+        ],
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
+        key_w, key_hh, key_kk = jr.split(key, 3)
         w = jr.normal(key, shape.shape, shape.dtype) * w_std
         dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
 
-        if levy_area is SpaceTimeLevyArea:
-            key, key_hh = jr.split(key, 2)
+        if levy_area is SpaceTimeTimeLevyArea:
+            hh_std = w_std / math.sqrt(12)
+            hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
+            kk_std = w_std / math.sqrt(720)
+            kk = jr.normal(key_kk, shape.shape, shape.dtype) * kk_std
+            levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
+
+        elif levy_area is SpaceTimeLevyArea:
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
             levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
