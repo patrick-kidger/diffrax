@@ -47,6 +47,8 @@ VF = PyTree[Shaped[ArrayLike, "?*vf"], "VF"]
 Control = PyTree[Shaped[ArrayLike, "?*control"], "C"]
 Args = PyTree[Any]
 
+BM = PyTree[Shaped[ArrayLike, "?*bm"], "BM"]
+
 DenseInfo = dict[str, PyTree[Array]]
 DenseInfos = dict[str, PyTree[Shaped[Array, "times-1 ..."]]]
 BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]
@@ -54,34 +56,34 @@ sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
 
 class AbstractBrownianIncrement(eqx.Module):
-    dt: eqx.AbstractVar[PyTree[FloatScalarLike]]
-    W: eqx.AbstractVar[PyTree[Array]]
+    dt: eqx.AbstractVar[PyTree[FloatScalarLike, "BM"]]
+    W: eqx.AbstractVar[BM]
 
 
 class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement):
-    H: eqx.AbstractVar[PyTree[Array]]
+    H: eqx.AbstractVar[BM]
 
 
 class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):
-    K: eqx.AbstractVar[PyTree[Array]]
+    K: eqx.AbstractVar[BM]
 
 
 class BrownianIncrement(AbstractBrownianIncrement):
-    dt: PyTree[FloatScalarLike]
-    W: PyTree[Array]
+    dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
 
 
 class SpaceTimeLevyArea(AbstractSpaceTimeLevyArea):
-    dt: PyTree[FloatScalarLike]
-    W: PyTree[Array]
-    H: PyTree[Array]
+    dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
+    H: BM
 
 
 class SpaceTimeTimeLevyArea(AbstractSpaceTimeTimeLevyArea):
-    dt: PyTree[FloatScalarLike]
-    W: PyTree[Array]
-    H: PyTree[Array]
-    K: PyTree[Array]
+    dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
+    H: BM
+    K: BM
 
 
 def levy_tree_transpose(
