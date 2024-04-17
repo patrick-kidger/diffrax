@@ -123,6 +123,9 @@ from ._term import (
     ODETerm as ODETerm,
     WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm,
 )
+from ._kl_term import (
+    sde_kl_divergence
+)
 
 
 __version__ = importlib.metadata.version("diffrax")
