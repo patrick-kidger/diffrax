@@ -49,7 +49,7 @@ Control = PyTree[Shaped[ArrayLike, "?*control"], "C"]
 Args = PyTree[Any]
 
 DenseInfo = dict[str, PyTree[Array]]
-DenseInfos = dict[str, PyTree[Shaped[Array, "times ..."]]]
+DenseInfos = dict[str, PyTree[Shaped[Array, "times-1 ..."]]]
 BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
