@@ -227,11 +227,11 @@ class _CallableToPath(AbstractPath[_Control]):
     fn: Callable
 
     @property
-    def t0(self):  # pyright: ignore[reportIncompatibleVariableOverride]
+    def t0(self):
         return -jnp.inf
 
     @property
-    def t1(self):  # pyright: ignore[reportIncompatibleVariableOverride]
+    def t1(self):
         return jnp.inf
 
     def evaluate(
