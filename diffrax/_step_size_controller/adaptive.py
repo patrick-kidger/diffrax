@@ -453,7 +453,7 @@ class PIDController(
 
         y_leaves = jtu.tree_leaves(y0)
         if len(y_leaves) == 0:
-            y_dtype = lxi.default_floating_dtype()  # pyright: ignore
+            y_dtype = lxi.default_floating_dtype()
         else:
             y_dtype = jnp.result_type(*y_leaves)
         return t1, (

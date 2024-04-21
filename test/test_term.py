@@ -55,22 +55,6 @@ def test_control_term(getkey):
     _: diffrax.ControlTerm[PyTree[Array], Array] = term
     __: diffrax.ControlTerm[PyTree[Array], diffrax.AbstractBrownianReturn] = term  # type: ignore
 
-    # Enable the following runtime checks once beartype supports Generic[TypeVar].
-    # https://github.com/beartype/beartype/issues/238
-    # import pytest
-    # from beartype.door import die_if_unbearable
-    # from beartype.roar import BeartypeCallHintViolation
-
-    # control = Control()
-    # term = diffrax.ControlTerm(vector_field, control)
-
-    # die_if_unbearable(term, diffrax.ControlTerm[Shaped[Array, "2"]])
-    # with pytest.raises(BeartypeCallHintViolation):
-    #     die_if_unbearable(term, diffrax.ControlTerm[Shaped[Array, "3"]])
-
-    # with pytest.raises(BeartypeCallHintViolation):
-    #     die_if_unbearable(term, diffrax.ControlTerm[diffrax.LevyVal])
-
     term = term.to_ode()
     dt = term.contr(0, 1)
     vf = term.vf(0, y, args)
