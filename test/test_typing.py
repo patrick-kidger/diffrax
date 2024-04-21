@@ -34,7 +34,7 @@ def test_get_origin_no_specials():
     with pytest.raises(NotImplementedError, match="qwerty"):
         get_origin_no_specials(Union[int, str], "qwerty")
     with pytest.raises(NotImplementedError, match="qwerty"):
-        get_origin_no_specials(Literal[4], "qwerty")  # pyright: ignore
+        get_origin_no_specials(Literal[4], "qwerty")
 
 
 def test_get_args_of_not_generic():

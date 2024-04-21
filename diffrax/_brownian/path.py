@@ -64,7 +64,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             else shape
         )
         self.key = key
-        self.levy_area = levy_area  # pyright: ignore[reportIncompatibleVariableOverride]
+        self.levy_area = levy_area
 
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
@@ -73,11 +73,11 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             raise ValueError("UnsafeBrownianPath dtypes all have to be floating-point.")
 
     @property
-    def t0(self):  # pyright: ignore[reportIncompatibleVariableOverride]
+    def t0(self):
         return -jnp.inf
 
     @property
-    def t1(self):  # pyright: ignore[reportIncompatibleVariableOverride]
+    def t1(self):
         return jnp.inf
 
     @eqx.filter_jit

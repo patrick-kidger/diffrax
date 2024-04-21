@@ -28,7 +28,7 @@ _SolverState = TypeVar("_SolverState")
 
 def vector_tree_dot(a, b):
     return jtu.tree_map(
-        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),  # pyright: ignore
+        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),
         b,
     )
 
