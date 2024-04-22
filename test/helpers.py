@@ -18,6 +18,7 @@ from diffrax import (
 )
 from jax import Array
 from jaxtyping import PRNGKeyArray, PyTree, Shaped
+from lineax.internal import complex_to_real_dtype
 
 
 all_ode_solvers = (
@@ -251,6 +252,7 @@ def sde_solver_strong_order(
         bm_tol,
         saveat,
     )
+    dts = 2.0 ** jnp.arange(-3, -3 - num_levels, -1, dtype=dtype)
 
     errs_list, steps_list = [], []
     for level in range(level_coarse, level_fine + 1):

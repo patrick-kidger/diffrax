@@ -117,7 +117,8 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
         explicit_k, implicit_k = self.k
         k = (explicit_k**ω + implicit_k**ω).ω
         coeffs = t * jax.vmap(lambda row: jnp.polyval(row, t))(self.coeffs)
-        return (self.y0**ω + vector_tree_dot(coeffs, k) ** ω).ω
+        with jax.numpy_dtype_promotion("standard"):
+            return (self.y0**ω + vector_tree_dot(coeffs, k) ** ω).ω
 
 
 class _KenCarp3Interpolation(KenCarpInterpolation):

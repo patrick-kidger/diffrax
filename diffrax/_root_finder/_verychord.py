@@ -11,6 +11,7 @@ import lineax.internal as lxi
 import optimistix as optx
 from equinox.internal import ω
 from jaxtyping import Array, Bool, PyTree, Scalar
+from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import Y
 
@@ -97,11 +98,12 @@ class VeryChord(optx.AbstractRootFinder):
                 y_dtype = lxi.default_floating_dtype()
             else:
                 y_dtype = jnp.result_type(*y_leaves)
+            diff_dtype = complex_to_real_dtype(y_dtype)
             init_state = _VeryChordState(
                 linear_state=linear_state,
                 diff=jtu.tree_map(lambda x: jnp.full(x.shape, jnp.inf, x.dtype), y),
-                diffsize=jnp.array(jnp.inf, dtype=y_dtype),
-                diffsize_prev=jnp.array(1.0, dtype=y_dtype),
+                diffsize=jnp.array(jnp.inf, dtype=diff_dtype),
+                diffsize_prev=jnp.array(1.0, dtype=diff_dtype),
                 result=optx.RESULTS.successful,
                 step=jnp.array(0),
             )
@@ -127,7 +129,9 @@ class VeryChord(optx.AbstractRootFinder):
         )
         diff = sol.value
         new_y = (y**ω - diff**ω).ω
-        scale = (self.atol + self.rtol * ω(new_y).call(jnp.abs)).ω
+
+        with jax.numpy_dtype_promotion("standard"):
+            scale = (self.atol + self.rtol * ω(new_y).call(jnp.abs)).ω
         diffsize = self.norm((diff**ω / scale**ω).ω)
         new_state = _VeryChordState(
             linear_state=state.linear_state,

@@ -10,7 +10,8 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import Array, Float, PRNGKeyArray, PyTree
+from jaxtyping import Array, Inexact, PRNGKeyArray, PyTree
+from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
     AbstractBrownianIncrement,
@@ -54,9 +55,9 @@ from .base import AbstractBrownianPath
 # For the midpoint rule for generating space-time Levy area see Theorem 6.1.6.
 # For the general interpolation rule for space-time Levy area see Theorem 6.1.4.
 
-FloatDouble: TypeAlias = tuple[Float[Array, " *shape"], Float[Array, " *shape"]]
+FloatDouble: TypeAlias = tuple[Inexact[Array, " *shape"], Inexact[Array, " *shape"]]
 FloatTriple: TypeAlias = tuple[
-    Float[Array, " *shape"], Float[Array, " *shape"], Float[Array, " *shape"]
+    Inexact[Array, " *shape"], Inexact[Array, " *shape"], Inexact[Array, " *shape"]
 ]
 _Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
 _BrownianReturn = TypeVar("_BrownianReturn", bound=AbstractBrownianIncrement)
@@ -283,9 +284,10 @@ class VirtualBrownianTree(AbstractBrownianPath):
         tuple[RealScalarLike, Array], tuple[RealScalarLike, Array, Array, Array]
     ]:
         shape, dtype = struct.shape, struct.dtype
+        tdtype = complex_to_real_dtype(dtype)
 
-        t0 = jnp.zeros((), dtype)
-        r = jnp.asarray(r, dtype)
+        t0 = jnp.zeros((), tdtype)
+        r = jnp.asarray(r, tdtype)
 
         if self.levy_area is SpaceTimeLevyArea:
             state_key, init_key_w, init_key_la = jr.split(key, 3)
