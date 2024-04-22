@@ -610,8 +610,7 @@ class PIDController(
         # a grad API boundary as part of a larger model.)
         factor = lax.stop_gradient(factor)
         factor = eqxi.nondifferentiable(factor)
-        with jax.numpy_dtype_promotion("standard"):
-            dt = prev_dt * factor
+        dt = prev_dt * factor.astype(prev_dt)
 
         # E.g. we failed an implicit step, so y_error=inf, so inv_scaled_error=0,
         # so factor=factormin, and we shrunk our step.

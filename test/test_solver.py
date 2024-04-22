@@ -274,7 +274,8 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
 
 
 # Essentially used as a check that our general IMEX implementation is correct.
-def test_sil3():
+@pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
+def test_sil3(dtype):
     class ReferenceSil3(diffrax.AbstractImplicitSolver):
         term_structure = diffrax.MultiTerm[
             tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]
@@ -313,7 +314,8 @@ def test_sil3():
                 return ya - (y0 + (1 / 3) * f0 + (1 / 6) * g0 + (1 / 6) * g1)
 
             ta = t0 + (1 / 3) * dt
-            ya = optx.root_find(_second_stage, self.root_finder, y0).value
+            with jax.numpy_dtype_promotion("standard"):
+                ya = optx.root_find(_second_stage, self.root_finder, y0).value
             fs.append(ex_vf_prod(ta, ya))
             gs.append(im_vf_prod(ta, ya))
 
@@ -326,7 +328,9 @@ def test_sil3():
                 )
 
             tb = t0 + (2 / 3) * dt
-            yb = optx.root_find(_third_stage, self.root_finder, ya).value
+
+            with jax.numpy_dtype_promotion("standard"):
+                yb = optx.root_find(_third_stage, self.root_finder, ya).value
             fs.append(ex_vf_prod(tb, yb))
             gs.append(im_vf_prod(tb, yb))
 
@@ -345,7 +349,8 @@ def test_sil3():
                 )
 
             tc = t1
-            yc = optx.root_find(_fourth_stage, self.root_finder, yb).value
+            with jax.numpy_dtype_promotion("standard"):
+                yc = optx.root_find(_fourth_stage, self.root_finder, yb).value
             fs.append(ex_vf_prod(tc, yc))
             gs.append(im_vf_prod(tc, yc))
 
@@ -379,17 +384,19 @@ def test_sil3():
     mlp2 = eqx.nn.MLP(3, 2, 8, 1, key=mlpkey2)
 
     def f1(t, y, args):
-        y = jnp.concatenate([t[None], y])
-        return mlp1(y)
+        with jax.numpy_dtype_promotion("standard"):
+            y = jnp.concatenate([t[None], y])
+            return mlp1(y)
 
     def f2(t, y, args):
         y = jnp.concatenate([t[None], y])
-        return mlp2(y)
+        with jax.numpy_dtype_promotion("standard"):
+            return mlp2(y)
 
     terms = diffrax.MultiTerm(diffrax.ODETerm(f1), diffrax.ODETerm(f2))
     t0 = jnp.array(0.3)
     t1 = jnp.array(1.5)
-    y0 = jr.normal(ykey, (2,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (2,), dtype=dtype)
     args = None
 
     state = solver.init(terms, t0, t1, y0, args)
