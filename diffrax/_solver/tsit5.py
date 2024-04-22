@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar, Optional
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from equinox.internal import ω
@@ -147,10 +148,11 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         )
         b6 = -34.87065786149660974 * (t - 1.2) * (t - 0.666666666666666667) * t**2
         b7 = 2.5 * (t - 1) * (t - 0.6) * t**2
-        return (
-            self.y0**ω
-            + vector_tree_dot(jnp.stack([b1, b2, b3, b4, b5, b6, b7]), self.k) ** ω
-        ).ω
+        with jax.numpy_dtype_promotion("standard"):
+            return (
+                self.y0**ω
+                + vector_tree_dot(jnp.stack([b1, b2, b3, b4, b5, b6, b7]), self.k) ** ω
+            ).ω
 
 
 class Tsit5(AbstractERK):
