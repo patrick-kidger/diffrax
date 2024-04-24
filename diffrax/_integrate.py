@@ -196,8 +196,12 @@ def loop(
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
 
     def save_t0(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-        if subsaveat.t0:
+        if subsaveat.t0 and not subsaveat.kl:
             save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
+        if subsaveat.t0 and subsaveat.kl:
+            save_state = _save(
+                t0, init_state.solver_state[1], args, subsaveat.fn, save_state
+            )
         return save_state
 
     save_state = jtu.tree_map(
@@ -318,8 +322,12 @@ def loop(
         dense_save_index = state.dense_save_index
 
         def save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.ts is not None:
+            if subsaveat.ts is not None and not subsaveat.kl:
                 save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state)
+            if subsaveat.kl:
+                raise ValueError(
+                    "ts and KL are not supported, use solver steps or t0/t1!"
+                )
             return save_state
 
         def save_ts_impl(ts, fn, save_state: SaveState) -> SaveState:
@@ -363,11 +371,23 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps:
+            if subsaveat.steps and not subsaveat.kl:
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
                 ys = jtu.tree_map(
                     ft.partial(maybe_inplace, save_state.save_index),
                     subsaveat.fn(tprev, y, args),
+                    save_state.ys,
+                )
+                save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
+                save_state = eqx.tree_at(
+                    lambda s: [s.ts, s.ys, s.save_index],
+                    save_state,
+                    [ts, ys, save_index],
+                )
+            if subsaveat.kl and subsaveat.steps:
+                ys = jtu.tree_map(
+                    ft.partial(maybe_inplace, save_state.save_index),
+                    subsaveat.fn(tprev, init_state.solver_state[1], args),
                     save_state.ys,
                 )
                 save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
@@ -467,6 +487,14 @@ def loop(
             # early. (And absent such an event then `tprev == t1`.)
             save_state = _save(
                 final_state.tprev, final_state.y, args, subsaveat.fn, save_state
+            )
+        if subsaveat.kl and subsaveat.ts is not None:
+            save_state = _save(
+                final_state.tprev,
+                final_state.solver_state[1],
+                args,
+                subsaveat.fn,
+                save_state,
             )
         return save_state
 
@@ -852,7 +880,10 @@ def diffeqsolve(
         saveat_ts_index = 0
         save_index = 0
         ts = jnp.full(out_size, jnp.inf, dtype=time_dtype)
-        struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
+        if subsaveat.kl:
+            struct = eqx.filter_eval_shape(subsaveat.fn, t0, jnp.array(0.0), args)
+        else:
+            struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
         ys = jtu.tree_map(
             lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
         )
