@@ -4,15 +4,22 @@ from typing import Optional, Tuple
 import equinox as eqx
 import jax.tree_util as jtu
 import lineax as lx
+from jax import numpy as jnp
 from jaxtyping import PyTree
 
-from .base import AbstractSolver, AbstractWrappedSolver, _SolverState as _AbstractSolverState
-from .._term import AbstractTerm, ControlTerm, ODETerm, WeaklyDiagonalControlTerm
-from .._custom_types import RealScalarLike, Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
-from .._solution import RESULTS
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
+from .._solution import RESULTS
+from .._term import AbstractTerm, ControlTerm, ODETerm, WeaklyDiagonalControlTerm
+from .base import (
+    _SolverState as _AbstractSolverState,
+    AbstractSolver,
+    AbstractWrappedSolver,
+)
+
 
 _SolverState = Tuple[_AbstractSolverState, RealScalarLike]
+
 
 class KLSolver(AbstractWrappedSolver[_SolverState]):
     """
@@ -53,7 +60,7 @@ class KLSolver(AbstractWrappedSolver[_SolverState]):
         y0: Y,
         args: Args,
     ) -> _SolverState:
-        return (self.solver.init(terms, t0, t1, y0, args), 0.0)
+        return (self.solver.init(terms, t0, t1, y0, args), jnp.array(0.0))
 
     def step(
         self,
