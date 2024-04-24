@@ -90,6 +90,7 @@ from ._solver import (
     KenCarp3 as KenCarp3,
     KenCarp4 as KenCarp4,
     KenCarp5 as KenCarp5,
+    KLSolver as KLSolver,
     Kvaerno3 as Kvaerno3,
     Kvaerno4 as Kvaerno4,
     Kvaerno5 as Kvaerno5,
@@ -122,9 +123,6 @@ from ._term import (
     MultiTerm as MultiTerm,
     ODETerm as ODETerm,
     WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm,
-)
-from ._kl_term import (
-    sde_kl_divergence
 )
 
 
