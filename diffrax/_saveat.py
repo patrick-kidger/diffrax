@@ -34,6 +34,7 @@ class SubSaveAt(eqx.Module):
     ts: Optional[Real[Array, " times"]] = eqx.field(default=None, converter=_convert_ts)
     steps: bool = False
     fn: Callable = save_y
+    kl: bool = False
 
     def __check_init__(self):
         if not self.t0 and not self.t1 and self.ts is None and not self.steps:

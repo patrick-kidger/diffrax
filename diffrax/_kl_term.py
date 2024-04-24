@@ -1,12 +1,13 @@
 import operator
-from typing import Tuple, Callable
+from typing import Callable, Tuple
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-import equinox as eqx
 from jaxtyping import Array, PyTree
-from ._custom_types import RealScalarLike, Control
+
+from ._custom_types import Control, RealScalarLike
 from ._term import (
     AbstractTerm,
     ControlTerm,
@@ -33,12 +34,15 @@ def _kl_full_matrix(drift: Array, diffusion: Array):
     scale = jnp.linalg.pinv(diffusion) @ drift
     return 0.5 * jnp.sum(scale**2)
 
+
 def _handle(drift: Array, diffusion: Array):
     """According to the shape of drift and diffusion,
     select the right way to compute KL divergence
     """
     eqx.error_if(drift, not eqx.is_array(drift), "Only array drifts are supported")
-    eqx.error_if(diffusion, not eqx.is_array(diffusion), "Only array diffusion are supported")
+    eqx.error_if(
+        diffusion, not eqx.is_array(diffusion), "Only array diffusion are supported"
+    )
     if drift.shape == diffusion.shape:
         return _kl_diagonal(drift, diffusion)
     else:
@@ -61,7 +65,6 @@ def _kl_block_diffusion(drift: PyTree, diffusion: PyTree):
 
 
 class _AugDrift(AbstractTerm):
-
     drift1: Callable
     drift2: Callable
     diffusion: AbstractTerm
@@ -91,7 +94,9 @@ class _AugDrift(AbstractTerm):
         context = args
         aug_y = y if context is None else jnp.concatenate([y, context(t)], axis=-1)
 
-        drift1 = self.drift1(t, aug_y, args) # we can't make these .vf becuase _broadcast_and_upcast
+        drift1 = self.drift1(
+            t, aug_y, args
+        )  # we can't make these .vf becuase _broadcast_and_upcast
         # requires that aug_y and drift(aug_y) are the same shape, but they aren't
         drift2 = self.drift2(t, y, args)
 
@@ -140,7 +145,6 @@ class _AugDrift(AbstractTerm):
 
 
 class _AugControlTerm(AbstractTerm):
-
     control_term: AbstractTerm
 
     def __init__(self, term: AbstractTerm) -> None:
@@ -154,7 +158,9 @@ class _AugControlTerm(AbstractTerm):
     def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> PyTree:
         return self.control_term.contr(t0, t1), 0.0
 
-    def vf_prod(self, t: RealScalarLike, y: PyTree, args: PyTree, control: PyTree) -> PyTree:
+    def vf_prod(
+        self, t: RealScalarLike, y: PyTree, args: PyTree, control: PyTree
+    ) -> PyTree:
         y, _ = y
         control, _ = control
         return self.control_term.vf_prod(t, y, args, control), 0.0
