@@ -324,7 +324,7 @@ def loop(
         def save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.ts is not None and not subsaveat.kl:
                 save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state)
-            if subsaveat.kl:
+            if subsaveat.kl and subsaveat.ts is not None:
                 raise ValueError(
                     "ts and KL are not supported, use solver steps or t0/t1!"
                 )
@@ -385,9 +385,10 @@ def loop(
                     [ts, ys, save_index],
                 )
             if subsaveat.kl and subsaveat.steps:
+                ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
                 ys = jtu.tree_map(
                     ft.partial(maybe_inplace, save_state.save_index),
-                    subsaveat.fn(tprev, init_state.solver_state[1], args),
+                    subsaveat.fn(tprev, state.solver_state[1], args),
                     save_state.ys,
                 )
                 save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
@@ -480,7 +481,7 @@ def loop(
     )
 
     def _save_t1(subsaveat, save_state):
-        if subsaveat.t1 and not subsaveat.steps:
+        if subsaveat.t1 and not subsaveat.steps and not subsaveat.kl:
             # If subsaveat.steps then the final value is already saved.
             #
             # Use `tprev` instead of `t1` in case of an event terminating the solve
@@ -488,7 +489,7 @@ def loop(
             save_state = _save(
                 final_state.tprev, final_state.y, args, subsaveat.fn, save_state
             )
-        if subsaveat.kl and subsaveat.ts is not None:
+        if subsaveat.kl and subsaveat.ts and not subsaveat.steps:
             save_state = _save(
                 final_state.tprev,
                 final_state.solver_state[1],
