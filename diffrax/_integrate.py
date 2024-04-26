@@ -48,6 +48,7 @@ from ._solver import (
     EulerHeun,
     ItoMilstein,
     StratonovichMilstein,
+    evaluate_kl
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController,
@@ -266,7 +267,7 @@ def loop(
             save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
         if subsaveat.t0 and subsaveat.kl:
             save_state = _save(
-                t0, init_state.solver_state[1], args, subsaveat.fn, save_state
+                t0, evaluate_kl(terms, t0, init_state.y, args, solver.linear_solver), args, subsaveat.fn, save_state
             )
         return save_state
 
@@ -392,15 +393,11 @@ def loop(
         dense_save_index = state.dense_save_index
 
         def save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.ts is not None and not subsaveat.kl:
-                save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state)
-            if subsaveat.kl and subsaveat.ts is not None:
-                raise ValueError(
-                    "ts and KL are not supported, use solver steps or t0/t1!"
-                )
+            if subsaveat.ts is not None:
+                save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state, subsaveat.kl)
             return save_state
 
-        def save_ts_impl(ts, fn, save_state: SaveState) -> SaveState:
+        def save_ts_impl(ts, fn, save_state: SaveState, kl: bool = False) -> SaveState:
             def _cond_fun(_save_state):
                 return (
                     keep_step
@@ -412,11 +409,18 @@ def loop(
                 _t = ts[_save_state.saveat_ts_index]
                 _y = interpolator.evaluate(_t)
                 _ts = _save_state.ts.at[_save_state.save_index].set(_t)
-                _ys = jtu.tree_map(
-                    lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
-                    fn(_t, _y, args),
-                    _save_state.ys,
-                )
+                if not kl:
+                    _ys = jtu.tree_map(
+                        lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
+                        fn(_t, _y, args),
+                        _save_state.ys,
+                    )
+                else:
+                    _ys = jtu.tree_map(
+                        lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
+                        evaluate_kl(terms, _t, _y, args, solver.linear_solver),
+                        _save_state.ys,
+                    )
                 return SaveState(
                     saveat_ts_index=_save_state.saveat_ts_index + 1,
                     ts=_ts,
@@ -458,7 +462,7 @@ def loop(
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
                 ys = jtu.tree_map(
                     ft.partial(maybe_inplace, save_state.save_index),
-                    subsaveat.fn(tprev, state.solver_state[1], args),
+                    evaluate_kl(terms, tprev, y, args, solver.linear_solver),
                     save_state.ys,
                 )
                 save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
@@ -560,10 +564,10 @@ def loop(
             save_state = _save(
                 final_state.tprev, final_state.y, args, subsaveat.fn, save_state
             )
-        if subsaveat.kl and subsaveat.ts and not subsaveat.steps:
+        if subsaveat.kl and subsaveat.t1 and not subsaveat.steps:
             save_state = _save(
                 final_state.tprev,
-                final_state.solver_state[1],
+                evaluate_kl(terms, final_state.tprev, final_state.y, args, solver.linear_solver),
                 args,
                 subsaveat.fn,
                 save_state,
