@@ -760,8 +760,6 @@ def diffeqsolve(
             _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
-    if isinstance(solver, KLSolver):
-        y0 = (y0, 0.0)
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
 
@@ -810,6 +808,9 @@ def diffeqsolve(
                 "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
             )
 
+    if isinstance(solver, KLSolver):
+        y0 = (y0, 0.0)
+        y0 = jtu.tree_map(_promote, y0)
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
     t0 = t0 * direction
