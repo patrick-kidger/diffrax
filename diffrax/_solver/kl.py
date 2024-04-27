@@ -104,7 +104,7 @@ class _KLDrift(AbstractTerm):
             self.drift1, self.drift2, self.diffusion, t, y, args, self.linear_solver
         )
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike) -> Control:
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> Control:
         return t1 - t0
 
     def prod(self, vf: VF, control: RealScalarLike) -> Y:
@@ -120,7 +120,7 @@ class _KLControlTerm(AbstractTerm):
         return vf, 0.0
 
     def contr(
-        self, t0: RealScalarLike, t1: RealScalarLike
+        self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
     ) -> Tuple[Control, RealScalarLike]:
         return self.control_term.contr(t0, t1), 0.0
 
