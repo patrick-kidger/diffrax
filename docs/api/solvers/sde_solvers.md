@@ -20,7 +20,9 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 ---
 
-### Explicit Runge--Kutta (ERK) methods
+## Explicit Runge--Kutta (ERK) methods
+
+These solvers can be used to solve SDEs just as well as they can be used to solve ODEs.
 
 ::: diffrax.Euler
     selection:
@@ -44,17 +46,7 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 ---
 
-### Reversible methods
-
-These are reversible in the same way as when applied to ODEs. [See here.](./ode_solvers.md#reversible-methods)
-
-::: diffrax.ReversibleHeun
-    selection:
-        members: false
-
----
-
-### SDE-only solvers
+## SDE-only solvers
 
 !!! info "Term structure"
 
@@ -70,6 +62,44 @@ These are reversible in the same way as when applied to ODEs. [See here.](./ode_
         members: false
 
 ::: diffrax.StratonovichMilstein
+    selection:
+        members: false
+
+### Stochastic Runge--Kutta (SRK)
+
+These are a particularly important class of SDE-only solvers.
+
+::: diffrax.SEA
+    selection:
+        members: false
+
+::: diffrax.SRA1
+    selection:
+        members: false
+
+::: diffrax.ShARK
+    selection:
+        members: false
+
+::: diffrax.GeneralShARK
+    selection:
+        members: false
+
+::: diffrax.SlowRK
+    selection:
+        members: false
+
+::: diffrax.SPaRK
+    selection:
+        members: false
+
+---
+
+### Reversible methods
+
+These are reversible in the same way as when applied to ODEs. [See here.](./ode_solvers.md#reversible-methods)
+
+::: diffrax.ReversibleHeun
     selection:
         members: false
 

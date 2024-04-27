@@ -191,21 +191,34 @@ def test_ode_order(solver):
     assert -0.9 < order - solver.order(term) < 0.9
 
 
+def _solvers_and_orders():
+    # solver, noise, order
+    # noise is "any" or "com" or "add" where "com" means commutative and "add" means
+    # additive.
+    yield diffrax.Euler, "any", 0.5
+    yield diffrax.EulerHeun, "any", 0.5
+    yield diffrax.Heun, "any", 0.5
+    yield diffrax.ItoMilstein, "any", 0.5
+    yield diffrax.Midpoint, "any", 0.5
+    yield diffrax.ReversibleHeun, "any", 0.5
+    yield diffrax.StratonovichMilstein, "any", 0.5
+    yield diffrax.SPaRK, "any", 0.5
+    yield diffrax.GeneralShARK, "any", 0.5
+    yield diffrax.SlowRK, "any", 0.5
+    yield diffrax.ReversibleHeun, "com", 1
+    yield diffrax.StratonovichMilstein, "com", 1
+    yield diffrax.SPaRK, "com", 1
+    yield diffrax.GeneralShARK, "com", 1
+    yield diffrax.SlowRK, "com", 1.5
+    yield diffrax.SPaRK, "add", 1.5
+    yield diffrax.GeneralShARK, "add", 1.5
+    yield diffrax.ShARK, "add", 1.5
+    yield diffrax.SRA1, "add", 1.5
+    yield diffrax.SEA, "add", 1.0
+
+
 def _squareplus(x):
     return 0.5 * (x + jnp.sqrt(x**2 + 4))
-
-
-def _solvers():
-    # solver, commutative, order
-    yield diffrax.Euler, False, 0.5
-    yield diffrax.EulerHeun, False, 0.5
-    yield diffrax.Heun, False, 0.5
-    yield diffrax.ItoMilstein, False, 0.5
-    yield diffrax.Midpoint, False, 0.5
-    yield diffrax.ReversibleHeun, False, 0.5
-    yield diffrax.StratonovichMilstein, False, 0.5
-    yield diffrax.ReversibleHeun, True, 1
-    yield diffrax.StratonovichMilstein, True, 1
 
 
 def _drift(t, y, args):
@@ -218,24 +231,27 @@ def _diffusion(t, y, args):
     return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
 
 
-@pytest.mark.parametrize("solver_ctr,commutative,theoretical_order", _solvers())
-def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
+@pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
+def test_sde_strong_order(solver_ctr, noise, theoretical_order):
     key = jr.PRNGKey(5678)
     driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
+    num_samples = 20
+    bmkeys = jr.split(bmkey, num_samples)
 
-    if commutative:
+    if noise == "com":
         noise_dim = 1
+    elif noise == "any":
+        noise_dim = 7
+    elif noise == "add":
+        return
     else:
-        noise_dim = 5
-
-    key = jr.PRNGKey(5678)
-    driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
+        assert False
 
     drift_mlp = eqx.nn.MLP(
         in_size=3,
         out_size=3,
         width_size=8,
-        depth=1,
+        depth=2,
         activation=_squareplus,
         key=driftkey,
     )
@@ -244,7 +260,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
         in_size=3,
         out_size=3 * noise_dim,
         width_size=8,
-        depth=1,
+        depth=2,
         activation=_squareplus,
         final_activation=jnp.tanh,
         key=diffusionkey,
@@ -268,19 +284,36 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     else:
         assert False
 
+    if theoretical_order == 0.5:
+        levels = (3, 8)
+        ref_level = 10
+    elif theoretical_order == 1.0:
+        levels = (1, 6)
+        ref_level = 12
+    elif theoretical_order == 1.5:
+        levels = (0, 4)
+        ref_level = 12
+    else:
+        assert False
+
+    def get_dt_and_controller(level):
+        return 2**-level, diffrax.ConstantStepSize()
+
     hs, errors, order = sde_solver_strong_order(
+        bmkeys,
         get_terms,
         (noise_dim,),
-        solver_ctr(),
-        ref_solver,
         t0,
         t1,
-        dt_precise=2**-12,
-        y0=y0,
-        args=args,
-        num_samples=20,
-        num_levels=7,
-        key=bmkey,
+        y0,
+        args,
+        solver_ctr(),
+        ref_solver,
+        levels,
+        ref_level,
+        get_dt_and_controller,
+        diffrax.SaveAt(t1=True),
+        bm_tol=2.0 ** -(ref_level + 2),
     )
     assert -0.2 < order - theoretical_order < 0.2
 
