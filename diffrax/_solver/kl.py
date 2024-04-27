@@ -33,13 +33,13 @@ from .base import (
 )
 
 
-_ControlTerm = Union[ControlTerm, WeaklyDiagonalControlTerm]
+DiffusionTerm = Union[ControlTerm, WeaklyDiagonalControlTerm]
 
 
 def _compute_kl_integral(
     drift_term1: ODETerm,
     drift_term2: ODETerm,
-    diffusion_term: _ControlTerm,
+    diffusion_term: DiffusionTerm,
     t0: RealScalarLike,
     y0: Y,
     args: Args,
@@ -95,7 +95,7 @@ def _compute_kl_integral(
 class _KLDrift(AbstractTerm):
     drift1: ODETerm
     drift2: ODETerm
-    diffusion: _ControlTerm
+    diffusion: DiffusionTerm
     linear_solver: lx.AbstractLinearSolver
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> Tuple[VF, RealScalarLike]:
@@ -112,7 +112,7 @@ class _KLDrift(AbstractTerm):
 
 
 class _KLControlTerm(AbstractTerm):
-    control_term: _ControlTerm
+    control_term: DiffusionTerm
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> Tuple[VF, RealScalarLike]:
         y, _ = y
@@ -160,7 +160,7 @@ class KLSolver(AbstractWrappedSolver[_SolverState]):
     The input must be a `MultiTerm` composed of the first SDE with drift `f`
     and diffusion `g` and the second either a SDE or just the drift term
     (since the diffusion is assumed to be the same). For example, a type
-    of: `MuliTerm(MultiTerm(ODETerm, _ControlTerm), ODETerm)`.
+    of: `MuliTerm(MultiTerm(ODETerm, DiffusionTerm), ODETerm)`.
 
     ??? cite "References"
 
@@ -260,12 +260,12 @@ class KLSolver(AbstractWrappedSolver[_SolverState]):
         drift_term1, drift_term2 = drift_term1[0], drift_term2[0]
 
         diffusion_term = jtu.tree_map(
-            lambda x: x if isinstance(x, _ControlTerm) else None,
+            lambda x: x if isinstance(x, DiffusionTerm) else None,
             terms1,
-            is_leaf=lambda x: isinstance(x, _ControlTerm),
+            is_leaf=lambda x: isinstance(x, DiffusionTerm),
         )
         diffusion_term = jtu.tree_leaves(
-            diffusion_term, is_leaf=lambda x: isinstance(x, _ControlTerm)
+            diffusion_term, is_leaf=lambda x: isinstance(x, DiffusionTerm)
         )
 
         diffusion_term = eqx.error_if(
