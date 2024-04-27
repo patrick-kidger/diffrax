@@ -165,7 +165,7 @@ class StochasticButcherTableau(Generic[_Coeffs]):
 StochasticButcherTableau.__init__.__doc__ = """The coefficients of a
 [`diffrax.AbstractSRK`][] method.
 
-See the documentation for [`diffrax.AbstractSRK`][] for additional details on the
+See also the documentation for [`diffrax.AbstractSRK`][] for additional details on the
 mathematical meaning of each of these arguments.
 
 **Arguments:**
@@ -185,8 +185,12 @@ Let `s` denote the number of stages of the solver.
     alternate solution that is compared against the main solution).
 - `c`: The time increments used in the Butcher tableau.
     Should be a NumPy array of shape `(s-1,)`, as the first stage has time increment 0.
-- `cfs_bm`: An instance of a subclass of `AbstractStochasticTableau` representing
-    the coefficients for the Brownian increment and possibly its Levy areas.
+- `coeffs_w`: An instance of `AdditiveCoeffs` or `GeneralCoeffs`, providing the
+    coefficients of the Brownian motion increments.
+- `coeffs_hh`: An instance of `AdditiveCoeffs` or `GeneralCoeffs`, providing the
+    coefficients of the space-time Levy area.
+- `coeffs_kk`: An instance of `AdditiveCoeffs` or `GeneralCoeffs`, providing the
+    coefficients of the space-time-time Levy area.
 - `ignore_stage_f`: Optional. A NumPy array of length `s` of booleans. If `True` at
     stage `j`, the vector field of the drift term will not be evaluated at stage `j`.
 - `ignore_stage_g`: Optional. A NumPy array of length `s` of booleans. If `True` at
@@ -198,8 +202,9 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     r"""A general Stochastic Runge-Kutta method.
 
     This accepts `terms` of the form
-    `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))`.
-     Depending on the solver, the Brownian motion might need to generate
+    `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))` or
+    `MultiTerm(ODETerm(drift), WeaklyDiagonalControlTerm(diffusion, brownian_motion))`.
+    Depending on the solver, the Brownian motion might need to generate
     different types of Levy areas, specified by the `minimal_levy_area` attribute.
 
     For example, the [`diffrax.ShARK`][] solver requires space-time Levy area, so
@@ -281,6 +286,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         y0: Y,
         args: PyTree,
     ) -> _SolverState:
+        del t1
         # Check that the diffusion has the correct Levy area
         _, diffusion = terms.terms
 
@@ -514,11 +520,10 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             if ignore_stage_f is None:
                 _h_kfs = compute_and_insert_kf_j(_h_kfs)
             else:
-                drift_pred = jnp.logical_not(ignore_stage_f[j])
                 _h_kfs = lax.cond(
-                    eqxi.nonbatchable(drift_pred),
-                    compute_and_insert_kf_j,
+                    eqxi.nonbatchable(ignore_stage_f[j]),
                     lambda what: what,
+                    compute_and_insert_kf_j,
                     _h_kfs,
                 )
 
@@ -539,11 +544,10 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             if ignore_stage_g is None:
                 _w_kgs, _levylist_kgs = compute_and_insert_kg_j(_w_kgs, _levylist_kgs)
             else:
-                diffusion_pred = jnp.logical_not(ignore_stage_g[j])
                 _w_kgs, _levylist_kgs = lax.cond(
-                    eqxi.nonbatchable(diffusion_pred),
-                    compute_and_insert_kg_j,
+                    eqxi.nonbatchable(ignore_stage_g[j]),
                     lambda x, y: (x, y),
+                    compute_and_insert_kg_j,
                     _w_kgs,
                     _levylist_kgs,
                 )
