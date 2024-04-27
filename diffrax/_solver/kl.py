@@ -1,5 +1,5 @@
 import operator
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import equinox as eqx
 import jax
@@ -20,8 +20,8 @@ from .._custom_types import (
 from .._heuristics import is_sde
 from .._solution import RESULTS
 from .._term import (
-    _ControlTerm,
     AbstractTerm,
+    ControlTerm,
     MultiTerm,
     ODETerm,
     WeaklyDiagonalControlTerm,
@@ -31,6 +31,9 @@ from .base import (
     AbstractSolver,
     AbstractWrappedSolver,
 )
+
+
+_ControlTerm = Union[ControlTerm, WeaklyDiagonalControlTerm]
 
 
 def _compute_kl_integral(
