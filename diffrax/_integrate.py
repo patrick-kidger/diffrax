@@ -47,8 +47,8 @@ from ._solver import (
     Euler,
     EulerHeun,
     ItoMilstein,
+    KLSolver,
     StratonovichMilstein,
-    evaluate_kl
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController,
@@ -263,12 +263,8 @@ def loop(
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
 
     def save_t0(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-        if subsaveat.t0 and not subsaveat.kl:
+        if subsaveat.t0:
             save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
-        if subsaveat.t0 and subsaveat.kl:
-            save_state = _save(
-                t0, evaluate_kl(terms, t0, init_state.y, args, solver.linear_solver), args, subsaveat.fn, save_state
-            )
         return save_state
 
     save_state = jtu.tree_map(
@@ -394,10 +390,10 @@ def loop(
 
         def save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.ts is not None:
-                save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state, subsaveat.kl)
+                save_state = save_ts_impl(subsaveat.ts, subsaveat.fn, save_state)
             return save_state
 
-        def save_ts_impl(ts, fn, save_state: SaveState, kl: bool = False) -> SaveState:
+        def save_ts_impl(ts, fn, save_state: SaveState) -> SaveState:
             def _cond_fun(_save_state):
                 return (
                     keep_step
@@ -409,18 +405,11 @@ def loop(
                 _t = ts[_save_state.saveat_ts_index]
                 _y = interpolator.evaluate(_t)
                 _ts = _save_state.ts.at[_save_state.save_index].set(_t)
-                if not kl:
-                    _ys = jtu.tree_map(
-                        lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
-                        fn(_t, _y, args),
-                        _save_state.ys,
-                    )
-                else:
-                    _ys = jtu.tree_map(
-                        lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
-                        evaluate_kl(terms, _t, _y, args, solver.linear_solver),
-                        _save_state.ys,
-                    )
+                _ys = jtu.tree_map(
+                    lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
+                    fn(_t, _y, args),
+                    _save_state.ys,
+                )
                 return SaveState(
                     saveat_ts_index=_save_state.saveat_ts_index + 1,
                     ts=_ts,
@@ -445,24 +434,11 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps and not subsaveat.kl:
+            if subsaveat.steps:
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
                 ys = jtu.tree_map(
                     ft.partial(maybe_inplace, save_state.save_index),
                     subsaveat.fn(tprev, y, args),
-                    save_state.ys,
-                )
-                save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
-                save_state = eqx.tree_at(
-                    lambda s: [s.ts, s.ys, s.save_index],
-                    save_state,
-                    [ts, ys, save_index],
-                )
-            if subsaveat.kl and subsaveat.steps:
-                ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
-                ys = jtu.tree_map(
-                    ft.partial(maybe_inplace, save_state.save_index),
-                    evaluate_kl(terms, tprev, y, args, solver.linear_solver),
                     save_state.ys,
                 )
                 save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
@@ -556,21 +532,13 @@ def loop(
     )
 
     def _save_t1(subsaveat, save_state):
-        if subsaveat.t1 and not subsaveat.steps and not subsaveat.kl:
+        if subsaveat.t1 and not subsaveat.steps:
             # If subsaveat.steps then the final value is already saved.
             #
             # Use `tprev` instead of `t1` in case of an event terminating the solve
             # early. (And absent such an event then `tprev == t1`.)
             save_state = _save(
                 final_state.tprev, final_state.y, args, subsaveat.fn, save_state
-            )
-        if subsaveat.kl and subsaveat.t1 and not subsaveat.steps:
-            save_state = _save(
-                final_state.tprev,
-                evaluate_kl(terms, final_state.tprev, final_state.y, args, solver.linear_solver),
-                args,
-                subsaveat.fn,
-                save_state,
             )
         return save_state
 
@@ -789,6 +757,8 @@ def diffeqsolve(
             _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
         return jnp.asarray(yi, dtype=_dtype)
 
+    if isinstance(solver, KLSolver):
+        y0 = (y0, 0.0)
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
 
