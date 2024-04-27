@@ -1,6 +1,5 @@
 import typing
-from typing import Any, Literal, Optional, TYPE_CHECKING, Union
-from typing_extensions import TypeAlias
+from typing import Any, TYPE_CHECKING, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -53,34 +52,56 @@ DenseInfos = dict[str, PyTree[Shaped[Array, "times-1 ..."]]]
 BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
-LevyArea: TypeAlias = Literal["", "space-time"]
+
+class AbstractBrownianIncrement(eqx.Module):
+    dt: eqx.AbstractVar[PyTree[FloatScalarLike]]
+    W: eqx.AbstractVar[PyTree[Array]]
 
 
-class LevyVal(eqx.Module):
-    dt: PyTree
-    W: PyTree
-    H: Optional[PyTree]
-    bar_H: Optional[PyTree]
-    K: Optional[PyTree]
-    bar_K: Optional[PyTree]
+class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement):
+    H: eqx.AbstractVar[PyTree[Array]]
 
 
-def levy_tree_transpose(tree_shape, levy_area: LevyArea, tree: PyTree):
-    """Helper that takes a PyTree of LevyVals and transposes
-    into a LevyVal of PyTrees.
+class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):
+    K: eqx.AbstractVar[PyTree[Array]]
+
+
+class BrownianIncrement(AbstractBrownianIncrement):
+    dt: PyTree[FloatScalarLike]
+    W: PyTree[Array]
+
+
+class SpaceTimeLevyArea(AbstractSpaceTimeLevyArea):
+    dt: PyTree[FloatScalarLike]
+    W: PyTree[Array]
+    H: PyTree[Array]
+
+
+class SpaceTimeTimeLevyArea(AbstractSpaceTimeTimeLevyArea):
+    dt: PyTree[FloatScalarLike]
+    W: PyTree[Array]
+    H: PyTree[Array]
+    K: PyTree[Array]
+
+
+def levy_tree_transpose(
+    tree_shape, tree: PyTree[AbstractBrownianIncrement]
+) -> AbstractBrownianIncrement:
+    """Helper that takes a `PyTree `of `AbstractBrownianIncrement`s and transposes
+    into an `AbstractBrownianIncrement` of `PyTree`s.
 
     **Arguments:**
 
     - `tree_shape`: Corresponds to `outer_treedef` in `jax.tree_transpose`.
-    - `levy_area`: can be `""` or `"space-time"`, which indicates
-    which fields of the LevyVal will have values.
-    - `tree`: the PyTree of LevyVals to transpose.
+    - `tree`: the `PyTree` of `AbstractBrownianIncrement`s to transpose.
 
     **Returns:**
 
-    A `LevyVal` of PyTrees.
+    An `AbstractBrownianIncrement` of `PyTree`s.
     """
-    inner_tree = jtu.tree_leaves(tree, is_leaf=lambda x: isinstance(x, LevyVal))[0]
+    inner_tree = jtu.tree_leaves(
+        tree, is_leaf=lambda x: isinstance(x, AbstractBrownianIncrement)
+    )[0]
     inner_tree_shape = jtu.tree_structure(inner_tree)
     return jtu.tree_transpose(
         outer_treedef=jtu.tree_structure(tree_shape),

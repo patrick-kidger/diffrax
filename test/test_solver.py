@@ -176,7 +176,7 @@ def test_multiple_tableau1(adaptive):
     with pytest.raises(ValueError):
         diffrax.diffeqsolve(
             (term1, term2),
-            _DoubleDopri5(),  # pyright: ignore
+            _DoubleDopri5(),
             t0,
             t1,
             dt0,
@@ -230,7 +230,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         def vf(self, t, y, args):
             return {"f": -self.coeff * y["y"]}
 
-        def contr(self, t0, t1):
+        def contr(self, t0, t1, **kwargs):
             return {"t": t1 - t0}
 
         def prod(self, vf, control):

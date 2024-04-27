@@ -2,7 +2,14 @@ import functools as ft
 import typing
 import warnings
 from collections.abc import Callable
-from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    get_args,
+    get_origin,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+)
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -24,7 +31,11 @@ from ._custom_types import (
 from ._event import AbstractDiscreteTerminatingEvent
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
-from ._misc import static_select
+from ._misc import linear_rescale, static_select
+from ._progress_meter import (
+    AbstractProgressMeter,
+    NoProgressMeter,
+)
 from ._root_finder import use_stepsize_tol
 from ._saveat import SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
@@ -46,6 +57,7 @@ from ._step_size_controller import (
     StepTo,
 )
 from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
+from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
 class SaveState(eqx.Module):
@@ -72,28 +84,79 @@ class State(eqx.Module):
     dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
     dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
+    progress_meter_state: PyTree[Array]
 
 
-def _is_none(x):
+def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(terms, term_structure):
-    def _check(term_cls, term):
-        if get_origin(term_cls) is MultiTerm:
+def _term_compatible(
+    y: PyTree[ArrayLike],
+    args: PyTree[Any],
+    terms: PyTree[AbstractTerm],
+    term_structure: PyTree,
+    contr_kwargs: PyTree[dict],
+) -> bool:
+    error_msg = "term_structure"
+
+    def _check(term_cls, term, term_contr_kwargs, yi):
+        if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
             if isinstance(term, MultiTerm):
                 [_tmp] = get_args(term_cls)
                 assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
-                if not _term_compatible(term.terms, get_args(_tmp)):
-                    raise ValueError
+                assert len(term.terms) == len(get_args(_tmp))
+                assert type(term_contr_kwargs) is tuple
+                assert len(term.terms) == len(term_contr_kwargs)
+                for term, arg, term_contr_kwarg in zip(
+                    term.terms, get_args(_tmp), term_contr_kwargs
+                ):
+                    if not _term_compatible(yi, args, term, arg, term_contr_kwarg):
+                        raise ValueError
             else:
                 raise ValueError
         else:
-            if not isinstance(term, term_cls):
+            # Check that `term` is an instance of `term_cls` (ignoring any generic
+            # parameterization).
+            origin_cls = get_origin_no_specials(term_cls, error_msg)
+            if origin_cls is None:
+                origin_cls = term_cls
+            if not isinstance(term, origin_cls):
                 raise ValueError
 
+            # Now check the generic parametrization of `term_cls`; can be one of:
+            # -----------------------------------------
+            # `term_cls`                | `term_args`
+            # --------------------------|--------------
+            # AbstractTerm              | ()
+            # AbstractTerm[VF, Control] | (VF, Control)
+            # -----------------------------------------
+            term_args = get_args_of(AbstractTerm, term_cls, error_msg)
+            n_term_args = len(term_args)
+            if n_term_args == 0:
+                pass
+            elif n_term_args == 2:
+                vf_type_expected, control_type_expected = term_args
+                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                vf_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, vf_type, vf_type_expected
+                )
+                if not vf_type_compatible:
+                    raise ValueError
+
+                contr = ft.partial(term.contr, **term_contr_kwargs)
+                control_type = jax.eval_shape(contr, 0.0, 0.0)
+                control_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, control_type, control_type_expected
+                )
+                if not control_type_compatible:
+                    raise ValueError
+            else:
+                assert False, "Malformed term structure"
+            # If we've got to this point then the term is compatible
+
     try:
-        jtu.tree_map(_check, term_structure, terms)
+        jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except ValueError:
         # ValueError may also arise from mismatched tree structures
         return False
@@ -190,6 +253,7 @@ def loop(
     init_state,
     inner_while_loop,
     outer_while_loop,
+    progress_meter,
 ):
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -279,6 +343,10 @@ def loop(
 
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
+
+        progress_meter_state = progress_meter.step(
+            state.progress_meter_state, linear_rescale(t0, tprev, t1)
+        )
 
         # The other parts of the mutable state are kept/not-kept (based on whether the
         # step was accepted) by the stepsize controller. But it doesn't get access to
@@ -407,6 +475,7 @@ def loop(
             dense_ts=dense_ts,  # pyright: ignore
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
+            progress_meter_state=progress_meter_state,
         )
 
         if discrete_terminating_event is not None:
@@ -511,6 +580,7 @@ def diffeqsolve(
     discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
     max_steps: Optional[int] = 4096,
     throw: bool = True,
+    progress_meter: AbstractProgressMeter = NoProgressMeter(),
     solver_state: Optional[PyTree[ArrayLike]] = None,
     controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
@@ -588,6 +658,9 @@ def diffeqsolve(
             of the returned solution object, to determine which batch elements
             succeeded and which failed.
 
+    - `progress_meter`: A progress meter to indicate how far through the solve has
+        progressed. See [the progress meters page](./progress_meter.md).
+
     - `solver_state`: Some initial state for the solver. Generally obtained by
         `SaveAt(solver_state=True)` from a previous solve.
 
@@ -647,47 +720,6 @@ def diffeqsolve(
             stacklevel=2,
         )
 
-    # Backward compatibility
-    if isinstance(
-        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(terms, (ODETerm, AbstractTerm)):
-        warnings.warn(
-            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-            f"{solver.__class__.__name__} is deprecated in favour of "
-            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-            "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!",
-            stacklevel=2,
-        )
-        terms = MultiTerm(*terms)
-
-    # Error checking
-    if not _term_compatible(terms, solver.term_structure):
-        raise ValueError(
-            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
-            f"structure {solver.term_structure}"
-        )
-
-    if is_sde(terms):
-        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
-            warnings.warn(
-                f"`{type(solver).__name__}` is not marked as converging to either the "
-                "Itô or the Stratonovich solution.",
-                stacklevel=2,
-            )
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-            # Specific check to not work even if using HalfSolver(Euler())
-            if isinstance(solver, Euler):
-                raise ValueError(
-                    "An SDE should not be solved with adaptive step sizes with Euler's "
-                    "method, as it may not converge to the correct solution."
-                )
-    if is_unsafe_sde(terms):
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-            raise ValueError(
-                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
-            )
-
     # Allow setting e.g. t0 as an int with dt0 as a float.
     timelikes = [t0, t1, dt0] + [
         s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
@@ -732,6 +764,51 @@ def diffeqsolve(
         y0 = (y0, 0.0)
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
+
+    # Backward compatibility
+    if isinstance(
+        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
+    ) and _term_compatible(
+        y0, args, terms, (ODETerm, AbstractTerm), solver.term_compatible_contr_kwargs
+    ):
+        warnings.warn(
+            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+            f"{solver.__class__.__name__} is deprecated in favour of "
+            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+            "the same terms can now be passed used for both general and SDE-specific "
+            "solvers!",
+            stacklevel=2,
+        )
+        terms = MultiTerm(*terms)
+
+    # Error checking
+    if not _term_compatible(
+        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
+    ):
+        raise ValueError(
+            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
+            f"structure {solver.term_structure}"
+        )
+
+    if is_sde(terms):
+        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
+            warnings.warn(
+                f"`{type(solver).__name__}` is not marked as converging to either the "
+                "Itô or the Stratonovich solution.",
+                stacklevel=2,
+            )
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            # Specific check to not work even if using HalfSolver(Euler())
+            if isinstance(solver, Euler):
+                raise ValueError(
+                    "An SDE should not be solved with adaptive step sizes with Euler's "
+                    "method, as it may not converge to the correct solution."
+                )
+    if is_unsafe_sde(terms):
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            raise ValueError(
+                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
+            )
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
@@ -894,6 +971,9 @@ def diffeqsolve(
         dense_infos = None
         dense_save_index = None
 
+    # Progress meter
+    progress_meter_state = progress_meter.init()
+
     # Initialise state
     init_state = State(
         y=y0,
@@ -910,6 +990,7 @@ def diffeqsolve(
         dense_ts=dense_ts,
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
+        progress_meter_state=progress_meter_state,
     )
 
     #
@@ -931,11 +1012,14 @@ def diffeqsolve(
         throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
+        progress_meter=progress_meter,
     )
 
     #
     # Finish up
     #
+
+    progress_meter.close(final_state.progress_meter_state)
 
     is_save_state = lambda x: isinstance(x, SaveState)
     ts = jtu.tree_map(

@@ -1,7 +1,7 @@
 import contextlib
 import math
 import operator
-from typing import cast
+from typing import Any, cast
 
 import diffrax
 import equinox as eqx
@@ -13,7 +13,7 @@ import pytest
 import scipy.stats
 from diffrax import ControlTerm, MultiTerm, ODETerm
 from equinox.internal import ω
-from jaxtyping import Array
+from jaxtyping import Array, ArrayLike, Float
 
 from .helpers import (
     all_ode_solvers,
@@ -45,27 +45,25 @@ def _all_pairs(*args):
 
 
 @pytest.mark.parametrize(
-    "solver,t_dtype,y_dtype,treedef,stepsize_controller",
-    _all_pairs(
-        dict(
-            default=diffrax.Euler(),
-            opts=(
-                diffrax.LeapfrogMidpoint(),
-                diffrax.ReversibleHeun(),
-                diffrax.Tsit5(),
-                diffrax.ImplicitEuler(
-                    root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)
-                ),
-                diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
-            ),
-        ),
-        dict(default=jnp.float32, opts=(int, float, jnp.int32)),
-        dict(default=jnp.float32, opts=(jnp.complex64,)),
-        dict(default=treedefs[0], opts=treedefs[1:]),
-        dict(
-            default=diffrax.ConstantStepSize(),
-            opts=(diffrax.PIDController(rtol=1e-5, atol=1e-8),),
-        ),
+    "solver",
+    (
+        diffrax.Euler(),
+        diffrax.LeapfrogMidpoint(),
+        diffrax.ReversibleHeun(),
+        diffrax.Tsit5(),
+        diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+        diffrax.Kvaerno3(root_finder=diffrax.VeryChord(rtol=1e-3, atol=1e-6)),
+    ),
+)
+@pytest.mark.parametrize("t_dtype", (jnp.float32, int, float, jnp.int32))
+@pytest.mark.parametrize("y_dtype", (jnp.float32, jnp.complex64))
+@pytest.mark.parametrize("treedef", treedefs)
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (
+        diffrax.ConstantStepSize(),
+        diffrax.PIDController(rtol=1e-5, atol=1e-8),
+        diffrax.PIDController(rtol=1e-5, atol=1e-8, pcoeff=0.3, icoeff=0.3, dcoeff=0.0),
     ),
 )
 def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
@@ -193,21 +191,34 @@ def test_ode_order(solver):
     assert -0.9 < order - solver.order(term) < 0.9
 
 
+def _solvers_and_orders():
+    # solver, noise, order
+    # noise is "any" or "com" or "add" where "com" means commutative and "add" means
+    # additive.
+    yield diffrax.Euler, "any", 0.5
+    yield diffrax.EulerHeun, "any", 0.5
+    yield diffrax.Heun, "any", 0.5
+    yield diffrax.ItoMilstein, "any", 0.5
+    yield diffrax.Midpoint, "any", 0.5
+    yield diffrax.ReversibleHeun, "any", 0.5
+    yield diffrax.StratonovichMilstein, "any", 0.5
+    yield diffrax.SPaRK, "any", 0.5
+    yield diffrax.GeneralShARK, "any", 0.5
+    yield diffrax.SlowRK, "any", 0.5
+    yield diffrax.ReversibleHeun, "com", 1
+    yield diffrax.StratonovichMilstein, "com", 1
+    yield diffrax.SPaRK, "com", 1
+    yield diffrax.GeneralShARK, "com", 1
+    yield diffrax.SlowRK, "com", 1.5
+    yield diffrax.SPaRK, "add", 1.5
+    yield diffrax.GeneralShARK, "add", 1.5
+    yield diffrax.ShARK, "add", 1.5
+    yield diffrax.SRA1, "add", 1.5
+    yield diffrax.SEA, "add", 1.0
+
+
 def _squareplus(x):
     return 0.5 * (x + jnp.sqrt(x**2 + 4))
-
-
-def _solvers():
-    # solver, commutative, order
-    yield diffrax.Euler, False, 0.5
-    yield diffrax.EulerHeun, False, 0.5
-    yield diffrax.Heun, False, 0.5
-    yield diffrax.ItoMilstein, False, 0.5
-    yield diffrax.Midpoint, False, 0.5
-    yield diffrax.ReversibleHeun, False, 0.5
-    yield diffrax.StratonovichMilstein, False, 0.5
-    yield diffrax.ReversibleHeun, True, 1
-    yield diffrax.StratonovichMilstein, True, 1
 
 
 def _drift(t, y, args):
@@ -220,24 +231,27 @@ def _diffusion(t, y, args):
     return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
 
 
-@pytest.mark.parametrize("solver_ctr,commutative,theoretical_order", _solvers())
-def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
+@pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
+def test_sde_strong_order(solver_ctr, noise, theoretical_order):
     key = jr.PRNGKey(5678)
     driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
+    num_samples = 20
+    bmkeys = jr.split(bmkey, num_samples)
 
-    if commutative:
+    if noise == "com":
         noise_dim = 1
+    elif noise == "any":
+        noise_dim = 7
+    elif noise == "add":
+        return
     else:
-        noise_dim = 5
-
-    key = jr.PRNGKey(5678)
-    driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
+        assert False
 
     drift_mlp = eqx.nn.MLP(
         in_size=3,
         out_size=3,
         width_size=8,
-        depth=1,
+        depth=2,
         activation=_squareplus,
         key=driftkey,
     )
@@ -246,7 +260,7 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
         in_size=3,
         out_size=3 * noise_dim,
         width_size=8,
-        depth=1,
+        depth=2,
         activation=_squareplus,
         final_activation=jnp.tanh,
         key=diffusionkey,
@@ -270,19 +284,36 @@ def test_sde_strong_order(solver_ctr, commutative, theoretical_order):
     else:
         assert False
 
+    if theoretical_order == 0.5:
+        levels = (3, 8)
+        ref_level = 10
+    elif theoretical_order == 1.0:
+        levels = (1, 6)
+        ref_level = 12
+    elif theoretical_order == 1.5:
+        levels = (0, 4)
+        ref_level = 12
+    else:
+        assert False
+
+    def get_dt_and_controller(level):
+        return 2**-level, diffrax.ConstantStepSize()
+
     hs, errors, order = sde_solver_strong_order(
+        bmkeys,
         get_terms,
         (noise_dim,),
-        solver_ctr(),
-        ref_solver,
         t0,
         t1,
-        dt_precise=2**-12,
-        y0=y0,
-        args=args,
-        num_samples=20,
-        num_levels=7,
-        key=bmkey,
+        y0,
+        args,
+        solver_ctr(),
+        ref_solver,
+        levels,
+        ref_level,
+        get_dt_and_controller,
+        diffrax.SaveAt(t1=True),
+        bm_tol=2.0 ** -(ref_level + 2),
     )
     assert -0.2 < order - theoretical_order < 0.2
 
@@ -520,3 +551,162 @@ def test_implicit_tol_error():
             0.01,
             1.0,
         )
+
+
+def test_term_compatibility():
+    class TestControl(eqx.Module):
+        dt: Float[ArrayLike, ""]
+
+        def __rmul__(self, other):
+            return other.__mul__(self.dt)
+
+        def __mul__(self, other):
+            return self.dt * other
+
+    class TestSolver(diffrax.Euler):
+        term_structure = diffrax.AbstractTerm[
+            tuple[Float[Array, "n 3"]], tuple[TestControl]
+        ]
+
+    solver = TestSolver()
+    incompatible_vf = lambda t, y, args: jnp.ones((2, 1))
+    compatible_vf = lambda t, y, args: (jnp.ones((2, 3)),)
+    incompatible_control = lambda t0, t1: t1 - t0
+    compatible_control = lambda t0, t1: (TestControl(t1 - t0),)
+
+    incompatible_terms = [
+        diffrax.WeaklyDiagonalControlTerm(incompatible_vf, incompatible_control),
+        diffrax.WeaklyDiagonalControlTerm(incompatible_vf, compatible_control),
+        diffrax.WeaklyDiagonalControlTerm(compatible_vf, incompatible_control),
+    ]
+    compatible_term = diffrax.WeaklyDiagonalControlTerm(
+        compatible_vf, compatible_control
+    )
+    for term in incompatible_terms:
+        with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
+            diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, (jnp.zeros((2, 1)),))
+
+    diffrax.diffeqsolve(
+        compatible_term, solver, 0.1, 1.1, 0.1, (jnp.zeros((2, 3)),), args=["str"]
+    )
+
+
+def test_term_compatibility_pytree():
+    class TestSolver(diffrax.AbstractSolver):
+        term_structure = {
+            "a": diffrax.ODETerm,
+            "b": diffrax.ODETerm[Any],
+            "c": diffrax.ODETerm[Float[Array, " 3"]],
+            "d": diffrax.AbstractTerm[Float[Array, " 4"], Any],
+            "e": diffrax.MultiTerm[
+                tuple[diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"]]]
+            ],
+        }
+        interpolation_cls = diffrax.LocalLinearInterpolation
+
+        def init(self, terms, t0, t1, y0, args):
+            return None
+
+        def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
+            def _step(_term, _y):
+                control = _term.contr(t0, t1)
+                return _y + _term.vf_prod(t0, _y, args, control)
+
+            _is_term = lambda x: isinstance(x, diffrax.AbstractTerm)
+            y1 = jtu.tree_map(_step, terms, y0, is_leaf=_is_term)
+            dense_info = dict(y0=y0, y1=y1)
+            return y1, None, dense_info, None, diffrax.RESULTS.successful
+
+        def func(self, terms, t0, y0, args):
+            assert False
+
+    ode_term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = TestSolver()
+    compatible_term = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        "d": ode_term,
+        "e": diffrax.MultiTerm(
+            ode_term,
+            diffrax.WeaklyDiagonalControlTerm(
+                lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(5)
+            ),
+        ),
+    }
+    compatible_y0 = {
+        "a": jnp.array(1.0),
+        "b": jnp.array(2.0),
+        "c": jnp.arange(3.0),
+        "d": jnp.arange(4.0),
+        "e": jnp.arange(5.0),
+    }
+    diffrax.diffeqsolve(compatible_term, solver, 0.0, 1.0, 0.1, compatible_y0)
+
+    incompatible_term1 = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        "d": ode_term,
+        "e": diffrax.MultiTerm(
+            ode_term,
+            diffrax.WeaklyDiagonalControlTerm(
+                lambda t, y, args: -y,
+                lambda t0, t1: t1 - t0,  # wrong control shape
+            ),
+        ),
+    }
+    incompatible_term2 = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        # Missing "d" piece
+        "e": diffrax.MultiTerm(
+            ode_term,
+            diffrax.WeaklyDiagonalControlTerm(
+                lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
+            ),
+        ),
+    }
+    incompatible_term3 = {
+        "a": ode_term,
+        "b": ode_term,
+        "c": ode_term,
+        "d": ode_term,
+        # No MultiTerm for "e"
+        "e": diffrax.WeaklyDiagonalControlTerm(
+            lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
+        ),
+    }
+
+    incompatible_y0_1 = {
+        "a": jnp.array(1.0),
+        "b": jnp.array(2.0),
+        "c": jnp.arange(4.0),  # of length 4, not 3
+        "d": jnp.arange(4.0),
+        "e": jnp.arange(5.0),
+    }
+    incompatible_y0_2 = {
+        "a": jnp.array(1.0),
+        "b": jnp.array(2.0),
+        "c": jnp.arange(3.0),
+        # Missing "d" piece
+        "e": jnp.arange(5.0),
+    }
+    incompatible_y0_3 = jnp.array(4.0)  # Completely the wrong structure!
+    for term in (
+        compatible_term,
+        incompatible_term1,
+        incompatible_term2,
+        incompatible_term3,
+    ):
+        for y0 in (
+            compatible_y0,
+            incompatible_y0_1,
+            incompatible_y0_2,
+            incompatible_y0_3,
+        ):
+            if term is compatible_term and y0 is compatible_y0:
+                continue
+            with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
+                diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, y0)

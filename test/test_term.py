@@ -3,24 +3,32 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+from jaxtyping import Array, PyTree, Shaped
 
 from .helpers import tree_allclose
 
 
 def test_ode_term():
-    vector_field = lambda t, y, args: -y
+    def vector_field(t, y, args) -> Array:
+        return -y
+
     term = diffrax.ODETerm(vector_field)
     dt = term.contr(0, 1)
     vf = term.vf(0, 1, None)
     vf_prod = term.vf_prod(0, 1, None, dt)
     assert tree_allclose(vf_prod, term.prod(vf, dt))
 
+    # `# type: ignore` is used for contrapositive static type checking as per:
+    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
+    _: diffrax.ODETerm[Array] = term
+    __: diffrax.ODETerm[bool] = term  # type: ignore
+
 
 def test_control_term(getkey):
     vector_field = lambda t, y, args: jr.normal(args, (3, 2))
     derivkey = getkey()
 
-    class Control(diffrax.AbstractPath):
+    class Control(diffrax.AbstractPath[Shaped[Array, "2"]]):
         t0 = 0
         t1 = 1
 
@@ -30,7 +38,7 @@ def test_control_term(getkey):
         def derivative(self, t, left=True):
             return jr.normal(derivkey, (2,))
 
-    control = Control()  # pyright: ignore
+    control = Control()
     term = diffrax.ControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)
@@ -41,6 +49,11 @@ def test_control_term(getkey):
     assert vf.shape == (3, 2)
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dx))
+
+    # `# type: ignore` is used for contrapositive static type checking as per:
+    # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
+    _: diffrax.ControlTerm[PyTree[Array], Array] = term
+    __: diffrax.ControlTerm[PyTree[Array], diffrax.BrownianIncrement] = term  # type: ignore
 
     term = term.to_ode()
     dt = term.contr(0, 1)
@@ -65,7 +78,7 @@ def test_weakly_diagional_control_term(getkey):
         def derivative(self, t, left=True):
             return jr.normal(derivkey, (3,))
 
-    control = Control()  # pyright: ignore
+    control = Control()
     term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)

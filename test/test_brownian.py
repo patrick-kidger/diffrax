@@ -31,7 +31,9 @@ def _make_struct(shape, dtype):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", ["", "space-time"])
+@pytest.mark.parametrize(
+    "levy_area", [diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
     t0 = 0.0
@@ -101,12 +103,10 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
                 with context:
                     out = path.evaluate(t0, t1, use_levy=use_levy)
                 if use_levy:
-                    assert isinstance(out, diffrax.LevyVal)
+                    assert isinstance(out, diffrax.AbstractBrownianIncrement)
                     w = out.W
-                    h = out.H
-                    if levy_area == "":
-                        assert h is None
-                    else:
+                    if isinstance(out, diffrax.SpaceTimeLevyArea):
+                        h = out.H
                         assert eqx.filter_eval_shape(lambda: h) == shape
                 else:
                     w = out
@@ -116,7 +116,9 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", ["", "space-time"])
+@pytest.mark.parametrize(
+    "levy_area", [diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_statistics(ctr, levy_area, use_levy):
     # Deterministic key for this test; not using getkey()
@@ -134,12 +136,11 @@ def test_statistics(ctr, levy_area, use_levy):
 
     values = jax.vmap(_eval)(keys)
     if use_levy:
-        assert isinstance(values, diffrax.LevyVal)
+        assert isinstance(values, diffrax.AbstractBrownianIncrement)
         w = values.W
-        h = values.H
-        if levy_area == "":
-            assert h is None
-        else:
+
+        if isinstance(values, diffrax.SpaceTimeLevyArea):
+            h = values.H
             assert h is not None
             assert h.shape == (10000,)
             ref_dist = stats.norm(loc=0, scale=math.sqrt(5 / 12))
@@ -204,9 +205,14 @@ def conditional_statistics(
             w_s = bm_s.W
             w_r = bm_r.W
             w_u = bm_u.W
-            h_s = bm_s.H
-            h_r = bm_r.H
-            h_u = bm_u.H
+            if levy_area is diffrax.SpaceTimeLevyArea:
+                h_s = bm_s.H
+                h_r = bm_r.H
+                h_u = bm_u.H
+            else:
+                h_s = None
+                h_r = None
+                h_u = None
         else:
             w_s = bm_s
             w_r = bm_r
@@ -225,7 +231,7 @@ def conditional_statistics(
         # multiple-testing correction.
         pvals_w1.append(pval_w1)
 
-        if levy_area == "space-time" and use_levy:
+        if levy_area is diffrax.SpaceTimeLevyArea and use_levy:
             assert h_s is not None
             assert h_r is not None
             assert h_u is not None
@@ -263,7 +269,9 @@ def conditional_statistics(
     return jnp.array(pvals_w1), jnp.array(pvals_w2), jnp.array(pvals_h)
 
 
-@pytest.mark.parametrize("levy_area", ["", "space-time"])
+@pytest.mark.parametrize(
+    "levy_area", [diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_conditional_statistics(levy_area, use_levy):
     pvals_w1, pvals_w2, pvals_h = conditional_statistics(
@@ -275,7 +283,7 @@ def test_conditional_statistics(levy_area, use_levy):
         min_num_points=90,
     )
     assert jnp.all(pvals_w1 > 0.1 / pvals_w1.shape[0])
-    if levy_area == "space-time" and use_levy:
+    if levy_area is diffrax.SpaceTimeLevyArea and use_levy:
         assert jnp.all(pvals_w2 > 0.1 / pvals_w2.shape[0])
         assert jnp.all(pvals_h > 0.1 / pvals_h.shape[0])
     else:
@@ -284,9 +292,9 @@ def test_conditional_statistics(levy_area, use_levy):
 
 
 def _levy_area_spline():
-    for levy_area in ("", "space-time"):
+    for levy_area in (diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea):
         for spline in ("quad", "sqrt", "zero"):
-            if levy_area == "space-time" and spline == "quad":
+            if levy_area is diffrax.SpaceTimeLevyArea and spline == "quad":
                 continue
             yield levy_area, spline
 
@@ -318,17 +326,17 @@ def test_spline(levy_area, use_levy, spline):
         def pred(pvals):
             return jnp.min(pvals) < 0.001 / pvals.shape[0] and jnp.mean(pvals) < 0.03
 
-    if levy_area == "space-time" and use_levy:
+    if levy_area is diffrax.SpaceTimeLevyArea and use_levy:
         assert pred(pvals_w2)
         assert pred(pvals_h)
     else:
         assert len(pvals_w2) == 0
         assert len(pvals_h) == 0
-        if levy_area == "":
+        if levy_area is diffrax.BrownianIncrement:
             assert pred(pvals_w1)
-        elif spline == "sqrt":  # levy_area == "space-time"
+        elif spline == "sqrt":  # levy_area == SpaceTimeLevyArea
             assert pred(pvals_w1)
-        else:  # levy_area == "space-time" and spline == "zero"
+        else:  # levy_area == SpaceTimeLevyArea and spline == "zero"
             # We need a milder upper bound on jnp.mean(pvals_w1) because
             # the presence of space-time Levy area gives W_r (i.e. the output
             # of the Brownian path) a variance very close to the correct one,
@@ -342,7 +350,7 @@ def test_levy_area_reverse_time():
     key = jr.PRNGKey(5678)
     bm_key, sample_key = jr.split(key, 2)
     bm = diffrax.VirtualBrownianTree(
-        t0=0, t1=5, tol=2**-5, shape=(), key=bm_key, levy_area="space-time"
+        t0=0, t1=5, tol=2**-5, shape=(), key=bm_key, levy_area=diffrax.SpaceTimeLevyArea
     )
 
     ts = jr.uniform(sample_key, shape=(100,), minval=0, maxval=5)

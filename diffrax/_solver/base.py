@@ -1,6 +1,16 @@
 import abc
 from collections.abc import Callable
-from typing import Generic, Optional, Type, TYPE_CHECKING, TypeVar
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    get_args,
+    get_origin,
+    Optional,
+    Type,
+    TYPE_CHECKING,
+    TypeVar,
+)
 
 import equinox as eqx
 import jax.lax as lax
@@ -20,7 +30,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._heuristics import is_sde
 from .._local_interpolation import AbstractLocalInterpolation
 from .._solution import RESULTS, update_result
-from .._term import AbstractTerm
+from .._term import AbstractTerm, MultiTerm
 
 
 _SolverState = TypeVar("_SolverState")
@@ -28,7 +38,7 @@ _SolverState = TypeVar("_SolverState")
 
 def vector_tree_dot(a, b):
     return jtu.tree_map(
-        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),  # pyright: ignore
+        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),
         b,
     )
 
@@ -49,6 +59,18 @@ class _MetaAbstractSolver(type(eqx.Module), type):
 _set_metaclass = dict(metaclass=_MetaAbstractSolver)
 
 
+def _term_compatible_contr_kwargs(term_structure):
+    origin = get_origin(term_structure)
+    if origin is MultiTerm:
+        [terms] = get_args(term_structure)
+        return tuple(_term_compatible_contr_kwargs(term) for term in get_args(terms))
+    if origin is not None:
+        term_structure = origin
+    if isinstance(term_structure, type) and issubclass(term_structure, AbstractTerm):
+        return {}
+    return jtu.tree_map(_term_compatible_contr_kwargs, term_structure)
+
+
 class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     """Abstract base class for all differential equation solvers.
 
@@ -60,6 +82,11 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     term_structure: AbstractClassVar[PyTree[Type[AbstractTerm]]]
     # How to interpolate the solution in between steps.
     interpolation_cls: AbstractClassVar[Callable[..., AbstractLocalInterpolation]]
+
+    # Any keyword arguments needed in `_term_compatible` in `_integrate.py`.
+    term_compatible_contr_kwargs: ClassVar[PyTree[dict[str, Any]]] = property(
+        lambda self: _term_compatible_contr_kwargs(self.term_structure)
+    )
 
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         """Order of the solver for solving ODEs."""
@@ -249,6 +276,10 @@ class HalfSolver(
     @property
     def interpolation_cls(self):  # pyright: ignore
         return self.solver.interpolation_cls
+
+    @property
+    def term_compatible_contr_kwargs(self):
+        return self.solver.term_compatible_contr_kwargs
 
     def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
         return self.solver.order(terms)

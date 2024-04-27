@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import equinox as eqx
 import jax
@@ -13,6 +13,9 @@ from equinox.internal import ω
 from jaxtyping import Array, Bool, PyTree, Scalar
 
 from .._custom_types import Y
+
+
+ω = cast(Callable, ω)
 
 
 def _small(diffsize: Scalar) -> Bool[Array, ""]:
@@ -91,7 +94,7 @@ class VeryChord(optx.AbstractRootFinder):
             linear_state = (jac, init_later_state)
             y_leaves = jtu.tree_leaves(y)
             if len(y_leaves) == 0:
-                y_dtype = lxi.default_floating_dtype()  # pyright: ignore
+                y_dtype = lxi.default_floating_dtype()
             else:
                 y_dtype = jnp.result_type(*y_leaves)
             init_state = _VeryChordState(

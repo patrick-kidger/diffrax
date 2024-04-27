@@ -1,8 +1,8 @@
 import abc
 import functools as ft
 import warnings
-from collections.abc import Iterable
-from typing import Any, Optional, Union
+from collections.abc import Callable, Iterable
+from typing import Any, cast, Optional, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -18,6 +18,9 @@ from ._heuristics import is_sde, is_unsafe_sde
 from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solver import AbstractItoSolver, AbstractRungeKutta, AbstractStratonovichSolver
 from ._term import AbstractTerm, AdjointTerm
+
+
+ω = cast(Callable, ω)
 
 
 def _is_none(x):
@@ -128,6 +131,7 @@ class AbstractAdjoint(eqx.Module):
         init_state,
         passed_solver_state,
         passed_controller_state,
+        progress_meter,
     ) -> Any:
         """Runs the main solve loop. Subclasses can override this to provide custom
         backpropagation behaviour; see for example the implementation of
@@ -559,6 +563,7 @@ def _loop_backsolve_bwd(
     max_steps,
     throw,
     init_state,
+    progress_meter,
 ):
     assert discrete_terminating_event is None
 
@@ -567,7 +572,7 @@ def _loop_backsolve_bwd(
     # using them later.
     #
 
-    del perturbed, init_state, t1
+    del perturbed, init_state, t1, progress_meter
     ts, ys = residuals
     del residuals
     grad_final_state, _ = grad_final_state__aux_stats

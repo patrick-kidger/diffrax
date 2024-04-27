@@ -10,7 +10,13 @@ import jax.tree_util as jtu
 import lineax.internal as lxi
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
-from .._custom_types import levy_tree_transpose, LevyArea, LevyVal, RealScalarLike
+from .._custom_types import (
+    AbstractBrownianIncrement,
+    BrownianIncrement,
+    levy_tree_transpose,
+    RealScalarLike,
+    SpaceTimeLevyArea,
+)
 from .._misc import (
     force_bitcast_convert_type,
     is_tuple_of_ints,
@@ -42,14 +48,16 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: LevyArea = eqx.field(static=True)
+    levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]] = eqx.field(
+        static=True
+    )
     key: PRNGKeyArray
 
     def __init__(
         self,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: LevyArea = "",
+        levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]],
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -57,10 +65,6 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             else shape
         )
         self.key = key
-        if levy_area not in ["", "space-time"]:
-            raise ValueError(
-                f"levy_area must be one of '', 'space-time', but got {levy_area}."
-            )
         self.levy_area = levy_area
 
         if any(
@@ -84,7 +88,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: Optional[RealScalarLike] = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], LevyVal]:
+    ) -> Union[PyTree[Array], AbstractBrownianIncrement]:
         del left
         if t1 is None:
             dtype = jnp.result_type(t0)
@@ -111,8 +115,8 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             self.shape,
         )
         if use_levy:
-            out = levy_tree_transpose(self.shape, self.levy_area, out)
-            assert isinstance(out, LevyVal)
+            out = levy_tree_transpose(self.shape, out)
+            assert isinstance(out, (BrownianIncrement, SpaceTimeLevyArea))
         return out
 
     @staticmethod
@@ -121,25 +125,26 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: RealScalarLike,
         key,
         shape: jax.ShapeDtypeStruct,
-        levy_area: str,
+        levy_area: type[Union[BrownianIncrement, SpaceTimeLevyArea]],
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
+        w = jr.normal(key, shape.shape, shape.dtype) * w_std
+        dt = jnp.asarray(t1 - t0, dtype=shape.dtype)
 
-        if levy_area == "space-time":
+        if levy_area is SpaceTimeLevyArea:
             key, key_hh = jr.split(key, 2)
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
-        elif levy_area == "":
-            hh = None
+            levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
+        elif levy_area is BrownianIncrement:
+            levy_val = BrownianIncrement(dt=dt, W=w)
         else:
             assert False
-        w = jr.normal(key, shape.shape, shape.dtype) * w_std
 
         if use_levy:
-            return LevyVal(dt=t1 - t0, W=w, H=hh, bar_H=None, K=None, bar_K=None)
-        else:
-            return w
+            return levy_val
+        return w
 
 
 UnsafeBrownianPath.__init__.__doc__ = """

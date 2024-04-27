@@ -13,7 +13,14 @@ from ._brownian import (
     UnsafeBrownianPath as UnsafeBrownianPath,
     VirtualBrownianTree as VirtualBrownianTree,
 )
-from ._custom_types import LevyVal as LevyVal
+from ._custom_types import (
+    AbstractBrownianIncrement as AbstractBrownianIncrement,
+    AbstractSpaceTimeLevyArea as AbstractSpaceTimeLevyArea,
+    AbstractSpaceTimeTimeLevyArea as AbstractSpaceTimeTimeLevyArea,
+    BrownianIncrement as BrownianIncrement,
+    SpaceTimeLevyArea as SpaceTimeLevyArea,
+    SpaceTimeTimeLevyArea as SpaceTimeTimeLevyArea,
+)
 from ._event import (
     AbstractDiscreteTerminatingEvent as AbstractDiscreteTerminatingEvent,
     DiscreteTerminatingEvent as DiscreteTerminatingEvent,
@@ -37,6 +44,12 @@ from ._local_interpolation import (
 )
 from ._misc import adjoint_rms_seminorm as adjoint_rms_seminorm
 from ._path import AbstractPath as AbstractPath
+from ._progress_meter import (
+    AbstractProgressMeter as AbstractProgressMeter,
+    NoProgressMeter as NoProgressMeter,
+    TextProgressMeter as TextProgressMeter,
+    TqdmProgressMeter as TqdmProgressMeter,
+)
 from ._root_finder import (
     VeryChord as VeryChord,
     with_stepsize_controller_tols as with_stepsize_controller_tols,
@@ -59,6 +72,7 @@ from ._solver import (
     AbstractRungeKutta as AbstractRungeKutta,
     AbstractSDIRK as AbstractSDIRK,
     AbstractSolver as AbstractSolver,
+    AbstractSRK as AbstractSRK,
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
     Bosh3 as Bosh3,
@@ -68,6 +82,7 @@ from ._solver import (
     Dopri8 as Dopri8,
     Euler as Euler,
     EulerHeun as EulerHeun,
+    GeneralShARK as GeneralShARK,
     HalfSolver as HalfSolver,
     Heun as Heun,
     ImplicitEuler as ImplicitEuler,
@@ -84,8 +99,14 @@ from ._solver import (
     MultiButcherTableau as MultiButcherTableau,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
+    SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
+    ShARK as ShARK,
     Sil3 as Sil3,
+    SlowRK as SlowRK,
+    SPaRK as SPaRK,
+    SRA1 as SRA1,
+    StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
 )
