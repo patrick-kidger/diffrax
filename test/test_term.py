@@ -53,7 +53,7 @@ def test_control_term(getkey):
     # `# type: ignore` is used for contrapositive static type checking as per:
     # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
     _: diffrax.ControlTerm[PyTree[Array], Array] = term
-    __: diffrax.ControlTerm[PyTree[Array], diffrax.AbstractBrownianReturn] = term  # type: ignore
+    __: diffrax.ControlTerm[PyTree[Array], diffrax.BrownianIncrement] = term  # type: ignore
 
     term = term.to_ode()
     dt = term.contr(0, 1)

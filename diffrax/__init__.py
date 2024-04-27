@@ -14,9 +14,12 @@ from ._brownian import (
     VirtualBrownianTree as VirtualBrownianTree,
 )
 from ._custom_types import (
-    AbstractBrownianReturn as AbstractBrownianReturn,
+    AbstractBrownianIncrement as AbstractBrownianIncrement,
+    AbstractSpaceTimeLevyArea as AbstractSpaceTimeLevyArea,
+    AbstractSpaceTimeTimeLevyArea as AbstractSpaceTimeTimeLevyArea,
     BrownianIncrement as BrownianIncrement,
     SpaceTimeLevyArea as SpaceTimeLevyArea,
+    SpaceTimeTimeLevyArea as SpaceTimeTimeLevyArea,
 )
 from ._event import (
     AbstractDiscreteTerminatingEvent as AbstractDiscreteTerminatingEvent,
@@ -69,6 +72,7 @@ from ._solver import (
     AbstractRungeKutta as AbstractRungeKutta,
     AbstractSDIRK as AbstractSDIRK,
     AbstractSolver as AbstractSolver,
+    AbstractSRK as AbstractSRK,
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
     Bosh3 as Bosh3,
@@ -78,6 +82,7 @@ from ._solver import (
     Dopri8 as Dopri8,
     Euler as Euler,
     EulerHeun as EulerHeun,
+    GeneralShARK as GeneralShARK,
     HalfSolver as HalfSolver,
     Heun as Heun,
     ImplicitEuler as ImplicitEuler,
@@ -93,8 +98,14 @@ from ._solver import (
     MultiButcherTableau as MultiButcherTableau,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
+    SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
+    ShARK as ShARK,
     Sil3 as Sil3,
+    SlowRK as SlowRK,
+    SPaRK as SPaRK,
+    SRA1 as SRA1,
+    StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
 )
