@@ -25,6 +25,42 @@ def test_half_solver():
     )
 
 
+def test_kl_solver():
+    t0 = 0
+    t1 = 1
+    y0 = jnp.array([1.0])
+    dt0 = None
+    arg = {"theta": 1.0}
+
+    odeterm = diffrax.ODETerm(lambda t, y, args: jnp.sin(t) + args["theta"] * y)
+    g = lambda t, y, args: 0.1 * jnp.array([1.0])
+    control = diffrax.VirtualBrownianTree(
+        t0=t0,
+        t1=t1,
+        tol=1e-3,
+        shape=(1,),
+        key=jax.random.PRNGKey(0),
+    )
+    terms = diffrax.MultiTerm(
+        diffrax.MultiTerm(odeterm, diffrax.WeaklyDiagonalControlTerm(g, control)),
+        odeterm,
+    )
+    solver = diffrax.KLSolver(diffrax.Heun())
+    stepsize_controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
+    sol = diffrax.diffeqsolve(
+        terms,
+        solver,
+        t0,
+        t1,
+        dt0,
+        y0,
+        args=arg,
+        stepsize_controller=stepsize_controller,
+    )
+    assert isinstance(sol.ys, tuple)
+    assert tree_allclose(sol.ys[1].squeeze(), jnp.array(0.0))
+
+
 def test_instance_check():
     assert isinstance(diffrax.HalfSolver(diffrax.Euler()), diffrax.Euler)
     assert not isinstance(diffrax.HalfSolver(diffrax.Euler()), diffrax.Heun)
