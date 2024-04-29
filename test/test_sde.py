@@ -43,8 +43,12 @@ def _solvers_and_orders():
 # converges to its own limit (i.e. using itself as reference), and then in a
 # different test check whether that limit is the same as the Euler/Heun limit.
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
+@pytest.mark.parametrize(
+    "dtype",
+    (jnp.float64,),
+)
 def test_sde_strong_order_new(
-    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order
+    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
 ):
     bmkey = jr.PRNGKey(5678)
     sde_key = jr.PRNGKey(11)
@@ -54,7 +58,7 @@ def test_sde_strong_order_new(
     t1 = 5.3
 
     if noise == "add":
-        sde = get_time_sde(t0, t1, jnp.float64, sde_key, noise_dim=7)
+        sde = get_time_sde(t0, t1, dtype, sde_key, noise_dim=7)
     else:
         if noise == "com":
             noise_dim = 1
@@ -62,7 +66,7 @@ def test_sde_strong_order_new(
             noise_dim = 5
         else:
             assert False
-        sde = get_mlp_sde(t0, t1, jnp.float64, sde_key, noise_dim=noise_dim)
+        sde = get_mlp_sde(t0, t1, dtype, sde_key, noise_dim=noise_dim)
 
     ref_solver = solver_ctr()
     level_coarse, level_fine = 1, 7

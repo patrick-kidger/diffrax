@@ -2,7 +2,6 @@ from collections.abc import Callable
 from typing import ClassVar
 from typing_extensions import TypeAlias
 
-import jax
 import optimistix as optx
 from equinox.internal import ω
 
@@ -82,15 +81,14 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         # write out a `ButcherTableau` and use `AbstractSDIRK`.
         k0 = terms.vf_prod(t0, y0, args, control)
         args = (terms.vf_prod, t1, y0, args, control)
-        with jax.numpy_dtype_promotion("standard"):
-            nonlinear_sol = optx.root_find(
-                _implicit_relation,
-                self.root_finder,
-                k0,
-                args,
-                throw=False,
-                max_steps=self.root_find_max_steps,
-            )
+        nonlinear_sol = optx.root_find(
+            _implicit_relation,
+            self.root_finder,
+            k0,
+            args,
+            throw=False,
+            max_steps=self.root_find_max_steps,
+        )
         k1 = nonlinear_sol.value
         y1 = (y0**ω + k1**ω).ω
         # Use the trapezoidal rule for adaptive step sizing.

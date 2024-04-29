@@ -91,7 +91,7 @@ def _levy_diff(_, x0: tuple, x1: tuple) -> AbstractBrownianIncrement:
         assert len(x1) == 2
         dt0, w0 = x0
         dt1, w1 = x1
-        su = jnp.asarray(dt1 - dt0, dtype=w0.dtype)
+        su = jnp.asarray(dt1 - dt0, dtype=complex_to_real_dtype(w0.dtype))
         return BrownianIncrement(dt=su, W=w1 - w0)
 
     elif len(x0) == 4:  # space-time levy area case
@@ -100,12 +100,13 @@ def _levy_diff(_, x0: tuple, x1: tuple) -> AbstractBrownianIncrement:
         dt1, w1, hh1, bhh1 = x1
 
         w_su = w1 - w0
-        su = jnp.asarray(dt1 - dt0, dtype=w0.dtype)
+        su = jnp.asarray(dt1 - dt0, dtype=complex_to_real_dtype(w0.dtype))
         _su = jnp.where(jnp.abs(su) < jnp.finfo(su).eps, jnp.inf, su)
         inverse_su = 1 / _su
-        u_bb_s = dt1 * w0 - dt0 * w1
-        bhh_su = bhh1 - bhh0 - 0.5 * u_bb_s  # bhh_su = H_{s,u} * (u-s)
-        hh_su = inverse_su * bhh_su
+        with jax.numpy_dtype_promotion("standard"):
+            u_bb_s = dt1 * w0 - dt0 * w1
+            bhh_su = bhh1 - bhh0 - 0.5 * u_bb_s  # bhh_su = H_{s,u} * (u-s)
+            hh_su = inverse_su * bhh_su
         return SpaceTimeLevyArea(dt=su, W=w_su, H=hh_su)
     else:
         assert False
@@ -396,27 +397,31 @@ class VirtualBrownianTree(AbstractBrownianPath):
             a = d_prime * sr3 * sr_ru_half
             b = d_prime * ru3 * sr_ru_half
 
-            w_sr = sr / su * w_su + 6 * sr * ru / su3 * bhh_su + 2 * (a + b) / su * x1
-            w_r = w_s + w_sr
-            c = jnp.sqrt(3 * sr3 * ru3) / (6 * d)
-            bhh_sr = sr3 / su3 * bhh_su - a * x1 + c * x2
-            bhh_r = bhh_s + bhh_sr + 0.5 * (r * w_s - s * w_r)
+            with jax.numpy_dtype_promotion("standard"):
+                w_sr = (
+                    sr / su * w_su + 6 * sr * ru / su3 * bhh_su + 2 * (a + b) / su * x1
+                )
+                w_r = w_s + w_sr
+                c = jnp.sqrt(3 * sr3 * ru3) / (6 * d)
+                bhh_sr = sr3 / su3 * bhh_su - a * x1 + c * x2
+                bhh_r = bhh_s + bhh_sr + 0.5 * (r * w_s - s * w_r)
 
-            inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
-            hh_r = inverse_r * bhh_r
+                inverse_r = 1 / jnp.where(jnp.abs(r) < jnp.finfo(r).eps, jnp.inf, r)
+                hh_r = inverse_r * bhh_r
 
         elif self.levy_area is BrownianIncrement:
-            w_mean = w_s + sr / su * w_su
-            if self._spline == "sqrt":
-                z = jr.normal(final_state.key, shape, dtype)
-                bb = jnp.sqrt(sr * ru / su) * z
-            elif self._spline == "quad":
-                z = jr.normal(final_state.key, shape, dtype)
-                bb = (sr * ru / su) * z
-            elif self._spline == "zero":
-                bb = jnp.zeros(shape, dtype)
-            else:
-                assert False
+            with jax.numpy_dtype_promotion("standard"):
+                w_mean = w_s + sr / su * w_su
+                if self._spline == "sqrt":
+                    z = jr.normal(final_state.key, shape, dtype)
+                    bb = jnp.sqrt(sr * ru / su) * z
+                elif self._spline == "quad":
+                    z = jr.normal(final_state.key, shape, dtype)
+                    bb = (sr * ru / su) * z
+                elif self._spline == "zero":
+                    bb = jnp.zeros(shape, dtype)
+                else:
+                    assert False
             w_r = w_mean + bb
             return r, w_r
 
@@ -499,8 +504,8 @@ class VirtualBrownianTree(AbstractBrownianPath):
 
             w_t = w_s + w_st
             w_stu = (w_s, w_t, w_u)
-
-            bhh_t = bhh_s + bhh_st + 0.5 * (t * w_s - s * w_t)
+            with jax.numpy_dtype_promotion("standard"):
+                bhh_t = bhh_s + bhh_st + 0.5 * (t * w_s - s * w_t)
             bhh_stu = (bhh_s, bhh_t, bhh_u)
             bkk_stu = None
             bkk_st_tu = None

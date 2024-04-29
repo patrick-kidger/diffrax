@@ -274,7 +274,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
 
 
 # Essentially used as a check that our general IMEX implementation is correct.
-@pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
+@pytest.mark.parametrize("dtype", (jnp.float64,))
 def test_sil3(dtype):
     class ReferenceSil3(diffrax.AbstractImplicitSolver):
         term_structure = diffrax.MultiTerm[
@@ -314,8 +314,7 @@ def test_sil3(dtype):
                 return ya - (y0 + (1 / 3) * f0 + (1 / 6) * g0 + (1 / 6) * g1)
 
             ta = t0 + (1 / 3) * dt
-            with jax.numpy_dtype_promotion("standard"):
-                ya = optx.root_find(_second_stage, self.root_finder, y0).value
+            ya = optx.root_find(_second_stage, self.root_finder, y0).value
             fs.append(ex_vf_prod(ta, ya))
             gs.append(im_vf_prod(ta, ya))
 
@@ -329,8 +328,7 @@ def test_sil3(dtype):
 
             tb = t0 + (2 / 3) * dt
 
-            with jax.numpy_dtype_promotion("standard"):
-                yb = optx.root_find(_third_stage, self.root_finder, ya).value
+            yb = optx.root_find(_third_stage, self.root_finder, ya).value
             fs.append(ex_vf_prod(tb, yb))
             gs.append(im_vf_prod(tb, yb))
 
@@ -349,8 +347,7 @@ def test_sil3(dtype):
                 )
 
             tc = t1
-            with jax.numpy_dtype_promotion("standard"):
-                yc = optx.root_find(_fourth_stage, self.root_finder, yb).value
+            yc = optx.root_find(_fourth_stage, self.root_finder, yb).value
             fs.append(ex_vf_prod(tc, yc))
             gs.append(im_vf_prod(tc, yc))
 

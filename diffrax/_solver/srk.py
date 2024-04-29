@@ -12,6 +12,7 @@ import jax.tree_util as jtu
 import numpy as np
 from equinox.internal import ω
 from jaxtyping import Array, Float, PyTree
+from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
     AbstractBrownianIncrement,
@@ -340,7 +341,9 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         # First the drift related stuff
         a = self._embed_a_lower(self.tableau.a, dtype)
-        c = jnp.asarray(np.insert(self.tableau.c, 0, 0.0), dtype=dtype)
+        c = jnp.asarray(
+            np.insert(self.tableau.c, 0, 0.0), dtype=complex_to_real_dtype(dtype)
+        )
         b_sol = jnp.asarray(self.tableau.b_sol, dtype=dtype)
 
         def make_zeros():

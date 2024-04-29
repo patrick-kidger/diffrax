@@ -18,7 +18,6 @@ from diffrax import (
 )
 from jax import Array
 from jaxtyping import PRNGKeyArray, PyTree, Shaped
-from lineax.internal import complex_to_real_dtype
 
 
 all_ode_solvers = (
@@ -252,7 +251,6 @@ def sde_solver_strong_order(
         bm_tol,
         saveat,
     )
-    dts = 2.0 ** jnp.arange(-3, -3 - num_levels, -1, dtype=dtype)
 
     errs_list, steps_list = [], []
     for level in range(level_coarse, level_fine + 1):
@@ -277,7 +275,8 @@ def sde_solver_strong_order(
         steps_list.append(jnp.average(steps))
     errs_arr = jnp.array(errs_list)
     steps_arr = jnp.array(steps_list)
-    order, _ = jnp.polyfit(jnp.log(1 / steps_arr), jnp.log(errs_arr), 1)
+    with jax.numpy_dtype_promotion("standard"):
+        order, _ = jnp.polyfit(jnp.log(1 / steps_arr), jnp.log(errs_arr), 1)
     return steps_arr, errs_arr, order
 
 
@@ -360,12 +359,14 @@ def _squareplus(x):
 
 def drift(t, y, args):
     mlp, _, _ = args
-    return 0.25 * mlp(y)
+    with jax.numpy_dtype_promotion("standard"):
+        return 0.25 * mlp(y)
 
 
 def diffusion(t, y, args):
     _, mlp, noise_dim = args
-    return 1.0 * mlp(y).reshape(3, noise_dim)
+    with jax.numpy_dtype_promotion("standard"):
+        return 1.0 * mlp(y).reshape(3, noise_dim)
 
 
 def get_mlp_sde(t0, t1, dtype, key, noise_dim):
@@ -447,8 +448,9 @@ def get_time_sde(t0, t1, dtype, key, noise_dim):
     drift_mlp = init_linear_weight(drift_mlp, lap_init, driftkey)
 
     def _drift(t, y, _):
-        mlp_out = drift_mlp(jnp.concatenate([y, ft(t)]))
-        return (0.01 * mlp_out - 0.5 * y**3) / (jnp.sum(y**2) + 1)
+        with jax.numpy_dtype_promotion("standard"):
+            mlp_out = drift_mlp(jnp.concatenate([y, ft(t)]))
+            return (0.01 * mlp_out - 0.5 * y**3) / (jnp.sum(y**2) + 1)
 
     diffusion_mx = jr.normal(diffusionkey, (4, y_dim, noise_dim), dtype=dtype)
 
