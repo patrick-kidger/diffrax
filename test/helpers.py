@@ -99,7 +99,8 @@ def path_l2_dist(
     # all but the first two axes (which represent the number of samples
     # and the length of saveat). Also sum all the PyTree leaves.
     def sum_square_diff(y1, y2):
-        square_diff = jnp.square(y1 - y2)
+        with jax.numpy_dtype_promotion("standard"):
+            square_diff = jnp.square(y1 - y2)
         # sum all but the first two axes
         axes = range(2, square_diff.ndim)
         out = jnp.sum(square_diff, axis=axes)

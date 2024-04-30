@@ -406,7 +406,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             def _comp_g(_t):
                 return diffusion.vf(_t, y0, args)
 
-            g0_g1 = _comp_g(jnp.array([t0, t1], dtype=dtype))
+            g0_g1 = _comp_g(jnp.array([t0, t1], dtype=complex_to_real_dtype(dtype)))
             g0 = jtu.tree_map(lambda g_leaf: g_leaf[0], g0_g1)
             # g_delta = 0.5 * g1 - g0
             g_delta = jtu.tree_map(lambda g_leaf: 0.5 * (g_leaf[1] - g_leaf[0]), g0_g1)
@@ -534,13 +534,15 @@ class AbstractSRK(AbstractSolver[_SolverState]):
                 return (_h_kfs, None, None), None
 
             def compute_and_insert_kg_j(_w_kgs_in, _levylist_kgs_in):
-                _w_kg_j = diffusion.vf_prod(t0 + c_j * h, z_j, args, w)
+                with jax.numpy_dtype_promotion("standard"):
+                    _w_kg_j = diffusion.vf_prod(t0 + c_j * h, z_j, args, w)
                 new_w_kgs = insert_jth_stage(_w_kgs_in, _w_kg_j, j)
 
-                _levylist_kg_j = [
-                    diffusion.vf_prod(t0 + c_j * h, z_j, args, levy)
-                    for levy in levy_areas
-                ]
+                with jax.numpy_dtype_promotion("standard"):
+                    _levylist_kg_j = [
+                        diffusion.vf_prod(t0 + c_j * h, z_j, args, levy)
+                        for levy in levy_areas
+                    ]
                 new_levylist_kgs = insert_jth_stage(_levylist_kgs_in, _levylist_kg_j, j)
                 return new_w_kgs, new_levylist_kgs
 

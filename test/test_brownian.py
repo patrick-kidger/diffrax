@@ -46,6 +46,11 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
         (2,),
         (3, 4),
         (1, 2, 3, 4),
+        (1, 2, 3, 4),
+        {
+            "a": (1,),
+            "b": (2, 3),
+        },
         {
             "a": (1,),
             "b": (2, 3),
@@ -66,7 +71,9 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
         jnp.float16,
         jnp.float32,
         jnp.float64,
+        jnp.complex128,
         {"a": None, "b": jnp.float64},
+        {"a": jnp.float64, "b": jnp.complex128},
         (jnp.float16, (jnp.float32, jnp.float64)),
     )
 
