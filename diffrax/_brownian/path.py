@@ -9,6 +9,7 @@ import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
 from jaxtyping import Array, PRNGKeyArray, PyTree
+from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
     AbstractBrownianIncrement,
@@ -130,7 +131,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
         w = jr.normal(key, shape.shape, shape.dtype) * w_std
-        dt = jnp.asarray(t1 - t0, dtype=shape.dtype)
+        dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
 
         if levy_area is SpaceTimeLevyArea:
             key, key_hh = jr.split(key, 2)

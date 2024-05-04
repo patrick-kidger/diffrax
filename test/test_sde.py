@@ -43,8 +43,12 @@ def _solvers_and_orders():
 # converges to its own limit (i.e. using itself as reference), and then in a
 # different test check whether that limit is the same as the Euler/Heun limit.
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
+@pytest.mark.parametrize(
+    "dtype",
+    (jnp.float64,),
+)
 def test_sde_strong_order_new(
-    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order
+    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
 ):
     bmkey = jr.PRNGKey(5678)
     sde_key = jr.PRNGKey(11)
@@ -54,7 +58,7 @@ def test_sde_strong_order_new(
     t1 = 5.3
 
     if noise == "add":
-        sde = get_time_sde(t0, t1, jnp.float64, sde_key, noise_dim=7)
+        sde = get_time_sde(t0, t1, dtype, sde_key, noise_dim=7)
     else:
         if noise == "com":
             noise_dim = 1
@@ -62,7 +66,7 @@ def test_sde_strong_order_new(
             noise_dim = 5
         else:
             assert False
-        sde = get_mlp_sde(t0, t1, jnp.float64, sde_key, noise_dim=noise_dim)
+        sde = get_mlp_sde(t0, t1, dtype, sde_key, noise_dim=noise_dim)
 
     ref_solver = solver_ctr()
     level_coarse, level_fine = 1, 7
@@ -112,8 +116,12 @@ solutions = {
 # using a single reference solution. We use Euler if the solver is Ito
 # and Heun if the solver is Stratonovich.
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
+@pytest.mark.parametrize(
+    "dtype",
+    (jnp.float64,),
+)
 def test_sde_strong_limit(
-    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order
+    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
 ):
     bmkey = jr.PRNGKey(5678)
     sde_key = jr.PRNGKey(11)
@@ -123,7 +131,7 @@ def test_sde_strong_limit(
     t1 = 5.3
 
     if noise == "add":
-        sde = get_time_sde(t0, t1, jnp.float64, sde_key, noise_dim=3)
+        sde = get_time_sde(t0, t1, dtype, sde_key, noise_dim=3)
         level_fine = 12
         if theoretical_order <= 1.0:
             level_coarse = 11
@@ -137,7 +145,7 @@ def test_sde_strong_limit(
             noise_dim = 5
         else:
             assert False
-        sde = get_mlp_sde(t0, t1, jnp.float64, sde_key, noise_dim=noise_dim)
+        sde = get_mlp_sde(t0, t1, dtype, sde_key, noise_dim=noise_dim)
 
     # Reference solver is always an ODE-viable solver, so its implementation has been
     # verified by the ODE tests like test_ode_order.
@@ -206,9 +214,12 @@ def dict_diffusion(t, y, args):
 
 @pytest.mark.parametrize("shape", [(), (5, 2)])
 @pytest.mark.parametrize("solver_ctr", _solvers())
-def test_sde_solver_shape(shape, solver_ctr):
+@pytest.mark.parametrize(
+    "dtype",
+    (jnp.float64, jnp.complex128),
+)
+def test_sde_solver_shape(shape, solver_ctr, dtype):
     pytree = ({"a": 0, "b": [0, 0]}, 0, 0)
-    dtype = jnp.float64
     key = jr.PRNGKey(0)
     y0 = jtu.tree_map(lambda _: jr.normal(key, shape, dtype=dtype), pytree)
     t0, t1, dt0 = 0.0, 1.0, 0.3
@@ -232,8 +243,7 @@ def test_sde_solver_shape(shape, solver_ctr):
         assert leaf[0].shape == shape
 
 
-def _weakly_diagonal_noise_helper(solver):
-    dtype = jnp.float64
+def _weakly_diagonal_noise_helper(solver, dtype):
     w_shape = (3,)
     args = (0.5, 1.2)
 
@@ -261,9 +271,17 @@ def _weakly_diagonal_noise_helper(solver):
 
 
 @pytest.mark.parametrize("solver_ctr", _solvers())
-def test_weakly_diagonal_noise(solver_ctr):
-    _weakly_diagonal_noise_helper(solver_ctr())
+@pytest.mark.parametrize(
+    "dtype",
+    (jnp.float64, jnp.complex128),
+)
+def test_weakly_diagonal_noise(solver_ctr, dtype):
+    _weakly_diagonal_noise_helper(solver_ctr(), dtype)
 
 
-def test_halfsolver_term_compatible():
-    _weakly_diagonal_noise_helper(diffrax.HalfSolver(diffrax.SPaRK()))
+@pytest.mark.parametrize(
+    "dtype",
+    (jnp.float64, jnp.complex128),
+)
+def test_halfsolver_term_compatible(dtype):
+    _weakly_diagonal_noise_helper(diffrax.HalfSolver(diffrax.SPaRK()), dtype)

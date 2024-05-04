@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import cast, Optional, TYPE_CHECKING
 
+import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
@@ -35,12 +36,15 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
     ) -> PyTree[Array]:
         del left
-        if t1 is None:
-            coeff = linear_rescale(self.t0, t0, self.t1)
-            return (self.y0**ω + coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
-        else:
-            coeff = (t1 - t0) / (self.t1 - self.t0)
-            return (coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
+        with jax.numpy_dtype_promotion("standard"):
+            if t1 is None:
+                coeff = linear_rescale(self.t0, t0, self.t1)
+                return (
+                    (self.y0**ω + coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
+                )
+            else:
+                coeff = (t1 - t0) / (self.t1 - self.t0)
+                return (coeff * (self.y1**ω - self.y0**ω)).call(jnp.asarray).ω
 
 
 class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
@@ -82,7 +86,8 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
         t = linear_rescale(self.t0, t0, self.t1)
 
         def _eval(_coeffs):
-            return jnp.polyval(_coeffs, t)
+            with jax.numpy_dtype_promotion("standard"):
+                return jnp.polyval(_coeffs, t)
 
         return jtu.tree_map(_eval, self.coeffs)
 
@@ -104,7 +109,8 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         k: PyTree[Shaped[Array, "order ?*y"], "Y"],
     ):
         def _calculate(_y0, _y1, _k):
-            _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1)
+            with jax.numpy_dtype_promotion("standard"):
+                _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1)
             _f0 = _k[0]
             _f1 = _k[-1]
             # TODO: rewrite as matrix-vector product?
@@ -127,6 +133,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         t = linear_rescale(self.t0, t0, self.t1)
 
         def _eval(_coeffs):
-            return jnp.polyval(_coeffs, t)
+            with jax.numpy_dtype_promotion("standard"):
+                return jnp.polyval(_coeffs, t)
 
         return jtu.tree_map(_eval, self.coeffs)
