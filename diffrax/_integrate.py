@@ -709,11 +709,6 @@ def diffeqsolve(
         eqx.is_array(xi) and jnp.iscomplexobj(xi)
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
-        if isinstance(solver, AbstractImplicitSolver):
-            raise ValueError(
-                "Implicit solvers in conjunction with complex dtypes is currently not "
-                "supported."
-            )
         warnings.warn(
             "Complex dtype support is work in progress, please read "
             "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully.",
