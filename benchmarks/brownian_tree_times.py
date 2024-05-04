@@ -10,6 +10,7 @@ import timeit
 from typing import cast, Optional, Union
 from typing_extensions import TypeAlias
 
+import diffrax
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
@@ -50,9 +51,9 @@ class OldVBT(AbstractBrownianPath):
         tol: RealScalarLike,
         shape: tuple[int, ...],
         key: PRNGKeyArray,
-        levy_area: str,
+        levy_area: type[diffrax.AbstractBrownianIncrement] = diffrax.BrownianIncrement,
     ):
-        assert levy_area == ""
+        assert levy_area == diffrax.BrownianIncrement
         self.t0 = t0
         self.t1 = t1
         self.tol = tol
@@ -187,13 +188,13 @@ def time_tree(tree_cls, num_ts, tol, levy_area):
     )
 
 
-for levy_area in ("", "space-time"):
+for levy_area in (diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea):
     print(f"-   {levy_area=}")
     for tol in (2**-3, 2**-12):
         print(f"--  {tol=}")
-        for num_ts in (1, 100):
+        for num_ts in (1, 10000):
             print(f"--- {num_ts=}")
-            if levy_area == "":
+            if levy_area == diffrax.BrownianIncrement:
                 print(f"Old: {time_tree(OldVBT, num_ts, tol, levy_area):.5f}")
             print(f"new: {time_tree(VirtualBrownianTree, num_ts, tol, levy_area):.5f}")
     print("")
