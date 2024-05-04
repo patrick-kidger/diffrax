@@ -155,7 +155,8 @@ def _term_compatible(
             # If we've got to this point then the term is compatible
 
     try:
-        jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
+        with jax.numpy_dtype_promotion("standard"):
+            jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except ValueError:
         # ValueError may also arise from mismatched tree structures
         return False

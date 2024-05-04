@@ -361,7 +361,8 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
     """
 
     def prod(self, vf: _VF, control: _Control) -> Y:
-        return jtu.tree_map(operator.mul, vf, control)
+        with jax.numpy_dtype_promotion("standard"):
+            return jtu.tree_map(operator.mul, vf, control)
 
 
 class _ControlToODE(eqx.Module):
@@ -461,7 +462,8 @@ class WrapTerm(AbstractTerm[_VF, _Control]):
         return (self.direction * self.term.contr(_t0, _t1, **kwargs) ** ω).ω
 
     def prod(self, vf: _VF, control: _Control) -> Y:
-        return self.term.prod(vf, control)
+        with jax.numpy_dtype_promotion("standard"):
+            return self.term.prod(vf, control)
 
     def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: _Control) -> Y:
         t = t * self.direction
