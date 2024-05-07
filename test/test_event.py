@@ -133,21 +133,21 @@ def test_continuous_terminate2():
 
 
 def test_continuous_event_time():
-    term = diffrax.ODETerm(lambda t, y, args: 1.0)
+    term = diffrax.ODETerm(lambda t, y, args: y)
     solver = diffrax.Tsit5()
     t0 = 0
     t1 = jnp.inf
     dt0 = 1.0
-    y0 = -10.0
+    y0 = 1.0
 
     def cond_fn(state, y, **kwargs):
         assert isinstance(state.y, jax.Array)
-        return y
+        return y - jnp.exp(1.0)
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
     event = diffrax.Event(cond_fn, root_finder)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
-    assert jnp.all(jnp.isclose(cast(Array, sol.ts), 10.0, 1e-5))
+    assert jnp.all(jnp.isclose(cast(Array, sol.ts), 1.0, 1e-4))
 
 
 def test_continuous_event_value():
