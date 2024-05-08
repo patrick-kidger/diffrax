@@ -46,7 +46,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     motion. Hence the restrictions above. (They describe the general case for which the
     correlation structure isn't needed.)
 
-    !!! info "Levy Area"
+    !!! info "Lévy Area"
 
         Can be initialised with `levy_area` set to `diffrax.BrownianIncrement`, or
         `diffrax.SpaceTimeLevyArea`. If `levy_area=diffrax.SpaceTimeLevyArea`, then it
@@ -147,11 +147,11 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
-        key_w, key_hh, key_kk = jr.split(key, 3)
-        w = jr.normal(key, shape.shape, shape.dtype) * w_std
         dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
 
         if levy_area is SpaceTimeTimeLevyArea:
+            key_w, key_hh, key_kk = jr.split(key, 3)
+            w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
             kk_std = w_std / math.sqrt(720)
@@ -159,10 +159,13 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
 
         elif levy_area is SpaceTimeLevyArea:
+            key_w, key_hh = jr.split(key, 2)
+            w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
             levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
         elif levy_area is BrownianIncrement:
+            w = jr.normal(key, shape.shape, shape.dtype) * w_std
             levy_val = BrownianIncrement(dt=dt, W=w)
         else:
             assert False
@@ -180,6 +183,6 @@ UnsafeBrownianPath.__init__.__doc__ = """
     be a tuple of integers, describing the shape of a single JAX array. In that case
     the dtype is chosen to be the default floating-point dtype.
 - `key`: A random key.
-- `levy_area`: Whether to additionally generate Levy area. This is required by some SDE
+- `levy_area`: Whether to additionally generate Lévy area. This is required by some SDE
     solvers.
 """
