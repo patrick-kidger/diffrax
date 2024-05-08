@@ -13,7 +13,7 @@ import pytest
 import scipy.stats as stats
 
 
-levy_areas = (
+_levy_areas = (
     diffrax.BrownianIncrement,
     diffrax.SpaceTimeLevyArea,
     diffrax.SpaceTimeTimeLevyArea,
@@ -36,13 +36,13 @@ def _make_struct(shape, dtype):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", levy_areas)
+@pytest.mark.parametrize("levy_area", _levy_areas)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
     t0 = 0.0
     t1 = 2.0
 
-    shapes_dtypes = (
+    shapes_dtypes1 = (
         ((), None),
         ((0,), None),
         ((1, 0), None),
@@ -50,8 +50,11 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
         ((1, 2, 3, 4), jnp.float64),
         ({"a": (1,), "b": (2, 3)}, {"a": None, "b": jnp.float64}),
         ((2,), jnp.float16),
-        ((1, 2, 3, 4), jnp.complex128),
         (((1, 2), ((3, 4), (5, 6))), (jnp.float16, (jnp.float32, jnp.float64))),
+    )
+
+    shapes_dtypes2 = (
+        ((1, 2, 3, 4), jnp.complex128),
         ({"a": (1,), "b": (2, 3)}, {"a": jnp.float64, "b": jnp.complex128}),
     )
 
@@ -59,9 +62,12 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
         ctr is diffrax.VirtualBrownianTree
         and levy_area is diffrax.SpaceTimeTimeLevyArea
     ):
-        # VBT with STTLA does not support float16 or complex dtypes
+        # VBT with STTLA does not support complex dtypes
         # because it uses jax.random.multivariate_normal
-        shapes_dtypes = shapes_dtypes[:6]
+        shapes_dtypes = shapes_dtypes1
+
+    else:
+        shapes_dtypes = shapes_dtypes1 + shapes_dtypes2
 
     def is_tuple_of_ints(obj):
         return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
@@ -112,12 +118,12 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
 @pytest.mark.parametrize(
     "ctr", [diffrax.VirtualBrownianTree, diffrax.UnsafeBrownianPath]
 )
-@pytest.mark.parametrize("levy_area", levy_areas)
+@pytest.mark.parametrize("levy_area", _levy_areas)
 @pytest.mark.parametrize("use_levy", (True, False))
 def test_statistics(ctr, levy_area, use_levy):
     # Deterministic key for this test; not using getkey()
     key = jr.PRNGKey(5678)
-    num_samples = 50000
+    num_samples = 60000
     keys = jr.split(key, num_samples)
     t0, t1 = 0.0, 5.0
     dt = t1 - t0
@@ -174,7 +180,7 @@ def test_statistics(ctr, levy_area, use_levy):
     assert pval > 0.1
 
 
-def true_cond_stats_wh(bm_s, bm_u, s, r, u):
+def _true_cond_stats_wh(bm_s, bm_u, s, r, u):
     w_s = bm_s.W
     w_u = bm_u.W
     h_s = bm_s.H
@@ -205,7 +211,7 @@ def true_cond_stats_wh(bm_s, bm_u, s, r, u):
     return w_mean, w_std, h_mean, h_std
 
 
-def true_cond_stats_whk(bm_s, bm_u, s, r, u):
+def _true_cond_stats_whk(bm_s, bm_u, s, r, u):
     su = u - s
     sr = r - s
     ru = u - r
@@ -270,7 +276,7 @@ def true_cond_stats_whk(bm_s, bm_u, s, r, u):
     return mean_whk, cov
 
 
-def conditional_statistics(
+def _conditional_statistics(
     levy_area, use_levy: bool, tol, spacing, spline: _Spline, min_num_points
 ):
     key = jr.PRNGKey(5678)
@@ -377,7 +383,7 @@ def conditional_statistics(
             bk_r = r**2 * k_r
 
             # Compute the target conditional mean and covariance
-            true_mean_whk, true_cov = true_cond_stats_whk(bm_s, bm_u, s, r, u)
+            true_mean_whk, true_cov = _true_cond_stats_whk(bm_s, bm_u, s, r, u)
 
             # now compute the values of (W_sr, H_sr, K_sr), which are to be tested
             # against the normal distribution N(mean, cov)
@@ -430,7 +436,7 @@ def conditional_statistics(
             assert bm_u.H is not None
 
             # Compute the true conditional statistics for W and H
-            w_mean2, w_std2, h_mean, h_std = true_cond_stats_wh(bm_s, bm_u, s, r, u)
+            w_mean2, w_std2, h_mean, h_std = _true_cond_stats_wh(bm_s, bm_u, s, r, u)
 
             # Check w_r|(w_s, w_u, h_s, h_u)
             normalised_w2 = (w_r - w_mean2) / w_std2
@@ -451,10 +457,10 @@ def conditional_statistics(
     )
 
 
-@pytest.mark.parametrize("levy_area", levy_areas)
+@pytest.mark.parametrize("levy_area", _levy_areas)
 @pytest.mark.parametrize("use_levy", (True, False))
 def test_conditional_statistics(levy_area, use_levy):
-    pvals_w1, pvals_w2, pvals_h, pvals_k, mean_err, cov_err = conditional_statistics(
+    pvals_w1, pvals_w2, pvals_h, pvals_k, mean_err, cov_err = _conditional_statistics(
         levy_area,
         use_levy,
         tol=2**-10,
@@ -497,7 +503,7 @@ def _levy_area_spline():
                 and spline == "quad"
             ):
                 # The quad spline is not defined for space-time and
-                # space-time-time Levy area
+                # space-time-time Lévy area
                 continue
             yield levy_area, spline
 
@@ -505,7 +511,7 @@ def _levy_area_spline():
 @pytest.mark.parametrize("levy_area,spline", _levy_area_spline())
 @pytest.mark.parametrize("use_levy", (True, False))
 def test_spline(levy_area, use_levy, spline: _Spline):
-    pvals_w1, pvals_w2, pvals_h, pvals_k, mean_err, cov_err = conditional_statistics(
+    pvals_w1, pvals_w2, pvals_h, pvals_k, mean_err, cov_err = _conditional_statistics(
         levy_area,
         use_levy=use_levy,
         tol=2**-3,
@@ -555,10 +561,10 @@ def test_spline(levy_area, use_levy, spline: _Spline):
             assert pred(pvals_w1)
         elif levy_area == diffrax.SpaceTimeLevyArea and spline == "zero":
             # We need a milder upper bound on jnp.mean(pvals_w1) because
-            # the presence of space-time Levy area gives W_r (i.e. the output
+            # the presence of space-time Lévy area gives W_r (i.e. the output
             # of the Brownian path) a variance very close to the correct one,
             # even when the spline is wrong. In pvals_w2 the influence of the
-            # Levy area is subtracted in the mean, so we can use a stricter test.
+            # Lévy area is subtracted in the mean, so we can use a stricter test.
             n = pvals_w1.shape[0]
             assert jnp.min(pvals_w1) < 0.03 / n and jnp.mean(pvals_w1) < 0.2
         else:
@@ -616,7 +622,7 @@ def test_whk_interpolation(tol, spline):
         bk_r = r**2 * k_r
 
         # Compute the target conditional mean and covariance
-        true_mean_whk, true_cov = true_cond_stats_whk(bm_s, bm_u, s, r, u)
+        true_mean_whk, true_cov = _true_cond_stats_whk(bm_s, bm_u, s, r, u)
 
         # now compute the values of (W_sr, H_sr, K_sr), which are to be tested
         # against the normal distribution N(mean, cov)
