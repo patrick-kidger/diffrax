@@ -1,6 +1,6 @@
 """
 v0.5.0 introduced a new implementation for `diffrax.VirtualBrownianTree` that is
-additionally capable of computing Levy area.
+additionally capable of computing Lévy area.
 
 Here we check the speed of the new implementation against the old implementation, to be
 sure that it is still fast.
