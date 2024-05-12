@@ -294,7 +294,7 @@ class _ProgressMeterManager:
                 # Return the idx to thread the callbacks in the correct order.
                 return _idx
 
-        return jax.pure_callback(_step, idx, progress, idx, vectorized=True)  # pyright: ignore
+        return jax.pure_callback(_step, idx, progress, idx, vectorized=True)
 
     def close(self, close_bar: Callable[[Any], None], idx: IntScalarLike):
         def _close(_idx):
