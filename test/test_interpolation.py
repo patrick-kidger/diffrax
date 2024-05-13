@@ -60,8 +60,6 @@ def test_derivative(dtype, getkey):
         solver = implicit_tol(solver)
         y0 = jr.normal(getkey(), (3,), dtype=dtype)
 
-        if jnp.iscomplexobj(y0) and isinstance(solver, diffrax.AbstractImplicitSolver):
-            continue
         solution = diffrax.diffeqsolve(
             diffrax.ODETerm(lambda t, y, p: -y),
             solver,
@@ -77,8 +75,7 @@ def test_derivative(dtype, getkey):
     for solver in all_split_solvers:
         solver = implicit_tol(solver)
         y0 = jr.normal(getkey(), (3,), dtype=dtype)
-        if jnp.iscomplexobj(y0) and isinstance(solver, diffrax.AbstractImplicitSolver):
-            continue
+
         solution = diffrax.diffeqsolve(
             diffrax.MultiTerm(
                 diffrax.ODETerm(lambda t, y, p: -0.7 * y),
