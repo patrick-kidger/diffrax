@@ -77,13 +77,10 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
         return
 
     if jnp.iscomplexobj(y_dtype) and treedef != jtu.tree_structure(None):
-        if isinstance(solver, diffrax.AbstractImplicitSolver):
-            return
-        else:
-            complex_warn = pytest.warns(match="Complex dtype")
+        complex_warn = pytest.warns(match="Complex dtype")
 
-            def f(t, y, args):
-                return jtu.tree_map(lambda yi: -1j * yi, y)
+        def f(t, y, args):
+            return jtu.tree_map(lambda yi: -1j * yi, y)
     else:
         complex_warn = contextlib.nullcontext()
 
@@ -152,8 +149,6 @@ def test_ode_order(solver, dtype):
 
     A = jr.normal(akey, (10, 10), dtype=dtype) * 0.5
 
-    if jnp.iscomplexobj(A) and isinstance(solver, diffrax.AbstractImplicitSolver):
-        return
     if (
         solver.term_structure
         == diffrax.MultiTerm[tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
