@@ -1207,9 +1207,12 @@ def diffeqsolve(
             tevent = roots.value
 
         # We might need to change this in order to get more accurate derivatives
-        yevent = jnp.where(event_happened, interpolator.evaluate(tevent), ys[-1])
+        yevent = jtu.tree_map(
+            lambda _y: jnp.where(event_happened, interpolator.evaluate(tevent), _y[-1]),
+            ys,
+        )
         ys = jtu.tree_map(lambda _y, _yevent: _y.at[-1].set(_yevent), ys, yevent)
-        ts = ts.at[-1].set(tevent)
+        ts = jtu.tree_map(lambda _t: _t.at[-1].set(tevent), ts)
     else:
         event_mask = None
 
