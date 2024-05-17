@@ -274,7 +274,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
 
 
 # Essentially used as a check that our general IMEX implementation is correct.
-@pytest.mark.parametrize("dtype", (jnp.float64,))
+@pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
 def test_sil3(dtype):
     class ReferenceSil3(diffrax.AbstractImplicitSolver):
         term_structure = diffrax.MultiTerm[

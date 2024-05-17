@@ -45,7 +45,7 @@ def _solvers_and_orders():
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
 @pytest.mark.parametrize(
     "dtype",
-    (jnp.float64,),
+    (jnp.float64, jnp.complex128),
 )
 def test_sde_strong_order_new(
     solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
@@ -118,7 +118,7 @@ solutions = {
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
 @pytest.mark.parametrize(
     "dtype",
-    (jnp.float64,),
+    (jnp.float64, jnp.complex128),
 )
 def test_sde_strong_limit(
     solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
