@@ -1,6 +1,6 @@
 [project]
 name = "diffrax"
-version = "0.5.0"
+version = "0.5.1"
 description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 readme = "README.md"
 requires-python ="~=3.9"
