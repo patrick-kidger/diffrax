@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Optional
 
 import jax
@@ -11,16 +12,32 @@ from ._path import AbstractPath
 
 class RESULTS(optx.RESULTS):  # pyright: ignore
     successful = ""
-    discrete_terminating_event_occurred = (
-        "Terminating differential equation solve because a discrete terminating event "
-        "occurred."
-    )
     max_steps_reached = (
         "The maximum number of solver steps was reached. Try increasing `max_steps`."
     )
     dt_min_reached = (
         "The minimum step size was reached in the differential equation solver."
     )
+    terminating_event_occurred = (
+        "Terminating differential equation solve because an event occurred."
+    )
+
+
+# Backward compatibility
+# Evil monkey-patching so that we don't mess with how `Enumeration`s work.
+
+
+@property
+def discrete_terminating_event_occurred(self):
+    warnings.warn(
+        "`diffrax.RESULTS.discrete_terminating_event_occurred` is deprecated in "
+        "favour of `diffrax.RESULTS.terminating_event_occurred`. This will be "
+        "removed in some future version of Diffrax."
+    )
+    return self.terminating_event_occurred
+
+
+RESULTS.discrete_terminating_event_occurred = discrete_terminating_event_occurred  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def is_okay(result: RESULTS) -> Bool[Array, ""]:
@@ -35,7 +52,7 @@ def is_successful(result: RESULTS) -> Bool[Array, ""]:
 # TODO: In the future we may support other event types, in which case this function
 # should be updated.
 def is_event(result: RESULTS) -> Bool[Array, ""]:
-    return result == RESULTS.discrete_terminating_event_occurred
+    return result == RESULTS.terminating_event_occurred
 
 
 def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
