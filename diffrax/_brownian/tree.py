@@ -137,10 +137,19 @@ def _split_interval(
 class VirtualBrownianTree(AbstractBrownianPath):
     """Brownian simulation that discretises the interval `[t0, t1]` to tolerance `tol`.
 
-    Can be initialised with `levy_area` set to `""`, or `"space-time"`.
-    If `levy_area="space_time"`, then it also computes space-time Lévy area `H`.
-    This will impact the Brownian path, so even with the same key, the trajectory will
-    be different depending on the value of `levy_area`.
+    !!! info "Levy Area"
+
+        Can be initialised with `levy_area` set to `diffrax.BrownianIncrement`, or
+        `diffrax.SpaceTimeLevyArea`. If `levy_area=diffrax.SpaceTimeLevyArea`, then it
+        also computes space-time Lévy area `H`. This is an additional source of
+        randomness required for certain stochastic Runge--Kutta solvers; see
+        [`diffrax.AbstractSRK`][] for more information.
+
+        An error will be thrown during tracing if Lévy area is required but is not
+        available.
+
+        The choice here will impact the Brownian path, so even with the same key, the
+        trajectory will be different depending on the value of `levy_area`.
 
     ??? cite "Reference"
 
