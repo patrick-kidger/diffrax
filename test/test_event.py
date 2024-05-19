@@ -8,7 +8,6 @@ import pytest
 from jaxtyping import Array
 
 
-@pytest.mark.skip(reason="Old event implementation")
 def test_discrete_terminate1():
     term = diffrax.ODETerm(lambda t, y, args: y)
     solver = diffrax.Tsit5()
@@ -18,23 +17,24 @@ def test_discrete_terminate1():
     y0 = 1.0
 
     def event_fn(state, **kwargs):
+        del kwargs
         assert isinstance(state.y, jax.Array)
         return state.tprev > 10
 
-    event = diffrax.DiscreteTerminatingEvent(event_fn)  # pyright: ignore
-    sol = diffrax.diffeqsolve(
-        term,
-        solver,
-        t0,
-        t1,
-        dt0,
-        y0,
-        discrete_terminating_event=event,  # pyright: ignore
-    )
+    event = diffrax.DiscreteTerminatingEvent(event_fn)
+    with pytest.warns(DeprecationWarning, match="discrete_terminating_event"):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y0,
+            discrete_terminating_event=event,
+        )
     assert jnp.all(cast(Array, sol.ys) > 10)
 
 
-@pytest.mark.skip(reason="Old event implementation")
 def test_discrete_terminate2():
     term = diffrax.ODETerm(lambda t, y, args: y)
     solver = diffrax.Tsit5()
@@ -44,23 +44,24 @@ def test_discrete_terminate2():
     y0 = 1.0
 
     def event_fn(state, **kwargs):
+        del kwargs
         assert isinstance(state.y, jax.Array)
         return state.tprev > 10
 
-    event = diffrax.DiscreteTerminatingEvent(event_fn)  # pyright: ignore
-    sol = diffrax.diffeqsolve(
-        term,
-        solver,
-        t0,
-        t1,
-        dt0,
-        y0,
-        discrete_terminating_event=event,  # pyright: ignore
-    )
+    event = diffrax.DiscreteTerminatingEvent(event_fn)
+    with pytest.warns(DeprecationWarning, match="discrete_terminating_event"):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y0,
+            discrete_terminating_event=event,
+        )
     assert jnp.all(cast(Array, sol.ts) > 10)
 
 
-@pytest.mark.skip(reason="Old event implementation")
 def test_event_backsolve():
     term = diffrax.ODETerm(lambda t, y, args: y)
     solver = diffrax.Tsit5()
@@ -70,24 +71,26 @@ def test_event_backsolve():
     y0 = 1.0
 
     def event_fn(state, **kwargs):
+        del kwargs
         assert isinstance(state.y, jax.Array)
         return state.tprev > 10
 
-    event = diffrax.DiscreteTerminatingEvent(event_fn)  # pyright: ignore
+    event = diffrax.DiscreteTerminatingEvent(event_fn)
 
     @jax.jit
     @jax.grad
     def run(y0):
-        sol = diffrax.diffeqsolve(
-            term,
-            solver,
-            t0,
-            t1,
-            dt0,
-            y0,
-            discrete_terminating_event=event,  # pyright: ignore
-            adjoint=diffrax.BacksolveAdjoint(),
-        )
+        with pytest.warns(DeprecationWarning, match="discrete_terminating_event"):
+            sol = diffrax.diffeqsolve(
+                term,
+                solver,
+                t0,
+                t1,
+                dt0,
+                y0,
+                discrete_terminating_event=event,
+                adjoint=diffrax.BacksolveAdjoint(),
+            )
         return jnp.sum(cast(Array, sol.ys))
 
     # And in particular not some other error.
@@ -106,9 +109,10 @@ def test_continuous_terminate1():
     dt0 = 1
     y0 = 1.0
 
-    def cond_fn(state, **kwargs):
-        assert isinstance(state.y, jax.Array)
-        return state.tprev > 10
+    def cond_fn(t, y, args, **kwargs):
+        del args, kwargs
+        assert isinstance(y, jax.Array)
+        return t > 10
 
     event = diffrax.Event(cond_fn=cond_fn)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
@@ -123,9 +127,10 @@ def test_continuous_terminate2():
     dt0 = 1
     y0 = 1.0
 
-    def cond_fn(state, **kwargs):
-        assert isinstance(state.y, jax.Array)
-        return state.tprev - 10.0
+    def cond_fn(t, y, args, **kwargs):
+        del args, kwargs
+        assert isinstance(y, jax.Array)
+        return t - 10.0
 
     event = diffrax.Event(cond_fn=cond_fn)
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
@@ -140,8 +145,9 @@ def test_continuous_event_time():
     dt0 = 1.0
     y0 = 1.0
 
-    def cond_fn(state, y, **kwargs):
-        assert isinstance(state.y, jax.Array)
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
         return y - jnp.exp(1.0)
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
@@ -158,8 +164,9 @@ def test_continuous_event_value():
     dt0 = 1.0
     y0 = -10.0
 
-    def cond_fn(state, y, **kwargs):
-        assert isinstance(state.y, jax.Array)
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
         return y
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
@@ -176,8 +183,9 @@ def test_continuous_no_event():
     dt0 = 1.0
     y0 = -10.0
 
-    def cond_fn(state, y, **kwargs):
-        assert isinstance(state.y, jax.Array)
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
         return y
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
@@ -195,12 +203,14 @@ def test_continuous_two_events():
     dt0 = 1.0
     y0 = -10.0
 
-    def cond_fn_1(state, y, **kwargs):
-        assert isinstance(state.y, jax.Array)
+    def cond_fn_1(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
         return y
 
-    def cond_fn_2(state, y, **kwargs):
-        assert isinstance(state.y, jax.Array)
+    def cond_fn_2(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
         return y + 5.0
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
@@ -213,12 +223,14 @@ def test_continuous_two_events():
 
 def test_continuous_event_time_grad():
     def vector_field(t, y, args):
-        x, v = y
+        del t, args
+        _, v = y
         d_out = v, -8.0
         return jnp.array(d_out)
 
-    def cond_fn(state, y, **kwargs):
-        x, v = y
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        x, _ = y
         return x
 
     term = diffrax.ODETerm(vector_field)
@@ -250,7 +262,7 @@ def test_continuous_event_time_grad():
             return _sol.ys[-1, :]
 
         def event_fn(_y):
-            return cond_fn(None, _y)
+            return cond_fn(t=None, y=_y, args=None)
 
         _, num = jax.vjp(phi, x0)
         (num,) = num(jax.grad(event_fn)(y0))

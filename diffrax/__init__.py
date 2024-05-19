@@ -22,7 +22,13 @@ from ._custom_types import (
     SpaceTimeTimeLevyArea as SpaceTimeTimeLevyArea,
 )
 from ._event import (
+    # Deliberately not provided with `X as X` as these are now deprecated, so we'd like
+    # static type checkers to warn about using them.
+    AbstractDiscreteTerminatingEvent,  # noqa: F401
+    DiscreteTerminatingEvent,  # noqa: F401
     Event as Event,
+    steady_state_event as steady_state_event,
+    SteadyStateEvent,  # noqa: F401
 )
 from ._global_interpolation import (
     AbstractGlobalInterpolation as AbstractGlobalInterpolation,
