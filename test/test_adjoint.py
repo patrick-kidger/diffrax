@@ -258,13 +258,13 @@ def test_closure_fixed():
     run(mlp)
 
 
-@pytest.mark.skip(reason="SteadyStateEvent discontinued")
 def test_implicit():
     class ExponentialDecayToSteadyState(eqx.Module):
         steady_state: Array
         non_jax_type: Any
 
         def __call__(self, t, y, args):
+            del t, args
             return self.steady_state - y
 
     def loss(model, target_steady_state):
@@ -276,7 +276,7 @@ def test_implicit():
         y0 = 1.0
         max_steps = None
         controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
-        event = diffrax.SteadyStateEvent()  # pyright: ignore
+        event = diffrax.SteadyStateEvent()
         adjoint = diffrax.ImplicitAdjoint()
         sol = diffrax.diffeqsolve(
             term,
@@ -287,7 +287,7 @@ def test_implicit():
             y0,
             max_steps=max_steps,
             stepsize_controller=controller,
-            discrete_terminating_event=event,  # pyright: ignore
+            discrete_terminating_event=event,
             adjoint=adjoint,
         )
         (y1,) = cast(Array, sol.ys)
