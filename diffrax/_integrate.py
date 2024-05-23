@@ -712,11 +712,22 @@ def loop(
             _root_find,
             lambda: (final_state.tprev, final_state.y, result),
         )
+        # Update save_index to replace last saved step with event values
+        save_index = final_state.save_state.save_index - 1
+        final_state = eqx.tree_at(
+            lambda s: s.save_state.save_index, final_state, save_index
+        )
 
     def _save_t1(subsaveat, save_state):
-        if subsaveat.t1 and not subsaveat.steps:
-            # If subsaveat.steps then the final value is already saved.
-            save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
+        if event.root_finder is None:
+            if subsaveat.t1 and not subsaveat.steps:
+                # If subsaveat.steps then the final value is already saved.
+                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
+        else:
+            if subsaveat.t1 or subsaveat.steps:
+                # In this branch we need to replace the last value with tfinal
+                # and yfinal returned by the root finder also if subsaveat.steps.
+                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
     save_state = jtu.tree_map(
