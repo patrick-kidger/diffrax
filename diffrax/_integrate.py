@@ -718,7 +718,7 @@ def loop(
         )
 
     def _save_t1(subsaveat, save_state):
-        if event.root_finder is None:
+        if event is None or event.root_finder is None:
             if subsaveat.t1 and not subsaveat.steps:
                 # If subsaveat.steps then the final value is already saved.
                 save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
