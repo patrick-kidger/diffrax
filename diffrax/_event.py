@@ -71,7 +71,7 @@ def steady_state_event(
         vf = solver.func(terms, t, y, args)
         return _norm(vf) < _atol + _rtol * _norm(y)
 
-    return Event(cond_fn=_cond_fn)
+    return _cond_fn
 
 
 #
@@ -99,7 +99,7 @@ class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
     norm: Callable[[PyTree[Array]], RealScalarLike] = optx.rms_norm
 
     def __call__(self, state, *, args, **kwargs):
-        return steady_state_event(self.rtol, self.atol, self.norm).cond_fn(
+        return steady_state_event(self.rtol, self.atol, self.norm)(
             state.tprev, state.y, args, **kwargs
         )
 
