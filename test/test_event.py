@@ -1,3 +1,4 @@
+import functools as ft
 from typing import cast
 
 import diffrax
@@ -101,6 +102,46 @@ def test_event_backsolve():
 # diffrax.SteadyStateEvent tested as part of test_adjoint.py::test_implicit
 
 
+def test_steady_state_event():
+    term = diffrax.ODETerm(lambda t, y, args: -1.0 * y)
+    controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+    y0 = 1.0
+    cond_fn = diffrax.steady_state_event()
+    event = diffrax.Event(cond_fn)
+    sol = diffrax.diffeqsolve(
+        term, solver, t0, t1, dt0, y0, stepsize_controller=controller, event=event
+    )
+
+    assert cast(Array, sol.event_mask)
+    assert jnp.all(jnp.isclose(cast(Array, sol.ys), 0.0, atol=1e-5))
+
+
+def test_no_step_event():
+    term = diffrax.ODETerm(lambda t, y, args: jnp.array([1, 1]))
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = 10
+    dt0 = 1
+    y0 = jnp.array([1, -1e-1])
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, Array)
+        _, x = y
+        return x < 0
+
+    event = diffrax.Event(cond_fn)
+    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+
+    assert sol.stats["num_steps"] == 0
+    assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], y0, 1e-7))
+    assert jnp.all(jnp.isclose(cast(Array, sol.ts), t0, 1e-7))
+
+
 def test_continuous_terminate1():
     term = diffrax.ODETerm(lambda t, y, args: y)
     solver = diffrax.Tsit5()
@@ -110,8 +151,7 @@ def test_continuous_terminate1():
     y0 = 1.0
 
     def cond_fn(t, y, args, **kwargs):
-        del args, kwargs
-        assert isinstance(y, jax.Array)
+        del y, args, kwargs
         return t > 10
 
     event = diffrax.Event(cond_fn=cond_fn)
@@ -204,9 +244,9 @@ def test_continuous_two_events():
     y0 = -10.0
 
     def cond_fn_1(t, y, args, **kwargs):
-        del t, args, kwargs
-        assert isinstance(y, jax.Array)
-        return y
+        del y, args, kwargs
+        assert isinstance(t, jax.Array)
+        return t - 10
 
     def cond_fn_2(t, y, args, **kwargs):
         del t, args, kwargs
@@ -273,3 +313,202 @@ def test_continuous_event_time_grad():
     x0_autograd = jax.vmap(first_bounce_time)(x0_test)
     x0_truegrad = jax.vmap(first_bounce_time_grad)(x0_test)
     assert jnp.all(jnp.isclose(x0_autograd, x0_truegrad, 1e-5))
+
+
+def test_adaptive_stepping_event():
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, Array)
+        return y - 1
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    @jax.jit
+    @jax.value_and_grad
+    def run(y):
+        sol = diffrax.diffeqsolve(
+            term, solver, t0, t1, dt0, y, stepsize_controller=controller, event=event
+        )
+        return cast(Array, sol.ys)[-1]
+
+    y0s = [10.0, 100.0, 1000.0]
+    for y0 in y0s:
+        val, grad = run(y0)
+        assert jnp.all(jnp.isclose(val - 1, 0.0, atol=1e-5))
+        assert not jnp.isnan(grad).any()
+
+
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-3, atol=1e-6)),
+)
+def test_event_vmap_y0(stepsize_controller):
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, Array)
+        return y - 1
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    @jax.vmap
+    @jax.value_and_grad
+    def run(y):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y,
+            stepsize_controller=stepsize_controller,
+            event=event,
+        )
+        return cast(Array, sol.ys)[-1]
+
+    y0s = jnp.arange(10.0) + 2.0
+    vals, grads = run(y0s)
+    for val, grad in zip(vals, grads):
+        assert jnp.all(jnp.isclose(val - 1, 0.0, atol=1e-5))
+        assert not jnp.isnan(grad).any()
+
+
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-3, atol=1e-6)),
+)
+def test_event_vmap_t0(stepsize_controller):
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = diffrax.Tsit5()
+    t1 = jnp.inf
+    dt0 = 1
+    y0 = 10
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, Array)
+        return y - 1
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    @jax.vmap
+    @jax.value_and_grad
+    def run(t):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t,
+            t1,
+            dt0,
+            y0,
+            stepsize_controller=stepsize_controller,
+            event=event,
+        )
+        return cast(Array, sol.ys)[-1]
+
+    t0s = jnp.arange(10.0) / 10
+    vals, grads = run(t0s)
+    for val, grad in zip(vals, grads):
+        assert jnp.all(jnp.isclose(val - 1, 0.0, atol=1e-5))
+        assert not jnp.isnan(grad).any()
+
+
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-3, atol=1e-6)),
+)
+def test_event_vmap_event_def(stepsize_controller):
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+    y0 = 10
+
+    def cond_fn(thr, t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, Array)
+        return y - thr
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+
+    @jax.vmap
+    @jax.value_and_grad
+    def run(thr):
+        _cond_fn = ft.partial(cond_fn, thr)
+        event = diffrax.Event(_cond_fn, root_finder)
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y0,
+            stepsize_controller=stepsize_controller,
+            event=event,
+        )
+        return cast(Array, sol.ys)[-1]
+
+    thrs = (jnp.arange(10.0) + 1) / 5
+    vals, grads = run(thrs)
+    for thr, val, grad in zip(thrs, vals, grads):
+        assert jnp.all(jnp.isclose(val - thr, 0.0, atol=1e-5))
+        assert not jnp.isnan(grad).any()
+
+
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    (diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-3, atol=1e-6)),
+)
+def test_event_vmap_cond_fn(stepsize_controller):
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+
+        @jax.vmap
+        def _cond_fn(y):
+            return y - 1
+
+        return jnp.max(_cond_fn(y))
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    @jax.value_and_grad
+    def run(y):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y,
+            stepsize_controller=stepsize_controller,
+            event=event,
+        )
+        return jnp.max(cast(Array, sol.ys)[-1])
+
+    y0s = jnp.arange(10.0) + 2.0
+    val, grad = run(y0s)
+    assert jnp.all(jnp.isclose(val - 1, 0.0, atol=1e-5))
+    assert not jnp.isnan(grad).any()
