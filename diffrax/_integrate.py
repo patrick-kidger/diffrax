@@ -713,7 +713,12 @@ def loop(
             lambda: (final_state.tprev, final_state.y, result),
         )
         # Update save_index to replace last saved step with event values
-        save_index = final_state.save_state.save_index - 1
+        save_index = jtu.tree_map(
+            lambda _, s: s.save_index - 1,
+            saveat.subs,
+            save_state,
+            is_leaf=_is_subsaveat,
+        )
         final_state = eqx.tree_at(
             lambda s: s.save_state.save_index, final_state, save_index
         )
