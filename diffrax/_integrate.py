@@ -496,8 +496,9 @@ def loop(
             event_tprev = state.tprev
             event_tnext = state.tnext
             event_dense_info = dense_info
-            event_values = jtu.tree_map(
-                lambda cond_fn_i: cond_fn_i(
+
+            def _outer_cond_fn(cond_fn_i, old_event_value_i):
+                new_event_value_i = cond_fn_i(
                     tprev,
                     y,
                     args,
@@ -509,22 +510,7 @@ def loop(
                     saveat=saveat,
                     stepsize_controller=stepsize_controller,
                     max_steps=max_steps,
-                ),
-                event.cond_fn,
-                is_leaf=callable,
-            )
-            had_event = False
-            old_event_values_leaves, old_event_structure = jtu.tree_flatten(
-                state.event_values
-            )
-            new_event_values_leaves, new_event_structure = jtu.tree_flatten(
-                event_values
-            )
-            assert old_event_structure == new_event_structure
-            event_mask_leaves = []
-            for old_event_value_i, new_event_value_i in zip(
-                old_event_values_leaves, new_event_values_leaves
-            ):
+                )
                 assert jnp.shape(old_event_value_i) == ()
                 if jnp.shape(new_event_value_i) != ():
                     raise ValueError(
@@ -547,13 +533,30 @@ def loop(
                     event_mask_i = new_event_value_i
                 else:
                     assert False
+                return new_event_value_i, event_mask_i
+
+            event_values__mask = jtu.tree_map(
+                _outer_cond_fn,
+                event.cond_fn,
+                state.event_values,
+                is_leaf=callable,
+            )
+            event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
+            event_values, event_mask = jtu.tree_transpose(
+                event_structure,
+                None,  # pyright: ignore
+                event_values__mask,
+            )
+            had_event = False
+            event_mask_leaves = []
+            for event_mask_i in jtu.tree_leaves(event_mask):
                 event_mask_leaves.append(event_mask_i & jnp.invert(had_event))
                 had_event = event_mask_i | had_event
-            event_mask = jtu.tree_unflatten(old_event_structure, event_mask_leaves)
+            event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
             result = RESULTS.where(
                 had_event,
                 RESULTS.terminating_event_occurred,
-                state.result,
+                result,
             )
 
         new_state = State(
@@ -711,15 +714,22 @@ def loop(
             _root_find,
             lambda: (final_state.tprev, final_state.y, result),
         )
+
         # Update save_index to replace last saved step with event values
-        save_index = jtu.tree_map(
-            lambda _, s: s.save_index - 1,
-            saveat.subs,
+        def _update_index(save_state):
+            return eqx.tree_at(
+                lambda s: s.save_index, save_state, replace_fn=lambda i: i - 1
+            )
+
+        save_state = jtu.tree_map(
+            lambda s: _update_index(s),
             save_state,
-            is_leaf=_is_subsaveat,
+            is_leaf=lambda s: isinstance(s, SaveState),
         )
         final_state = eqx.tree_at(
-            lambda s: s.save_state.save_index, final_state, save_index
+            lambda s: s.save_state,
+            final_state,
+            save_state,
         )
 
     def _save_t1(subsaveat, save_state):
@@ -1199,8 +1209,8 @@ def diffeqsolve(
             dense_info_struct,  # pyright: ignore[reportPossiblyUnboundVariable]
         )
 
-        event_values = jtu.tree_map(
-            lambda cond_fn_i: cond_fn_i(
+        def _outer_cond_fn(cond_fn_i):
+            event_value_i = cond_fn_i(
                 tprev,
                 y0,
                 args,
@@ -1212,15 +1222,7 @@ def diffeqsolve(
                 saveat=saveat,
                 stepsize_controller=stepsize_controller,
                 max_steps=max_steps,
-            ),
-            event.cond_fn,
-            is_leaf=callable,
-        )
-
-        had_event = False
-        event_values_leaves, event_structure = jtu.tree_flatten(event_values)
-        event_mask_leaves = []
-        for event_value_i in event_values_leaves:
+            )
             if jnp.shape(event_value_i) != ():
                 raise ValueError(
                     "Event functions must return a scalar, got shape "
@@ -1233,6 +1235,22 @@ def diffeqsolve(
                 event_mask_i = event_value_i
             else:
                 assert False
+            return event_value_i, event_mask_i
+
+        event_values__mask = jtu.tree_map(
+            _outer_cond_fn,
+            event.cond_fn,
+            is_leaf=callable,
+        )
+        event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
+        event_values, event_mask = jtu.tree_transpose(
+            event_structure,
+            None,  # pyright: ignore
+            event_values__mask,
+        )
+        had_event = False
+        event_mask_leaves = []
+        for event_mask_i in jtu.tree_leaves(event_mask):
             event_mask_leaves.append(event_mask_i & jnp.invert(had_event))
             had_event = event_mask_i | had_event
         event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
@@ -1241,7 +1259,7 @@ def diffeqsolve(
             RESULTS.terminating_event_occurred,
             result,
         )
-        del had_event, event_values_leaves, event_structure, event_mask_leaves
+        del had_event, event_structure, event_mask_leaves, event_values__mask
 
     # Initialise state
     init_state = State(
