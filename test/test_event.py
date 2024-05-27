@@ -2,6 +2,7 @@ import functools as ft
 from typing import cast
 
 import diffrax
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optimistix as optx
@@ -560,3 +561,151 @@ def test_event_dtype_error():
         event = diffrax.Event(cond_fn=cond_fn)
         with pytest.raises(AssertionError):
             diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+
+
+@pytest.mark.parametrize("steps", (1, 2, 3, 4, 5))
+def test_event_save_steps(steps):
+    term = diffrax.ODETerm(lambda t, y, args: (1.0, 1.0))
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = 10
+    dt0 = 1
+    thr = steps - 0.5
+    y0 = (0.0, -thr)
+    ts = jnp.array([0.5, 3.5, 5.5])
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        x, _ = y
+        return x - thr
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    def run(saveat):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y0,
+            event=event,
+            saveat=saveat,
+        )
+        return cast(Array, sol.ts), cast(tuple, sol.ys)
+
+    saveats = [
+        diffrax.SaveAt(steps=True),
+        diffrax.SaveAt(steps=True, t1=True),
+        diffrax.SaveAt(steps=True, t1=True, t0=True),
+        diffrax.SaveAt(steps=True, fn=lambda t, y, args: (y[0], y[1] + thr)),
+    ]
+    num_steps = [steps, steps, steps + 1, steps]
+    yevents = [(thr, 0), (thr, 0), (thr, 0), (thr, thr)]
+
+    for saveat, n, yevent in zip(saveats, num_steps, yevents):
+        ts, ys = run(saveat)
+        xs, zs = ys
+        xevent, zevent = yevent
+        assert jnp.sum(jnp.isfinite(ts)) == n
+        assert jnp.sum(jnp.isfinite(xs)) == n
+        assert jnp.sum(jnp.isfinite(zs)) == n
+        assert jnp.all(jnp.isclose(ts[n - 1], thr, atol=1e-5))
+        assert jnp.all(jnp.isclose(xs[n - 1], xevent, atol=1e-5))
+        assert jnp.all(jnp.isclose(zs[n - 1], zevent, atol=1e-5))
+
+
+@pytest.mark.parametrize("steps", (1, 2, 3, 4, 5))
+def test_event_save_ts(steps):
+    term = diffrax.ODETerm(lambda t, y, args: (1.0, 1.0))
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = 10
+    dt0 = 1
+    thr = steps - 0.5
+    y0 = (0.0, -thr)
+    ts = jnp.array([0.5, 3.5, 5.5])
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        x, _ = y
+        return x - thr
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    def run(saveat):
+        sol = diffrax.diffeqsolve(
+            term,
+            solver,
+            t0,
+            t1,
+            dt0,
+            y0,
+            event=event,
+            saveat=saveat,
+        )
+        return cast(Array, sol.ts), cast(tuple, sol.ys)
+
+    saveats = [
+        diffrax.SaveAt(ts=ts),
+        diffrax.SaveAt(ts=ts, t1=True),
+        diffrax.SaveAt(ts=ts, t0=True),
+        diffrax.SaveAt(ts=ts, steps=True),
+        diffrax.SaveAt(ts=ts, fn=lambda t, y, args: (y[0], y[1] + thr)),
+    ]
+    save_finals = [False, True, False, True, False]
+    yevents = [(thr, 0), (thr, 0), (thr, 0), (thr, 0), (thr, thr)]
+    for saveat, save_final, yevent in zip(saveats, save_finals, yevents):
+        ts, ys = run(saveat)
+        xs, zs = ys
+        xevent, zevent = yevent
+        if save_final:
+            assert jnp.all(jnp.isclose(ts[jnp.isfinite(ts)][-1], thr, atol=1e-5))
+            assert jnp.all(jnp.isclose(xs[jnp.isfinite(xs)][-1], xevent, atol=1e-5))
+            assert jnp.all(jnp.isclose(zs[jnp.isfinite(zs)][-1], zevent, atol=1e-5))
+        else:
+            assert jnp.all(ts[jnp.isfinite(ts)] <= thr)
+
+
+@pytest.mark.parametrize("steps", (1, 2, 3, 4, 5))
+def test_event_save_subsaveat(steps):
+    term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
+    solver = diffrax.Tsit5()
+    t0 = 0.0
+    t1 = 10.0
+    dt0 = 1.0
+    thr = steps - 0.5
+    y0 = jnp.array([0.0, -thr])
+    ts = jnp.arange(t0, t1, 3.0)
+    ts_event = jnp.sum(ts <= thr)
+    last_t = jnp.array(ts[ts_event - 1])
+
+    def cond_fn(t, y, args, **kwargs):
+        del t, args, kwargs
+        x, _ = y
+        return x - thr
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+
+    class Saved(eqx.Module):
+        y: Array
+
+    def save_fn(t, y, args):
+        del t, args
+        ynorm = jnp.einsum("i,i->", y, y)
+        return Saved(jnp.array([ynorm]))
+
+    last_save = save_fn(None, y0 + last_t, None).y
+    subsaveat_a = diffrax.SubSaveAt(ts=ts, fn=save_fn)
+    subsaveat_b = diffrax.SubSaveAt(steps=True)
+    saveat = diffrax.SaveAt(subs=[subsaveat_a, subsaveat_b])
+    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event, saveat=saveat)
+    ts_1, ts_2 = cast(list, sol.ts)
+    ys_1, ys_2 = cast(list, sol.ys)
+    assert jnp.sum(jnp.isfinite(ts_1)) == ts_event
+    assert jnp.sum(jnp.isfinite(ts_2)) == steps
+    assert jnp.all(jnp.isclose(ys_2[steps - 1], jnp.array([thr, 0]), atol=1e-5))
+    assert jnp.all(jnp.isclose(ys_1.y[ts_event - 1], last_save, atol=1e-5))
