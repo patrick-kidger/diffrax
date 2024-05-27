@@ -729,13 +729,14 @@ def loop(
 
         save_state = jtu.tree_map(
             lambda s: _update_index(s),
-            save_state,
+            final_state.save_state,
             is_leaf=lambda s: isinstance(s, SaveState),
         )
         final_state = eqx.tree_at(
             lambda s: s.save_state,
             final_state,
             save_state,
+            is_leaf=_is_none,
         )
 
     def _save_t1(subsaveat, save_state):
