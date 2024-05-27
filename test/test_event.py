@@ -512,3 +512,51 @@ def test_event_vmap_cond_fn(stepsize_controller):
     val, grad = run(y0s)
     assert jnp.all(jnp.isclose(val - 1, 0.0, atol=1e-5))
     assert not jnp.isnan(grad).any()
+
+
+def test_event_scalar_error():
+    term = diffrax.ODETerm(lambda t, y, args: y)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+    y0 = 1.0
+
+    def cond_fn_1(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
+        return (y,)
+
+    def cond_fn_2(t, y, args, **kwargs):
+        del t, args, kwargs
+        return jnp.array([y, 1.0])
+
+    cond_fns = [cond_fn_1, cond_fn_2]
+    for cond_fn in cond_fns:
+        event = diffrax.Event(cond_fn=cond_fn)
+        with pytest.raises(ValueError):
+            diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+
+
+def test_event_dtype_error():
+    term = diffrax.ODETerm(lambda t, y, args: y)
+    solver = diffrax.Tsit5()
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 1
+    y0 = 1.0
+
+    def cond_fn_1(t, y, args, **kwargs):
+        del t, args, kwargs
+        assert isinstance(y, jax.Array)
+        return jnp.array(1, dtype=int)
+
+    def cond_fn_2(t, y, args, **kwargs):
+        del t, args, kwargs
+        return jnp.array(1, dtype=complex)
+
+    cond_fns = [cond_fn_1, cond_fn_2]
+    for cond_fn in cond_fns:
+        event = diffrax.Event(cond_fn=cond_fn)
+        with pytest.raises(AssertionError):
+            diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
