@@ -513,6 +513,11 @@ def loop(
                     max_steps=max_steps,
                 )
                 assert jnp.shape(old_event_value_i) == ()
+                if jtu.tree_structure(new_event_value_i) != jtu.tree_structure(0):
+                    raise ValueError(
+                        "Event functions must return a scalar, got PyTree with shape "
+                        f"{jtu.tree_structure(new_event_value_i)}."
+                    )
                 if jnp.shape(new_event_value_i) != ():
                     raise ValueError(
                         "Event functions must return a scalar, got shape "
@@ -1236,6 +1241,11 @@ def diffeqsolve(
                 stepsize_controller=stepsize_controller,
                 max_steps=max_steps,
             )
+            if jtu.tree_structure(event_value_i) != jtu.tree_structure(0):
+                raise ValueError(
+                    "Event functions must return a scalar, got PyTree with shape "
+                    f"{jtu.tree_structure(event_value_i)}."
+                )
             if jnp.shape(event_value_i) != ():
                 raise ValueError(
                     "Event functions must return a scalar, got shape "
