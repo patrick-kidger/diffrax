@@ -11,8 +11,29 @@ from ._step_size_controller import AbstractAdaptiveStepSizeController
 
 
 class Event(eqx.Module):
+    """Can be used to terminate the solve early if one of multiple conditions
+    is triggered. It allows for both continuous and boolean condition functions. In the
+    former case, a root finder can be used to find the exact time of the event.
+
+    Instances of this class should be passed as the `event` argument of
+    [`diffrax.diffeqsolve`][].
+    """
+
     cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
     root_finder: Optional[optx.AbstractRootFinder] = None
+
+
+Event.__init__.__doc__ = """**Arguments:**
+
+- `cond_fn`: A PyTree of functions `f(t, y, args, **kwargs) -> c` returning a boolean or
+    a real number. If the return value is a boolean, the solve will terminate when `c`
+    is `True`. If the return value is a real number, the solve will terminate when `c`
+    changes sign.
+- `root_finder`: An optional root finder to use for finding the exact time of the event.
+    If the triggered condition function is boolean,  the returned time will be the right
+    endpoint of the last successful step.
+
+"""
 
 
 def steady_state_event(
