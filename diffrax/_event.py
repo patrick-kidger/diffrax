@@ -33,6 +33,46 @@ Event.__init__.__doc__ = """**Arguments:**
     If the triggered condition function is boolean,  the returned time will be the right
     endpoint of the last successful step.
 
+!!! Example
+
+    Consider a bouncing ball dropped from some intial height $x_0$. We can model 
+    the ball by a 2-dimensional ODE
+
+    $dx_t = v_t dt, \\quad dv_t = -g dt,$
+
+    where $x_t$ represents the height of the ball, $v_t$ its velocity, 
+    and $g$ is the gravitational constant. With $g=8$, this corresponds to the
+    vector field:
+    ```python
+    def vf(t, y, args):
+        _, v = y
+        return jnp.array([v, -8.0])
+    ```
+
+    Figuring out exactly when the ball hits the ground amounts to 
+    solving the ODE until the event $x_t=0$ is triggered. This can be done by using 
+    the real-valued condition function:
+    ```python
+    def cond_fn(t, y, args, **kwargs):
+        x, _ = y
+        return x
+    ```
+
+    With $x_0=10$, this would yield:
+    ```python
+    y0 = jnp.array([10.0, 0.0])
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 0.1
+    term = diffrax.ODETerm(vector_field)
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+    solver = diffrax.Tsit5()
+    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event, saveat=saveat)
+    print(f"Event time: {sol.ts[0]}") # Event time: 1.58...
+    print(f"Velocity at event time: {sol.ys[0, 1]}") # Velocity at event time: -12.64...
+    ```
+
 """
 
 
