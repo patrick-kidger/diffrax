@@ -442,7 +442,8 @@ class ImplicitAdjoint(AbstractAdjoint):
     r"""Backpropagate via the [implicit function theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem#Statement_of_the_theorem).
 
     This is used when solving towards a steady state, typically using
-    [`diffrax.SteadyStateEvent`][]. In this case, the output of the solver is $y(θ)$
+    [`diffrax.Event`][] where the condition function is obtained by calling
+    [`diffrax.steady_state_event`][]. In this case, the output of the solver is $y(θ)$
     for which $f(t, y(θ), θ) = 0$. (Where $θ$ corresponds to all parameters found
     through `terms` and `args`, but not `y0`.) Then we can skip backpropagating through
     the solver and instead directly compute
