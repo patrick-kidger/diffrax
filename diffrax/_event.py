@@ -41,8 +41,9 @@ def steady_state_event(
     atol: Optional[float] = None,
     norm: Optional[Callable[[PyTree[Array]], RealScalarLike]] = None,
 ):
-    """Create a [`diffrax.Event`][] that terminates the solve once a steady state is
-    achieved.
+    """Create a condition function that terminates the solve once a steady state is
+    achieved. The returned function should be passed as the `cond_fn` argument of
+    [`diffrax.Event`][].
 
     **Arguments:**
 
@@ -53,8 +54,8 @@ def steady_state_event(
 
     **Returns:**
 
-    A [`diffrax.Event`][] object, that can be passed to
-    `diffrax.diffeqsolve(..., event=...)`.
+    A function `f(t, y, args, **kwargs)`, that can be passed to
+    `diffrax.Evetnt(cond_fn=..., ...)`.
     """
 
     def _cond_fn(t, y, args, *, terms, solver, stepsize_controller, **kwargs):
