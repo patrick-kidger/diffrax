@@ -537,7 +537,10 @@ def loop(
                 elif jnp.issubdtype(new_dtype, jnp.bool_):
                     event_mask_i = new_event_value_i
                 else:
-                    assert False
+                    raise ValueError(
+                        "Event functions must return either a boolean or a float, got "
+                        f"{new_dtype}."
+                    )
                 return new_event_value_i, event_mask_i
 
             event_values__mask = jtu.tree_map(
@@ -1304,7 +1307,10 @@ def diffeqsolve(
             elif jnp.issubdtype(event_dtype, jnp.bool_):
                 event_mask_i = event_value_i
             else:
-                assert False
+                raise ValueError(
+                    "Event functions must return either a boolean or a float, got "
+                    f"{event_dtype}."
+                )
             return event_value_i, event_mask_i
 
         event_values__mask = jtu.tree_map(
