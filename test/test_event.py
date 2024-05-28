@@ -559,7 +559,7 @@ def test_event_dtype_error():
     cond_fns = [cond_fn_1, cond_fn_2]
     for cond_fn in cond_fns:
         event = diffrax.Event(cond_fn=cond_fn)
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
 
 
