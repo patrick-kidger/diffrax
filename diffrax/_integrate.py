@@ -254,6 +254,7 @@ def loop(
     inner_while_loop,
     outer_while_loop,
     progress_meter,
+    direction,
 ):
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -405,7 +406,7 @@ def loop(
                 _ts = _save_state.ts.at[_save_state.save_index].set(_t)
                 _ys = jtu.tree_map(
                     lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
-                    fn(_t, _y, args),
+                    fn(direction * _t, _y, args),
                     _save_state.ys,
                 )
                 return SaveState(
@@ -1006,6 +1007,7 @@ def diffeqsolve(
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
         progress_meter=progress_meter,
+        direction=direction,
     )
 
     #

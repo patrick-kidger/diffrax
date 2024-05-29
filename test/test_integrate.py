@@ -398,6 +398,30 @@ def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
             assert tree_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
 
+def test_reverse_time_save():
+    def f(t, y, args):
+        return -y
+
+    saveat = diffrax.SaveAt(
+        t1=False, ts=jnp.linspace(4, 0.3, 5), fn=lambda t, y, args: t
+    )
+
+    t0 = 4
+    t1 = 0.3
+    dt0 = -1 / 50
+    y0 = 1.0
+    sol1 = diffrax.diffeqsolve(
+        diffrax.ODETerm(f),
+        diffrax.Euler(),
+        t0,
+        t1,
+        dt0,
+        y0,
+        saveat=saveat,
+    )
+    assert tree_allclose(sol1.ys, sol1.ts)
+
+
 def test_semi_implicit_euler():
     term1 = diffrax.ODETerm(lambda t, y, args: -y)
     term2 = diffrax.ODETerm(lambda t, y, args: y)
