@@ -132,7 +132,6 @@ class AbstractAdjoint(eqx.Module):
         passed_solver_state,
         passed_controller_state,
         progress_meter,
-        direction,
     ) -> Any:
         """Runs the main solve loop. Subclasses can override this to provide custom
         backpropagation behaviour; see for example the implementation of
@@ -565,7 +564,6 @@ def _loop_backsolve_bwd(
     throw,
     init_state,
     progress_meter,
-    direction,
 ):
     assert discrete_terminating_event is None
 
@@ -574,7 +572,7 @@ def _loop_backsolve_bwd(
     # using them later.
     #
 
-    del perturbed, init_state, t1, progress_meter, direction
+    del perturbed, init_state, t1, progress_meter
     ts, ys = residuals
     del residuals
     grad_final_state, _ = grad_final_state__aux_stats
