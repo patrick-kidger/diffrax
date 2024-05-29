@@ -37,7 +37,7 @@ from ._progress_meter import (
     NoProgressMeter,
 )
 from ._root_finder import use_stepsize_tol
-from ._saveat import SaveAt, SubSaveAt
+from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
 from ._solver import (
     AbstractImplicitSolver,
@@ -890,6 +890,8 @@ def diffeqsolve(
         return [x for x in out if x is not None]
 
     def _direction_replace(fn):
+        if fn is save_y:
+            return fn
         return lambda t, y, args: fn(direction * t, y, args)
 
     saveat = eqx.tree_at(
