@@ -3,6 +3,7 @@
 
 Diffrax is a [JAX](https://github.com/google/jax)-based library providing numerical differential equation solvers.
 
+
 Features include:
 
 - ODE/SDE/CDE (ordinary/stochastic/controlled) solvers;
