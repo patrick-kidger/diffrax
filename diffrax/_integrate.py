@@ -553,7 +553,7 @@ def loop(
             event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
             event_values, event_mask = jtu.tree_transpose(
                 event_structure,
-                None,  # pyright: ignore
+                jtu.tree_structure((0, 0)),
                 event_values__mask,
             )
             had_event = False
@@ -1334,7 +1334,7 @@ def diffeqsolve(
         event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
         event_values, event_mask = jtu.tree_transpose(
             event_structure,
-            None,  # pyright: ignore
+            jtu.tree_structure((0, 0)),
             event_values__mask,
         )
         had_event = False
