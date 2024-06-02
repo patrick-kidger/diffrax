@@ -429,6 +429,14 @@ def _solve(inputs):
     )
 
 
+# Unwrap jaxtyping decorator during tests, so that these are global functions.
+# This is needed to ensure `optx.implicit_jvp` is happy.
+if _vf.__globals__["__name__"].startswith("jaxtyping"):
+    _vf = _vf.__wrapped__  # pyright: ignore[reportFunctionMemberAccess]
+if _solve.__globals__["__name__"].startswith("jaxtyping"):
+    _solve = _solve.__wrapped__  # pyright: ignore[reportFunctionMemberAccess]
+
+
 def _frozenset(x: Union[object, Iterable[object]]) -> frozenset[object]:
     try:
         iter_x = iter(x)  # pyright: ignore
