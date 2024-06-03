@@ -1,7 +1,8 @@
 import abc
 import importlib.util
 import threading
-from typing import Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, cast, Generic, TypeVar, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -73,10 +74,11 @@ class NoProgressMeter(AbstractProgressMeter):
         return None
 
     def step(self, state, progress: FloatScalarLike) -> None:
+        del progress
         return state
 
     def close(self, state):
-        pass
+        del state
 
 
 NoProgressMeter.__init__.__doc__ = """**Arguments:**
@@ -91,18 +93,7 @@ def _unvmap_min(x):  # No `eqxi.unvmap_min` at the moment.
 
 class _TextProgressMeterState(eqx.Module):
     progress: FloatScalarLike
-
-
-def _print_percent_callback(progress):
-    print(f"{100 * progress.item():.2f}%")
-
-
-def _print_percent(progress):
-    # `io_callback` would be preferable here, to indicate that it provides an output,
-    # but that's not supported in vmap-of-while.
-    progress = eqxi.nonbatchable(progress)  # check we'll only call the callback once.
-    jax.debug.callback(_print_percent_callback, progress, ordered=True)
-    return progress
+    meter_idx: IntScalarLike
 
 
 class TextProgressMeter(AbstractProgressMeter):
@@ -118,9 +109,24 @@ class TextProgressMeter(AbstractProgressMeter):
 
     minimum_increase: RealScalarLike = 0.02
 
+    @staticmethod
+    def _init_bar() -> list[float]:
+        print("0.00%")
+        return [0.0]
+
     def init(self) -> _TextProgressMeterState:
-        _print_percent(0.0)
-        return _TextProgressMeterState(progress=jnp.array(0.0))
+        meter_idx = _progress_meter_manager.init(self._init_bar)
+        return _TextProgressMeterState(meter_idx=meter_idx, progress=jnp.array(0.0))
+
+    @staticmethod
+    def _step_bar(bar: list[float], progress: FloatScalarLike) -> None:
+        if eqx.is_array(progress):
+            # May not be an array when called with `JAX_DISABLE_JIT=1`
+            progress = cast(Union[Array, np.ndarray], progress)
+            progress = progress.item()
+        progress = cast(float, progress)
+        bar[0] = progress
+        print(f"{100 * progress:.2f}%")
 
     def step(
         self, state: _TextProgressMeterState, progress: FloatScalarLike
@@ -129,33 +135,31 @@ class TextProgressMeter(AbstractProgressMeter):
         # `state.progress` and `progress` will pick up a batch tracer.
         # (For the former, because the condition for the while-loop-over-steps becomes
         # batched, so necessarily everything in the body of the loop is as well.)
-        #
-        # We take a `min` over `progress` and a `max` over `state.progress`, as we want
-        # to report the progress made over the worst batch element.
-        state_progress = eqxi.unvmap_max(state.progress)
-        del state
-        progress = _unvmap_min(progress)
-        pred = eqxi.nonbatchable(progress - state_progress > self.minimum_increase)
+        pred = eqxi.unvmap_all(
+            (progress - state.progress > self.minimum_increase) | (progress == 1)
+        )
 
         # We only print if the progress has increased by at least `minimum_increase` to
         # avoid flooding the user with too many updates.
-        next_progress = jax.lax.cond(
-            pred,
-            _print_percent,
-            lambda _: state_progress,
-            progress,
+        next_progress, meter_idx = jax.lax.cond(
+            eqxi.nonbatchable(pred),
+            lambda _idx: (
+                progress,
+                _progress_meter_manager.step(self._step_bar, progress, _idx),
+            ),
+            lambda _idx: (state.progress, _idx),
+            state.meter_idx,
         )
 
-        return _TextProgressMeterState(progress=next_progress)
+        return _TextProgressMeterState(progress=next_progress, meter_idx=meter_idx)
+
+    @staticmethod
+    def _close_bar(bar: list[float]):
+        if bar[0] != 1:
+            print("100.00%")
 
     def close(self, state: _TextProgressMeterState):
-        # As in `step`, we `unvmap` to handle batched state.
-        # This means we only call the callback once.
-        progress = _unvmap_min(state.progress)
-        # Consumes `progress` without using it, to get the order of callbacks correct.
-        progress = jax.debug.callback(
-            lambda _: print("100.00%"), progress, ordered=True
-        )
+        _progress_meter_manager.close(self._close_bar, state.meter_idx)
 
 
 TextProgressMeter.__init__.__doc__ = """**Arguments:**
@@ -168,7 +172,7 @@ TextProgressMeter.__init__.__doc__ = """**Arguments:**
 
 
 class _TqdmProgressMeterState(eqx.Module):
-    progress_meter_id: IntScalarLike
+    meter_idx: IntScalarLike
     step: IntScalarLike
 
 
@@ -184,73 +188,56 @@ class TqdmProgressMeter(AbstractProgressMeter):
                 "Install it via `pip install tqdm`."
             )
 
+    @staticmethod
+    def _init_bar() -> "tqdm.tqdm":  # pyright: ignore  # noqa: F821
+        import tqdm  # pyright: ignore
+
+        bar_format = (
+            "{percentage:.2f}%|{bar}| [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
+        )
+        return tqdm.tqdm(
+            total=100,
+            unit="%",
+            bar_format=bar_format,
+        )
+
     def init(self) -> _TqdmProgressMeterState:
-        # Not `pure_callback` because it's not a deterministic function of its input
-        # arguments.
-        # Not `debug.callback` because it has a return value.
-        progress_meter_id = io_callback(
-            _progress_meter_manager.init, jax.ShapeDtypeStruct((), jnp.int32)
-        )
-        progress_meter_id = eqxi.nonbatchable(progress_meter_id)
-        return _TqdmProgressMeterState(
-            progress_meter_id=progress_meter_id, step=jnp.array(0)
-        )
+        meter_idx = _progress_meter_manager.init(self._init_bar)
+        return _TqdmProgressMeterState(meter_idx=meter_idx, step=jnp.array(0))
+
+    @staticmethod
+    def _step_bar(bar: "tqdm.tqdm", progress: FloatScalarLike) -> None:  # pyright: ignore  # noqa: F821
+        bar.n = round(100 * float(progress), 2)
+        bar.update(n=0)
+        bar.refresh()
 
     def step(
         self,
         state: _TqdmProgressMeterState,
         progress: FloatScalarLike,
     ) -> _TqdmProgressMeterState:
-        # As in `TextProgressMeter`, then `state` may pick up a batch tracer from a
-        # batched condition, so we need to handle that.
-        #
-        # In practice it should always be the case that this remains constant over the
-        # solve, so we can just do a max to extract the single value we want.
-        progress_meter_id = eqxi.unvmap_max(state.progress_meter_id)
-        # What happens here is that all batch values for `state.step` start off in sync,
+        # Here we update every `refresh_rate` steps in order to limit expensive
+        # callbacks.
+        # The `unvmap_max` is because batch values for `state.step` start off in sync,
         # and then eventually will freeze their values as that batch element finishes
         # its solve. So take a `max` to get the true number of overall solve steps for
         # the batched system.
-        step = eqxi.unvmap_max(state.step)
-        del state
-        # Track the slowest batch element.
-        progress = _unvmap_min(progress)
-
-        def update_progress_bar():
-            # `io_callback` would be preferable here (to indicate the side-effect), but
-            # that's not supported in vmap-of-while. (Even when none of the inputs to
-            # the callback are batched.)
-            jax.debug.callback(
-                _progress_meter_manager.step, progress, progress_meter_id, ordered=True
-            )
-
-        # Here we update every `refresh_rate` steps in order to limit expensive
-        # callbacks.
-        jax.lax.cond(
-            eqxi.nonbatchable(step % self.refresh_steps == 0),
-            update_progress_bar,
-            lambda: None,
+        meter_idx = jax.lax.cond(
+            eqxi.nonbatchable(eqxi.unvmap_max(state.step) % self.refresh_steps == 0),
+            lambda _idx: _progress_meter_manager.step(self._step_bar, progress, _idx),
+            lambda _idx: _idx,
+            state.meter_idx,
         )
+        return _TqdmProgressMeterState(meter_idx=meter_idx, step=state.step + 1)
 
-        return _TqdmProgressMeterState(
-            progress_meter_id=progress_meter_id, step=step + 1
-        )
+    @staticmethod
+    def _close_bar(bar: "tqdm.tqdm"):  # pyright: ignore  # noqa: F821
+        bar.n = 100.0
+        bar.update(n=0)
+        bar.close()
 
     def close(self, state: _TqdmProgressMeterState):
-        # `unvmap_max` as in `step`.
-        progress_meter_id = eqxi.unvmap_max(state.progress_meter_id)
-        # Pass in `step` to thread the order correctly. (`ordered=True` seems sketchy.
-        # At the very least it doesn't also hold the order wrt
-        # `jax.debug.callback(..., ordered=True)`.)
-        # In addition, unvmap it to be sure the callback is only called once.
-        step = eqxi.unvmap_max(state.step)
-        del state
-        io_callback(
-            lambda idx, _: _progress_meter_manager.close(idx),
-            None,
-            progress_meter_id,
-            step,
-        )
+        _progress_meter_manager.close(self._close_bar, state.meter_idx)
 
 
 TqdmProgressMeter.__init__.__doc__ = """**Arguments:**
@@ -261,8 +248,8 @@ TqdmProgressMeter.__init__.__doc__ = """**Arguments:**
 """
 
 
-class _TqdmProgressMeterManager:
-    """Host-side progress meter manager for TqdmProgressMeter."""
+class _ProgressMeterManager:
+    """Host-side progress meter manager."""
 
     def __init__(self):
         self.idx = 0
@@ -270,36 +257,56 @@ class _TqdmProgressMeterManager:
         # Not sure how important a lock really is, but included just in case.
         self.lock = threading.Lock()
 
-    def init(self) -> IntScalarLike:
-        with self.lock:
-            import tqdm  # pyright: ignore
+    def init(self, init_bar: Callable[[], Any]) -> IntScalarLike:
+        def _init() -> IntScalarLike:
+            with self.lock:
+                bar = init_bar()
+                self.idx += 1
+                self.bars[self.idx] = bar
+                return np.array(self.idx, dtype=jnp.int32)
 
-            bar_format = (
-                "{percentage:.2f}%|{bar}| [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
-            )
-            bar = tqdm.tqdm(
-                total=100,
-                unit="%",
-                bar_format=bar_format,
-            )
-            self.idx += 1
-            self.bars[self.idx] = bar
-            return np.array(self.idx, dtype=jnp.int32)
+        # Not `pure_callback` because it's not a deterministic function of its input
+        # arguments.
+        # Not `debug.callback` because it has a return value.
+        meter_idx = io_callback(_init, jax.ShapeDtypeStruct((), jnp.int32))
+        return eqxi.nonbatchable(meter_idx)
 
-    def step(self, progress: FloatScalarLike, idx: IntScalarLike):
-        with self.lock:
-            bar = self.bars[int(idx)]
-            bar.n = round(100 * float(progress), 2)
-            bar.update(n=0)
+    def step(
+        self,
+        step_bar: Callable[[Any, FloatScalarLike], None],
+        progress: FloatScalarLike,
+        idx: IntScalarLike,
+    ) -> IntScalarLike:
+        # Track the slowest batch element.
+        progress = _unvmap_min(progress)
 
-    def close(self, idx: IntScalarLike):
-        with self.lock:
-            idx = int(idx)
-            bar = self.bars[idx]
-            bar.n = 100.0
-            bar.update(n=0)
-            bar.close()
-            del self.bars[idx]
+        def _step(_progress, _idx):
+            with self.lock:
+                try:
+                    # This may pick up a spurious batch tracer from a batched condition,
+                    # so we need to handle that. We do this by using an `np.unique`.
+                    # It should always be the case that `_idx` has precisely one value!
+                    bar = self.bars[np.unique(_idx).item()]
+                except KeyError:
+                    pass  # E.g. the backward pass after a forward pass.
+                else:
+                    step_bar(bar, _progress)
+                # Return the idx to thread the callbacks in the correct order.
+                return _idx
+
+        return jax.pure_callback(_step, idx, progress, idx, vectorized=True)
+
+    def close(self, close_bar: Callable[[Any], None], idx: IntScalarLike):
+        def _close(_idx):
+            with self.lock:
+                _idx = _idx.item()
+                bar = self.bars[_idx]
+                close_bar(bar)
+                del self.bars[_idx]
+
+        # Unlike in `step`, we do the `unvmap_max` here. For mysterious reasons this
+        # callback does not trigger at all otherwise.
+        io_callback(_close, None, eqxi.unvmap_max(idx))
 
 
-_progress_meter_manager = _TqdmProgressMeterManager()
+_progress_meter_manager = _ProgressMeterManager()

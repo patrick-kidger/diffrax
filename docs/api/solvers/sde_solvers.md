@@ -4,7 +4,9 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 !!! info "Term structure"
 
-    The type of solver chosen determines how the `terms` argument of `diffeqsolve` should be laid out. Most of them operate in the same way whether they are solving an ODE or an SDE, and as such expected that it should be a single `AbstractTerm`. For SDEs that typically means a [`diffrax.MultiTerm`][] wrapping together a drift ([`diffrax.ODETerm`][]) and diffusion ([`diffrax.ControlTerm`][]). (Although you could also include any other term, e.g. an exogenous forcing term, if you wished.) For example:
+    The type of solver chosen determines how the `terms` argument of `diffeqsolve` should be laid out.
+    
+    Most solvers handle both ODEs and SDEs in the same way, and expect a single term. So for an ODE you would pass `terms=ODETerm(vector_field)`, and for an SDE you would pass `terms=MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))` or `terms=MultiTerm(ODETerm(drift), WeaklyDiagonalControlTerm(diffusion, brownian_motion))`. For example:
 
     ```python
     drift = lambda t, y, args: -y
@@ -14,9 +16,9 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
     diffeqsolve(terms, solver=Euler(), ...)
     ```
 
-    Some solvers are SDE-specific. For these, such as for example [`diffrax.StratonovichMilstein`][], then `terms` must specifically be of the form `MultiTerm(ODETerm(...), SomeOtherTerm(...))` (Typically `SomeOTherTerm` will be a `ControlTerm` or `WeaklyDiagonalControlTerm`) representing the drift and diffusion specifically.
+    For any individual solver then this is documented below, and is also available programatically under `<solver>.term_structure`.
 
-    For those SDE-specific solvers then this is documented below, and the term structure is available programmatically under `<solver>.term_structure`.
+    For advanced users, note that we typically accept any `AbstractTerm` for the diffusion, so it could be a custom one that implements more-efficient behaviour for the structure of your diffusion matrix. (Much like how [`diffrax.WeaklyDiagonalControlTerm`][] is more efficient than [`diffrax.ControlTerm`][] for diagonal diffusions.)
 
 ---
 

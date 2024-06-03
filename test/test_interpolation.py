@@ -2,6 +2,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import pytest
 
 from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 
@@ -19,9 +20,10 @@ def _test_path_endpoints(path, name, y0, y1):
     assert tree_allclose(y1, path.evaluate(path.t1))
 
 
-def test_derivative(getkey):
+@pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
+def test_derivative(dtype, getkey):
     ts = jnp.linspace(0, 5, 8)
-    ys = jr.normal(getkey(), (8, 4))
+    ys = jr.normal(getkey(), (8, 4), dtype=dtype)
 
     paths = []
 
@@ -34,7 +36,7 @@ def test_derivative(getkey):
     cubic_interp = diffrax.CubicInterpolation(ts=ts, coeffs=cubic_coeffs)
     paths.append((cubic_interp, "cubic", ys[0], ys[-1]))
 
-    y0 = jr.normal(getkey(), (3,))
+    y0 = jr.normal(getkey(), (3,), dtype=dtype)
     dense_interp = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, p: -y),
         diffrax.Euler(),
@@ -56,7 +58,8 @@ def test_derivative(getkey):
 
     for solver in all_ode_solvers:
         solver = implicit_tol(solver)
-        y0 = jr.normal(getkey(), (3,))
+        y0 = jr.normal(getkey(), (3,), dtype=dtype)
+
         solution = diffrax.diffeqsolve(
             diffrax.ODETerm(lambda t, y, p: -y),
             solver,
@@ -71,7 +74,8 @@ def test_derivative(getkey):
 
     for solver in all_split_solvers:
         solver = implicit_tol(solver)
-        y0 = jr.normal(getkey(), (3,))
+        y0 = jr.normal(getkey(), (3,), dtype=dtype)
+
         solution = diffrax.diffeqsolve(
             diffrax.MultiTerm(
                 diffrax.ODETerm(lambda t, y, p: -0.7 * y),

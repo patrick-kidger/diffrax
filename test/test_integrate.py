@@ -77,13 +77,10 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
         return
 
     if jnp.iscomplexobj(y_dtype) and treedef != jtu.tree_structure(None):
-        if isinstance(solver, diffrax.AbstractImplicitSolver):
-            return
-        else:
-            complex_warn = pytest.warns(match="Complex dtype")
+        complex_warn = pytest.warns(match="Complex dtype")
 
-            def f(t, y, args):
-                return jtu.tree_map(lambda yi: -1j * yi, y)
+        def f(t, y, args):
+            return jtu.tree_map(lambda yi: -1j * yi, y)
     else:
         complex_warn = contextlib.nullcontext()
 
@@ -144,12 +141,13 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
 
 
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
-def test_ode_order(solver):
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+def test_ode_order(solver, dtype):
     solver = implicit_tol(solver)
     key = jr.PRNGKey(5678)
     akey, ykey = jr.split(key, 2)
 
-    A = jr.normal(akey, (10, 10), dtype=jnp.float64) * 0.5
+    A = jr.normal(akey, (10, 10), dtype=dtype) * 0.5
 
     if (
         solver.term_structure
@@ -171,7 +169,7 @@ def test_ode_order(solver):
         term = diffrax.ODETerm(f)
     t0 = 0
     t1 = 4
-    y0 = jr.normal(ykey, (10,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (10,), dtype=dtype)
 
     true_yT = jax.scipy.linalg.expm((t1 - t0) * A) @ y0
     exponents = []
@@ -223,16 +221,19 @@ def _squareplus(x):
 
 def _drift(t, y, args):
     drift_mlp, _, _ = args
-    return 0.5 * drift_mlp(y)
+    with jax.numpy_dtype_promotion("standard"):
+        return 0.5 * drift_mlp(y)
 
 
 def _diffusion(t, y, args):
     _, diffusion_mlp, noise_dim = args
-    return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
+    with jax.numpy_dtype_promotion("standard"):
+        return 0.25 * diffusion_mlp(y).reshape(3, noise_dim)
 
 
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
-def test_sde_strong_order(solver_ctr, noise, theoretical_order):
+@pytest.mark.parametrize("dtype", [jnp.float64])
+def test_sde_strong_order(solver_ctr, noise, theoretical_order, dtype):
     key = jr.PRNGKey(5678)
     driftkey, diffusionkey, ykey, bmkey = jr.split(key, 4)
     num_samples = 20
@@ -270,7 +271,7 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order):
 
     t0 = 0.0
     t1 = 2.0
-    y0 = jr.normal(ykey, (3,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (3,), dtype=dtype)
 
     def get_terms(bm):
         return MultiTerm(ODETerm(_drift), ControlTerm(_diffusion, bm))
@@ -333,9 +334,10 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order):
         diffrax.SaveAt(dense=True),
     ),
 )
-def test_reverse_time(solver_ctr, dt0, saveat, getkey):
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
     key = getkey()
-    y0 = jr.normal(key, (2, 2))
+    y0 = jr.normal(key, (2, 2), dtype=dtype)
     stepsize_controller = (
         diffrax.PIDController(rtol=1e-3, atol=1e-6)
         if dt0 is None

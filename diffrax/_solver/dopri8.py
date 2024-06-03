@@ -298,7 +298,8 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
             return self.evaluate(t1) - self.evaluate(t0)
         t = linear_rescale(self.t0, t0, self.t1)
         coeffs = _vmap_polyval(jnp.asarray(self.eval_coeffs, dtype=t.dtype), t) * t
-        return (self.y0**ω + vector_tree_dot(coeffs, self.k) ** ω).ω
+        with jax.numpy_dtype_promotion("standard"):
+            return (self.y0**ω + vector_tree_dot(coeffs, self.k) ** ω).ω
 
 
 class Dopri8(AbstractERK):

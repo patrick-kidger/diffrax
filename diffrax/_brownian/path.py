@@ -9,6 +9,7 @@ import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
 from jaxtyping import Array, PRNGKeyArray, PyTree
+from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
     AbstractBrownianIncrement,
@@ -44,7 +45,19 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     motion. Hence the restrictions above. (They describe the general case for which the
     correlation structure isn't needed.)
 
-    Depending on the `levy_area` argument, this can also be used to generate Levy area.
+    !!! info "Levy Area"
+
+        Can be initialised with `levy_area` set to `diffrax.BrownianIncrement`, or
+        `diffrax.SpaceTimeLevyArea`. If `levy_area=diffrax.SpaceTimeLevyArea`, then it
+        also computes space-time Lévy area `H`. This is an additional source of
+        randomness required for certain stochastic Runge--Kutta solvers; see
+        [`diffrax.AbstractSRK`][] for more information.
+
+        An error will be thrown during tracing if Lévy area is required but is not
+        available.
+
+        The choice here will impact the Brownian path, so even with the same key, the
+        trajectory will be different depending on the value of `levy_area`.
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
@@ -130,7 +143,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
         w = jr.normal(key, shape.shape, shape.dtype) * w_std
-        dt = jnp.asarray(t1 - t0, dtype=shape.dtype)
+        dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
 
         if levy_area is SpaceTimeLevyArea:
             key, key_hh = jr.split(key, 2)

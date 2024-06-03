@@ -156,7 +156,8 @@ def _term_compatible(
             # If we've got to this point then the term is compatible
 
     try:
-        jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
+        with jax.numpy_dtype_promotion("standard"):
+            jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except ValueError:
         # ValueError may also arise from mismatched tree structures
         return False
@@ -709,11 +710,6 @@ def diffeqsolve(
         eqx.is_array(xi) and jnp.iscomplexobj(xi)
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
-        if isinstance(solver, AbstractImplicitSolver):
-            raise ValueError(
-                "Implicit solvers in conjunction with complex dtypes is currently not "
-                "supported."
-            )
         warnings.warn(
             "Complex dtype support is work in progress, please read "
             "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully.",
