@@ -398,13 +398,19 @@ def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
             assert tree_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
 
 
-def test_reverse_time_save():
+@pytest.mark.parametrize(
+    "saveat",
+    (
+        diffrax.SaveAt(t0=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(t1=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(dense=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(steps=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(ts=jnp.linspace(3.0, 1.0, 5), fn=lambda t, y, args: t),
+    ),
+)
+def test_reverse_time_saveat(saveat):
     def f(t, y, args):
         return -y
-
-    saveat = diffrax.SaveAt(
-        t1=False, ts=jnp.linspace(4, 0.3, 5), fn=lambda t, y, args: t
-    )
 
     t0 = 4
     t1 = 0.3
@@ -418,6 +424,7 @@ def test_reverse_time_save():
         dt0,
         y0,
         saveat=saveat,
+        max_steps=185,
     )
     assert tree_allclose(sol1.ys, sol1.ts)
 

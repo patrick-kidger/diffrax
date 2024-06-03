@@ -881,24 +881,17 @@ def diffeqsolve(
 
     saveat = eqx.tree_at(_get_subsaveat_ts, saveat, replace_fn=_check_subsaveat_ts)
 
-    def _get_subsaveat_fns(saveat):
-        out = [
-            s.fn
-            for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
-            if s.ts is not None
-        ]
-        return [x for x in out if x is not None]
+    def _subsaveat_direction_fn(x):
+        if _is_subsaveat(x):
+            if x.fn is not save_y:
+                direction_fn = lambda t, y, args: x.fn(direction * t, y, args)
+                return eqx.tree_at(lambda x: x.fn, x, direction_fn)
+            else:
+                return x
+        else:
+            return x
 
-    def _direction_replace(fn):
-        if fn is save_y:
-            return fn
-        return lambda t, y, args: fn(direction * t, y, args)
-
-    saveat = eqx.tree_at(
-        _get_subsaveat_fns,
-        saveat,
-        replace_fn=_direction_replace,  # noqa: F821
-    )
+    saveat = jtu.tree_map(_subsaveat_direction_fn, saveat, is_leaf=_is_subsaveat)
 
     # Initialise states
     tprev = t0
