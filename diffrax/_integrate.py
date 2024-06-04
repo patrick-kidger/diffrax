@@ -936,7 +936,7 @@ def diffeqsolve(
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
-        ts = jnp.full(out_size, jnp.inf, dtype=time_dtype)
+        ts = jnp.full(out_size, direction * jnp.inf, dtype=time_dtype)
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
         ys = jtu.tree_map(
             lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
@@ -1025,7 +1025,6 @@ def diffeqsolve(
     #
 
     progress_meter.close(final_state.progress_meter_state)
-
     is_save_state = lambda x: isinstance(x, SaveState)
     ts = jtu.tree_map(
         lambda s: s.ts * direction, final_state.save_state, is_leaf=is_save_state

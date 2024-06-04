@@ -424,7 +424,6 @@ def test_reverse_time_saveat(saveat):
         dt0,
         y0,
         saveat=saveat,
-        max_steps=185,
     )
     assert tree_allclose(sol1.ys, sol1.ts)
 
