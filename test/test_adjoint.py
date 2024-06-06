@@ -8,6 +8,7 @@ import jax.interpreters.ad
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import optax
 import pytest
 from jaxtyping import Array
@@ -329,7 +330,11 @@ def test_backprop_ts(getkey):
     run(mlp)
 
 
-def test_sde_against(getkey):
+@pytest.mark.parametrize(
+    "diffusion_fn",
+    ["weak", "lineax"],
+)
+def test_sde_against(diffusion_fn, getkey):
     def f(t, y, args):
         k0, _ = args
         return -k0 * y
@@ -338,6 +343,10 @@ def test_sde_against(getkey):
         _, k1 = args
         return k1 * y
 
+    def g_lx(t, y, args):
+        _, k1 = args
+        return jtu.tree_map(lx.DiagonalLinearOperator, k1 * y)
+
     t0 = 0
     t1 = 1
     dt0 = 0.001
@@ -345,7 +354,10 @@ def test_sde_against(getkey):
     shape = (2,)
     bm = diffrax.VirtualBrownianTree(t0, t1, tol, shape, key=getkey())
     drift = diffrax.ODETerm(f)
-    diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+    if diffusion_fn == "weak":
+        diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+    else:
+        diffusion = diffrax.ControlTerm(g_lx, bm)
     terms = diffrax.MultiTerm(drift, diffusion)
     solver = diffrax.Heun()
 
