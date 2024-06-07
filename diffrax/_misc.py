@@ -1,4 +1,6 @@
+import warnings
 from collections.abc import Callable
+from functools import wraps
 from typing import Any, cast, Optional
 
 import jax
@@ -10,6 +12,10 @@ import optimistix as optx
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
 from ._custom_types import BoolScalarLike, RealScalarLike
+
+
+# PendingDeprecationWarning are usually supressed by default
+warnings.simplefilter("always", PendingDeprecationWarning)
 
 
 _itemsize_kind_type: dict[tuple[int, str], Any] = {
@@ -189,3 +195,20 @@ def upcast_or_raise(
     elif config_value != "standard":
         assert False, f"Unrecognised `JAX_NUMPY_DTYPE_PROMOTION={config_value}`"
     return jnp.astype(x, promote_dtype)
+
+
+def pending_deprecation_warning(cls):
+    orig_init = cls.__init__
+
+    @wraps(orig_init)
+    def new_init(self, *args, **kwargs):
+        warnings.warn(
+            f"{cls.__name__} is pending deprecation and may be removed "
+            "in future versions. Consider using the new alternative "
+            "ControlTerm(lx.DiagonalLinearOperator(...)).",
+            PendingDeprecationWarning,
+        )
+        orig_init(self, *args, **kwargs)
+
+    cls.__init__ = new_init
+    return cls
