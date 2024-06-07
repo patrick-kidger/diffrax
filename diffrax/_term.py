@@ -13,7 +13,7 @@ from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
 
 from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
-from ._misc import upcast_or_raise
+from ._misc import pending_deprecation_warning, upcast_or_raise
 from ._path import AbstractPath
 
 
@@ -289,7 +289,8 @@ _AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 - `vector_field`: A callable representing the vector field. This callable takes three
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
     the evolving state of the system. `args` are any static arguments as passed to
-    [`diffrax.diffeqsolve`][].
+    [`diffrax.diffeqsolve`][]. This `vector_field` can be a function that returns a
+    jax array, or returns any lineax `AbstractLinearOperator`.
 - `control`: The control. Should either be (A) a [`diffrax.AbstractPath`][], in which
     case its `evaluate(t0, t1)` method will be used to give the increment of the control
     over a time interval `[t0, t1]`, or (B) a callable `(t0, t1) -> increment`, which
@@ -310,6 +311,26 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
 
     A common special case is when `y0` and `control` are vector-valued, and
     `vector_field` is matrix-valued.
+
+    To make a weakly diagonal control term, simply use your vector field
+    callable return a `lx.DiagonalLinearOperator`.
+
+    !!! info
+
+        Why "weakly" diagonal? Consider the matrix representation of the vector field,
+        as a square diagonal matrix. In general, the (i,i)-th element may depending
+        upon any of the values of `y`. It is only if the (i,i)-th element only depends
+        upon the i-th element of `y` that the vector field is said to be "diagonal",
+        without the "weak". (This stronger property is useful in some SDE solvers.)
+
+    !!! example
+
+        ```python
+        control = UnsafeBrownianPath(shape=(2,), key=...)
+        vector_field = lambda t, y, args: lx.DiagonalLinearOperator(jnp.ones_like(y))
+        diffusion_term = ControlTerm(vector_field, control)
+        diffeqsolve(diffusion_term, ...)
+        ```
 
     !!! example
 
@@ -347,6 +368,7 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
         return jtu.tree_map(_prod, vf, control)
 
 
+@pending_deprecation_warning
 class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
