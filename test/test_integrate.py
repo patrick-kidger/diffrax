@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import pytest
 import scipy.stats
 from diffrax import ControlTerm, MultiTerm, ODETerm
@@ -603,6 +604,9 @@ def test_term_compatibility_pytree():
             "e": diffrax.MultiTerm[
                 tuple[diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"]]]
             ],
+            "f": diffrax.MultiTerm[
+                tuple[diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"]]]
+            ],
         }
         interpolation_cls = diffrax.LocalLinearInterpolation
 
@@ -635,6 +639,13 @@ def test_term_compatibility_pytree():
                 lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(5)
             ),
         ),
+        "f": diffrax.MultiTerm(
+            ode_term,
+            diffrax.ControlTerm(
+                lambda t, y, args: lx.DiagonalLinearOperator(-y),
+                lambda t0, t1: jnp.array(t1 - t0).repeat(5),
+            ),
+        ),
     }
     compatible_y0 = {
         "a": jnp.array(1.0),
@@ -642,6 +653,7 @@ def test_term_compatibility_pytree():
         "c": jnp.arange(3.0),
         "d": jnp.arange(4.0),
         "e": jnp.arange(5.0),
+        "f": jnp.arange(5.0),
     }
     diffrax.diffeqsolve(compatible_term, solver, 0.0, 1.0, 0.1, compatible_y0)
 
@@ -657,6 +669,13 @@ def test_term_compatibility_pytree():
                 lambda t0, t1: t1 - t0,  # wrong control shape
             ),
         ),
+        "f": diffrax.MultiTerm(
+            ode_term,
+            diffrax.ControlTerm(
+                lambda t, y, args: lx.DiagonalLinearOperator(-y),
+                lambda t0, t1: jnp.array(t1 - t0).repeat(5),
+            ),
+        ),
     }
     incompatible_term2 = {
         "a": ode_term,
@@ -669,6 +688,13 @@ def test_term_compatibility_pytree():
                 lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
             ),
         ),
+        "f": diffrax.MultiTerm(
+            ode_term,
+            diffrax.ControlTerm(
+                lambda t, y, args: lx.DiagonalLinearOperator(-y),
+                lambda t0, t1: jnp.array(t1 - t0).repeat(5),
+            ),
+        ),
     }
     incompatible_term3 = {
         "a": ode_term,
@@ -679,6 +705,13 @@ def test_term_compatibility_pytree():
         "e": diffrax.WeaklyDiagonalControlTerm(
             lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
         ),
+        "f": diffrax.MultiTerm(
+            ode_term,
+            diffrax.ControlTerm(
+                lambda t, y, args: lx.DiagonalLinearOperator(-y),
+                lambda t0, t1: jnp.array(t1 - t0).repeat(5),
+            ),
+        ),
     }
 
     incompatible_y0_1 = {
@@ -687,6 +720,7 @@ def test_term_compatibility_pytree():
         "c": jnp.arange(4.0),  # of length 4, not 3
         "d": jnp.arange(4.0),
         "e": jnp.arange(5.0),
+        "f": jnp.arange(5.0),
     }
     incompatible_y0_2 = {
         "a": jnp.array(1.0),
@@ -694,6 +728,7 @@ def test_term_compatibility_pytree():
         "c": jnp.arange(3.0),
         # Missing "d" piece
         "e": jnp.arange(5.0),
+        "f": jnp.arange(5.0),
     }
     incompatible_y0_3 = jnp.array(4.0)  # Completely the wrong structure!
     for term in (
