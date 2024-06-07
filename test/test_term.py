@@ -1,5 +1,6 @@
 import diffrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
@@ -45,8 +46,11 @@ def test_control_term(getkey):
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
-    assert dx.shape == (2,)
-    assert vf.shape == (3, 2)
+    if isinstance(dx, jax.Array) and isinstance(vf, jax.Array):
+        assert dx.shape == (2,)
+        assert vf.shape == (3, 2)
+    else:
+        raise TypeError("dx/vf is not an array")
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dx))
 
@@ -85,8 +89,11 @@ def test_weakly_diagional_control_term(getkey):
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
-    assert dx.shape == (3,)
-    assert vf.shape == (3,)
+    if isinstance(dx, jax.Array) and isinstance(vf, jax.Array):
+        assert dx.shape == (3,)
+        assert vf.shape == (3,)
+    else:
+        raise TypeError("dx/vf is not an array")
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dx))
 

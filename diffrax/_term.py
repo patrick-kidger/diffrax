@@ -7,6 +7,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax as lx
 import numpy as np
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
@@ -335,6 +336,14 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
     """
 
     def prod(self, vf: _VF, control: _Control) -> Y:
+        if isinstance(vf, lx.AbstractLinearOperator):
+            return jtu.tree_map(
+                lambda _vf, _control: _vf.mv(_control),
+                vf,
+                control,
+                is_leaf=lambda x: eqx.is_array(x)
+                or isinstance(x, lx.AbstractLinearOperator),
+            )
         return jtu.tree_map(_prod, vf, control)
 
 
