@@ -389,7 +389,18 @@ def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
         or saveat.subs.ts is not None
         or saveat.subs.steps
     ):
-        assert tree_allclose(sol1.ts, -cast(Array, sol2.ts), equal_nan=True)
+        assert sol1.ts is not None
+        assert sol2.ts is not None
+        assert tree_allclose(
+            sol1.ts[~jnp.isinf(sol1.ts)],
+            -cast(Array, sol2.ts[~jnp.isinf(sol2.ts)]),
+            equal_nan=True,
+        )
+        assert tree_allclose(
+            sol1.ts[jnp.isinf(sol1.ts)],
+            cast(Array, sol2.ts[jnp.isinf(sol2.ts)]),
+            equal_nan=True,
+        )
         assert tree_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
         t = jnp.linspace(0.3, 4, 20)
