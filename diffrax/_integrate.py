@@ -37,7 +37,7 @@ from ._progress_meter import (
     NoProgressMeter,
 )
 from ._root_finder import use_stepsize_tol
-from ._saveat import SaveAt, SubSaveAt
+from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
 from ._solver import (
     AbstractImplicitSolver,
@@ -881,6 +881,18 @@ def diffeqsolve(
 
     saveat = eqx.tree_at(_get_subsaveat_ts, saveat, replace_fn=_check_subsaveat_ts)
 
+    def _subsaveat_direction_fn(x):
+        if _is_subsaveat(x):
+            if x.fn is not save_y:
+                direction_fn = lambda t, y, args: x.fn(direction * t, y, args)
+                return eqx.tree_at(lambda x: x.fn, x, direction_fn)
+            else:
+                return x
+        else:
+            return x
+
+    saveat = jtu.tree_map(_subsaveat_direction_fn, saveat, is_leaf=_is_subsaveat)
+
     # Initialise states
     tprev = t0
     error_order = solver.error_order(terms)
@@ -924,7 +936,7 @@ def diffeqsolve(
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
-        ts = jnp.full(out_size, jnp.inf, dtype=time_dtype)
+        ts = jnp.full(out_size, direction * jnp.inf, dtype=time_dtype)
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
         ys = jtu.tree_map(
             lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
@@ -1013,7 +1025,6 @@ def diffeqsolve(
     #
 
     progress_meter.close(final_state.progress_meter_state)
-
     is_save_state = lambda x: isinstance(x, SaveState)
     ts = jtu.tree_map(
         lambda s: s.ts * direction, final_state.save_state, is_leaf=is_save_state
