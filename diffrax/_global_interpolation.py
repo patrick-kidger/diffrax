@@ -40,7 +40,7 @@ class AbstractGlobalInterpolation(AbstractPath):
     ) -> tuple[IntScalarLike, RealScalarLike]:
         maxlen = self.ts_size - 2
         index = jnp.searchsorted(self.ts, t, side="left" if left else "right")
-        index = jnp.clip(index - 1, a_min=0, a_max=maxlen)
+        index = jnp.clip(index - 1, min=0, max=maxlen)
         # Will never access the final element of `ts`; this is correct behaviour.
         fractional_part = t - self.ts[index]
         return index, fractional_part
