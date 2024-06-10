@@ -1,8 +1,8 @@
 import abc
 import operator
-import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
+from typing_extensions import deprecated
 
 import equinox as eqx
 import jax
@@ -373,6 +373,11 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
         return jtu.tree_map(_prod, vf, control)
 
 
+@deprecated(
+    "WeaklyDiagonalControlTerm is pending deprecation and may be removed "
+    "in future versions. Consider using the new alternative "
+    "ControlTerm(lx.DiagonalLinearOperator(...))."
+)
 class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
@@ -394,15 +399,6 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
         upon the i-th element of `y` that the vector field is said to be "diagonal",
         without the "weak". (This stronger property is useful in some SDE solvers.)
     """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "WeaklyDiagonalControlTerm is pending deprecation and may be removed "
-            "in future versions. Consider using the new alternative "
-            "ControlTerm(lx.DiagonalLinearOperator(...)).",
-            DeprecationWarning,
-        )
-        super().__init__(*args, **kwargs)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):
