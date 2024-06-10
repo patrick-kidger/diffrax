@@ -358,18 +358,8 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
     """
 
     def prod(self, vf: _VF, control: _Control) -> Y:
-        if isinstance(
-            jtu.tree_leaves(
-                vf, is_leaf=lambda x: isinstance(x, lx.AbstractLinearOperator)
-            )[0],
-            lx.AbstractLinearOperator,
-        ):
-            return jtu.tree_map(
-                lambda _vf, _control: _vf.mv(_control),
-                vf,
-                control,
-                is_leaf=lambda x: isinstance(x, lx.AbstractLinearOperator),
-            )
+        if isinstance(vf, lx.AbstractLinearOperator):
+            return vf.mv(control)
         return jtu.tree_map(_prod, vf, control)
 
 
