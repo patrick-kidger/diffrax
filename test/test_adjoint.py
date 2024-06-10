@@ -345,7 +345,7 @@ def test_sde_against(diffusion_fn, getkey):
 
     def g_lx(t, y, args):
         _, k1 = args
-        return jtu.tree_map(lx.DiagonalLinearOperator, k1 * y)
+        return lx.DiagonalLinearOperator(k1 * y)
 
     t0 = 0
     t1 = 1

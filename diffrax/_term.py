@@ -1,5 +1,6 @@
 import abc
 import operator
+import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
 
@@ -13,7 +14,7 @@ from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
 
 from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
-from ._misc import pending_deprecation_warning, upcast_or_raise
+from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
 
@@ -290,7 +291,7 @@ _AbstractControlTerm.__init__.__doc__ = """**Arguments:**
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
     the evolving state of the system. `args` are any static arguments as passed to
     [`diffrax.diffeqsolve`][]. This `vector_field` can be a function that returns a
-    jax array, or returns any lineax `AbstractLinearOperator`.
+    JAX array, or returns any [lineax `AbstractLinearOperator`](https://docs.kidger.site/lineax/api/operators/#lineax.AbstractLinearOperator).
 - `control`: The control. Should either be (A) a [`diffrax.AbstractPath`][], in which
     case its `evaluate(t0, t1)` method will be used to give the increment of the control
     over a time interval `[t0, t1]`, or (B) a callable `(t0, t1) -> increment`, which
@@ -357,18 +358,21 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
     """
 
     def prod(self, vf: _VF, control: _Control) -> Y:
-        if isinstance(vf, lx.AbstractLinearOperator):
+        if isinstance(
+            jtu.tree_leaves(
+                vf, is_leaf=lambda x: isinstance(x, lx.AbstractLinearOperator)
+            )[0],
+            lx.AbstractLinearOperator,
+        ):
             return jtu.tree_map(
                 lambda _vf, _control: _vf.mv(_control),
                 vf,
                 control,
-                is_leaf=lambda x: eqx.is_array(x)
-                or isinstance(x, lx.AbstractLinearOperator),
+                is_leaf=lambda x: isinstance(x, lx.AbstractLinearOperator),
             )
         return jtu.tree_map(_prod, vf, control)
 
 
-@pending_deprecation_warning
 class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
     r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
@@ -390,6 +394,15 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
         upon the i-th element of `y` that the vector field is said to be "diagonal",
         without the "weak". (This stronger property is useful in some SDE solvers.)
     """
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "WeaklyDiagonalControlTerm is pending deprecation and may be removed "
+            "in future versions. Consider using the new alternative "
+            "ControlTerm(lx.DiagonalLinearOperator(...)).",
+            DeprecationWarning,
+        )
+        super().__init__(*args, **kwargs)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):
