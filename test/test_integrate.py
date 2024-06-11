@@ -390,13 +390,54 @@ def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
         or saveat.subs.ts is not None
         or saveat.subs.steps
     ):
-        assert tree_allclose(sol1.ts, -cast(Array, sol2.ts), equal_nan=True)
+        assert sol1.ts is not None
+        assert sol2.ts is not None
+        assert tree_allclose(
+            sol1.ts[~jnp.isinf(sol1.ts)],
+            -cast(Array, sol2.ts[~jnp.isinf(sol2.ts)]),
+            equal_nan=True,
+        )
+        assert tree_allclose(
+            sol1.ts[jnp.isinf(sol1.ts)],
+            cast(Array, sol2.ts[jnp.isinf(sol2.ts)]),
+            equal_nan=True,
+        )
         assert tree_allclose(sol1.ys, sol2.ys, equal_nan=True)
     if saveat.dense:
         t = jnp.linspace(0.3, 4, 20)
         for ti in t:
             assert tree_allclose(sol1.evaluate(ti), sol2.evaluate(-ti))
             assert tree_allclose(sol1.derivative(ti), -sol2.derivative(-ti))
+
+
+@pytest.mark.parametrize(
+    "saveat",
+    (
+        diffrax.SaveAt(t0=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(t1=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(dense=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(steps=True, fn=lambda t, y, args: t),
+        diffrax.SaveAt(ts=jnp.linspace(3.0, 1.0, 5), fn=lambda t, y, args: t),
+    ),
+)
+def test_reverse_time_saveat(saveat):
+    def f(t, y, args):
+        return -y
+
+    t0 = 4
+    t1 = 0.3
+    dt0 = -1 / 50
+    y0 = 1.0
+    sol1 = diffrax.diffeqsolve(
+        diffrax.ODETerm(f),
+        diffrax.Euler(),
+        t0,
+        t1,
+        dt0,
+        y0,
+        saveat=saveat,
+    )
+    assert tree_allclose(sol1.ys, sol1.ts)
 
 
 def test_semi_implicit_euler():
