@@ -5,6 +5,7 @@ Diffrax is a [JAX](https://github.com/google/jax)-based library providing numeri
 
 Features include:
 
+
 - ODE/SDE/CDE (ordinary/stochastic/controlled) solvers;
 - lots of different solvers (including `Tsit5`, `Dopri8`, symplectic solvers, implicit solvers);
 - vmappable _everything_ (including the region of integration);
