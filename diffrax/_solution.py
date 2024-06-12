@@ -67,10 +67,8 @@ class Solution(AbstractPath):
     - `ys`: The value of the solution at each of the times in `ts`. Might `None` if no
         values were saved.
     - `stats`: Statistics for the solve (number of steps etc.).
-    - `result`: Integer specifying the success or cause of failure of the solve. A
-        value of `0` corresponds to a successful solve. Any other value is a failure.
-        A human-readable message can be obtained by looking up messages via
-        `diffrax.RESULTS[<integer>]`.
+    - `result`: Enumeration specifying the success or cause of failure of the solve.
+        A human-readable message is displayed if printed. No message means success!
     - `solver_state`: If saved, the final internal state of the numerical solver.
     - `controller_state`: If saved, the final internal state for the step size
         controller.
