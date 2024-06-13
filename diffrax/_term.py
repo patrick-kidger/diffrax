@@ -493,7 +493,7 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         ],
         args: Args,
     ) -> bool:
-        control_struct = jax.eval_shape(self.contr, t0, t1)
+        control_struct = eqx.filter_eval_shape(self.contr, t0, t1)
         if sum(c.size for c in jtu.tree_leaves(control_struct)) in (0, 1):
             return False
         else:
