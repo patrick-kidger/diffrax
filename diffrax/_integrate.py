@@ -144,7 +144,8 @@ def _term_compatible(
                     raise ValueError
 
                 contr = ft.partial(term.contr, **term_contr_kwargs)
-                control_type = jax.eval_shape(contr, 0.0, 0.0)
+                # Work around https://github.com/google/jax/issues/21825
+                control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
                 control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
                 )
