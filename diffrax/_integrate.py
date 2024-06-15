@@ -564,7 +564,7 @@ def loop(
             event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
             result = RESULTS.where(
                 had_event,
-                RESULTS.terminating_event_occurred,
+                RESULTS.event_occurred,
                 result,
             )
 
@@ -680,7 +680,7 @@ def loop(
                     # to avoid this, I think.
                     _value = lax.cond(_event_mask_i, _call_real_impl, lambda: 0.0)
 
-                    # Third: if no events triggered at all, then has the root occur at
+                    # Third: if no events triggered at all, then have the root occur at
                     # the end of the last step (which will be the `t1` of the overall
                     # solve).
                     _value = jnp.where(event_happened, _value, _distance_from_t_end)
@@ -1345,7 +1345,7 @@ def diffeqsolve(
         event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
         result = RESULTS.where(
             had_event,
-            RESULTS.terminating_event_occurred,
+            RESULTS.event_occurred,
             result,
         )
         del had_event, event_structure, event_mask_leaves, event_values__mask

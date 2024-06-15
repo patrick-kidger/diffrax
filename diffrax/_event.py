@@ -11,9 +11,10 @@ from ._step_size_controller import AbstractAdaptiveStepSizeController
 
 
 class Event(eqx.Module):
-    """Can be used to terminate the solve early if one of multiple conditions
-    is triggered. It allows for both continuous and boolean condition functions. In the
-    former case, a root finder can be used to find the exact time of the event.
+    """Can be used to terminate the solve early if a condition, or one of multiple
+    conditions, is triggered. It allows for both boolean and continuous condition
+    functions. In the latter case, a root finder can be used to find the exact time of
+    the event. Boolean and continuous conditions can be used together.
 
     Instances of this class should be passed as the `event` argument of
     [`diffrax.diffeqsolve`][].
@@ -25,26 +26,33 @@ class Event(eqx.Module):
 
 Event.__init__.__doc__ = """**Arguments:**
 
-- `cond_fn`: A PyTree of functions `f(t, y, args, **kwargs) -> c` returning a boolean or
-    a real number. If the return value is a boolean, the solve will terminate when `c`
-    is `True`. If the return value is a real number, the solve will terminate when `c`
+- `cond_fn`: A function or PyTree of functions `f(t, y, args, **kwargs) -> c` each
+    returning either a boolean or a real number. If the return value is a boolean, then
+    the solve will terminate on the first step on which `c` becomes `True`. If the
+    return value is a real number, then the solve will terminate on the step when `c`
     changes sign.
-- `root_finder`: An optional root finder to use for finding the exact time of the event.
-    If the triggered condition function is boolean,  the returned time will be the right
-    endpoint of the last successful step.
+
+- `root_finder`: An optional [root finder](../nonlinear_solver/) to use for finding
+    the exact time of the event. If the triggered condition function returns a real
+    number, then the final time will be the time at which that real number equals zero.
+    (If the triggered condition function returns a boolean, then the returned time will
+    just be the end of the step on which it becomes `True`.) 
+    [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
+    would be a typical choice here.
 
 !!! Example
 
     Consider a bouncing ball dropped from some intial height $x_0$. We can model 
     the ball by a 2-dimensional ODE
 
-    $dx_t = v_t dt, \\quad dv_t = -g dt,$
+    $\\frac{dx_t}{dt} = v_t, \\quad \\frac{dv_t}{dt} = -g,$
 
     where $x_t$ represents the height of the ball, $v_t$ its velocity, 
     and $g$ is the gravitational constant. With $g=8$, this corresponds to the
     vector field:
+
     ```python
-    def vf(t, y, args):
+    def vector_field(t, y, args):
         _, v = y
         return jnp.array([v, -8.0])
     ```
@@ -52,6 +60,7 @@ Event.__init__.__doc__ = """**Arguments:**
     Figuring out exactly when the ball hits the ground amounts to 
     solving the ODE until the event $x_t=0$ is triggered. This can be done by using 
     the real-valued condition function:
+
     ```python
     def cond_fn(t, y, args, **kwargs):
         x, _ = y
@@ -59,6 +68,7 @@ Event.__init__.__doc__ = """**Arguments:**
     ```
 
     With $x_0=10$, this would yield:
+
     ```python
     y0 = jnp.array([10.0, 0.0])
     t0 = 0
@@ -68,11 +78,10 @@ Event.__init__.__doc__ = """**Arguments:**
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
     event = diffrax.Event(cond_fn, root_finder)
     solver = diffrax.Tsit5()
-    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event, saveat=saveat)
+    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
     print(f"Event time: {sol.ts[0]}") # Event time: 1.58...
     print(f"Velocity at event time: {sol.ys[0, 1]}") # Velocity at event time: -12.64...
     ```
-
 """
 
 
@@ -95,7 +104,7 @@ def steady_state_event(
     **Returns:**
 
     A function `f(t, y, args, **kwargs)`, that can be passed to
-    `diffrax.Evetnt(cond_fn=..., ...)`.
+    `diffrax.Event(cond_fn=..., ...)`.
     """
 
     def _cond_fn(t, y, args, *, terms, solver, stepsize_controller, **kwargs):
