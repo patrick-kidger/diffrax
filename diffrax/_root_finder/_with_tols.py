@@ -18,11 +18,6 @@ def with_stepsize_controller_tols(cls: type[optx.AbstractRootFinder]):
     """Wraps a root finding class to indicate that it should use the same tolerances as
     were provided to an adaptive stepsize controller.
 
-    !!! Example
-
-        ```python
-        ```
-
     **Arguments:**
 
     - `cls`: a subclass of `optimistix.AbstractRootFinder`.
