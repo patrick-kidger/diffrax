@@ -18,7 +18,7 @@ class RESULTS(optx.RESULTS):  # pyright: ignore
     dt_min_reached = (
         "The minimum step size was reached in the differential equation solver."
     )
-    terminating_event_occurred = (
+    event_occurred = (
         "Terminating differential equation solve because an event occurred."
     )
 
@@ -32,9 +32,10 @@ def discrete_terminating_event_occurred(self):
     warnings.warn(
         "`diffrax.RESULTS.discrete_terminating_event_occurred` is deprecated in "
         "favour of `diffrax.RESULTS.terminating_event_occurred`. This will be "
-        "removed in some future version of Diffrax."
+        "removed in some future version of Diffrax.",
+        stacklevel=2,
     )
-    return self.terminating_event_occurred
+    return self.event_occurred
 
 
 RESULTS.discrete_terminating_event_occurred = discrete_terminating_event_occurred  # pyright: ignore[reportAttributeAccessIssue]
@@ -49,10 +50,8 @@ def is_successful(result: RESULTS) -> Bool[Array, ""]:
     return result == RESULTS.successful
 
 
-# TODO: In the future we may support other event types, in which case this function
-# should be updated.
 def is_event(result: RESULTS) -> Bool[Array, ""]:
-    return result == RESULTS.terminating_event_occurred
+    return result == RESULTS.event_occurred
 
 
 def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
@@ -84,8 +83,9 @@ class Solution(AbstractPath):
     - `ys`: The value of the solution at each of the times in `ts`. Might `None` if no
         values were saved.
     - `stats`: Statistics for the solve (number of steps etc.).
-    - `result`: Enumeration specifying the success or cause of failure of the solve.
-        A human-readable message is displayed if printed. No message means success!
+    - `result`: A [`diffrax.RESULT`][] specifying the success or cause of failure of the
+        solve. A human-readable message is displayed if printed. No message means
+        success!
     - `solver_state`: If saved, the final internal state of the numerical solver.
     - `controller_state`: If saved, the final internal state for the step size
         controller.

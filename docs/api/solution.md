@@ -15,3 +15,9 @@
             - message
             - evaluate
             - derivative
+
+---
+
+::: diffrax.RESULTS
+    selection:
+        members: false
