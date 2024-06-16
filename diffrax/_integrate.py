@@ -809,7 +809,7 @@ def loop(
             if subsaveat.t1 or subsaveat.steps:
                 # In this branch we need to replace the last value with tfinal
                 # and yfinal returned by the root finder also if subsaveat.steps
-                # because we deled the last value after the event time above.
+                # because we deleted the last value after the event time above.
                 save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
