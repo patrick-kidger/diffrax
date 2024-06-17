@@ -4,7 +4,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-import pytest
 from jaxtyping import Array, PyTree, Shaped
 
 from .helpers import tree_allclose
@@ -151,13 +150,3 @@ def test_cde_adjoint_term(getkey):
     vf = adjoint_term.vf(t, aug, args)
     vf_prod2 = adjoint_term.prod(vf, dt)
     assert tree_allclose(vf_prod1, vf_prod2)
-
-
-def test_weaklydiagonal_deprecate():
-    with pytest.warns(
-        DeprecationWarning,
-        match="WeaklyDiagonalControlTerm is pending deprecation",
-    ):
-        _ = diffrax.WeaklyDiagonalControlTerm(
-            lambda t, y, args: 0.0, lambda t0, t1: jnp.array(t1 - t0)
-        )
