@@ -602,8 +602,8 @@ class PIDController(
         factormin = jnp.where(keep_step, 1, self.factormin)
         factor = jnp.clip(
             self.safety * factor1 * factor2 * factor3,
-            a_min=factormin,
-            a_max=self.factormax,
+            min=factormin,
+            max=self.factormax,
         )
         # Once again, see above. In case we have gradients on {i,p,d}coeff.
         # (Probably quite common for them to have zero tangents if passed across
