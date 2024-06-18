@@ -725,72 +725,30 @@ def loop(
         )
 
         # We delete all the saved values after the event time.
-        # For values saved at steps
-        def unsave_step(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps:
-                save_index = save_state.save_index - 1
-                _ts = save_state.ts.at[save_index].set(jnp.inf)
-                _ys = jtu.tree_map(
-                    lambda _, __ys: __ys.at[save_index].set(jnp.inf),
-                    subsaveat.fn(tfinal, yfinal, args),
-                    save_state.ys,
-                )
-                save_state = eqx.tree_at(
-                    lambda s: s.save_index, save_state, replace_fn=lambda i: i - 1
-                )
-                save_state = SaveState(
-                    saveat_ts_index=save_state.saveat_ts_index,
-                    ts=_ts,
-                    ys=_ys,
-                    save_index=save_index,
-                )
-            return save_state
-
-        save_state = jtu.tree_map(
-            unsave_step,
-            saveat.subs,
-            final_state.save_state,
-            is_leaf=_is_subsaveat,
-        )
-
-        # For values saved at specific times, ts
-        def unsave_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.ts is not None:
-                save_state = unsave_ts_impl(subsaveat.ts, subsaveat.fn, save_state)
-            return save_state
-
-        def unsave_ts_impl(ts, fn, save_state: SaveState) -> SaveState:
-            def _cond_fun(_save_state):
-                return (ts[_save_state.saveat_ts_index - 1] > tfinal) & (
-                    _save_state.saveat_ts_index - 1 > 0
-                )
-
-            def _body_fun(_save_state):
-                saveat_ts_index = _save_state.saveat_ts_index - 1
-                _ts = _save_state.ts.at[saveat_ts_index].set(jnp.inf)
-                _ys = jtu.tree_map(
-                    lambda _, __ys: __ys.at[saveat_ts_index].set(jnp.inf),
-                    fn(tfinal, yfinal, args),
-                    _save_state.ys,
-                )
-                return SaveState(
-                    saveat_ts_index=saveat_ts_index,
-                    ts=_ts,
-                    ys=_ys,
-                    save_index=_save_state.save_index - 1,
-                )
-
-            return inner_while_loop(
-                _cond_fun,
-                _body_fun,
-                save_state,
-                max_steps=len(ts),
-                buffers=_inner_buffers,
-                checkpoints=len(ts),
+        def unsave(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+            ts = save_state.ts
+            mask = ts >= tfinal
+            _save_index = save_state.save_index - jnp.sum(mask & (ts < jnp.inf))
+            _saveat_ts_index = save_state.saveat_ts_index - jnp.sum(
+                mask & (ts < jnp.inf)
+            )
+            _ts = jnp.where(mask, jnp.inf, ts)
+            _ys = jtu.tree_map(
+                lambda _, __ys: jnp.where(
+                    mask[(...,) + (jnp.newaxis,) * (__ys.ndim - 1)], jnp.inf, __ys
+                ),
+                subsaveat.fn(tfinal, yfinal, args),
+                save_state.ys,
+            )
+            return SaveState(
+                saveat_ts_index=_saveat_ts_index,
+                ts=_ts,
+                ys=_ys,
+                save_index=_save_index,
             )
 
         save_state = jtu.tree_map(
-            unsave_ts, saveat.subs, save_state, is_leaf=_is_subsaveat
+            unsave, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
         )
 
         final_state = eqx.tree_at(
