@@ -734,10 +734,9 @@ def loop(
             )
             _ts = jnp.where(mask, jnp.inf, ts)
             _ys = jtu.tree_map(
-                lambda _, __ys: jnp.where(
+                lambda __ys: jnp.where(
                     mask[(...,) + (jnp.newaxis,) * (__ys.ndim - 1)], jnp.inf, __ys
                 ),
-                subsaveat.fn(tfinal, yfinal, args),
                 save_state.ys,
             )
             return SaveState(
