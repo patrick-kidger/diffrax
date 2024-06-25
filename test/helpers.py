@@ -159,7 +159,7 @@ def _batch_sde_solve(
         shape=struct,
         tol=bm_tol,
         key=key,
-        levy_area=concrete_la,  # pyright: ignore
+        levy_area=concrete_la,
     )
     terms = get_terms(bm)
     if controller is None:
@@ -183,12 +183,12 @@ def _resulting_levy_area(
     levy_area1: type[diffrax.AbstractBrownianIncrement],
     levy_area2: type[diffrax.AbstractBrownianIncrement],
 ) -> type[diffrax.AbstractBrownianIncrement]:
-    """A helper that returns the stricter Levy area.
+    """A helper that returns the stricter Lévy area.
 
     **Arguments:**
 
-    - `levy_area1`: The first Levy area type.
-    - `levy_area2`: The second Levy area type.
+    - `levy_area1`: The first Lévy area type.
+    - `levy_area2`: The second Lévy area type.
 
     **Returns:**
 
