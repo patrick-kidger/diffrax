@@ -63,7 +63,7 @@ from ._step_size_controller import (
     ConstantStepSize,
     StepTo,
 )
-from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
+from ._term import AbstractTerm, LangevinTerm, MultiTerm, ODETerm, WrapTerm
 from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
@@ -123,6 +123,9 @@ def _term_compatible(
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
 ) -> bool:
+    if term_structure == LangevinTerm and isinstance(terms, LangevinTerm):
+        return True
+
     error_msg = "term_structure"
 
     def _check(term_cls, term, term_contr_kwargs, yi):
@@ -1005,6 +1008,10 @@ def diffeqsolve(
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
 
+    # Langevin terms must be unwrapped unless `term_structure=LangevinTerm
+    if isinstance(terms, LangevinTerm) and solver.term_structure != LangevinTerm:
+        terms = terms.term
+
     # Backward compatibility
     if isinstance(
         solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
@@ -1063,13 +1070,14 @@ def diffeqsolve(
 
     def _wrap(term):
         assert isinstance(term, AbstractTerm)
-        assert not isinstance(term, MultiTerm)
+        assert not isinstance(term, (MultiTerm, LangevinTerm))
         return WrapTerm(term, direction)
 
     terms = jtu.tree_map(
         _wrap,
         terms,
-        is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
+        is_leaf=lambda x: isinstance(x, AbstractTerm)
+        and not isinstance(x, (MultiTerm, LangevinTerm)),
     )
 
     if isinstance(solver, AbstractImplicitSolver):
