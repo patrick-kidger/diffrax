@@ -75,6 +75,7 @@ from ._solver import (
     AbstractSRK as AbstractSRK,
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
+    ALIGN as ALIGN,
     Bosh3 as Bosh3,
     ButcherTableau as ButcherTableau,
     CalculateJacobian as CalculateJacobian,
@@ -101,13 +102,16 @@ from ._solver import (
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
     ShARK as ShARK,
+    ShOULD as ShOULD,
     Sil3 as Sil3,
     SlowRK as SlowRK,
+    SORT as SORT,
     SPaRK as SPaRK,
     SRA1 as SRA1,
     StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
+    UBU3 as UBU3,
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,
@@ -119,6 +123,7 @@ from ._step_size_controller import (
 from ._term import (
     AbstractTerm as AbstractTerm,
     ControlTerm as ControlTerm,
+    LangevinTerm as LangevinTerm,
     MultiTerm as MultiTerm,
     ODETerm as ODETerm,
     WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm,
