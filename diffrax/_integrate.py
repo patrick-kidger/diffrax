@@ -727,7 +727,7 @@ def loop(
         # We delete all the saved values after the event time.
         def unsave(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             ts = save_state.ts
-            mask = ts >= tfinal
+            mask = ts > tfinal
             _save_index = save_state.save_index - jnp.sum(mask & (ts < jnp.inf))
             _saveat_ts_index = save_state.saveat_ts_index - jnp.sum(
                 mask & (ts < jnp.inf)
