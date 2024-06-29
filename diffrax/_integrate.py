@@ -927,7 +927,6 @@ def diffeqsolve(
             "`diffrax.diffeqsolve(..., discrete_terminating_event=...)` is deprecated "
             "in favour of the more general `diffrax.diffeqsolve(..., event=...)` "
             "interface. This will be removed in some future version of Diffrax.",
-            category=DeprecationWarning,
             stacklevel=2,
         )
         if event is None:

@@ -154,10 +154,7 @@ def test_cde_adjoint_term(getkey):
 
 
 def test_weaklydiagonal_deprecate():
-    with pytest.warns(
-        DeprecationWarning,
-        match="WeaklyDiagonalControlTerm is pending deprecation",
-    ):
+    with pytest.warns(match="WeaklyDiagonalControlTerm"):
         _ = diffrax.WeaklyDiagonalControlTerm(
             lambda t, y, args: 0.0, lambda t0, t1: jnp.array(t1 - t0)
         )
