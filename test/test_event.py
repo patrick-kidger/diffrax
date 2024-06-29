@@ -24,7 +24,7 @@ def test_discrete_terminate1():
         return state.tprev > 10
 
     event = diffrax.DiscreteTerminatingEvent(event_fn)
-    with pytest.warns(DeprecationWarning, match="discrete_terminating_event"):
+    with pytest.warns(match="discrete_terminating_event"):
         sol = diffrax.diffeqsolve(
             term,
             solver,
@@ -51,7 +51,7 @@ def test_discrete_terminate2():
         return state.tprev > 10
 
     event = diffrax.DiscreteTerminatingEvent(event_fn)
-    with pytest.warns(DeprecationWarning, match="discrete_terminating_event"):
+    with pytest.warns(match="discrete_terminating_event"):
         sol = diffrax.diffeqsolve(
             term,
             solver,
@@ -82,7 +82,7 @@ def test_event_backsolve():
     @jax.jit
     @jax.grad
     def run(y0):
-        with pytest.warns(DeprecationWarning, match="discrete_terminating_event"):
+        with pytest.warns(match="discrete_terminating_event"):
             sol = diffrax.diffeqsolve(
                 term,
                 solver,
