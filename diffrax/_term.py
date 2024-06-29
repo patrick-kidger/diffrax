@@ -84,6 +84,10 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control]):
         control $x$, this computes $f(t, y(t), args) \Delta x(t)$ given
         $f(t, y(t), args)$ and $\Delta x(t)$.
 
+        !!! note
+
+            This function must be bilinear.
+
         **Arguments:**
 
         - `vf`: The vector field evaluation; a PyTree of structure $S$.
@@ -93,10 +97,6 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control]):
 
         The interaction between the vector field and control; a PyTree of structure
         $T$.
-
-        !!! note
-
-            This function must be bilinear.
         """
         pass
 
@@ -260,6 +260,8 @@ def _prod(vf, control):
     return jnp.tensordot(vf, control, axes=jnp.ndim(control))
 
 
+# This class exists for backward compatibility with `WeaklyDiagonalControlTerm`. If we
+# were writing things again today it would be folded into just `ControlTerm`.
 class _AbstractControlTerm(AbstractTerm[_VF, _Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
     control: Union[
@@ -290,61 +292,143 @@ _AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 - `vector_field`: A callable representing the vector field. This callable takes three
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
     the evolving state of the system. `args` are any static arguments as passed to
-    [`diffrax.diffeqsolve`][]. This `vector_field` can be a function that returns a
-    JAX array, or returns any [lineax `AbstractLinearOperator`](https://docs.kidger.site/lineax/api/operators/#lineax.AbstractLinearOperator).
-- `control`: The control. Should either be (A) a [`diffrax.AbstractPath`][], in which
-    case its `evaluate(t0, t1)` method will be used to give the increment of the control
-    over a time interval `[t0, t1]`, or (B) a callable `(t0, t1) -> increment`, which
-    returns the increment directly.
+    [`diffrax.diffeqsolve`][]. This `vector_field` can either be
+
+    1. a function that returns a PyTree of JAX arrays, or
+    2. it can return a
+        [Lineax linear operator](https://docs.kidger.site/lineax/api/operators),
+        as described above.
+
+- `control`: The control. Should either be
+
+    1. a [`diffrax.AbstractPath`][], in which case its `.evaluate(t0, t1)` method
+        will be used to give the increment of the control over a time interval
+        `[t0, t1]`, or
+    2. a callable `(t0, t1) -> increment`, which returns the increment directly.
 """
 
 
 class ControlTerm(_AbstractControlTerm[_VF, _Control]):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
-    which the vector field - control interaction is a matrix-vector product.
+    which the vector field ($f$) - control ($\mathrm{d}x$) interaction is a
+    matrix-vector product.
 
-    `vector_field` and `control` should both return PyTrees, both with the same
-    structure as the initial state `y0`. Every dimension of `control` is then
-    contracted against the last dimensions of `vector_field`; that is to say if each
-    leaf of `y0` has shape `(y1, ..., yN)`, and the corresponding leaf of `control`
-    has shape `(c1, ..., cM)`, then the corresponding leaf of `vector_field` should
-    have shape `(y1, ..., yN, c1, ..., cM)`.
+    This is typically used for either stochastic differential equations or for
+    controlled differential equations.
 
-    A common special case is when `y0` and `control` are vector-valued, and
-    `vector_field` is matrix-valued.
+    `ControlTerm` can be used in two different ways.
 
-    To make a weakly diagonal control term, simply use your vector field
-    callable return a `lx.DiagonalLinearOperator`.
+    1. Simple way: directly return JAX arrays.
 
-    !!! info
+        `vector_field` and `control` should both return PyTrees, both with the same
+        structure as the initial state `y0`. All leaves should be JAX arrays.
 
-        Why "weakly" diagonal? Consider the matrix representation of the vector field,
-        as a square diagonal matrix. In general, the (i,i)-th element may depending
-        upon any of the values of `y`. It is only if the (i,i)-th element only depends
-        upon the i-th element of `y` that the vector field is said to be "diagonal",
-        without the "weak". (This stronger property is useful in some SDE solvers.)
+        If each leaf of `y0` has shape `(y1, ..., yN)`, and the corresponding leaf of
+        `control` has shape `(c1, ..., cM)`, then the corresponding leaf of
+        `vector_field` should have shape `(y1, ..., yN, c1, ..., cM)`. Leaf-by-leaf, the
+        corresponding dimensions of `vector_field` and control are contracted against
+        each other.
 
-    !!! example
+        This includes normal matrix-vector products as a special case: when `y0` is an
+        array with shape `(m,)`, the control is an array with shape `(n,)`, and the
+        vector field is an array with shape `(m, n)`.
+
+    2. Advanced way: have the vector field return a [Lineax linear operator](https://docs.kidger.site/lineax/api/operators).
+
+        This is suitable for use cases in which you know that the vector field has
+        special structure -- e.g. it is diagonal -- and you would like to use that
+        structure for a more efficient implementation.
+
+        In this case, then `vector_field` should return a
+        [Lineax linear operator](https://docs.kidger.site/lineax/api/operators), the
+        control can return anything compatible with the
+        [`.mv`](https://docs.kidger.site/lineax/api/operators/#lineax.AbstractLinearOperator.mv)
+        method of that operator, and the interaction is defined as
+        `vector_field(t0, y, arg).mv(control(t0, t1))`.
+
+        In this case no special PyTree handling is done -- perform this inside the
+        operator's `.mv` if required. (As you can see, this approach is basically about
+        deferring the whole linear operation to Lineax.)
+
+    !!! Example
+
+        In this example we consider an SDE with `m`-dimensional state
+        $y \in \mathbb{R}^m$, an `n`-dimensional Brownian motion
+        $W(t) \in \mathbb{R}^n$, and a constant diffusion of shape `(m, n)`.
+
+        $\mathrm{d}y(t) = \begin{bmatrix} 1 & ... & 1 \\ & ... & \\ 1 & ... & 1 \end{bmatrix} \mathrm{d}W(t)$
 
         ```python
+        from diffrax import ControlTerm, diffeqsolve, UnsafeBrownianPath
+
+        y0 = jnp.ones((m,))
+        control = UnsafeBrownianPath(shape=(n,), key=...)
+
+        def vector_field(t, y, args):
+            return jnp.ones((m, n))
+
+        diffusion_term = ControlTerm(vector_field, control)
+        diffeqsolve(terms=diffusion_term, y0=y0, ...)
+        ```
+    !!! Example
+
+        In this example we consider an SDE with a one-dimensional state
+        $y(t) \in \mathbb{R}$ and a two-dimensional Brownian motion
+        $W(t) \in \mathbb{R}^2$, given by:
+
+        $\mathrm{d}y(t) = \begin{bmatrix} y(t) \\ y(t) + 1 \end{bmatrix} \mathrm{d}W(t)$
+
+        We use the simple matrix-vector product way of combining things.
+
+        ```python
+        from diffrax import ControlTerm, diffeqsolve, UnsafeBrownianPath
+
         control = UnsafeBrownianPath(shape=(2,), key=...)
-        vector_field = lambda t, y, args: lx.DiagonalLinearOperator(jnp.ones_like(y))
+
+        def vector_field(t, y, args):
+            return jnp.stack([y, y + 1], axis=-1)
+
         diffusion_term = ControlTerm(vector_field, control)
         diffeqsolve(diffusion_term, ...)
         ```
 
-    !!! example
+    !!! Example
+
+        In this example we consider an SDE with two-dimensional state
+        $(y_1(t), y_2(t)) \in \mathbb{R}^2$ and a two-dimensional Brownian motion
+        $W(t) \in \mathbb{R}^2$ -- and for which the diffusion matrix is
+        diagonal.
+
+        $\mathrm{d}\begin{bmatrix} y_1 \\ y_2 \end{bmatrix}(t) = \begin{bmatrix} y_2(t) & 0 \\ 0 & y_1(t) \end{bmatrix} \mathrm{d}W(t)$
+
+        As such we use the more-advanced approach of using
+        [Lineax](https://github.com/patrick-kidger/lineax/)'s linear operators to
+        represent the diffusion matrix.
 
         ```python
+        from diffrax import ControlTerm, diffeqsolve, UnsafeBrownianPath
+
         control = UnsafeBrownianPath(shape=(2,), key=...)
-        vector_field = lambda t, y, args: jnp.stack([y, y], axis=-1)
+
+        def vector_field(t, y, args):
+            # y is a JAX array of shape (2,)
+            y1, y2 = y
+            diagonal = jnp.array([y2, y1])
+            return lineax.DiagonalLinearOperator(diagonal)
+
         diffusion_term = ControlTerm(vector_field, control)
         diffeqsolve(diffusion_term, ...)
         ```
 
-    !!! example
+    !!! Example
+
+        In this example we consider a controlled differnetial equation, for which the
+        control is given by an interpolation of some data. (See also the
+        [neural controlled differential equation](../examples/neural_cde/) example.)
 
         ```python
+        from diffrax import ControlTerm, diffeqsolve, LinearInterpolation, UnsafeBrownianPath
+
         ts = jnp.array([1., 2., 2.5, 3.])
         data = jnp.array([[0.1, 2.0],
                           [0.3, 1.5],
@@ -355,16 +439,29 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
         cde_term = ControlTerm(vector_field, control)
         diffeqsolve(cde_term, ...)
         ```
-    """
+    """  # noqa: E501
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         if isinstance(vf, lx.AbstractLinearOperator):
             return vf.mv(control)
-        return jtu.tree_map(_prod, vf, control)
+        else:
+            return jtu.tree_map(_prod, vf, control)
 
 
 class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
-    r"""A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
+    r"""
+    DEPRECATED. Prefer:
+
+    ```python
+    def vector_field(t, y, args):
+        return lineax.DiagonalLinearOperator(...)
+
+    diffrax.ControlTerm(vector_field, ...)
+    ```
+
+    ---
+
+    A term representing the case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field - control interaction is a matrix-vector product, and the
     matrix is square and diagonal. In this case we may represent the matrix as a vector
     of just its diagonal elements. The matrix-vector product may be calculated by
@@ -385,14 +482,34 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
         without the "weak". (This stronger property is useful in some SDE solvers.)
     """
 
-    def __init__(self, *args, **kwargs):
+    def __check_init__(self):
         warnings.warn(
-            "WeaklyDiagonalControlTerm is pending deprecation and may be removed "
-            "in future versions. Consider using the new alternative "
-            "ControlTerm(lx.DiagonalLinearOperator(...)).",
-            DeprecationWarning,
+            "`WeaklyDiagonalControlTerm` is now deprecated, in favour combining "
+            "`ControlTerm` with a `lineax.AbstractLinearOperator`. This offers a way "
+            "to define a vector field with any kind of structure -- diagonal or "
+            "otherwise.\n"
+            "For a diagonal linear operator, then this can be easily converted as "
+            "follows. What was previously:\n"
+            "```\n"
+            "def vector_field(t, y, args):\n"
+            "    ...\n"
+            "    return some_vector\n"
+            "\n"
+            "diffrax.WeaklyDiagonalControlTerm(vector_field)\n"
+            "```\n"
+            "is now:\n"
+            "```\n"
+            "import lineax\n"
+            "\n"
+            "def vector_field(t, y, args):\n"
+            "    ...\n"
+            "    return lineax.DiagonalLinearOperator(some_vector)\n"
+            "\n"
+            "diffrax.ControlTerm(vector_field)\n"
+            "```\n"
+            "Lineax is available at `https://github.com/patrick-kidger/lineax`.\n",
+            stacklevel=3,
         )
-        super().__init__(*args, **kwargs)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):
