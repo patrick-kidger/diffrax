@@ -1,5 +1,6 @@
 import abc
 import operator
+import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
 
@@ -7,6 +8,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax as lx
 import numpy as np
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
@@ -288,7 +290,8 @@ _AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 - `vector_field`: A callable representing the vector field. This callable takes three
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
     the evolving state of the system. `args` are any static arguments as passed to
-    [`diffrax.diffeqsolve`][].
+    [`diffrax.diffeqsolve`][]. This `vector_field` can be a function that returns a
+    JAX array, or returns any [lineax `AbstractLinearOperator`](https://docs.kidger.site/lineax/api/operators/#lineax.AbstractLinearOperator).
 - `control`: The control. Should either be (A) a [`diffrax.AbstractPath`][], in which
     case its `evaluate(t0, t1)` method will be used to give the increment of the control
     over a time interval `[t0, t1]`, or (B) a callable `(t0, t1) -> increment`, which
@@ -309,6 +312,26 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
 
     A common special case is when `y0` and `control` are vector-valued, and
     `vector_field` is matrix-valued.
+
+    To make a weakly diagonal control term, simply use your vector field
+    callable return a `lx.DiagonalLinearOperator`.
+
+    !!! info
+
+        Why "weakly" diagonal? Consider the matrix representation of the vector field,
+        as a square diagonal matrix. In general, the (i,i)-th element may depending
+        upon any of the values of `y`. It is only if the (i,i)-th element only depends
+        upon the i-th element of `y` that the vector field is said to be "diagonal",
+        without the "weak". (This stronger property is useful in some SDE solvers.)
+
+    !!! example
+
+        ```python
+        control = UnsafeBrownianPath(shape=(2,), key=...)
+        vector_field = lambda t, y, args: lx.DiagonalLinearOperator(jnp.ones_like(y))
+        diffusion_term = ControlTerm(vector_field, control)
+        diffeqsolve(diffusion_term, ...)
+        ```
 
     !!! example
 
@@ -335,6 +358,8 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
     """
 
     def prod(self, vf: _VF, control: _Control) -> Y:
+        if isinstance(vf, lx.AbstractLinearOperator):
+            return vf.mv(control)
         return jtu.tree_map(_prod, vf, control)
 
 
@@ -359,6 +384,15 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
         upon the i-th element of `y` that the vector field is said to be "diagonal",
         without the "weak". (This stronger property is useful in some SDE solvers.)
     """
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "WeaklyDiagonalControlTerm is pending deprecation and may be removed "
+            "in future versions. Consider using the new alternative "
+            "ControlTerm(lx.DiagonalLinearOperator(...)).",
+            DeprecationWarning,
+        )
+        super().__init__(*args, **kwargs)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):

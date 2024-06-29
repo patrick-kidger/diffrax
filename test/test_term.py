@@ -1,8 +1,10 @@
 import diffrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import pytest
 from jaxtyping import Array, PyTree, Shaped
 
 from .helpers import tree_allclose
@@ -45,8 +47,11 @@ def test_control_term(getkey):
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
-    assert dx.shape == (2,)
-    assert vf.shape == (3, 2)
+    if isinstance(dx, jax.Array) and isinstance(vf, jax.Array):
+        assert dx.shape == (2,)
+        assert vf.shape == (3, 2)
+    else:
+        raise TypeError("dx/vf is not an array")
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dx))
 
@@ -85,8 +90,11 @@ def test_weakly_diagional_control_term(getkey):
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
-    assert dx.shape == (3,)
-    assert vf.shape == (3,)
+    if isinstance(dx, jax.Array) and isinstance(vf, jax.Array):
+        assert dx.shape == (3,)
+        assert vf.shape == (3,)
+    else:
+        raise TypeError("dx/vf is not an array")
     assert vf_prod.shape == (3,)
     assert tree_allclose(vf_prod, term.prod(vf, dx))
 
@@ -143,3 +151,13 @@ def test_cde_adjoint_term(getkey):
     vf = adjoint_term.vf(t, aug, args)
     vf_prod2 = adjoint_term.prod(vf, dt)
     assert tree_allclose(vf_prod1, vf_prod2)
+
+
+def test_weaklydiagonal_deprecate():
+    with pytest.warns(
+        DeprecationWarning,
+        match="WeaklyDiagonalControlTerm is pending deprecation",
+    ):
+        _ = diffrax.WeaklyDiagonalControlTerm(
+            lambda t, y, args: 0.0, lambda t0, t1: jnp.array(t1 - t0)
+        )
