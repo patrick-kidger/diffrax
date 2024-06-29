@@ -1,6 +1,6 @@
 [project]
 name = "diffrax"
-version = "0.5.1"
+version = "0.6.0"
 description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 readme = "README.md"
 requires-python ="~=3.9"
@@ -8,7 +8,7 @@ license = {file = "LICENSE"}
 authors = [
   {name = "Patrick Kidger", email = "contact@kidger.site"},
 ]
-keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations"]
+keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations", "diffrax"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
