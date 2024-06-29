@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Optional
 
 import jax
@@ -11,16 +12,33 @@ from ._path import AbstractPath
 
 class RESULTS(optx.RESULTS):  # pyright: ignore
     successful = ""
-    discrete_terminating_event_occurred = (
-        "Terminating differential equation solve because a discrete terminating event "
-        "occurred."
-    )
     max_steps_reached = (
         "The maximum number of solver steps was reached. Try increasing `max_steps`."
     )
     dt_min_reached = (
         "The minimum step size was reached in the differential equation solver."
     )
+    event_occurred = (
+        "Terminating differential equation solve because an event occurred."
+    )
+
+
+# Backward compatibility
+# Evil monkey-patching so that we don't mess with how `Enumeration`s work.
+
+
+@property
+def discrete_terminating_event_occurred(self):
+    warnings.warn(
+        "`diffrax.RESULTS.discrete_terminating_event_occurred` is deprecated in "
+        "favour of `diffrax.RESULTS.terminating_event_occurred`. This will be "
+        "removed in some future version of Diffrax.",
+        stacklevel=2,
+    )
+    return self.event_occurred
+
+
+RESULTS.discrete_terminating_event_occurred = discrete_terminating_event_occurred  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def is_okay(result: RESULTS) -> Bool[Array, ""]:
@@ -32,10 +50,8 @@ def is_successful(result: RESULTS) -> Bool[Array, ""]:
     return result == RESULTS.successful
 
 
-# TODO: In the future we may support other event types, in which case this function
-# should be updated.
 def is_event(result: RESULTS) -> Bool[Array, ""]:
-    return result == RESULTS.discrete_terminating_event_occurred
+    return result == RESULTS.event_occurred
 
 
 def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
@@ -67,8 +83,9 @@ class Solution(AbstractPath):
     - `ys`: The value of the solution at each of the times in `ts`. Might `None` if no
         values were saved.
     - `stats`: Statistics for the solve (number of steps etc.).
-    - `result`: Enumeration specifying the success or cause of failure of the solve.
-        A human-readable message is displayed if printed. No message means success!
+    - `result`: A [`diffrax.RESULT`][] specifying the success or cause of failure of the
+        solve. A human-readable message is displayed if printed. No message means
+        success!
     - `solver_state`: If saved, the final internal state of the numerical solver.
     - `controller_state`: If saved, the final internal state for the step size
         controller.
@@ -99,6 +116,7 @@ class Solution(AbstractPath):
     solver_state: Optional[PyTree]
     controller_state: Optional[PyTree]
     made_jump: Optional[BoolScalarLike]
+    event_mask: Optional[PyTree[BoolScalarLike]]
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True

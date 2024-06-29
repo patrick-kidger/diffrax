@@ -264,6 +264,7 @@ def test_implicit():
         non_jax_type: Any
 
         def __call__(self, t, y, args):
+            del t, args
             return self.steady_state - y
 
     def loss(model, target_steady_state):
@@ -275,7 +276,8 @@ def test_implicit():
         y0 = 1.0
         max_steps = None
         controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
-        event = diffrax.SteadyStateEvent()
+        cond_fn = diffrax.steady_state_event()
+        event = diffrax.Event(cond_fn)
         adjoint = diffrax.ImplicitAdjoint()
         sol = diffrax.diffeqsolve(
             term,
@@ -286,7 +288,7 @@ def test_implicit():
             y0,
             max_steps=max_steps,
             stepsize_controller=controller,
-            discrete_terminating_event=event,
+            event=event,
             adjoint=adjoint,
         )
         (y1,) = cast(Array, sol.ys)
