@@ -83,13 +83,17 @@ class Solution(AbstractPath):
     - `ys`: The value of the solution at each of the times in `ts`. Might `None` if no
         values were saved.
     - `stats`: Statistics for the solve (number of steps etc.).
-    - `result`: A [`diffrax.RESULT`][] specifying the success or cause of failure of the
-        solve. A human-readable message is displayed if printed. No message means
+    - `result`: A [`diffrax.RESULTS`][] specifying the success or cause of failure of
+        the solve. A human-readable message is displayed if printed. No message means
         success!
     - `solver_state`: If saved, the final internal state of the numerical solver.
     - `controller_state`: If saved, the final internal state for the step size
         controller.
     - `made_jump`: If saved, the final internal state for the jump tracker.
+    - `event_mask`: If using [events](../events), a boolean mask indicating which event
+        triggered. This is a PyTree of bools, with the same PyTree stucture as the event
+        condition functions. It will be all `False` if no events triggered; otherwise it
+        will have precisely one `True`, corresponding to the event that triggered.
 
     !!! note
 
