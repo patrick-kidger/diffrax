@@ -203,8 +203,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     r"""A general Stochastic Runge-Kutta method.
 
     This accepts `terms` of the form
-    `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))` or
-    `MultiTerm(ODETerm(drift), WeaklyDiagonalControlTerm(diffusion, brownian_motion))`.
+    `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))`.
     Depending on the solver, the Brownian motion might need to generate
     different types of Lévy areas, specified by the `minimal_levy_area` attribute.
 
