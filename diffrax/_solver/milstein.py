@@ -211,7 +211,7 @@ class ItoMilstein(AbstractItoSolver):
         leaves_ΔwΔw = []
         for i1, l1 in enumerate(leaves_Δw):
             for i2, l2 in enumerate(leaves_Δw):
-                leaf = jnp.tensordot(l1[..., None], l2[None, ...], axes=1)
+                leaf = jnp.tensordot(jnp.conj(l1[..., None]), l2[None, ...], axes=1)
                 if i1 == i2:
                     eye = jnp.eye(l1.size).reshape(l1.shape + l1.shape)
                     with jax.numpy_dtype_promotion("standard"):
@@ -305,7 +305,7 @@ class ItoMilstein(AbstractItoSolver):
         def __dot(_v0, _ΔwΔw):
             # _v0 has structure (leaf(y0), leaf(Δw), leaf(Δw))
             # _ΔwΔw has structure (leaf(Δw), leaf(Δw))
-            _out = jnp.tensordot(_v0, _ΔwΔw, axes=jnp.ndim(_ΔwΔw))
+            _out = jnp.tensordot(jnp.conj(_v0), _ΔwΔw, axes=jnp.ndim(_ΔwΔw))
             # _out has structure (leaf(y0),)
             return _out
 

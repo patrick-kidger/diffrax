@@ -407,7 +407,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
             g0_g1 = _comp_g(jnp.array([t0, t1], dtype=complex_to_real_dtype(dtype)))
             g0 = jtu.tree_map(lambda g_leaf: g_leaf[0], g0_g1)
-            # g_delta = 0.5 * g1 - g0
+            # g_delta = 0.5 * (g1 - g0)
             g_delta = jtu.tree_map(lambda g_leaf: 0.5 * (g_leaf[1] - g_leaf[0]), g0_g1)
             w_kgs = diffusion.prod(g0, w)
             a_w = jnp.asarray(self.tableau.coeffs_w.a, dtype=dtype)
@@ -456,7 +456,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             )
             # Sum up the previous stages weighted by the coefficients in the tableau
             return jtu.tree_map(
-                lambda lf: jnp.tensordot(_a_j, lf, axes=1), _stage_out_view
+                lambda lf: jnp.tensordot(jnp.conj(_a_j), lf, axes=1), _stage_out_view
             )
 
         def insert_jth_stage(results, k_j, j):
