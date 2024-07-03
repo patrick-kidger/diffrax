@@ -610,7 +610,7 @@ class PIDController(
         # a grad API boundary as part of a larger model.)
         factor = lax.stop_gradient(factor)
         factor = eqxi.nondifferentiable(factor)
-        dt = prev_dt * factor.astype(prev_dt)
+        dt = prev_dt * factor.astype(jnp.result_type(prev_dt))
 
         # E.g. we failed an implicit step, so y_error=inf, so inv_scaled_error=0,
         # so factor=factormin, and we shrunk our step.

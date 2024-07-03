@@ -41,7 +41,7 @@ class AbstractBrownianPath(AbstractPath[_Control]):
             left-continuous or right-continuous at any jump points, but Brownian
             motion has no jump points.)
         - `use_levy`: If True, the return type will be a `LevyVal`, which contains
-            PyTrees of Brownian increments and their Levy areas.
+            PyTrees of Brownian increments and their Lévy areas.
 
         **Returns:**
 

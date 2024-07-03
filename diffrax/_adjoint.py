@@ -121,7 +121,7 @@ class AbstractAdjoint(eqx.Module):
         terms,
         solver,
         stepsize_controller,
-        discrete_terminating_event,
+        event,
         saveat,
         t0,
         t1,
@@ -450,7 +450,8 @@ class ImplicitAdjoint(AbstractAdjoint):
     r"""Backpropagate via the [implicit function theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem#Statement_of_the_theorem).
 
     This is used when solving towards a steady state, typically using
-    [`diffrax.SteadyStateEvent`][]. In this case, the output of the solver is $y(θ)$
+    [`diffrax.Event`][] where the condition function is obtained by calling
+    [`diffrax.steady_state_event`][]. In this case, the output of the solver is $y(θ)$
     for which $f(t, y(θ), θ) = 0$. (Where $θ$ corresponds to all parameters found
     through `terms` and `args`, but not `y0`.) Then we can skip backpropagating through
     the solver and instead directly compute
@@ -563,7 +564,7 @@ def _loop_backsolve_bwd(
     self,
     solver,
     stepsize_controller,
-    discrete_terminating_event,
+    event,
     saveat,
     t0,
     t1,
@@ -573,7 +574,7 @@ def _loop_backsolve_bwd(
     init_state,
     progress_meter,
 ):
-    assert discrete_terminating_event is None
+    assert event is None
 
     #
     # Unpack our various arguments. Delete a lot of things just to make sure we're not
@@ -787,7 +788,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         init_state,
         passed_solver_state,
         passed_controller_state,
-        discrete_terminating_event,
+        event,
         **kwargs,
     ):
         if jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat) != jtu.tree_structure(
@@ -829,7 +830,7 @@ class BacksolveAdjoint(AbstractAdjoint):
                 "`diffrax.BacksolveAdjoint` is only compatible with solvers that take "
                 "a single term."
             )
-        if discrete_terminating_event is not None:
+        if event is not None:
             raise NotImplementedError(
                 "`diffrax.BacksolveAdjoint` is not compatible with events."
             )
@@ -846,7 +847,7 @@ class BacksolveAdjoint(AbstractAdjoint):
             saveat=saveat,
             init_state=init_state,
             solver=solver,
-            discrete_terminating_event=discrete_terminating_event,
+            event=event,
             **kwargs,
         )
         final_state = _only_transpose_ys(final_state)

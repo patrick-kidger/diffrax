@@ -143,8 +143,8 @@ class StochasticButcherTableau(Generic[_Coeffs]):
             assert self.coeffs_hh.check() == num_stages
         if self.coeffs_kk is not None:
             assert self.coeffs_hh is not None, (
-                "If space-time-time Levy area (K) is used,"
-                " space-time Levy area (H) must also be used."
+                "If space-time-time Lévy area (K) is used,"
+                " space-time Lévy area (H) must also be used."
             )
             assert type(self.coeffs_kk) is type(self.coeffs_w)
             assert self.coeffs_kk.check() == num_stages
@@ -189,9 +189,9 @@ Let `s` denote the number of stages of the solver.
 - `coeffs_w`: An instance of `AdditiveCoeffs` or `GeneralCoeffs`, providing the
     coefficients of the Brownian motion increments.
 - `coeffs_hh`: An instance of `AdditiveCoeffs` or `GeneralCoeffs`, providing the
-    coefficients of the space-time Levy area.
+    coefficients of the space-time Lévy area.
 - `coeffs_kk`: An instance of `AdditiveCoeffs` or `GeneralCoeffs`, providing the
-    coefficients of the space-time-time Levy area.
+    coefficients of the space-time-time Lévy area.
 - `ignore_stage_f`: Optional. A NumPy array of length `s` of booleans. If `True` at
     stage `j`, the vector field of the drift term will not be evaluated at stage `j`.
 - `ignore_stage_g`: Optional. A NumPy array of length `s` of booleans. If `True` at
@@ -203,12 +203,11 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     r"""A general Stochastic Runge-Kutta method.
 
     This accepts `terms` of the form
-    `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))` or
-    `MultiTerm(ODETerm(drift), WeaklyDiagonalControlTerm(diffusion, brownian_motion))`.
+    `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))`.
     Depending on the solver, the Brownian motion might need to generate
-    different types of Levy areas, specified by the `minimal_levy_area` attribute.
+    different types of Lévy areas, specified by the `minimal_levy_area` attribute.
 
-    For example, the [`diffrax.ShARK`][] solver requires space-time Levy area, so
+    For example, the [`diffrax.ShARK`][] solver requires space-time Lévy area, so
     it will have `minimal_levy_area = AbstractSpaceTimeLevyArea` and the Brownian
     motion must be initialised with `levy_area=SpaceTimeLevyArea`.
 
@@ -260,10 +259,10 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     term_compatible_contr_kwargs = (dict(), dict(use_levy=True))
     tableau: AbstractClassVar[StochasticButcherTableau]
 
-    # Indicates the type of Levy area used by the solver.
-    # The BM must generate at least this type of Levy area, but can generate
-    # more. E.g. if the solver uses space-time Levy area, then the BM generates
-    # space-time-time Levy area as well that is fine. The other way around would
+    # Indicates the type of Lévy area used by the solver.
+    # The BM must generate at least this type of Lévy area, but can generate
+    # more. E.g. if the solver uses space-time Lévy area, then the BM generates
+    # space-time-time Lévy area as well that is fine. The other way around would
     # not work. This is mostly an easily readable indicator so that methods know
     # what kind of BM to use.
     @property
@@ -288,7 +287,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         args: PyTree,
     ) -> _SolverState:
         del t1
-        # Check that the diffusion has the correct Levy area
+        # Check that the diffusion has the correct Lévy area
         _, diffusion = terms.terms
 
         if self.tableau.is_additive_noise():
@@ -372,12 +371,12 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         b_levy_list = []
 
         levy_areas = []
-        if self.tableau.coeffs_hh is not None:  # space-time Levy area
+        if self.tableau.coeffs_hh is not None:  # space-time Lévy area
             assert isinstance(bm_inc, AbstractSpaceTimeLevyArea)
             levy_areas.append(bm_inc.H)
             b_levy_list.append(jnp.asarray(self.tableau.coeffs_hh.b_sol, dtype=dtype))
 
-            if self.tableau.coeffs_kk is not None:  # space-time-time Levy area
+            if self.tableau.coeffs_kk is not None:  # space-time-time Lévy area
                 assert isinstance(bm_inc, AbstractSpaceTimeTimeLevyArea)
                 levy_areas.append(bm_inc.K)
                 b_levy_list.append(
@@ -397,7 +396,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         levylist_kgs = []  # will contain levy * g(t0 + c_j * h, z_j) for each stage j
         # where levy is either H or K (if those entries exist)
-        # this is similar to h_kfs or w_kgs, but for the Levy area(s)
+        # this is similar to h_kfs or w_kgs, but for the Lévy area(s)
 
         if self.tableau.is_additive_noise():  # additive noise
             # compute g once since it is constant
@@ -413,12 +412,12 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             w_kgs = diffusion.prod(g0, w)
             a_w = jnp.asarray(self.tableau.coeffs_w.a, dtype=dtype)
 
-            if self.tableau.coeffs_hh is not None:  # space-time Levy area
+            if self.tableau.coeffs_hh is not None:  # space-time Lévy area
                 assert isinstance(bm_inc, AbstractSpaceTimeLevyArea)
                 levylist_kgs.append(diffusion.prod(g0, bm_inc.H))
                 a_levy.append(jnp.asarray(self.tableau.coeffs_hh.a, dtype=dtype))
 
-            if self.tableau.coeffs_kk is not None:  # space-time-time Levy area
+            if self.tableau.coeffs_kk is not None:  # space-time-time Lévy area
                 assert isinstance(bm_inc, AbstractSpaceTimeTimeLevyArea)
                 levylist_kgs.append(diffusion.prod(g0, bm_inc.K))
                 a_levy.append(jnp.asarray(self.tableau.coeffs_kk.a, dtype=dtype))
@@ -436,11 +435,11 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             w_kgs = make_zeros()
             a_w = self._embed_a_lower(self.tableau.coeffs_w.a, dtype)
 
-            # do the same for each type of Levy area
-            if self.tableau.coeffs_hh is not None:  # space-time Levy area
+            # do the same for each type of Lévy area
+            if self.tableau.coeffs_hh is not None:  # space-time Lévy area
                 levylist_kgs.append(make_zeros())
                 a_levy.append(self._embed_a_lower(self.tableau.coeffs_hh.a, dtype))
-            if self.tableau.coeffs_kk is not None:  # space-time-time Levy area
+            if self.tableau.coeffs_kk is not None:  # space-time-time Lévy area
                 levylist_kgs.append(make_zeros())
                 a_levy.append(self._embed_a_lower(self.tableau.coeffs_kk.a, dtype))
 
@@ -581,7 +580,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             # In the additive noise case (i.e. when g is independent of y),
             # we still need a correction term in case the diffusion vector field
             # g depends on t. This term is of the form $(g1 - g0) * (0.5*W_n - H_n)$.
-            if self.tableau.coeffs_hh is not None:  # space-time Levy area
+            if self.tableau.coeffs_hh is not None:  # space-time Lévy area
                 assert isinstance(bm_inc, AbstractSpaceTimeLevyArea)
                 time_var_contr = (bm_inc.W**ω - 2.0 * bm_inc.H**ω).ω
                 time_var_term = diffusion.prod(g_delta, time_var_contr)
