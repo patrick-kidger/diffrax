@@ -1178,7 +1178,7 @@ def diffeqsolve(
             # We have no way of knowing how many steps we'll actually end up taking, and
             # XLA doesn't support dynamic shapes. So we just have to allocate the
             # maximum amount of steps we can possibly take.
-            if max_steps is None: 
+            if max_steps is None:
                 raise ValueError(
                     "`max_steps=None` is incompatible with saving at `steps=True`"
                 )
