@@ -6,6 +6,7 @@ from .base import (
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
     HalfSolver as HalfSolver,
+    Step as Step,
 )
 from .bosh3 import Bosh3 as Bosh3
 from .dopri5 import Dopri5 as Dopri5

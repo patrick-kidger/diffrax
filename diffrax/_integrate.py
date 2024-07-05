@@ -55,6 +55,7 @@ from ._solver import (
     Euler,
     EulerHeun,
     ItoMilstein,
+    Step,
     StratonovichMilstein,
 )
 from ._step_size_controller import (
@@ -329,7 +330,7 @@ def loop(
         # step sizes, all that jazz.
         #
 
-        (y, y_error, dense_info, solver_state, solver_result) = solver.step(
+        step = solver.step(
             terms,
             state.tprev,
             state.tnext,
@@ -338,11 +339,26 @@ def loop(
             state.solver_state,
             state.made_jump,
         )
+        # Backward compatibility with the old API.
+        if isinstance(step, tuple) and len(step) == 5:
+            y1, y_error, dense_info, solver_state, result = step
+            step = Step(
+                f0=None,
+                y1=y1,
+                y_error=y_error,
+                dense_info=dense_info,
+                solver_state=solver_state,
+                result=result,
+            )
+            del y1, y_error, dense_info, solver_state, result
+        assert isinstance(step, Step)
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
         # we get a negative value for y, and then get a NaN vector field. (And then
         # everything breaks.) See #143.
-        y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
+        y_error = jtu.tree_map(
+            lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), step.y_error
+        )
 
         error_order = solver.error_order(terms)
         (
@@ -356,7 +372,7 @@ def loop(
             state.tprev,
             state.tnext,
             state.y,
-            y,
+            step.y1,
             args,
             y_error,
             error_order,
@@ -379,10 +395,10 @@ def loop(
         # step was accepted) by the stepsize controller. But it doesn't get access to
         # these parts, so we do them here.
         keep = lambda a, b: jnp.where(keep_step, a, b)
-        y = jtu.tree_map(keep, y, state.y)
-        solver_state = jtu.tree_map(keep, solver_state, state.solver_state)
+        y = jtu.tree_map(keep, step.y1, state.y)
+        solver_state = jtu.tree_map(keep, step.solver_state, state.solver_state)
         made_jump = static_select(keep_step, made_jump, state.made_jump)
-        solver_result = RESULTS.where(keep_step, solver_result, RESULTS.successful)
+        solver_result = RESULTS.where(keep_step, step.result, RESULTS.successful)
 
         # TODO: if we ever support non-terminating events, then they should go in here.
         # In particular the thing to be careful about is in the `if saveat.steps`
@@ -406,7 +422,7 @@ def loop(
         #
 
         interpolator = solver.interpolation_cls(
-            t0=state.tprev, t1=state.tnext, **dense_info
+            t0=state.tprev, t1=state.tnext, **step.dense_info
         )
         save_state = state.save_state
         dense_ts = state.dense_ts
@@ -482,7 +498,7 @@ def loop(
             dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
             dense_infos = jtu.tree_map(
                 ft.partial(maybe_inplace, dense_save_index),
-                dense_info,
+                step.dense_info,
                 dense_infos,
             )
             dense_save_index = dense_save_index + jnp.where(keep_step, 1, 0)
@@ -496,13 +512,21 @@ def loop(
         else:
             event_tprev = state.tprev
             event_tnext = state.tnext
-            event_dense_info = dense_info
+            event_dense_info = step.dense_info
+
+            if step.f0 is None:
+                # Backward compatibility with the old solver API, which didn't
+                # necessarily provide this.
+                step_f0 = solver.func(state.tprev, state.y, args)
+            else:
+                step_f0 = step.f0
 
             def _outer_cond_fn(cond_fn_i, old_event_value_i):
                 new_event_value_i = cond_fn_i(
                     tprev,
                     y,
                     args,
+                    f=step_f0,
                     terms=terms,
                     solver=solver,
                     t0=t0,
@@ -649,9 +673,10 @@ def loop(
                         # First evaluate the triggered event.
                         _y = _interpolator.evaluate(_t)
                         _value = _cond_fn_i(
-                            t=_t,
-                            y=_y,
-                            args=args,
+                            _t,
+                            _y,
+                            args,
+                            f=solver.func(_t, _y, args),
                             terms=terms,
                             solver=solver,
                             t0=t0,
@@ -1251,6 +1276,7 @@ def diffeqsolve(
                 tprev,
                 y0,
                 args,
+                f=None,
                 terms=terms,
                 solver=solver,
                 t0=t0,

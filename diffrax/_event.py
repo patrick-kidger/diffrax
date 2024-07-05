@@ -40,6 +40,17 @@ Event.__init__.__doc__ = """**Arguments:**
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
 
+!!! info
+
+    The available keys in `**kwargs` may increase between Diffrax releases. The
+    currently available values are:
+
+    - `f`: the value of `solver.func(t, y, args)`. This is the vector field evaluated at
+        the current point, see [`diffrax.AbstractSolver.func`][]. May also be `None` at
+        the start of the solve, before any evaluations have been made.
+    - `terms`, `solver`, `t0`, `t1`, `dt0`, `saveat`, `stepsize_controller`,
+        `max_steps`: as provided to `diffeqsolve`.
+
 !!! Example
 
     Consider a bouncing ball dropped from some intial height $x_0$. We can model 
@@ -107,7 +118,7 @@ def steady_state_event(
     `diffrax.Event(cond_fn=..., ...)`.
     """
 
-    def _cond_fn(t, y, args, *, terms, solver, stepsize_controller, **kwargs):
+    def _cond_fn(t, y, args, *, f, terms, solver, stepsize_controller, **kwargs):
         del kwargs
         msg = (
             "The `rtol`, `atol`, and `norm` for `steady_state_event` default to the "
@@ -137,10 +148,11 @@ def steady_state_event(
         else:
             _norm = norm
 
-        # TODO: this makes an additional function evaluation that in practice has
-        # probably already been made by the solver.
-        vf = solver.func(terms, t, y, args)
-        return _norm(vf) < _atol + _rtol * _norm(y)
+        if f is None:
+            # First step, don't check for steady state.
+            return False
+        else:
+            return _norm(f) < _atol + _rtol * _norm(y)
 
     return _cond_fn
 

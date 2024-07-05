@@ -71,6 +71,35 @@ def _term_compatible_contr_kwargs(term_structure):
     return jtu.tree_map(_term_compatible_contr_kwargs, term_structure)
 
 
+class Step(eqx.Module, Generic[_SolverState]):
+    """Bundles together the return from a solve step.
+
+    **Attributes:**
+
+    - `f0`: The value of `solver.func(t0, y0, args)`, where `(t0, y0)` refer to the
+        start of the step. (This is used in some events to terminate based on conditions
+        on the vector field.)
+    - `y1`: The proposed value of the solution at `t1` (the end of a single step, not
+        the end of the overall diffeqsolve).
+    - `y_error`: The A local error estimate made during the step. (Used by adaptive step
+        size controllers to change the step size.) May be `None` if no estimate was
+        made.
+    - `dense_info`: Some dictionary of information that is passed to the solver's
+        interpolation routine to calculate dense output. (Used with `SaveAt(ts=...)` or
+        `SaveAt(dense=...)`.)
+    - `solver_state`: The value of the solver state at `t1`.
+    - `results`: A [`diffrax.RESULTS`][] indicating whether the step happened
+        successfully, or if (unusually) it failed for some reason.
+    """
+
+    f0: VF
+    y1: Y
+    y_error: Optional[Y]
+    dense_info: DenseInfo
+    solver_state: _SolverState
+    result: RESULTS
+
+
 class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     """Abstract base class for all differential equation solvers.
 
@@ -149,7 +178,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+    ) -> Step:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -169,18 +198,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
 
         **Returns:**
 
-        A tuple of several objects:
-
-        - The value of the solution at `t1`.
-        - A local error estimate made during the step. (Used by adaptive step size
-            controllers to change the step size.) May be `None` if no estimate was
-            made.
-        - Some dictionary of information that is passed to the solver's interpolation
-            routine to calculate dense output. (Used with `SaveAt(ts=...)` or
-            `SaveAt(dense=...)`.)
-        - The value of the solver state at `t1`.
-        - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
-            happened successfully, or if (unusually) it failed for some reason.
+        A [`diffrax.Step`][] representing the result of the step.
         """
 
     @abc.abstractmethod

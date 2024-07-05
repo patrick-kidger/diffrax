@@ -109,6 +109,7 @@ from ._solver import (
     SlowRK as SlowRK,
     SPaRK as SPaRK,
     SRA1 as SRA1,
+    Step as Step,
     StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,

@@ -10,6 +10,13 @@ In addition [`diffrax.AbstractSolver`][] has several subclasses that you can use
 
 ---
 
+::: diffrax.Step
+    selection:
+        members:
+            false
+
+---
+
 ::: diffrax.AbstractSolver
     selection:
         members:
