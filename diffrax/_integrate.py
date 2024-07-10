@@ -355,6 +355,10 @@ def loop(
         # step sizes, all that jazz.
         #
         if delays is None:
+            # jax.debug.print("state.tprev {}", state.tprev)
+            # jax.debug.print("state.tnext {}", state.tnext)
+            # jax.debug.print("state.y  {}", state.y)
+            # jax.debug.print("state.controller_state {}", state.controller_state)
             (y, y_error, dense_info, solver_state, solver_result) = solver.step(
                 terms,
                 state.tprev,
@@ -419,7 +423,6 @@ def loop(
         # we get a negative value for y, and then get a NaN vector field. (And then
         # everything breaks.) See #143.
         y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
-
         error_order = solver.error_order(terms)
         (
             keep_step,
@@ -711,11 +714,10 @@ def loop(
                     "the number of discontinuities detected reached the number of"
                     " `max_discontinuities`, please raise its value.",
                 )
-
-            discontinuities = maybe_inplace_delay(
-                discontinuities_save_index + 1, tnext, discontinuities
-            )
-            discontinuities_save_index = discontinuities_save_index + discont_update
+                discontinuities = maybe_inplace_delay(
+                    discontinuities_save_index + 1, tnext, discontinuities
+                )
+                discontinuities_save_index = discontinuities_save_index + discont_update
 
         new_state = State(
             y=y,
@@ -1454,22 +1456,13 @@ def diffeqsolve(
     result = RESULTS.successful
     if saveat.dense or event is not None:
         _, _, dense_info_struct, _, _ = eqx.filter_eval_shape(
-            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
+            solver.step, terms_, tprev, tnext, y0, args, solver_state, made_jump
         )
     if saveat.dense:
         if max_steps is None:
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
-        (
-            _,
-            _,
-            dense_info,
-            _,
-            _,
-        ) = eqx.filter_eval_shape(
-            solver.step, terms_, tprev, tnext, y0, args, solver_state, made_jump
-        )
         if delays is not None:
             if delays.initial_discontinuities is not None:
                 buffer = jnp.full(
@@ -1689,6 +1682,7 @@ def diffeqsolve(
         "num_dde_explicit_step": final_state.num_dde_explicit_step,
         **aux_stats,
     }
+    # jax.debug.print("stats {}", stats)
     result = final_state.result
     event_mask = final_state.event_mask
     sol = Solution(
