@@ -34,12 +34,12 @@ from ._custom_types import (
     IntScalarLike,
     RealScalarLike,
 )
+from ._delays import bind_history, Delays, history_extrapolation_implicit
 from ._event import (
     AbstractDiscreteTerminatingEvent,
     DiscreteTerminatingEventToCondFn,
     Event,
 )
-from ._delays import Delays, bind_history, history_extrapolation_implicit
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import linear_rescale, static_select
@@ -48,8 +48,8 @@ from ._progress_meter import (
     NoProgressMeter,
 )
 from ._root_finder import use_stepsize_tol
-from ._saveat import SaveAt, SubSaveAt
-from ._solution import RESULTS, Solution, is_okay, is_successful
+from ._saveat import save_y, SaveAt, SubSaveAt
+from ._solution import is_okay, is_successful, RESULTS, Solution
 from ._solver import (
     AbstractImplicitSolver,
     AbstractItoSolver,
@@ -115,9 +115,7 @@ class State(eqx.Module):
     event_mask: Optional[PyTree[BoolScalarLike]]
     num_dde_implicit_step: IntScalarLike
     num_dde_explicit_step: IntScalarLike
-    discontinuities: Optional[
-        eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]
-    ]  # noqa: F821
+    discontinuities: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]  # noqa: F821
     discontinuities_save_index: Optional[IntScalarLike]
     # Output that is .at[].set() updated during the solve (and their indices)
 
@@ -440,7 +438,7 @@ def loop(
             error_order,
             state.controller_state,
         )
-
+        assert jnp.result_type(keep_step) is jnp.dtype(bool)
         # Finding all of the potential discontinuity roots
         # if delays is not None:
         #     _part_maybe_find_discontinuity = ft.partial(
@@ -1313,9 +1311,7 @@ def diffeqsolve(
         def _get_tols(x):
             outs = []
             for attr in ("rtol", "atol", "norm"):
-                if (
-                    getattr(solver.root_finder, attr) is use_stepsize_tol
-                ):  # pyright: ignore
+                if getattr(solver.root_finder, attr) is use_stepsize_tol:  # pyright: ignore
                     outs.append(getattr(x, attr))
             return tuple(outs)
 
