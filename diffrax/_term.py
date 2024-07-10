@@ -2,7 +2,7 @@ import abc
 import operator
 import warnings
 from collections.abc import Callable
-from typing import Generic, Optional, TypeVar, Union, cast
+from typing import cast, Generic, Optional, TypeVar, Union
 
 import equinox as eqx
 import jax
@@ -13,7 +13,7 @@ import numpy as np
 from equinox.internal import ω
 from jaxtyping import ArrayLike, PyTree, PyTreeDef
 
-from ._custom_types import VF, Args, Control, IntScalarLike, RealScalarLike, Y
+from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
 from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
