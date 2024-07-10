@@ -4,7 +4,9 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 !!! info "Term structure"
 
-    The type of solver chosen determines how the `terms` argument of `diffeqsolve` should be laid out. Most of them operate in the same way whether they are solving an ODE or an SDE, and as such expected that it should be a single `AbstractTerm`. For SDEs that typically means a [`diffrax.MultiTerm`][] wrapping together a drift ([`diffrax.ODETerm`][]) and diffusion ([`diffrax.ControlTerm`][]). (Although you could also include any other term, e.g. an exogenous forcing term, if you wished.) For example:
+    The type of solver chosen determines how the `terms` argument of `diffeqsolve` should be laid out.
+    
+    Most solvers handle both ODEs and SDEs in the same way, and expect a single term. So for an ODE you would pass `terms=ODETerm(vector_field)`, and for an SDE you would pass `terms=MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))`. For example:
 
     ```python
     drift = lambda t, y, args: -y
@@ -14,13 +16,15 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
     diffeqsolve(terms, solver=Euler(), ...)
     ```
 
-    Some solvers are SDE-specific. For these, such as for example [`diffrax.StratonovichMilstein`][], then `terms` must specifically be of the form `MultiTerm(ODETerm(...), SomeOtherTerm(...))` (Typically `SomeOTherTerm` will be a `ControlTerm` or `WeaklyDiagonalControlTerm`) representing the drift and diffusion specifically.
+    For any individual solver then this is documented below, and is also available programatically under `<solver>.term_structure`.
 
-    For those SDE-specific solvers then this is documented below, and the term structure is available programmatically under `<solver>.term_structure`.
+    For advanced users, note that we typically accept any `AbstractTerm` for the diffusion, so it could be a custom one that implements more-efficient behaviour for the structure of your diffusion matrix.
 
 ---
 
-### Explicit Runge--Kutta (ERK) methods
+## Explicit Runge--Kutta (ERK) methods
+
+These solvers can be used to solve SDEs just as well as they can be used to solve ODEs.
 
 ::: diffrax.Euler
     selection:
@@ -44,21 +48,11 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 ---
 
-### Reversible methods
-
-These are reversible in the same way as when applied to ODEs. [See here.](./ode_solvers.md#reversible-methods)
-
-::: diffrax.ReversibleHeun
-    selection:
-        members: false
-
----
-
-### SDE-only solvers
+## SDE-only solvers
 
 !!! info "Term structure"
 
-    These solvers are SDE-specific. For these, `terms` must specifically be of the form `MultiTerm(ODETerm(...), SomeOtherTerm(...))` (Typically `SomeOTherTerm` will be a `ControlTerm` or `WeaklyDiagonalControlTerm`) representing the drift and diffusion specifically.
+    These solvers are SDE-specific. For these, `terms` must specifically be of the form `MultiTerm(ODETerm(...), SomeOtherTerm(...))` (Typically `SomeOTherTerm` will be a `ControlTerm` representing the drift and diffusion specifically.
 
 
 ::: diffrax.EulerHeun
@@ -70,6 +64,44 @@ These are reversible in the same way as when applied to ODEs. [See here.](./ode_
         members: false
 
 ::: diffrax.StratonovichMilstein
+    selection:
+        members: false
+
+### Stochastic Runge--Kutta (SRK)
+
+These are a particularly important class of SDE-only solvers.
+
+::: diffrax.SEA
+    selection:
+        members: false
+
+::: diffrax.SRA1
+    selection:
+        members: false
+
+::: diffrax.ShARK
+    selection:
+        members: false
+
+::: diffrax.GeneralShARK
+    selection:
+        members: false
+
+::: diffrax.SlowRK
+    selection:
+        members: false
+
+::: diffrax.SPaRK
+    selection:
+        members: false
+
+---
+
+### Reversible methods
+
+These are reversible in the same way as when applied to ODEs. [See here.](./ode_solvers.md#reversible-methods)
+
+::: diffrax.ReversibleHeun
     selection:
         members: false
 

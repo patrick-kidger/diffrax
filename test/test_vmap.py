@@ -10,15 +10,16 @@ import pytest
     "stepsize_controller",
     (diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-3, atol=1e-6)),
 )
-def test_vmap_y0(stepsize_controller):
+@pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
+def test_vmap_y0(stepsize_controller, dtype):
     t0 = 0
     t1 = 1
     dt0 = 0.1
 
     key = jr.PRNGKey(5678)
 
-    y0 = jr.normal(key, (10, 2))
-    a = jnp.array([[-0.2, 1], [1, -0.2]])
+    y0 = jr.normal(key, (10, 2), dtype=dtype)
+    a = jnp.array([[-0.2, 1], [1, -0.2]], dtype=dtype)
 
     def f(t, y, args):
         return a @ y

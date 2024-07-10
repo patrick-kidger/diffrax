@@ -2,31 +2,50 @@ import functools as ft
 import typing
 import warnings
 from collections.abc import Callable
-from typing import Any, get_args, get_origin, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    get_args,
+    get_origin,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+    Union,
+)
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.core
+import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
+import optimistix as optx
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
 from ._custom_types import (
     BoolScalarLike,
     BufferDenseInfos,
+    DenseInfo,
     FloatScalarLike,
     IntScalarLike,
     RealScalarLike,
 )
-from ._event import AbstractDiscreteTerminatingEvent
+from ._event import (
+    AbstractDiscreteTerminatingEvent,
+    DiscreteTerminatingEventToCondFn,
+    Event,
+)
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
-from ._misc import static_select
+from ._misc import linear_rescale, static_select
+from ._progress_meter import (
+    AbstractProgressMeter,
+    NoProgressMeter,
+)
 from ._root_finder import use_stepsize_tol
-from ._saveat import SaveAt, SubSaveAt
+from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
 from ._solver import (
     AbstractImplicitSolver,
@@ -45,6 +64,7 @@ from ._step_size_controller import (
     StepTo,
 )
 from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
+from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
 class SaveState(eqx.Module):
@@ -55,44 +75,115 @@ class SaveState(eqx.Module):
 
 
 class State(eqx.Module):
+    #
     # Evolving state during the solve
+    #
     y: PyTree[Array]
     tprev: FloatScalarLike
     tnext: FloatScalarLike
     made_jump: BoolScalarLike
     solver_state: PyTree[ArrayLike]
     controller_state: PyTree[ArrayLike]
+    progress_meter_state: PyTree[Array]
     result: RESULTS
+    #
+    # Reported output statistics
+    #
     num_steps: IntScalarLike
     num_accepted_steps: IntScalarLike
     num_rejected_steps: IntScalarLike
+    #
     # Output that is .at[].set() updated during the solve (and their indices)
+    #
     save_state: PyTree[SaveState]
     dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
     dense_infos: Optional[BufferDenseInfos]
     dense_save_index: Optional[IntScalarLike]
+    #
+    # Information about the most recent step, used for events.
+    #
+    # Not recorded anywhere else: this is the previous state's `tprev`.
+    event_tprev: Optional[FloatScalarLike]
+    # This is the previous state's `tnext`. This is not necessarily the same as our
+    # `tprev`, as the two can differ a little bit when crossing jumps.
+    event_tnext: Optional[FloatScalarLike]
+    event_dense_info: Optional[DenseInfo]
+    event_values: Optional[PyTree[Union[BoolScalarLike, RealScalarLike]]]
+    event_mask: Optional[PyTree[BoolScalarLike]]
 
 
-def _is_none(x):
+def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(terms, term_structure):
-    def _check(term_cls, term):
-        if get_origin(term_cls) is MultiTerm:
+def _term_compatible(
+    y: PyTree[ArrayLike],
+    args: PyTree[Any],
+    terms: PyTree[AbstractTerm],
+    term_structure: PyTree,
+    contr_kwargs: PyTree[dict],
+) -> bool:
+    error_msg = "term_structure"
+
+    def _check(term_cls, term, term_contr_kwargs, yi):
+        if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
             if isinstance(term, MultiTerm):
                 [_tmp] = get_args(term_cls)
                 assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
-                if not _term_compatible(term.terms, get_args(_tmp)):
-                    raise ValueError
+                assert len(term.terms) == len(get_args(_tmp))
+                assert type(term_contr_kwargs) is tuple
+                assert len(term.terms) == len(term_contr_kwargs)
+                for term, arg, term_contr_kwarg in zip(
+                    term.terms, get_args(_tmp), term_contr_kwargs
+                ):
+                    if not _term_compatible(yi, args, term, arg, term_contr_kwarg):
+                        raise ValueError
             else:
                 raise ValueError
         else:
-            if not isinstance(term, term_cls):
+            # Check that `term` is an instance of `term_cls` (ignoring any generic
+            # parameterization).
+            origin_cls = get_origin_no_specials(term_cls, error_msg)
+            if origin_cls is None:
+                origin_cls = term_cls
+            if not isinstance(term, origin_cls):
                 raise ValueError
 
+            # Now check the generic parametrization of `term_cls`; can be one of:
+            # -----------------------------------------
+            # `term_cls`                | `term_args`
+            # --------------------------|--------------
+            # AbstractTerm              | ()
+            # AbstractTerm[VF, Control] | (VF, Control)
+            # -----------------------------------------
+            term_args = get_args_of(AbstractTerm, term_cls, error_msg)
+            n_term_args = len(term_args)
+            if n_term_args == 0:
+                pass
+            elif n_term_args == 2:
+                vf_type_expected, control_type_expected = term_args
+                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                vf_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, vf_type, vf_type_expected
+                )
+                if not vf_type_compatible:
+                    raise ValueError
+
+                contr = ft.partial(term.contr, **term_contr_kwargs)
+                # Work around https://github.com/google/jax/issues/21825
+                control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
+                control_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, control_type, control_type_expected
+                )
+                if not control_type_compatible:
+                    raise ValueError
+            else:
+                assert False, "Malformed term structure"
+            # If we've got to this point then the term is compatible
+
     try:
-        jtu.tree_map(_check, term_structure, terms)
+        with jax.numpy_dtype_promotion("standard"):
+            jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except ValueError:
         # ValueError may also arise from mismatched tree structures
         return False
@@ -178,7 +269,7 @@ def loop(
     *,
     solver,
     stepsize_controller,
-    discrete_terminating_event,
+    event,
     saveat,
     t0,
     t1,
@@ -189,6 +280,7 @@ def loop(
     init_state,
     inner_while_loop,
     outer_while_loop,
+    progress_meter,
 ):
     if saveat.dense:
         dense_ts = init_state.dense_ts
@@ -278,6 +370,10 @@ def loop(
 
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
+
+        progress_meter_state = progress_meter.step(
+            state.progress_meter_state, linear_rescale(t0, tprev, t1)
+        )
 
         # The other parts of the mutable state are kept/not-kept (based on whether the
         # step was accepted) by the stepsize controller. But it doesn't get access to
@@ -391,6 +487,87 @@ def loop(
             )
             dense_save_index = dense_save_index + jnp.where(keep_step, 1, 0)
 
+        if event is None:
+            event_tprev = None
+            event_tnext = None
+            event_dense_info = None
+            event_values = None
+            event_mask = None
+        else:
+            event_tprev = state.tprev
+            event_tnext = state.tnext
+            event_dense_info = dense_info
+
+            def _outer_cond_fn(cond_fn_i, old_event_value_i):
+                new_event_value_i = cond_fn_i(
+                    tprev,
+                    y,
+                    args,
+                    terms=terms,
+                    solver=solver,
+                    t0=t0,
+                    t1=t1,
+                    dt0=dt0,
+                    saveat=saveat,
+                    stepsize_controller=stepsize_controller,
+                    max_steps=max_steps,
+                )
+                assert jnp.shape(old_event_value_i) == ()
+                if jtu.tree_structure(new_event_value_i) != jtu.tree_structure(0):
+                    raise ValueError(
+                        "Event functions must return a scalar, got PyTree with shape "
+                        f"{jtu.tree_structure(new_event_value_i)}."
+                    )
+                if jnp.shape(new_event_value_i) != ():
+                    raise ValueError(
+                        "Event functions must return a scalar, got shape "
+                        f"{jnp.shape(new_event_value_i)}."
+                    )
+                old_dtype = jnp.result_type(old_event_value_i)
+                new_dtype = jnp.result_type(new_event_value_i)
+                if old_dtype != new_dtype:
+                    raise ValueError(
+                        "Event functions must consistently return either a boolean or "
+                        f"a float, got a change of dtype from {old_dtype} to "
+                        f"{new_dtype}."
+                    )
+                if jnp.issubdtype(new_dtype, jnp.floating):
+                    event_mask_i = jnp.sign(old_event_value_i) != jnp.sign(
+                        new_event_value_i
+                    )
+                elif jnp.issubdtype(new_dtype, jnp.bool_):
+                    event_mask_i = new_event_value_i
+                else:
+                    raise ValueError(
+                        "Event functions must return either a boolean or a float, got "
+                        f"{new_dtype}."
+                    )
+                return new_event_value_i, event_mask_i
+
+            event_values__mask = jtu.tree_map(
+                _outer_cond_fn,
+                event.cond_fn,
+                state.event_values,
+                is_leaf=callable,
+            )
+            event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
+            event_values, event_mask = jtu.tree_transpose(
+                event_structure,
+                jtu.tree_structure((0, 0)),
+                event_values__mask,
+            )
+            had_event = False
+            event_mask_leaves = []
+            for event_mask_i in jtu.tree_leaves(event_mask):
+                event_mask_leaves.append(event_mask_i & jnp.invert(had_event))
+                had_event = event_mask_i | had_event
+            event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
+            result = RESULTS.where(
+                had_event,
+                RESULTS.event_occurred,
+                result,
+            )
+
         new_state = State(
             y=y,
             tprev=tprev,
@@ -403,30 +580,16 @@ def loop(
             num_accepted_steps=num_accepted_steps,
             num_rejected_steps=num_rejected_steps,
             save_state=save_state,
-            dense_ts=dense_ts,  # pyright: ignore
+            dense_ts=dense_ts,  # pyright: ignore[reportArgumentType]
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
+            progress_meter_state=progress_meter_state,
+            event_tprev=event_tprev,
+            event_tnext=event_tnext,
+            event_dense_info=event_dense_info,
+            event_values=event_values,
+            event_mask=event_mask,
         )
-
-        if discrete_terminating_event is not None:
-            discrete_terminating_event_occurred = discrete_terminating_event(
-                new_state,
-                solver=solver,
-                stepsize_controller=stepsize_controller,
-                saveat=saveat,
-                t0=t0,
-                t1=t1,
-                dt0=dt0,
-                max_steps=max_steps,
-                terms=terms,
-                args=args,
-            )
-            result = RESULTS.where(
-                discrete_terminating_event_occurred,
-                RESULTS.discrete_terminating_event_occurred,
-                result,
-            )
-            new_state = eqx.tree_at(lambda s: s.result, new_state, result)
 
         return (
             new_state,
@@ -458,16 +621,153 @@ def loop(
     final_state = outer_while_loop(
         cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
     )
+    result = final_state.result
+
+    if event is None or event.root_finder is None:
+        tfinal = final_state.tprev
+        yfinal = final_state.y
+    else:
+        # If we're on this branch, it means that an event may have triggered, and now we
+        # may need to do a root find, in order to locate the event time.
+        event_mask = final_state.event_mask
+        flat_mask = jtu.tree_leaves(event_mask)
+        assert all(jnp.shape(x) == () for x in flat_mask)
+        event_happened = jnp.any(jnp.stack(flat_mask))
+
+        def _root_find():
+            _interpolator = solver.interpolation_cls(
+                t0=final_state.event_tprev,
+                t1=final_state.event_tnext,
+                **final_state.event_dense_info,
+            )
+
+            def _to_root_find(_t, _):
+                _distance_from_t_end = final_state.event_tnext - _t
+
+                def _call_real(_event_mask_i, _cond_fn_i):
+                    def _call_real_impl():
+                        # First evaluate the triggered event.
+                        _y = _interpolator.evaluate(_t)
+                        _value = _cond_fn_i(
+                            t=_t,
+                            y=_y,
+                            args=args,
+                            terms=terms,
+                            solver=solver,
+                            t0=t0,
+                            t1=t1,
+                            dt0=dt0,
+                            saveat=saveat,
+                            stepsize_controller=stepsize_controller,
+                            max_steps=max_steps,
+                        )
+                        # Second: if this is a boolean event, then normalise to a
+                        # floating point number by having the root occur at the end of
+                        # the last step, i.e. `event_tnext`.
+                        _value_dtype = jnp.result_type(_value)
+                        if jnp.issubdtype(_value_dtype, jnp.bool_):
+                            _value = _distance_from_t_end
+                        else:
+                            assert jnp.issubdtype(_value_dtype, jnp.floating)
+                        return _value
+
+                    # Only the triggered event actually gets to the decide what time the
+                    # event occurs; everything else is zeroed out to automatically give
+                    # a root.
+                    #
+                    # We allow this `lax.cond` to be inefficiently transformed into a
+                    # `lax.select` when `_event_mask_i` is batched. There isn't any way
+                    # to avoid this, I think.
+                    _value = lax.cond(_event_mask_i, _call_real_impl, lambda: 0.0)
+
+                    # Third: if no events triggered at all, then have the root occur at
+                    # the end of the last step (which will be the `t1` of the overall
+                    # solve).
+                    _value = jnp.where(event_happened, _value, _distance_from_t_end)
+                    return _value
+
+                return jtu.tree_map(
+                    _call_real,
+                    event_mask,
+                    event.cond_fn,
+                )
+
+            _options = {
+                "lower": final_state.event_tprev,
+                "upper": final_state.event_tnext,
+            }
+            _event_root_find = optx.root_find(
+                _to_root_find,
+                event.root_finder,
+                y0=final_state.event_tnext,
+                options=_options,
+                throw=False,
+            )
+            _tfinal = _event_root_find.value
+            # TODO: we might need to change the way we evaluate `_yfinal` in order to
+            # get more accurate derivatives?
+            _yfinal = _interpolator.evaluate(_tfinal)
+            _result = RESULTS.where(
+                _event_root_find.result == optx.RESULTS.successful,
+                result,
+                RESULTS.promote(_event_root_find.result),
+            )
+            return _tfinal, _yfinal, _result
+
+        # Fastpath: if no event happened anywhere at all, then skip the root-find
+        # altogether.
+        # Note that `_root_find` might still be called on batch elements which did not
+        # have an event, so we still need to access `event_happened` inside of it.
+        tfinal, yfinal, result = lax.cond(
+            eqxi.unvmap_any(event_happened),
+            _root_find,
+            lambda: (final_state.tprev, final_state.y, result),
+        )
+
+        # We delete all the saved values after the event time.
+        def unsave(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+            ts = save_state.ts
+            mask = ts > tfinal
+            _save_index = save_state.save_index - jnp.sum(mask & (ts < jnp.inf))
+            _saveat_ts_index = save_state.saveat_ts_index - jnp.sum(
+                mask & (ts < jnp.inf)
+            )
+            _ts = jnp.where(mask, jnp.inf, ts)
+            _ys = jtu.tree_map(
+                lambda __ys: jnp.where(
+                    mask[(...,) + (jnp.newaxis,) * (__ys.ndim - 1)], jnp.inf, __ys
+                ),
+                save_state.ys,
+            )
+            return SaveState(
+                saveat_ts_index=_saveat_ts_index,
+                ts=_ts,
+                ys=_ys,
+                save_index=_save_index,
+            )
+
+        save_state = jtu.tree_map(
+            unsave, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
+        )
+
+        final_state = eqx.tree_at(
+            lambda s: s.save_state,
+            final_state,
+            save_state,
+            is_leaf=_is_none,
+        )
 
     def _save_t1(subsaveat, save_state):
-        if subsaveat.t1 and not subsaveat.steps:
-            # If subsaveat.steps then the final value is already saved.
-            #
-            # Use `tprev` instead of `t1` in case of an event terminating the solve
-            # early. (And absent such an event then `tprev == t1`.)
-            save_state = _save(
-                final_state.tprev, final_state.y, args, subsaveat.fn, save_state
-            )
+        if event is None or event.root_finder is None:
+            if subsaveat.t1 and not subsaveat.steps:
+                # If subsaveat.steps then the final value is already saved.
+                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
+        else:
+            if subsaveat.t1 or subsaveat.steps:
+                # In this branch we need to replace the last value with tfinal
+                # and yfinal returned by the root finder also if subsaveat.steps
+                # because we deleted the last value after the event time above.
+                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
     save_state = jtu.tree_map(
@@ -478,10 +778,8 @@ def loop(
     )
 
     final_state = _handle_static(final_state)
-    result = RESULTS.where(
-        cond_fun(final_state), RESULTS.max_steps_reached, final_state.result
-    )
-    aux_stats = dict()
+    result = RESULTS.where(cond_fun(final_state), RESULTS.max_steps_reached, result)
+    aux_stats = dict()  # TODO: put something in here?
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
 
 
@@ -495,6 +793,7 @@ if not TYPE_CHECKING:
 
 
 @eqx.filter_jit
+@eqxi.doc_remove_args("discrete_terminating_event")
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
     solver: AbstractSolver,
@@ -507,12 +806,15 @@ def diffeqsolve(
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
-    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
+    event: Optional[Event] = None,
     max_steps: Optional[int] = 4096,
     throw: bool = True,
+    progress_meter: AbstractProgressMeter = NoProgressMeter(),
     solver_state: Optional[PyTree[ArrayLike]] = None,
     controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
+    # Exists for backward compatibility
+    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
 ) -> Solution:
     """Solves a differential equation.
 
@@ -557,8 +859,8 @@ def diffeqsolve(
         discretise-then-optimise, which is usually the best option for most problems.
         See the page on [Adjoints](./adjoints.md) for more information.
 
-    - `discrete_terminating_event`: A discrete event at which to terminate the solve
-        early. See the page on [Events](./events.md) for more information.
+    - `event`: An event at which to terminate the solve early. See the page on
+        [Events](./events.md) for more information.
 
     - `max_steps`: The maximum number of steps to take before quitting the computation
         unconditionally.
@@ -568,9 +870,7 @@ def diffeqsolve(
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
-        If `True` then an integration failure will raise an error. Note that the errors
-        are only reliably raised on CPUs. If on GPUs then the error may only be
-        printed to stderr, whilst on TPUs then the behaviour is undefined.
+        If `True` then an integration failure will raise a runtime error.
 
         If `False` then the returned solution object will have a `result` field
         indicating whether any failures occurred.
@@ -586,6 +886,9 @@ def diffeqsolve(
             fails. You may prefer to set `throw=False` and inspect the `result` field
             of the returned solution object, to determine which batch elements
             succeeded and which failed.
+
+    - `progress_meter`: A progress meter to indicate how far through the solve has
+        progressed. See [the progress meters page](./progress_meter.md).
 
     - `solver_state`: Some initial state for the solver. Generally obtained by
         `SaveAt(solver_state=True)` from a previous solve.
@@ -618,6 +921,24 @@ def diffeqsolve(
     # Initial set-up
     #
 
+    # Backward compatibility
+    if discrete_terminating_event is not None:
+        warnings.warn(
+            "`diffrax.diffeqsolve(..., discrete_terminating_event=...)` is deprecated "
+            "in favour of the more general `diffrax.diffeqsolve(..., event=...)` "
+            "interface. This will be removed in some future version of Diffrax.",
+            stacklevel=2,
+        )
+        if event is None:
+            event = Event(
+                cond_fn=DiscreteTerminatingEventToCondFn(discrete_terminating_event)
+            )
+        else:
+            raise ValueError(
+                "Cannot pass both "
+                "`diffrax.diffeqsolve(..., event=..., discrete_terminating_event=...)`."
+            )
+
     # Error checking
     if dt0 is not None:
         msg = (
@@ -635,57 +956,11 @@ def diffeqsolve(
         eqx.is_array(xi) and jnp.iscomplexobj(xi)
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
-        if isinstance(solver, AbstractImplicitSolver):
-            raise ValueError(
-                "Implicit solvers in conjunction with complex dtypes is currently not "
-                "supported."
-            )
         warnings.warn(
             "Complex dtype support is work in progress, please read "
             "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully.",
             stacklevel=2,
         )
-
-    # Backward compatibility
-    if isinstance(
-        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(terms, (ODETerm, AbstractTerm)):
-        warnings.warn(
-            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-            f"{solver.__class__.__name__} is deprecated in favour of "
-            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-            "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!",
-            stacklevel=2,
-        )
-        terms = MultiTerm(*terms)
-
-    # Error checking
-    if not _term_compatible(terms, solver.term_structure):
-        raise ValueError(
-            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
-            f"structure {solver.term_structure}"
-        )
-
-    if is_sde(terms):
-        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
-            warnings.warn(
-                f"`{type(solver).__name__}` is not marked as converging to either the "
-                "Itô or the Stratonovich solution.",
-                stacklevel=2,
-            )
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-            # Specific check to not work even if using HalfSolver(Euler())
-            if isinstance(solver, Euler):
-                raise ValueError(
-                    "An SDE should not be solved with adaptive step sizes with Euler's "
-                    "method, as it may not converge to the correct solution."
-                )
-    if is_unsafe_sde(terms):
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
-            raise ValueError(
-                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
-            )
 
     # Allow setting e.g. t0 as an int with dt0 as a float.
     timelikes = [t0, t1, dt0] + [
@@ -729,6 +1004,51 @@ def diffeqsolve(
 
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
+
+    # Backward compatibility
+    if isinstance(
+        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
+    ) and _term_compatible(
+        y0, args, terms, (ODETerm, AbstractTerm), solver.term_compatible_contr_kwargs
+    ):
+        warnings.warn(
+            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+            f"{solver.__class__.__name__} is deprecated in favour of "
+            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+            "the same terms can now be passed used for both general and SDE-specific "
+            "solvers!",
+            stacklevel=2,
+        )
+        terms = MultiTerm(*terms)
+
+    # Error checking
+    if not _term_compatible(
+        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
+    ):
+        raise ValueError(
+            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
+            f"structure {solver.term_structure}"
+        )
+
+    if is_sde(terms):
+        if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
+            warnings.warn(
+                f"`{type(solver).__name__}` is not marked as converging to either the "
+                "Itô or the Stratonovich solution.",
+                stacklevel=2,
+            )
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            # Specific check to not work even if using HalfSolver(Euler())
+            if isinstance(solver, Euler):
+                raise ValueError(
+                    "An SDE should not be solved with adaptive step sizes with Euler's "
+                    "method, as it may not converge to the correct solution."
+                )
+    if is_unsafe_sde(terms):
+        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+            raise ValueError(
+                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
+            )
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
@@ -808,6 +1128,18 @@ def diffeqsolve(
 
     saveat = eqx.tree_at(_get_subsaveat_ts, saveat, replace_fn=_check_subsaveat_ts)
 
+    def _subsaveat_direction_fn(x):
+        if _is_subsaveat(x):
+            if x.fn is not save_y:
+                direction_fn = lambda t, y, args: x.fn(direction * t, y, args)
+                return eqx.tree_at(lambda x: x.fn, x, direction_fn)
+            else:
+                return x
+        else:
+            return x
+
+    saveat = jtu.tree_map(_subsaveat_direction_fn, saveat, is_leaf=_is_subsaveat)
+
     # Initialise states
     tprev = t0
     error_order = solver.error_order(terms)
@@ -851,7 +1183,7 @@ def diffeqsolve(
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
-        ts = jnp.full(out_size, jnp.inf, dtype=time_dtype)
+        ts = jnp.full(out_size, direction * jnp.inf, dtype=time_dtype)
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
         ys = jtu.tree_map(
             lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
@@ -866,30 +1198,113 @@ def diffeqsolve(
     num_rejected_steps = 0
     made_jump = False if made_jump is None else made_jump
     result = RESULTS.successful
+    if saveat.dense or event is not None:
+        _, _, dense_info_struct, _, _ = eqx.filter_eval_shape(
+            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
+        )
     if saveat.dense:
         if max_steps is None:
             raise ValueError(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
-        (
-            _,
-            _,
-            dense_info,
-            _,
-            _,
-        ) = eqx.filter_eval_shape(
-            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
-        )
         dense_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
         _make_full = lambda x: jnp.full(
             (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
         )
-        dense_infos = jtu.tree_map(_make_full, dense_info)
+        dense_infos = jtu.tree_map(_make_full, dense_info_struct)  # pyright: ignore[reportPossiblyUnboundVariable]
         dense_save_index = 0
     else:
         dense_ts = None
         dense_infos = None
         dense_save_index = None
+
+    # Progress meter
+    progress_meter_state = progress_meter.init()
+
+    # Events
+    if event is None:
+        event_tprev = None
+        event_tnext = None
+        event_dense_info = None
+        event_values = None
+        event_mask = None
+    else:
+        event_tprev = tprev
+        event_tnext = tnext
+        # Fill the dense-info with dummy values on the first step, when we haven't yet
+        # made any steps.
+        # Note that we're threading a needle here! What if we terminate on the very
+        # first step? Our dense-info (and thus a subsequent root find) will be
+        # completely wrong!
+        # Fortunately, this can't quite happen:
+        # - A boolean event never uses dense-info (the interpolation is unused and we go
+        #   to the end of the interval).
+        # - A floating event can't terminate on the first step (it requires a sign
+        #   change).
+        event_dense_info = jtu.tree_map(
+            lambda x: jnp.empty(x.shape, x.dtype),
+            dense_info_struct,  # pyright: ignore[reportPossiblyUnboundVariable]
+        )
+
+        def _outer_cond_fn(cond_fn_i):
+            event_value_i = cond_fn_i(
+                tprev,
+                y0,
+                args,
+                terms=terms,
+                solver=solver,
+                t0=t0,
+                t1=t1,
+                dt0=dt0,
+                saveat=saveat,
+                stepsize_controller=stepsize_controller,
+                max_steps=max_steps,
+            )
+            if jtu.tree_structure(event_value_i) != jtu.tree_structure(0):
+                raise ValueError(
+                    "Event functions must return a scalar, got PyTree with shape "
+                    f"{jtu.tree_structure(event_value_i)}."
+                )
+            if jnp.shape(event_value_i) != ():
+                raise ValueError(
+                    "Event functions must return a scalar, got shape "
+                    f"{jnp.shape(event_value_i)}."
+                )
+            event_dtype = jnp.result_type(event_value_i)
+            if jnp.issubdtype(event_dtype, jnp.floating):
+                event_mask_i = False  # Has not yet had the opportunity to change sign.
+            elif jnp.issubdtype(event_dtype, jnp.bool_):
+                event_mask_i = event_value_i
+            else:
+                raise ValueError(
+                    "Event functions must return either a boolean or a float, got "
+                    f"{event_dtype}."
+                )
+            return event_value_i, event_mask_i
+
+        event_values__mask = jtu.tree_map(
+            _outer_cond_fn,
+            event.cond_fn,
+            is_leaf=callable,
+        )
+        event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
+        event_values, event_mask = jtu.tree_transpose(
+            event_structure,
+            jtu.tree_structure((0, 0)),
+            event_values__mask,
+        )
+        had_event = False
+        event_mask_leaves = []
+        for event_mask_i in jtu.tree_leaves(event_mask):
+            event_mask_leaves.append(event_mask_i & jnp.invert(had_event))
+            had_event = event_mask_i | had_event
+        event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
+        result = RESULTS.where(
+            had_event,
+            RESULTS.event_occurred,
+            result,
+        )
+        del had_event, event_structure, event_mask_leaves, event_values__mask
 
     # Initialise state
     init_state = State(
@@ -907,6 +1322,12 @@ def diffeqsolve(
         dense_ts=dense_ts,
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
+        progress_meter_state=progress_meter_state,
+        event_tprev=event_tprev,
+        event_tnext=event_tnext,
+        event_dense_info=event_dense_info,
+        event_values=event_values,
+        event_mask=event_mask,
     )
 
     #
@@ -918,7 +1339,7 @@ def diffeqsolve(
         terms=terms,
         solver=solver,
         stepsize_controller=stepsize_controller,
-        discrete_terminating_event=discrete_terminating_event,
+        event=event,
         saveat=saveat,
         t0=t0,
         t1=t1,
@@ -928,20 +1349,23 @@ def diffeqsolve(
         throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
+        progress_meter=progress_meter,
     )
 
     #
     # Finish up
     #
 
+    progress_meter.close(final_state.progress_meter_state)
     is_save_state = lambda x: isinstance(x, SaveState)
     ts = jtu.tree_map(
         lambda s: s.ts * direction, final_state.save_state, is_leaf=is_save_state
     )
     ys = jtu.tree_map(lambda s: s.ys, final_state.save_state, is_leaf=is_save_state)
+
     # It's important that we don't do any further postprocessing on `ys` here, as
     # it is the `final_state` value that is used when backpropagating via
-    # optimise-then-discretise.
+    # `BacksolveAdjoint`.
 
     if saveat.controller_state:
         controller_state = final_state.controller_state
@@ -977,8 +1401,10 @@ def diffeqsolve(
         "num_accepted_steps": final_state.num_accepted_steps,
         "num_rejected_steps": final_state.num_rejected_steps,
         "max_steps": max_steps,
+        **aux_stats,
     }
     result = final_state.result
+    event_mask = final_state.event_mask
     sol = Solution(
         t0=t0,
         t1=t1,
@@ -990,6 +1416,7 @@ def diffeqsolve(
         solver_state=solver_state,
         controller_state=controller_state,
         made_jump=made_jump,
+        event_mask=event_mask,
     )
 
     if throw:

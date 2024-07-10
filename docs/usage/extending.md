@@ -24,7 +24,7 @@ The main points of extension are as follows:
 - **Custom controls** (e.g. **custom interpolation schemes** analogous to [`diffrax.CubicInterpolation`][]) should inherit from [`diffrax.AbstractPath`][].
 
 - **Custom terms** should inherit from [`diffrax.AbstractTerm`][].
-    - For example, if the vector field - control interaction is a matrix-vector product, but the matrix is known to have special structure, then you may wish to create a custom term that can calculate this interaction more efficiently than is given by a full matrix-vector product. For example this is done with [`diffrax.WeaklyDiagonalControlTerm`][] as compared to [`diffrax.ControlTerm`][].
+    - For example, if the vector field - control interaction is a matrix-vector product, but the matrix is known to have special structure, then you may wish to create a custom term that can calculate this interaction more efficiently than is given by a full matrix-vector product. Given the large suite of linear operators [lineax](https://docs.kidger.site/lineax/) implements (which are fully supported by [`diffrax.ControlTerm`][]), this is likely rarely necessary.
 
 In each case we recommend looking up existing solvers/etc. in Diffrax to understand how to implement them.
 

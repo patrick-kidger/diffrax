@@ -140,7 +140,7 @@ def test_multiple_tableau1(adaptive):
     with pytest.raises(ValueError):
         diffrax.diffeqsolve(
             (term1, term2),
-            _DoubleDopri5(),  # pyright: ignore
+            _DoubleDopri5(),
             t0,
             t1,
             dt0,
@@ -194,7 +194,7 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         def vf(self, t, y, args):
             return {"f": -self.coeff * y["y"]}
 
-        def contr(self, t0, t1):
+        def contr(self, t0, t1, **kwargs):
             return {"t": t1 - t0}
 
         def prod(self, vf, control):
@@ -274,7 +274,8 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
 
 
 # Essentially used as a check that our general IMEX implementation is correct.
-def test_sil3():
+@pytest.mark.parametrize("dtype", (jnp.float64,))
+def test_sil3(dtype):
     class ReferenceSil3(diffrax.AbstractImplicitSolver):
         term_structure = diffrax.MultiTerm[
             tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]
@@ -326,6 +327,7 @@ def test_sil3():
                 )
 
             tb = t0 + (2 / 3) * dt
+
             yb = optx.root_find(_third_stage, self.root_finder, ya).value
             fs.append(ex_vf_prod(tb, yb))
             gs.append(im_vf_prod(tb, yb))
@@ -379,17 +381,19 @@ def test_sil3():
     mlp2 = eqx.nn.MLP(3, 2, 8, 1, key=mlpkey2)
 
     def f1(t, y, args):
-        y = jnp.concatenate([t[None], y])
-        return mlp1(y)
+        with jax.numpy_dtype_promotion("standard"):
+            y = jnp.concatenate([t[None], y])
+            return mlp1(y)
 
     def f2(t, y, args):
         y = jnp.concatenate([t[None], y])
-        return mlp2(y)
+        with jax.numpy_dtype_promotion("standard"):
+            return mlp2(y)
 
     terms = diffrax.MultiTerm(diffrax.ODETerm(f1), diffrax.ODETerm(f2))
     t0 = jnp.array(0.3)
     t1 = jnp.array(1.5)
-    y0 = jr.normal(ykey, (2,), dtype=jnp.float64)
+    y0 = jr.normal(ykey, (2,), dtype=dtype)
     args = None
 
     state = solver.init(terms, t0, t1, y0, args)

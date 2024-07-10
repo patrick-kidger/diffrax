@@ -8,6 +8,7 @@ import jax.interpreters.ad
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import optax
 import pytest
 from jaxtyping import Array
@@ -264,6 +265,7 @@ def test_implicit():
         non_jax_type: Any
 
         def __call__(self, t, y, args):
+            del t, args
             return self.steady_state - y
 
     def loss(model, target_steady_state):
@@ -275,7 +277,8 @@ def test_implicit():
         y0 = 1.0
         max_steps = None
         controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
-        event = diffrax.SteadyStateEvent()
+        cond_fn = diffrax.steady_state_event()
+        event = diffrax.Event(cond_fn)
         adjoint = diffrax.ImplicitAdjoint()
         sol = diffrax.diffeqsolve(
             term,
@@ -286,7 +289,7 @@ def test_implicit():
             y0,
             max_steps=max_steps,
             stepsize_controller=controller,
-            discrete_terminating_event=event,
+            event=event,
             adjoint=adjoint,
         )
         (y1,) = cast(Array, sol.ys)
@@ -329,7 +332,11 @@ def test_backprop_ts(getkey):
     run(mlp)
 
 
-def test_sde_against(getkey):
+@pytest.mark.parametrize(
+    "diffusion_fn",
+    ["weak", "lineax"],
+)
+def test_sde_against(diffusion_fn, getkey):
     def f(t, y, args):
         k0, _ = args
         return -k0 * y
@@ -338,6 +345,10 @@ def test_sde_against(getkey):
         _, k1 = args
         return k1 * y
 
+    def g_lx(t, y, args):
+        _, k1 = args
+        return lx.DiagonalLinearOperator(k1 * y)
+
     t0 = 0
     t1 = 1
     dt0 = 0.001
@@ -345,7 +356,10 @@ def test_sde_against(getkey):
     shape = (2,)
     bm = diffrax.VirtualBrownianTree(t0, t1, tol, shape, key=getkey())
     drift = diffrax.ODETerm(f)
-    diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+    if diffusion_fn == "weak":
+        diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+    else:
+        diffusion = diffrax.ControlTerm(g_lx, bm)
     terms = diffrax.MultiTerm(drift, diffusion)
     solver = diffrax.Heun()
 

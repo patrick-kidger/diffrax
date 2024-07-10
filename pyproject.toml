@@ -1,6 +1,6 @@
 [project]
 name = "diffrax"
-version = "0.5.0"
+version = "0.6.0"
 description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 readme = "README.md"
 requires-python ="~=3.9"
@@ -8,7 +8,7 @@ license = {file = "LICENSE"}
 authors = [
   {name = "Patrick Kidger", email = "contact@kidger.site"},
 ]
-keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations"]
+keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations", "diffrax"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 urls = {repository = "https://github.com/patrick-kidger/diffrax" }
-dependencies = ["jax>=0.4.18", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "equinox>=0.11.2", "lineax>=0.0.4", "optimistix>=0.0.6"]
+dependencies = ["jax>=0.4.28", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "typeguard==2.13.3", "equinox>=0.11.2", "lineax>=0.0.5", "optimistix>=0.0.7"]
 
 [build-system]
 requires = ["hatchling"]
@@ -38,13 +38,15 @@ markers = ["slow"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
+src = []
+
+[tool.ruff.lint]
 fixable = ["I001", "F401"]
 ignore = ["E402", "E721", "E731", "E741", "F722"]
 ignore-init-module-imports = true
 select = ["E", "F", "I001"]
-src = []
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 combine-as-imports = true
 extra-standard-library = ["typing_extensions"]
 lines-after-imports = 2
@@ -52,4 +54,6 @@ order-by-type = false
 
 [tool.pyright]
 reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = false  # Incompatible with eqx.AbstractVar
+reportUnnecessaryTypeIgnoreComment = true
 include = ["diffrax", "tests"]

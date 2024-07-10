@@ -48,7 +48,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     ] = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`StratonovichMilstein` should not used to solve ODEs.")
+        raise ValueError("`StratonovichMilstein` should not be used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise
@@ -122,7 +122,7 @@ class ItoMilstein(AbstractItoSolver):
     ] = LocalLinearInterpolation
 
     def order(self, terms):
-        raise ValueError("`ItoMilstein` should not used to solve ODEs.")
+        raise ValueError("`ItoMilstein` should not be used to solve ODEs.")
 
     def strong_order(self, terms):
         return 1  # assuming commutative noise
@@ -214,7 +214,8 @@ class ItoMilstein(AbstractItoSolver):
                 leaf = jnp.tensordot(l1[..., None], l2[None, ...], axes=1)
                 if i1 == i2:
                     eye = jnp.eye(l1.size).reshape(l1.shape + l1.shape)
-                    leaf = leaf - Δt * eye
+                    with jax.numpy_dtype_promotion("standard"):
+                        leaf = leaf - Δt * eye
                 leaves_ΔwΔw.append(leaf)
         tree_ΔwΔw = tree_Δw.compose(tree_Δw)
         ΔwΔw = jtu.tree_unflatten(tree_ΔwΔw, leaves_ΔwΔw)
@@ -236,7 +237,9 @@ class ItoMilstein(AbstractItoSolver):
             # _g0 has structure (tree(y0), leaf(y0))
             _, _jvp = jax.jvp(_to_vjp, (y0,), (_g0,))
             # jvp has structure (tree(g0), leaf(g0))
-            _jvp_matrix = jax.jacfwd(lambda _Δw: diffusion.prod(_jvp, _Δw))(Δw)
+            _jvp_matrix = jax.jacfwd(
+                lambda _Δw: diffusion.prod(_jvp, _Δw), holomorphic=jnp.iscomplexobj(Δw)
+            )(Δw)
             # _jvp_matrix has structure (tree(y0), tree(Δw), leaf(y0), leaf(Δw))
             return _jvp_matrix
 
@@ -282,7 +285,9 @@ class ItoMilstein(AbstractItoSolver):
         Δw_treedef = jtu.tree_structure(Δw)
         # g0 has structure (tree(g0), leaf(g0))
         # Which we now transform into its isomorphic matrix form, as above.
-        g0_matrix = jax.jacfwd(lambda _Δw: diffusion.prod(g0, _Δw))(Δw)
+        g0_matrix = jax.jacfwd(
+            lambda _Δw: diffusion.prod(g0, _Δw), holomorphic=jnp.iscomplexobj(Δw)
+        )(Δw)
         # g0_matrix has structure (tree(y0), tree(Δw), leaf(y0), leaf(Δw))
         g0_matrix = jtu.tree_transpose(y_treedef, Δw_treedef, g0_matrix)
         # g0_matrix has structure (tree(Δw), tree(y0), leaf(y0), leaf(Δw))

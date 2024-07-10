@@ -10,20 +10,30 @@ import jax.tree_util as jtu
 
 from ._adjoint import BacksolveAdjoint, DirectAdjoint, RecursiveCheckpointAdjoint
 from ._brownian import AbstractBrownianPath, VirtualBrownianTree
+from ._custom_types import BrownianIncrement
 from ._heuristics import is_cde, is_sde
 from ._integrate import diffeqsolve
 from ._misc import adjoint_rms_seminorm
 from ._saveat import SubSaveAt
 from ._solver import (
     AbstractImplicitSolver,
+    AbstractItoSolver,
+    AbstractSRK,
+    AbstractStratonovichSolver,
     Dopri5,
     Dopri8,
+    GeneralShARK,
     Kvaerno3,
     Kvaerno4,
     Kvaerno5,
     LeapfrogMidpoint,
     ReversibleHeun,
+    SEA,
     SemiImplicitEuler,
+    ShARK,
+    SlowRK,
+    SPaRK,
+    SRA1,
     Tsit5,
 )
 from ._step_size_controller import PIDController
@@ -338,28 +348,36 @@ def _virtual_brownian_tree(terms):
     is_vbt = lambda x: isinstance(x, VirtualBrownianTree)
     leaves = jtu.tree_leaves(terms, is_leaf=is_vbt)
     if any(is_vbt(leaf) for leaf in leaves):
-        vbt_ref, _ = _parse_reference_multi(VirtualBrownianTree)
+        vbt_ref, single_seed_ref, _ = _parse_reference_multi(VirtualBrownianTree)
         return (
             r"""
 % You are simulating Brownian motion using a virtual Brownian tree, which was introduced
 % in:
 """
             + vbt_ref
+            + "\n\n"
+            + single_seed_ref
         )
 
 
 @citation_rules.append
 def _space_time_levy_area(terms):
-    has_levy_area = lambda x: isinstance(x, AbstractBrownianPath) and x.levy_area != ""
+    has_levy_area = (
+        lambda x: isinstance(x, AbstractBrownianPath)
+        and x.levy_area != BrownianIncrement
+    )
     leaves = jtu.tree_leaves(terms, is_leaf=has_levy_area)
     if any(has_levy_area(leaf) for leaf in leaves):
-        _, levy_area_ref = _parse_reference_multi(VirtualBrownianTree)
+        _, single_seed_ref, foster_ref = _parse_reference_multi(VirtualBrownianTree)
         return (
             r"""
-% You are simulating Brownian motion using space-time Levy area, the formulae for which
-% were developed in:
-"""
-            + levy_area_ref
+                % You are simulating Brownian motion using Lévy area,
+                % the formulae for which are due to:
+                """
+            + single_seed_ref
+            + "\n\n"
+            + r"""% and Theorem 6.1.6 of:"""
+            + foster_ref
         )
 
 
@@ -374,7 +392,15 @@ def _backsolve_rms_norm(adjoint):
 
 @citation_rules.append
 def _explicit_solver(solver, terms=None):
-    if not isinstance(solver, AbstractImplicitSolver) and not is_sde(terms):
+    if not isinstance(
+        solver,
+        (
+            AbstractImplicitSolver,
+            AbstractSRK,
+            AbstractItoSolver,
+            AbstractStratonovichSolver,
+        ),
+    ) and not is_sde(terms):
         return r"""
 % You are using an explicit solver, and may wish to cite the standard textbook:
 @book{hairer2008solving-i,
@@ -467,6 +493,12 @@ def _solvers(solver, saveat=None):
         Kvaerno5,
         ReversibleHeun,
         LeapfrogMidpoint,
+        ShARK,
+        SRA1,
+        SlowRK,
+        GeneralShARK,
+        SPaRK,
+        SEA,
     ):
         return (
             r"""

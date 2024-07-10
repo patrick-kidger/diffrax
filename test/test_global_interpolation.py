@@ -250,18 +250,16 @@ def test_cubic_interpolation_deriv0(unsqueeze):
 
 
 @pytest.mark.parametrize("mode", ["linear", "cubic"])
-def test_interpolation_classes(mode, getkey):
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+def test_interpolation_classes(mode, dtype, getkey):
     length = 8
     num_channels = 3
     ts_ = [
         jnp.linspace(0, 10, length),
         jnp.array([0.0, 2.0, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1]),
     ]
-    _make = lambda: jr.normal(getkey(), (length, num_channels))
-    ys_ = [
-        _make(),
-        [_make(), {"a": _make(), "b": _make()}],
-    ]
+    _make = lambda: jr.normal(getkey(), (length, num_channels), dtype=dtype)
+    ys_ = [_make(), [_make(), {"a": _make(), "b": _make()}], {}, []]
     for ts in ts_:
         assert len(ts) == length
         for ys in ys_:
@@ -291,9 +289,9 @@ def test_interpolation_classes(mode, getkey):
                     def _test(firstval, vals, y0, y1):
                         vals = jnp.concatenate([firstval[None], vals])
                         with jax.numpy_rank_promotion("allow"):
-                            true_vals = y0 + ((points - t0) / (t1 - t0))[:, None] * (
-                                y1 - y0
-                            )
+                            true_vals = y0 + ((points - t0) / (t1 - t0)).astype(
+                                y0.dtype
+                            )[:, None] * (y1 - y0)
                         assert tree_allclose(vals, true_vals)
 
                     jtu.tree_map(_test, firstval, vals, y0, y1)
@@ -302,7 +300,7 @@ def test_interpolation_classes(mode, getkey):
 
                     def _test2(firstderiv, derivs, y0, y1):
                         derivs = jnp.concatenate([firstderiv[None], derivs])
-                        true_derivs = (y1 - y0) / (t1 - t0)
+                        true_derivs = (y1 - y0) / (t1 - t0).astype(y0.dtype)
                         true_derivs = jnp.broadcast_to(true_derivs, derivs.shape)
                         assert tree_allclose(derivs, true_derivs)
 
