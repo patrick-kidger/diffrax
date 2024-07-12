@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import optimistix as optx
 import pytest
 
@@ -33,7 +34,7 @@ def test_kl_solver():
     arg = {"theta": 1.0}
 
     odeterm = diffrax.ODETerm(lambda t, y, args: jnp.sin(t) + args["theta"] * y)
-    g = lambda t, y, args: 0.1 * jnp.array([1.0])
+    g = lambda t, y, args: lx.DiagonalLinearOperator(0.1 * jnp.array([1.0]))
     control = diffrax.VirtualBrownianTree(
         t0=t0,
         t1=t1,
@@ -42,10 +43,10 @@ def test_kl_solver():
         key=jax.random.PRNGKey(0),
     )
     terms = diffrax.MultiTerm(
-        diffrax.MultiTerm(odeterm, diffrax.WeaklyDiagonalControlTerm(g, control)),
+        diffrax.MultiTerm(odeterm, diffrax.ControlTerm(g, control)),
         odeterm,
     )
-    solver = diffrax.KLSolver(diffrax.Heun())
+    solver, y0 = diffrax.initialize_kl(diffrax.Heun(), y0)
     stepsize_controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
     sol = diffrax.diffeqsolve(
         terms,
@@ -57,8 +58,8 @@ def test_kl_solver():
         args=arg,
         stepsize_controller=stepsize_controller,
     )
-    assert isinstance(sol.ys, tuple)
-    assert tree_allclose(sol.ys[1].squeeze(), jnp.array(0.0))
+    assert isinstance(sol.ys, diffrax.KLState)
+    assert tree_allclose(sol.ys.kl_metric.squeeze(), jnp.array(0.0))
 
 
 def test_instance_check():

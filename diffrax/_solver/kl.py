@@ -1,12 +1,11 @@
 import operator
-from typing import Optional, Tuple, Union
+from typing import Optional
 
 import equinox as eqx
-import jax
 import jax.tree_util as jtu
 import lineax as lx
 from jax import numpy as jnp
-from jaxtyping import PyTree
+from jaxtyping import Array, PyTree
 
 from .._custom_types import (
     Args,
@@ -24,7 +23,6 @@ from .._term import (
     ControlTerm,
     MultiTerm,
     ODETerm,
-    WeaklyDiagonalControlTerm,
 )
 from .base import (
     _SolverState,
@@ -33,18 +31,24 @@ from .base import (
 )
 
 
-_DiffusionTerm = Union[ControlTerm, WeaklyDiagonalControlTerm]
+class KLState(eqx.Module):
+    """
+    The state of the SDE and the KL divergence.
+    """
+
+    y: Y
+    kl_metric: Array
 
 
 def _compute_kl_integral(
     drift_term1: ODETerm,
     drift_term2: ODETerm,
-    diffusion_term: _DiffusionTerm,
+    diffusion_term: ControlTerm,
     t0: RealScalarLike,
     y0: Y,
     args: Args,
     linear_solver: lx.AbstractLinearSolver,
-) -> Tuple[VF, RealScalarLike]:
+) -> KLState:
     """
     Compute the KL divergence.
     """
@@ -54,52 +58,22 @@ def _compute_kl_integral(
 
     diffusion = diffusion_term.vf(t0, y0, args)  # assumes same diffusion
 
-    diffusion = jtu.tree_map(
-        lambda x: jnp.where(
-            jax.lax.stop_gradient(x) > 1e-7,
-            x,
-            jnp.full_like(x, fill_value=1e-7) * jnp.sign(x),
-        ),
-        diffusion,
-    )
+    divergences = lx.linear_solve(diffusion, drift, solver=linear_solver).value
 
-    drift_tree_structure = jtu.tree_structure(drift)
-    diffusion_tree_structure = jtu.tree_structure(diffusion)
+    kl_divergence = jtu.tree_map(lambda x: 0.5 * jnp.sum(x**2), divergences)
+    kl_divergence = jtu.tree_reduce(operator.add, kl_divergence)
 
-    if drift_tree_structure == diffusion_tree_structure:
-        if isinstance(diffusion_term, WeaklyDiagonalControlTerm):
-            diffusion_linear_operator = jtu.tree_map(
-                lx.DiagonalLinearOperator, diffusion
-            )
-        else:
-            diffusion_linear_operator = jtu.tree_map(lx.MatrixLinearOperator, diffusion)
-
-        divergences = jtu.tree_map(
-            lambda a, b: lx.linear_solve(a, b, solver=linear_solver).value,
-            diffusion_linear_operator,
-            drift,
-            is_leaf=lambda x: eqx.is_array(x)
-            or isinstance(x, lx.AbstractLinearOperator),
-        )
-        kl_divergence = jtu.tree_map(lambda x: 0.5 * jnp.sum(x**2), divergences)
-        kl_divergence = jtu.tree_reduce(operator.add, kl_divergence)
-
-    else:
-        raise ValueError(
-            "drift and diffusion should have the same PyTree structure"
-            + f" \n {drift_tree_structure} != {diffusion_tree_structure}"
-        )
-    return drift1, jnp.squeeze(kl_divergence)
+    return KLState(drift1, jnp.squeeze(kl_divergence))
 
 
 class _KLDrift(AbstractTerm):
     drift1: ODETerm
     drift2: ODETerm
-    diffusion: _DiffusionTerm
+    diffusion: ControlTerm
     linear_solver: lx.AbstractLinearSolver
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> Tuple[VF, RealScalarLike]:
-        y, _ = y
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> KLState:
+        y = y.y
         return _compute_kl_integral(
             self.drift1, self.drift2, self.diffusion, t, y, args, self.linear_solver
         )
@@ -112,27 +86,25 @@ class _KLDrift(AbstractTerm):
 
 
 class _KLControlTerm(AbstractTerm):
-    control_term: _DiffusionTerm
+    control_term: ControlTerm
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> Tuple[VF, RealScalarLike]:
-        y, _ = y
+    def vf(self, t: RealScalarLike, y: Y, args: Args) -> KLState:
+        y = y.y
         vf = self.control_term.vf(t, y, args)
-        return vf, 0.0
+        return KLState(vf, jnp.array(0.0))
 
-    def contr(
-        self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
-    ) -> Tuple[Control, RealScalarLike]:
-        return self.control_term.contr(t0, t1), 0.0
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> KLState:
+        return KLState(self.control_term.contr(t0, t1), jnp.array(0.0))
 
-    def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: Control) -> Y:
-        y, _ = y
-        control, _ = control
-        return self.control_term.vf_prod(t, y, args, control), 0.0
+    def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: Control) -> KLState:
+        y = y.y
+        control = control.y
+        return KLState(self.control_term.vf_prod(t, y, args, control), jnp.array(0.0))
 
-    def prod(self, vf: VF, control: Control) -> Y:
-        vf, _ = vf
-        control, _ = control
-        return self.control_term.prod(vf, control), 0.0
+    def prod(self, vf: VF, control: Control) -> KLState:
+        vf = vf.y
+        control = control.y
+        return KLState(self.control_term.prod(vf, control), jnp.array(0.0))
 
 
 class KLSolver(AbstractWrappedSolver[_SolverState]):
@@ -218,7 +190,7 @@ class KLSolver(AbstractWrappedSolver[_SolverState]):
         terms: PyTree[AbstractTerm],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: Y,
+        y0: KLState,
         args: Args,
     ) -> _SolverState:
         return self.solver.init(terms, t0, t1, y0, args)
@@ -260,17 +232,13 @@ class KLSolver(AbstractWrappedSolver[_SolverState]):
         drift_term1, drift_term2 = drift_term1[0], drift_term2[0]
 
         diffusion_term = jtu.tree_map(
-            lambda x: x
-            if isinstance(x, WeaklyDiagonalControlTerm) or isinstance(x, ControlTerm)
-            else None,
+            lambda x: x if isinstance(x, ControlTerm) else None,
             terms1,
-            is_leaf=lambda x: isinstance(x, WeaklyDiagonalControlTerm)
-            or isinstance(x, ControlTerm),
+            is_leaf=lambda x: isinstance(x, ControlTerm),
         )
         diffusion_term = jtu.tree_leaves(
             diffusion_term,
-            is_leaf=lambda x: isinstance(x, WeaklyDiagonalControlTerm)
-            or isinstance(x, ControlTerm),
+            is_leaf=lambda x: isinstance(x, ControlTerm),
         )
 
         diffusion_term = eqx.error_if(
@@ -297,3 +265,27 @@ KLSolver.__init__.__doc__ = """**Arguments:**
 - `solver`: The solver to wrap.
 - `linear_solver`: The lineax solver to use when computing $g^{-1}f$.
 """
+
+
+def initialize_kl(
+    solver: AbstractSolver,
+    y0: Y,
+    linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=None),
+) -> tuple[KLSolver, KLState]:
+    """
+    Initialize the KL solver and state.
+
+
+    **Arguments**
+
+    - `solver`: the method for solving the SDE.
+    - `y0`: the initial state
+    - `linear_solver`: the method for computing $g^{-1}f$.
+
+    **Returns**
+
+    A `KLState` containing the `KLSolver` and the new initial state. Both of these can be
+    directly fed into `diffeqsolve`.
+
+    """
+    return KLSolver(solver, linear_solver), KLState(y=y0, kl_metric=jnp.array(0.0))

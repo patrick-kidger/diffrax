@@ -55,9 +55,9 @@ from ._solver import (
     Euler,
     EulerHeun,
     ItoMilstein,
-    KLSolver,
     StratonovichMilstein,
 )
+from ._solver.kl import KLState
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -125,6 +125,8 @@ def _term_compatible(
     contr_kwargs: PyTree[dict],
 ) -> bool:
     error_msg = "term_structure"
+    if isinstance(y, KLState):
+        y = y.y
 
     def _check(term_cls, term, term_contr_kwargs, yi):
         if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
@@ -1051,9 +1053,6 @@ def diffeqsolve(
                 "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
             )
 
-    if isinstance(solver, KLSolver):
-        y0 = (y0, 0.0)
-        y0 = jtu.tree_map(_promote, y0)
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
     t0 = t0 * direction

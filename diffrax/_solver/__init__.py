@@ -17,7 +17,7 @@ from .implicit_euler import ImplicitEuler as ImplicitEuler
 from .kencarp3 import KenCarp3 as KenCarp3
 from .kencarp4 import KenCarp4 as KenCarp4
 from .kencarp5 import KenCarp5 as KenCarp5
-from .kl import KLSolver as KLSolver
+from .kl import initialize_kl as initialize_kl, KLSolver as KLSolver, KLState as KLState
 from .kvaerno3 import Kvaerno3 as Kvaerno3
 from .kvaerno4 import Kvaerno4 as Kvaerno4
 from .kvaerno5 import Kvaerno5 as Kvaerno5
