@@ -284,8 +284,8 @@ def initialize_kl(
 
     **Returns**
 
-    A `KLState` containing the `KLSolver` and the new initial state. Both of these can be
-    directly fed into `diffeqsolve`.
+    A `KLState` containing the `KLSolver` and the new initial state. Both of
+    these can be directly fed into `diffeqsolve`.
 
     """
     return KLSolver(solver, linear_solver), KLState(y=y0, kl_metric=jnp.array(0.0))
