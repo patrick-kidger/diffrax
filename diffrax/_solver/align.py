@@ -1,8 +1,9 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, PyTree
+from jaxtyping import Array, ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeLevyArea,
@@ -10,23 +11,29 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._term import _LangevinArgs, LangevinTerm, LangevinTuple, LangevinX
-from .langevin_srk import _AbstractCoeffs, _SolverState, AbstractLangevinSRK
+from .langevin_srk import AbstractCoeffs, AbstractLangevinSRK, SolverState
 
 
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
 # so we need 3 versions of each coefficient
 
 
-class _ALIGNCoeffs(_AbstractCoeffs):
-    @property
-    def dtype(self):
-        return jtu.tree_leaves(self.beta)[0].dtype
+class _ALIGNCoeffs(AbstractCoeffs):
+    beta: PyTree[ArrayLike]
+    a1: PyTree[ArrayLike]
+    b1: PyTree[ArrayLike]
+    aa: PyTree[ArrayLike]
+    chh: PyTree[ArrayLike]
+    dtype: jnp.dtype = eqx.field(static=True)
 
-    beta: PyTree[Array]
-    a1: PyTree[Array]
-    b1: PyTree[Array]
-    aa: PyTree[Array]
-    chh: PyTree[Array]
+    def __init__(self, beta, a1, b1, aa, chh):
+        self.beta = beta
+        self.a1 = a1
+        self.b1 = b1
+        self.aa = aa
+        self.chh = chh
+        all_leaves = jtu.tree_leaves([self.beta, self.a1, self.b1, self.aa, self.chh])
+        self.dtype = jnp.result_type(*all_leaves)
 
 
 _ErrorEstimate = LangevinTuple
@@ -50,19 +57,16 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     taylor_threshold: RealScalarLike = eqx.field(static=True)
     _coeffs_structure = jtu.tree_structure(
         _ALIGNCoeffs(
-            beta=jnp.array(0.0),
-            a1=jnp.array(0.0),
-            b1=jnp.array(0.0),
-            aa=jnp.array(0.0),
-            chh=jnp.array(0.0),
+            beta=np.array(0.0),
+            a1=np.array(0.0),
+            b1=np.array(0.0),
+            aa=np.array(0.0),
+            chh=np.array(0.0),
         )
     )
+    minimal_levy_area = AbstractSpaceTimeLevyArea
 
-    @property
-    def minimal_levy_area(self):
-        return AbstractSpaceTimeLevyArea
-
-    def __init__(self, taylor_threshold: RealScalarLike = 0.0):
+    def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
 
         - `taylor_threshold`: If the product `h*gamma` is less than this, then
@@ -78,8 +82,8 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     def strong_order(self, terms):
         return 2.0
 
-    @staticmethod
-    def _directly_compute_coeffs_leaf(h, c) -> _ALIGNCoeffs:
+    def _directly_compute_coeffs_leaf(self, h, c) -> _ALIGNCoeffs:
+        del self
         # c is a leaf of gamma
         # compute the coefficients directly (as opposed to via Taylor expansion)
         al = c * h
@@ -91,19 +95,17 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         al2 = al**2
         chh = 6 * (beta * (al + 2) + al - 2) / (al2 * c)
 
-        out = _ALIGNCoeffs(
+        return _ALIGNCoeffs(
             beta=beta,
             a1=a1,
             b1=b1,
             aa=aa,
             chh=chh,
         )
-        return jtu.tree_map(lambda x: jnp.array(x, dtype=jnp.dtype(c)), out)
 
-    @staticmethod
-    def _tay_cfs_single(c: Array) -> _ALIGNCoeffs:
+    def _tay_coeffs_single(self, c: Array) -> _ALIGNCoeffs:
+        del self
         # c is a leaf of gamma
-        dtype = jnp.dtype(c)
         zero = jnp.zeros_like(c)
         one = jnp.ones_like(c)
         c2 = jnp.square(c)
@@ -117,14 +119,13 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         aa = jnp.stack([one, -c / 2, c2 / 6, -c3 / 24, c4 / 120, -c5 / 720], axis=-1)
         chh = jnp.stack([zero, one, -c / 2, 3 * c2 / 20, -c3 / 30, c4 / 168], axis=-1)
 
-        out = _ALIGNCoeffs(
+        return _ALIGNCoeffs(
             beta=beta,
             a1=a1,
             b1=b1,
             aa=aa,
             chh=chh,
         )
-        return jtu.tree_map(lambda x: jnp.array(x, dtype=dtype), out)
 
     @staticmethod
     def _compute_step(
@@ -133,8 +134,8 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         x0: LangevinX,
         v0: LangevinX,
         langevin_args: _LangevinArgs,
-        cfs: _ALIGNCoeffs,
-        st: _SolverState,
+        coeffs: _ALIGNCoeffs,
+        st: SolverState,
     ) -> tuple[LangevinX, LangevinX, LangevinX, LangevinTuple]:
         w: LangevinX = levy.W
         hh: LangevinX = levy.H
@@ -145,20 +146,20 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         f0 = st.prev_f
         x1 = (
             x0**ω
-            + cfs.a1**ω * v0**ω
-            - cfs.b1**ω * uh**ω * f0**ω
-            + st.rho**ω * (cfs.b1**ω * w**ω + cfs.chh**ω * hh**ω)
+            + coeffs.a1**ω * v0**ω
+            - coeffs.b1**ω * uh**ω * f0**ω
+            + st.rho**ω * (coeffs.b1**ω * w**ω + coeffs.chh**ω * hh**ω)
         ).ω
         f1 = f(x1)
         v1 = (
-            cfs.beta**ω * v0**ω
-            - u**ω * ((cfs.a1**ω - cfs.b1**ω) * f0**ω + cfs.b1**ω * f1**ω)
-            + st.rho**ω * (cfs.aa**ω * w**ω - gamma**ω * cfs.chh**ω * hh**ω)
+            coeffs.beta**ω * v0**ω
+            - u**ω * ((coeffs.a1**ω - coeffs.b1**ω) * f0**ω + coeffs.b1**ω * f1**ω)
+            + st.rho**ω * (coeffs.aa**ω * w**ω - gamma**ω * coeffs.chh**ω * hh**ω)
         ).ω
 
         error_estimate = (
             jtu.tree_map(lambda leaf: jnp.zeros_like(leaf), x0),
-            (-(u**ω) * cfs.b1**ω * (f1**ω - f0**ω)).ω,
+            (-(u**ω) * coeffs.b1**ω * (f1**ω - f0**ω)).ω,
         )
 
         return x1, v1, f1, error_estimate

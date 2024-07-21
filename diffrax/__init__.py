@@ -101,6 +101,7 @@ from ._solver import (
     LeapfrogMidpoint as LeapfrogMidpoint,
     Midpoint as Midpoint,
     MultiButcherTableau as MultiButcherTableau,
+    QUICSORT as QUICSORT,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
     SEA as SEA,
@@ -115,7 +116,6 @@ from ._solver import (
     StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
-    UBU3 as UBU3,
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,

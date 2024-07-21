@@ -787,6 +787,10 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         return dy, da_y, da_diff_args, da_diff_term
 
 
+# The Underdamped Langevin SDE trajectory consists of two components: the position
+# `x` and the velocity `v`. Both of these have the same shape. So, by LangevinX we
+# denote the shape of the x component, and by LangevinTuple we denote the shape of
+# the tuple (x, v).
 LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
 LangevinTuple = tuple[LangevinX, LangevinX]
 _LangevinBM = TypeVar("_LangevinBM", bound=Union[LangevinX, AbstractBrownianIncrement])
@@ -795,10 +799,10 @@ _LangevinBM = TypeVar("_LangevinBM", bound=Union[LangevinX, AbstractBrownianIncr
 class _LangevinDiffusionTerm(AbstractTerm[LangevinX, _LangevinBM]):
     r"""Represents the diffusion term in the Langevin SDE:
 
-    $d \mathbf{x}_t = \mathbf{v}_t \, dt$
+    $d \mathbf{x}_t = \mathbf{v}_t dt$
 
-    $d \mathbf{v}_t = - \gamma \, \mathbf{v}_t \, dt - u \,
-    \nabla \! f( \mathbf{x}_t ) \, dt + \sqrt{2 \gamma u} \, d W_t.$
+    $d \mathbf{v}_t = - \gamma \mathbf{v}_t dt - u
+    \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
     """
 
     gamma: LangevinX
@@ -866,15 +870,15 @@ def _broadcast_pytree(source, target_tree_shape):
 class LangevinTerm(AbstractTerm):
     r"""Used to represent the Langevin SDE, given by:
 
-    $d \mathbf{x}_t = \mathbf{v}_t \, dt$
+    $d \mathbf{x}_t = \mathbf{v}_t dt$
 
-    $d \mathbf{v}_t = - \gamma \, \mathbf{v}_t \, dt - u \,
-    \nabla \! f( \mathbf{x}_t ) \, dt + \sqrt{2 \gamma u} \, d W_t.$
+    $d \mathbf{v}_t = - \gamma \mathbf{v}_t dt - u
+    \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
 
     where $\mathbf{x}_t, \mathbf{v}_t \in \mathbb{R}^d$ represent the position
     and velocity, $W$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
-    $ \gamma,\, u\in\mathbb{R}^{d\times d}$ are diagonal matrices representing
+    $ \gamma,u\in\mathbb{R}^{d\times d}$ are diagonal matrices representing
     friction and a dampening parameter.
     """
 
@@ -884,7 +888,7 @@ class LangevinTerm(AbstractTerm):
     def __init__(self, args, bm: AbstractBrownianPath, x0: LangevinX):
         r"""**Arguments:**
 
-        - `args`: a tuple of the form $(\gamma, \, u, \, \nabla \! f)$
+        - `args`: a tuple of the form $(\gamma, u, \nabla f)$
         - `bm`: a Brownian path
         - `x0`: a point in the state space of the process (position only),
          needed to determine the PyTree structure and shape of the process.

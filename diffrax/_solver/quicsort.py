@@ -4,8 +4,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, PyTree
+from jaxtyping import Array, ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeTimeLevyArea,
@@ -13,27 +14,53 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._term import _LangevinArgs, LangevinTerm, LangevinX
-from .langevin_srk import _AbstractCoeffs, _SolverState, AbstractLangevinSRK
+from .langevin_srk import AbstractCoeffs, AbstractLangevinSRK, SolverState
 
 
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
 # so we need 3 versions of each coefficient
 
 
-class _UBU3Coeffs(_AbstractCoeffs):
-    @property
-    def dtype(self):
-        return jtu.tree_leaves(self.beta_lr1)[0].dtype
+class _QUICSORTCoeffs(AbstractCoeffs):
+    beta_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
+    a_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
+    b_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
+    a_third: PyTree[ArrayLike]  # (gamma, 1, *taylor)
+    a_div_h: PyTree[ArrayLike]  # (gamma, 1, *taylor)
+    dtype: jnp.dtype = eqx.field(static=True)
 
-    beta_lr1: PyTree[Array]  # (gamma, 3, *taylor)
-    a_lr1: PyTree[Array]  # (gamma, 3, *taylor)
-    b_lr1: PyTree[Array]  # (gamma, 3, *taylor)
-    a_third: PyTree[Array]  # (gamma, 1, *taylor)
-    a_div_h: PyTree[Array]  # (gamma, 1, *taylor)
+    def __init__(self, beta_lr1, a_lr1, b_lr1, a_third, a_div_h):
+        self.beta_lr1 = beta_lr1
+        self.a_lr1 = a_lr1
+        self.b_lr1 = b_lr1
+        self.a_third = a_third
+        self.a_div_h = a_div_h
+        all_leaves = jtu.tree_leaves(
+            [self.beta_lr1, self.a_lr1, self.b_lr1, self.a_third, self.a_div_h]
+        )
+        self.dtype = jnp.result_type(*all_leaves)
 
 
-class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
-    r"""The third order version of the UBU method by Daire O'Kane and James Foster.
+class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
+    r"""The QUadrature Inspired and Contractive Shifted ODE with Runge-Kutta Three
+    method by Daire O'Kane and James Foster, which is a third order version of the
+    UBU method from
+
+    ??? cite "Reference"
+
+        ```bibtex
+        @misc{chada2024unbiased,
+            title={Unbiased Kinetic Langevin Monte Carlo with Inexact Gradients},
+            author={Neil K. Chada and Benedict Leimkuhler and Daniel Paulin
+                and Peter A. Whalley},
+            year={2024},
+            eprint={2311.05025},
+            archivePrefix={arXiv},
+            primaryClass={stat.CO},
+            url={https://arxiv.org/abs/2311.05025},
+        }
+        ```
+
     Works for underdamped Langevin SDEs of the form
 
     $$d x_t = v_t dt$$
@@ -48,20 +75,17 @@ class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
     interpolation_cls = LocalLinearInterpolation
     taylor_threshold: RealScalarLike = eqx.field(static=True)
     _coeffs_structure = jtu.tree_structure(
-        _UBU3Coeffs(
-            beta_lr1=jnp.array(0.0),
-            a_lr1=jnp.array(0.0),
-            b_lr1=jnp.array(0.0),
-            a_third=jnp.array(0.0),
-            a_div_h=jnp.array(0.0),
+        _QUICSORTCoeffs(
+            beta_lr1=np.array(0.0),
+            a_lr1=np.array(0.0),
+            b_lr1=np.array(0.0),
+            a_third=np.array(0.0),
+            a_div_h=np.array(0.0),
         )
     )
+    minimal_levy_area = AbstractSpaceTimeTimeLevyArea
 
-    @property
-    def minimal_levy_area(self):
-        return AbstractSpaceTimeTimeLevyArea
-
-    def __init__(self, taylor_threshold: RealScalarLike = 0.0):
+    def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
 
         - `taylor_threshold`: If the product `h*gamma` is less than this, then
@@ -77,10 +101,9 @@ class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
     def strong_order(self, terms):
         return 3.0
 
-    @staticmethod
-    def _directly_compute_coeffs_leaf(h, c) -> _UBU3Coeffs:
+    def _directly_compute_coeffs_leaf(self, h, c) -> _QUICSORTCoeffs:
+        del self
         # compute the coefficients directly (as opposed to via Taylor expansion)
-        dtype = jnp.dtype(c)
         original_shape = c.shape
         c = jnp.expand_dims(c, axis=c.ndim)
         alpha = c * h
@@ -99,17 +122,16 @@ class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
 
         assert a_third.shape == a_div_h.shape == original_shape + (1,)
 
-        out = _UBU3Coeffs(
+        return _QUICSORTCoeffs(
             beta_lr1=beta_lr1,
             a_lr1=a_lr1,
             b_lr1=b_lr1,
             a_third=a_third,
             a_div_h=a_div_h,
         )
-        return jtu.tree_map(lambda x: jnp.array(x, dtype=dtype), out)
 
-    @staticmethod
-    def _tay_cfs_single(c: Array) -> _UBU3Coeffs:
+    def _tay_coeffs_single(self, c: Array) -> _QUICSORTCoeffs:
+        del self
         # c is a leaf of gamma
         dtype = jnp.dtype(c)
         zero = jnp.zeros_like(c)
@@ -148,14 +170,13 @@ class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
         a_div_h = jnp.expand_dims(a_div_h, axis=c.ndim)
         assert a_third.shape == a_div_h.shape == c.shape + (1, 6)
 
-        out = _UBU3Coeffs(
+        return _QUICSORTCoeffs(
             beta_lr1=beta_lr1,
             a_lr1=a_lr1,
             b_lr1=b_lr1,
             a_third=a_third,
             a_div_h=a_div_h,
         )
-        return jtu.tree_map(lambda x: jnp.array(x, dtype=dtype), out)
 
     @staticmethod
     def _compute_step(
@@ -164,8 +185,8 @@ class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
         x0: LangevinX,
         v0: LangevinX,
         langevin_args: _LangevinArgs,
-        cfs: _UBU3Coeffs,
-        st: _SolverState,
+        coeffs: _QUICSORTCoeffs,
+        st: SolverState,
     ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
         w: LangevinX = levy.W
         hh: LangevinX = levy.H
@@ -182,17 +203,17 @@ class UBU3(AbstractLangevinSRK[_UBU3Coeffs, None]):
         def _one(coeff):
             return jtu.tree_map(lambda arr: arr[..., 2], coeff)
 
-        beta_l = _l(cfs.beta_lr1)
-        beta_r = _r(cfs.beta_lr1)
-        beta_1 = _one(cfs.beta_lr1)
-        a_l = _l(cfs.a_lr1)
-        a_r = _r(cfs.a_lr1)
-        a_1 = _one(cfs.a_lr1)
-        b_l = _l(cfs.b_lr1)
-        b_r = _r(cfs.b_lr1)
-        b_1 = _one(cfs.b_lr1)
-        a_third = _l(cfs.a_third)
-        a_div_h = _l(cfs.a_div_h)
+        beta_l = _l(coeffs.beta_lr1)
+        beta_r = _r(coeffs.beta_lr1)
+        beta_1 = _one(coeffs.beta_lr1)
+        a_l = _l(coeffs.a_lr1)
+        a_r = _r(coeffs.a_lr1)
+        a_1 = _one(coeffs.a_lr1)
+        b_l = _l(coeffs.b_lr1)
+        b_r = _r(coeffs.b_lr1)
+        b_1 = _one(coeffs.b_lr1)
+        a_third = _l(coeffs.a_third)
+        a_div_h = _l(coeffs.a_div_h)
 
         rho_w_k = (st.rho**ω * (w**ω - 12 * kk**ω)).ω
         uh = (u**ω * h).ω

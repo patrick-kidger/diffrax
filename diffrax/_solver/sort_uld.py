@@ -1,8 +1,9 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, PyTree
+from jaxtyping import Array, ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeTimeLevyArea,
@@ -10,25 +11,43 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._term import _LangevinArgs, LangevinTerm, LangevinX
-from .langevin_srk import _AbstractCoeffs, _SolverState, AbstractLangevinSRK
+from .langevin_srk import AbstractCoeffs, AbstractLangevinSRK, SolverState
 
 
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
 # so we need 3 versions of each coefficient
 
 
-class _SORTCoeffs(_AbstractCoeffs):
-    @property
-    def dtype(self):
-        return jtu.tree_leaves(self.beta1)[0].dtype
+class _SORTCoeffs(AbstractCoeffs):
+    beta_half: PyTree[ArrayLike]
+    a_half: PyTree[ArrayLike]
+    b_half: PyTree[ArrayLike]
+    beta1: PyTree[ArrayLike]
+    a1: PyTree[ArrayLike]
+    b1: PyTree[ArrayLike]
+    aa: PyTree[ArrayLike]
+    dtype: jnp.dtype = eqx.field(static=True)
 
-    beta_half: PyTree[Array]
-    a_half: PyTree[Array]
-    b_half: PyTree[Array]
-    beta1: PyTree[Array]
-    a1: PyTree[Array]
-    b1: PyTree[Array]
-    aa: PyTree[Array]
+    def __init__(self, beta_half, a_half, b_half, beta1, a1, b1, aa):
+        self.beta_half = beta_half
+        self.a_half = a_half
+        self.b_half = b_half
+        self.beta1 = beta1
+        self.a1 = a1
+        self.b1 = b1
+        self.aa = aa
+        all_leaves = jtu.tree_leaves(
+            [
+                self.beta_half,
+                self.a_half,
+                self.b_half,
+                self.beta1,
+                self.a1,
+                self.b1,
+                self.aa,
+            ]
+        )
+        self.dtype = jnp.result_type(*all_leaves)
 
 
 class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
@@ -49,21 +68,18 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
     taylor_threshold: RealScalarLike = eqx.field(static=True)
     _coeffs_structure = jtu.tree_structure(
         _SORTCoeffs(
-            beta_half=jnp.array(0.0),
-            a_half=jnp.array(0.0),
-            b_half=jnp.array(0.0),
-            beta1=jnp.array(0.0),
-            a1=jnp.array(0.0),
-            b1=jnp.array(0.0),
-            aa=jnp.array(0.0),
+            beta_half=np.array(0.0),
+            a_half=np.array(0.0),
+            b_half=np.array(0.0),
+            beta1=np.array(0.0),
+            a1=np.array(0.0),
+            b1=np.array(0.0),
+            aa=np.array(0.0),
         )
     )
+    minimal_levy_area = AbstractSpaceTimeTimeLevyArea
 
-    @property
-    def minimal_levy_area(self):
-        return AbstractSpaceTimeTimeLevyArea
-
-    def __init__(self, taylor_threshold: RealScalarLike = 0.0):
+    def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
 
         - `taylor_threshold`: If the product `h*gamma` is less than this, then
@@ -79,8 +95,8 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
     def strong_order(self, terms):
         return 3.0
 
-    @staticmethod
-    def _directly_compute_coeffs_leaf(h, c) -> _SORTCoeffs:
+    def _directly_compute_coeffs_leaf(self, h, c) -> _SORTCoeffs:
+        del self
         # c is a leaf of gamma
         # compute the coefficients directly (as opposed to via Taylor expansion)
         al = c * h
@@ -92,7 +108,7 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
         b1 = (beta1 + al - 1) / (al * c)
         aa = a1 / h
 
-        out = _SORTCoeffs(
+        return _SORTCoeffs(
             beta_half=beta_half,
             a_half=a_half,
             b_half=b_half,
@@ -101,12 +117,10 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
             b1=b1,
             aa=aa,
         )
-        return jtu.tree_map(lambda x: jnp.array(x, dtype=jnp.dtype(c)), out)
 
-    @staticmethod
-    def _tay_cfs_single(c: Array) -> _SORTCoeffs:
+    def _tay_coeffs_single(self, c: Array) -> _SORTCoeffs:
+        del self
         # c is a leaf of gamma
-        dtype = jnp.dtype(c)
         zero = jnp.zeros_like(c)
         one = jnp.ones_like(c)
         c2 = jnp.square(c)
@@ -131,7 +145,7 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
             [zero, one / 8, -c / 48, c2 / 384, -c3 / 3840, c4 / 46080], axis=-1
         )
         b1 = jnp.stack([zero, one / 2, -c / 6, c2 / 24, -c3 / 120, c4 / 720], axis=-1)
-        out = _SORTCoeffs(
+        return _SORTCoeffs(
             beta_half=beta_half,
             a_half=a_half,
             b_half=b_half,
@@ -141,8 +155,6 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
             aa=aa,
         )
 
-        return jtu.tree_map(lambda x: jnp.array(x, dtype=dtype), out)
-
     @staticmethod
     def _compute_step(
         h: RealScalarLike,
@@ -150,8 +162,8 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
         x0: LangevinX,
         v0: LangevinX,
         langevin_args: _LangevinArgs,
-        cfs: _SORTCoeffs,
-        st: _SolverState,
+        coeffs: _SORTCoeffs,
+        st: SolverState,
     ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
         w: LangevinX = levy.W
         hh: LangevinX = levy.H
@@ -166,25 +178,25 @@ class SORT(AbstractLangevinSRK[_SORTCoeffs, None]):
         v1 = (v0**ω + st.rho**ω * (hh**ω + 6 * kk**ω)).ω
         x1 = (
             x0**ω
-            + cfs.a_half**ω * v1**ω
-            + cfs.b_half**ω * (-(uh**ω) * f0**ω + rho_w_k**ω)
+            + coeffs.a_half**ω * v1**ω
+            + coeffs.b_half**ω * (-(uh**ω) * f0**ω + rho_w_k**ω)
         ).ω
         f1 = f(x1)
         x_out = (
             x0**ω
-            + cfs.a1**ω * v1**ω
-            + cfs.b1**ω * (-(uh**ω) * (1 / 3 * f0**ω + 2 / 3 * f1**ω) + rho_w_k**ω)
+            + coeffs.a1**ω * v1**ω
+            + coeffs.b1**ω * (-(uh**ω) * (1 / 3 * f0**ω + 2 / 3 * f1**ω) + rho_w_k**ω)
         ).ω
         f_out = f(x_out)
         v_out = (
-            cfs.beta1**ω * v1**ω
+            coeffs.beta1**ω * v1**ω
             - uh**ω
             * (
-                cfs.beta1**ω / 6 * f0**ω
-                + 2 / 3 * cfs.beta_half**ω * f1**ω
+                coeffs.beta1**ω / 6 * f0**ω
+                + 2 / 3 * coeffs.beta_half**ω * f1**ω
                 + 1 / 6 * f_out**ω
             )
-            + cfs.aa**ω * rho_w_k**ω
+            + coeffs.aa**ω * rho_w_k**ω
             - st.rho**ω * (hh**ω - 6 * kk**ω)
         ).ω
 

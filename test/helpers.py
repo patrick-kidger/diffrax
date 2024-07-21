@@ -318,7 +318,13 @@ class SDE:
     def get_bm(
         self,
         bm_key: PRNGKeyArray,
-        levy_area: type[Union[diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]],
+        levy_area: type[
+            Union[
+                diffrax.BrownianIncrement,
+                diffrax.SpaceTimeLevyArea,
+                diffrax.SpaceTimeTimeLevyArea,
+            ]
+        ],
         tol: float,
     ):
         return VirtualBrownianTree(
@@ -597,48 +603,3 @@ def get_uld3_langevin(t0=0.3, t1=15.0, dtype=jnp.float32):
         return LangevinTerm(args, bm, x0)
 
     return SDE(get_terms_uld3, None, y0_uld3, t0, t1, w_shape_uld3)
-
-
-def get_pytree_langevin(t0=0.3, t1=15.0, dtype=jnp.float32):
-    def make_pytree(array_factory):
-        return {
-            "rr": (
-                array_factory((2,), dtype),
-                array_factory((2,), dtype),
-                array_factory((2,), dtype),
-            ),
-            "qq": (
-                array_factory((5,), dtype),
-                array_factory((3,), dtype),
-            ),
-        }
-
-    x0 = make_pytree(jnp.ones)
-    v0 = make_pytree(jnp.zeros)
-    y0 = (x0, v0)
-
-    g1 = {
-        "rr": 0.5 * jnp.ones((2,), dtype),
-        "qq": (
-            jnp.ones((), dtype),
-            jnp.ones((3,), dtype),
-        ),
-    }
-
-    u1 = {
-        "rr": (jnp.ones((), dtype), 10.0, 5 * jnp.ones((2,), dtype)),
-        "qq": jnp.ones((), dtype),
-    }
-
-    def grad_f(x):
-        xa = x["rr"]
-        xb = x["qq"]
-        return {"rr": jtu.tree_map(lambda _x: 0.2 * _x, xa), "qq": xb}
-
-    args = g1, u1, grad_f
-    w_shape = jtu.tree_map(lambda _x: jax.ShapeDtypeStruct(_x.shape, _x.dtype), x0)
-
-    def get_terms(bm):
-        return LangevinTerm(args, bm, x0)
-
-    return SDE(get_terms, None, y0, t0, t1, w_shape)

@@ -2,13 +2,14 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.tree_util as jtu
 import pytest
-from diffrax import diffeqsolve, LangevinTerm, SaveAt, VirtualBrownianTree
+from diffrax import diffeqsolve, LangevinTerm, SaveAt
 
 from .helpers import (
-    _abstract_la_to_la,
     get_bqp,
     get_harmonic_oscillator,
+    SDE,
     simple_batch_sde_solve,
     simple_sde_order,
 )
@@ -16,63 +17,93 @@ from .helpers import (
 
 def _only_langevin_solvers_cls():
     yield diffrax.ALIGN
-    yield diffrax.SORT
     yield diffrax.ShOULD
-    yield diffrax.UBU3
+    yield diffrax.QUICSORT
 
 
 def _solvers_and_orders():
     # solver, order
     yield diffrax.ALIGN(0.1), 2.0
-    yield diffrax.SORT(0.01), 3.0
-    yield diffrax.ShOULD(0.01), 3.0
-    yield diffrax.UBU3(0.0), 3.0
+    yield diffrax.ShOULD(0.1), 3.0
+    yield diffrax.QUICSORT(0.1), 3.0
+
+
+def get_pytree_langevin(t0=0.3, t1=1.0, dtype=jnp.float32):
+    def make_pytree(array_factory):
+        return {
+            "rr": (
+                array_factory((2,), dtype),
+                array_factory((2,), dtype),
+            ),
+            "qq": (
+                array_factory((2,), dtype),
+                array_factory((3,), dtype),
+            ),
+        }
+
+    x0 = make_pytree(jnp.ones)
+    v0 = make_pytree(jnp.zeros)
+    y0 = (x0, v0)
+
+    g1 = {
+        "rr": 0.001 * jnp.ones((2,), dtype),
+        "qq": (
+            jnp.ones((), dtype),
+            10 * jnp.ones((3,), dtype),
+        ),
+    }
+
+    u1 = {
+        "rr": (jnp.ones((), dtype), 10.0),
+        "qq": jnp.ones((), dtype),
+    }
+
+    def grad_f(x):
+        xa = x["rr"]
+        xb = x["qq"]
+        return {"rr": jtu.tree_map(lambda _x: 0.2 * _x, xa), "qq": xb}
+
+    args = g1, u1, grad_f
+    w_shape = jtu.tree_map(lambda _x: jax.ShapeDtypeStruct(_x.shape, _x.dtype), x0)
+
+    def get_terms(bm):
+        return LangevinTerm(args, bm, x0)
+
+    return SDE(get_terms, None, y0, t0, t1, w_shape)
 
 
 @pytest.mark.parametrize("solver_cls", _only_langevin_solvers_cls())
 @pytest.mark.parametrize("taylor", [True, False])
 @pytest.mark.parametrize("dtype", [jnp.float16, jnp.float32, jnp.float64])
-@pytest.mark.parametrize("dim", [1, 4])
-def test_shape(solver_cls, taylor, dtype, dim):
+def test_shape(solver_cls, taylor, dtype):
     if taylor:
         solver = solver_cls(100.0)
     else:
-        solver = solver_cls(0.0)
+        solver = solver_cls(0.01)
 
     t0, t1 = 0.3, 1.0
-    saveat = SaveAt(ts=jnp.linspace(t0, t1, 10, dtype=dtype))
-    u = jnp.astype(1.0, dtype)
-    gam = jnp.astype(1.0, dtype)
-    vec_u = jnp.ones((dim,), dtype=dtype)
-    vec_gam = jnp.ones((dim,), dtype=dtype)
-    x0 = jnp.zeros((dim,), dtype=dtype)
-    v0 = jnp.zeros((dim,), dtype=dtype)
-    y0 = (x0, v0)
-    f = lambda x: 0.5 * x
-    shp_dtype = jax.ShapeDtypeStruct((dim,), dtype)
-    levy_area = _abstract_la_to_la(solver.minimal_levy_area)
-    bm = VirtualBrownianTree(
-        t0,
-        t1,
-        tol=2**-4,
-        shape=shp_dtype,
-        key=jr.key(4),
-        levy_area=levy_area,
+    dt0 = 0.3
+    saveat = SaveAt(ts=jnp.linspace(t0, t1, 7, dtype=dtype))
+
+    sde = get_pytree_langevin(t0, t1, dtype)
+    bm = sde.get_bm(jr.key(5678), diffrax.SpaceTimeTimeLevyArea, tol=0.2)
+    terms = sde.get_terms(bm)
+
+    sol = diffeqsolve(
+        terms, solver, t0, t1, dt0=dt0, y0=sde.y0, args=None, saveat=saveat
     )
-    for args in [
-        (gam, u, f),
-        (vec_gam, u, f),
-        (gam, vec_u, f),
-        (vec_gam, vec_u, f),
-    ]:
-        terms = LangevinTerm(args, bm, x0)
-        sol = diffeqsolve(
-            terms, solver, t0, t1, dt0=0.3, y0=y0, args=None, saveat=saveat
-        )
-        assert sol.ys is not None
-        for entry in sol.ys:
-            assert entry.shape == (10, dim)
-            assert jnp.dtype(entry) == dtype
+    assert sol.ys is not None
+    assert sol.ts is not None
+
+    # check that the output has the correct pytree structure and shape
+    def check_shape(y0_leaf, sol_leaf):
+        assert (
+            sol_leaf.shape == (7,) + y0_leaf.shape
+        ), f"shape={sol_leaf.shape}, expected={(7,) + y0_leaf.shape}"
+        assert sol_leaf.dtype == dtype, f"dtype={sol_leaf.dtype}, expected={dtype}"
+        return sol_leaf.shape
+
+    jtu.tree_map(check_shape, sde.y0, sol.ys)
 
 
 sdes = (

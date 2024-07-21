@@ -27,6 +27,7 @@ from .milstein import (
     ItoMilstein as ItoMilstein,
     StratonovichMilstein as StratonovichMilstein,
 )
+from .quicsort import QUICSORT as QUICSORT
 from .ralston import Ralston as Ralston
 from .reversible_heun import ReversibleHeun as ReversibleHeun
 from .runge_kutta import (
@@ -54,4 +55,3 @@ from .srk import (
     StochasticButcherTableau as StochasticButcherTableau,
 )
 from .tsit5 import Tsit5 as Tsit5
-from .ubu3 import UBU3 as UBU3
