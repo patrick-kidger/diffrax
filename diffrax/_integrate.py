@@ -57,7 +57,6 @@ from ._solver import (
     ItoMilstein,
     StratonovichMilstein,
 )
-from ._solver.kl import KLState
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
@@ -125,8 +124,6 @@ def _term_compatible(
     contr_kwargs: PyTree[dict],
 ) -> bool:
     error_msg = "term_structure"
-    if isinstance(y, KLState):
-        y = y.y
 
     def _check(term_cls, term, term_contr_kwargs, yi):
         if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
