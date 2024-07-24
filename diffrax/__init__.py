@@ -110,7 +110,6 @@ from ._solver import (
     ShOULD as ShOULD,
     Sil3 as Sil3,
     SlowRK as SlowRK,
-    SORT as SORT,
     SPaRK as SPaRK,
     SRA1 as SRA1,
     StochasticButcherTableau as StochasticButcherTableau,

@@ -47,7 +47,6 @@ from .shark_general import GeneralShARK as GeneralShARK
 from .should import ShOULD as ShOULD
 from .sil3 import Sil3 as Sil3
 from .slowrk import SlowRK as SlowRK
-from .sort_uld import SORT as SORT
 from .spark import SPaRK as SPaRK
 from .sra1 import SRA1 as SRA1
 from .srk import (
