@@ -169,7 +169,7 @@ class ItoMilstein(AbstractItoSolver):
         # ΔwΔw_{j1 j2} = Δw_{j1} Δw_{j2} if j1 != j2;
         # ΔwΔw_{j j} = Δw_{j} Δw_{j} - Δt.
         #
-        # In particular note that that "-Δt" means ΔwΔw is not rank-1. This is what
+        # In particular note that "-Δt" means ΔwΔw is not rank-1. This is what
         # makes the Stratonovich case so much simpler: the only mathematical difference
         # there is that the "-Δt" isn't present, but then dwdw decomposes, which
         # simplifies the computation immensely.
