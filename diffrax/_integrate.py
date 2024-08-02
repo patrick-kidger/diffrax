@@ -957,8 +957,9 @@ def diffeqsolve(
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
         warnings.warn(
-            "Complex dtype support is work in progress, please read "
-            "https://github.com/patrick-kidger/diffrax/pull/197 and proceed carefully.",
+            "Complex dtype support is a work in progress and may not produce correct "
+            "results. Consider splitting your computation into real and imaginary "
+            "parts instead.",
             stacklevel=2,
         )
 
