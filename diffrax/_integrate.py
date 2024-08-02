@@ -123,9 +123,6 @@ def _term_compatible(
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
 ) -> bool:
-    if term_structure == LangevinTerm and isinstance(terms, LangevinTerm):
-        return True
-
     error_msg = "term_structure"
 
     def _check(term_cls, term, term_contr_kwargs, yi):
