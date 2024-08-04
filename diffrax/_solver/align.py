@@ -137,8 +137,9 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         coeffs: _ALIGNCoeffs,
         st: SolverState,
     ) -> tuple[LangevinX, LangevinX, LangevinX, LangevinTuple]:
-        w: LangevinX = levy.W
-        hh: LangevinX = levy.H
+        dtypes = jtu.tree_map(jnp.dtype, x0)
+        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
 
         gamma, u, f = langevin_args
 

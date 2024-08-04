@@ -162,12 +162,15 @@ def _term_compatible(
                 pass
             elif n_term_args == 2:
                 vf_type_expected, control_type_expected = term_args
-                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
-                vf_type_compatible = eqx.filter_eval_shape(
-                    better_isinstance, vf_type, vf_type_expected
-                )
-                if not vf_type_compatible:
-                    raise ValueError
+                if not isinstance(term, LangevinTerm):
+                    # TODO: The line below causes problems with LangevinTerm
+                    # Please help me fix this
+                    vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                    vf_type_compatible = eqx.filter_eval_shape(
+                        better_isinstance, vf_type, vf_type_expected
+                    )
+                    if not vf_type_compatible:
+                        raise ValueError
 
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825

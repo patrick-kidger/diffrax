@@ -883,7 +883,7 @@ class LangevinTerm(AbstractTerm):
     """
 
     args: _LangevinArgs = eqx.field(static=True)
-    term: MultiTerm[tuple[ODETerm, _LangevinDiffusionTerm]] = eqx.field(static=True)
+    term: MultiTerm[tuple[ODETerm, _LangevinDiffusionTerm]]
 
     def __init__(self, args, bm: AbstractBrownianPath, x0: LangevinX):
         r"""**Arguments:**

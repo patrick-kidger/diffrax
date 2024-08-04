@@ -186,9 +186,10 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
         coeffs: _ShOULDCoeffs,
         st: SolverState,
     ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
-        w: LangevinX = levy.W
-        hh: LangevinX = levy.H
-        kk: LangevinX = levy.K
+        dtypes = jtu.tree_map(jnp.dtype, x0)
+        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
+        kk: LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
         gamma, u, f = langevin_args
 
