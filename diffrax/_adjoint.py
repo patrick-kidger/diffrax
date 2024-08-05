@@ -122,6 +122,7 @@ class AbstractAdjoint(eqx.Module):
         solver,
         stepsize_controller,
         event,
+        delays,
         saveat,
         t0,
         t1,
@@ -132,6 +133,7 @@ class AbstractAdjoint(eqx.Module):
         passed_solver_state,
         passed_controller_state,
         progress_meter,
+        y0_history,
     ) -> Any:
         """Runs the main solve loop. Subclasses can override this to provide custom
         backpropagation behaviour; see for example the implementation of
@@ -565,6 +567,7 @@ def _loop_backsolve_bwd(
     solver,
     stepsize_controller,
     event,
+    delays,
     saveat,
     t0,
     t1,
@@ -573,6 +576,7 @@ def _loop_backsolve_bwd(
     throw,
     init_state,
     progress_meter,
+    y0_history,
 ):
     assert event is None
 
@@ -610,6 +614,7 @@ def _loop_backsolve_bwd(
         adjoint=self,
         solver=solver,
         stepsize_controller=stepsize_controller,
+        delays=delays,
         terms=adjoint_terms,
         dt0=None if dt0 is None else -dt0,
         max_steps=max_steps,
@@ -789,6 +794,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         passed_solver_state,
         passed_controller_state,
         event,
+        delays,
         **kwargs,
     ):
         if jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat) != jtu.tree_structure(
@@ -834,6 +840,10 @@ class BacksolveAdjoint(AbstractAdjoint):
             raise NotImplementedError(
                 "`diffrax.BacksolveAdjoint` is not compatible with events."
             )
+        if delays is not None:
+            raise NotImplementedError(
+                "Cannot use `delays` with `adjoint=BacksolveAdjoint()`"
+            )
 
         y = init_state.y
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
@@ -848,6 +858,7 @@ class BacksolveAdjoint(AbstractAdjoint):
             init_state=init_state,
             solver=solver,
             event=event,
+            delays=delays,
             **kwargs,
         )
         final_state = _only_transpose_ys(final_state)
