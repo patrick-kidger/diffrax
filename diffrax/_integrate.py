@@ -1014,10 +1014,15 @@ def diffeqsolve(
     del timelikes
 
     # Backward compatibility
-    if isinstance(
-        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(
-        y0, args, terms, (ODETerm, AbstractTerm), solver.term_compatible_contr_kwargs
+    if (
+        isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein))
+        and _term_compatible(
+            y0,
+            args,
+            terms,
+            (ODETerm, AbstractTerm),
+            solver.term_compatible_contr_kwargs,
+        )[0]
     ):
         warnings.warn(
             "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
