@@ -1033,7 +1033,7 @@ def diffeqsolve(
     tc, error = _term_compatible(
         y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
     )
-    print(terms, solver.term_structure)
+
     if not tc:
         raise error
 
