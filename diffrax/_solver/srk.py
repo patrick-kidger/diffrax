@@ -366,7 +366,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         if not isinstance(bm_inc, self.minimal_levy_area):
             raise ValueError(
                 f"The brownian increment {bm_inc} does not have the "
-                "minimal Levy Area {self.minimal_levy_area}."
+                f"minimal Levy Area {self.minimal_levy_area}."
             )
         w = bm_inc.W
 
