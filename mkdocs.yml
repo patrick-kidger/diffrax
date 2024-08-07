@@ -112,6 +112,7 @@ nav:
         - Kalman filter: 'examples/kalman_filter.ipynb'
         - Second-order sensitivities: 'examples/hessian.ipynb'
         - Nonlinear heat PDE: 'examples/nonlinear_heat_pde.ipynb'
+        - Advanced SDE simulation example: 'examples/sde_example.ipynb'
     - Basic API:
         - 'api/diffeqsolve.md'
         - Solvers:
@@ -139,3 +140,4 @@ nav:
             - 'devdocs/predictor_dirk.md'
             - 'devdocs/adjoint_commutative_noise.md'
             - Stochastic Runge-Kutta methods: 'devdocs/srk_example.ipynb'
+            - Table of SDE solvers: 'devdocs/SDE_solver_table.md'
