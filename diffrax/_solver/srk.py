@@ -363,7 +363,11 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         # Now the diffusion related stuff
         # Brownian increment (and space-time Lévy area)
         bm_inc = diffusion.contr(t0, t1, use_levy=True)
-        assert isinstance(bm_inc, self.minimal_levy_area)
+        if not isinstance(bm_inc, self.minimal_levy_area):
+            raise ValueError(
+                f"The brownian increment {bm_inc} does not have the "
+                "minimal Levy Area {self.minimal_levy_area}."
+            )
         w = bm_inc.W
 
         # b looks similar regardless of whether we have additive noise or not
