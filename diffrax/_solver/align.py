@@ -10,8 +10,13 @@ from .._custom_types import (
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import _LangevinArgs, LangevinTerm, LangevinTuple, LangevinX
-from .langevin_srk import AbstractCoeffs, AbstractLangevinSRK, SolverState
+from .._term import _LangevinTuple, _LangevinX
+from .langevin_srk import (
+    _LangevinArgs,
+    AbstractCoeffs,
+    AbstractLangevinSRK,
+    SolverState,
+)
 
 
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
@@ -36,7 +41,7 @@ class _ALIGNCoeffs(AbstractCoeffs):
         self.dtype = jnp.result_type(*all_leaves)
 
 
-_ErrorEstimate = LangevinTuple
+_ErrorEstimate = _LangevinTuple
 
 
 class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
@@ -52,7 +57,6 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     $W$ is a Brownian motion.
     """
 
-    term_structure = LangevinTerm
     interpolation_cls = LocalLinearInterpolation
     taylor_threshold: RealScalarLike = eqx.field(static=True)
     _coeffs_structure = jtu.tree_structure(
@@ -131,15 +135,15 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     def _compute_step(
         h: RealScalarLike,
         levy: AbstractSpaceTimeLevyArea,
-        x0: LangevinX,
-        v0: LangevinX,
+        x0: _LangevinX,
+        v0: _LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _ALIGNCoeffs,
         st: SolverState,
-    ) -> tuple[LangevinX, LangevinX, LangevinX, LangevinTuple]:
+    ) -> tuple[_LangevinX, _LangevinX, _LangevinX, _LangevinTuple]:
         dtypes = jtu.tree_map(jnp.dtype, x0)
-        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
-        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
+        w: _LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: _LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
 
         gamma, u, f = langevin_args
 

@@ -63,7 +63,7 @@ from ._step_size_controller import (
     ConstantStepSize,
     StepTo,
 )
-from ._term import AbstractTerm, LangevinTerm, MultiTerm, ODETerm, WrapTerm
+from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
@@ -162,15 +162,12 @@ def _term_compatible(
                 pass
             elif n_term_args == 2:
                 vf_type_expected, control_type_expected = term_args
-                if not isinstance(term, LangevinTerm):
-                    # TODO: The line below causes problems with LangevinTerm
-                    # Please help me fix this
-                    vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
-                    vf_type_compatible = eqx.filter_eval_shape(
-                        better_isinstance, vf_type, vf_type_expected
-                    )
-                    if not vf_type_compatible:
-                        raise ValueError
+                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                vf_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, vf_type, vf_type_expected
+                )
+                if not vf_type_compatible:
+                    raise ValueError
 
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
@@ -1008,10 +1005,6 @@ def diffeqsolve(
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
 
-    # Langevin terms must be unwrapped unless `term_structure=LangevinTerm
-    if isinstance(terms, LangevinTerm) and solver.term_structure != LangevinTerm:
-        terms = terms.term
-
     # Backward compatibility
     if isinstance(
         solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
@@ -1070,14 +1063,13 @@ def diffeqsolve(
 
     def _wrap(term):
         assert isinstance(term, AbstractTerm)
-        assert not isinstance(term, (MultiTerm, LangevinTerm))
+        assert not isinstance(term, MultiTerm)
         return WrapTerm(term, direction)
 
     terms = jtu.tree_map(
         _wrap,
         terms,
-        is_leaf=lambda x: isinstance(x, AbstractTerm)
-        and not isinstance(x, (MultiTerm, LangevinTerm)),
+        is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
 
     if isinstance(solver, AbstractImplicitSolver):

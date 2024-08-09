@@ -13,8 +13,13 @@ from .._custom_types import (
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import _LangevinArgs, LangevinTerm, LangevinX
-from .langevin_srk import AbstractCoeffs, AbstractLangevinSRK, SolverState
+from .._term import _LangevinX
+from .langevin_srk import (
+    _LangevinArgs,
+    AbstractCoeffs,
+    AbstractLangevinSRK,
+    SolverState,
+)
 
 
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
@@ -71,7 +76,6 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
     $W$ is a Brownian motion.
     """
 
-    term_structure = LangevinTerm
     interpolation_cls = LocalLinearInterpolation
     taylor_threshold: RealScalarLike = eqx.field(static=True)
     _coeffs_structure = jtu.tree_structure(
@@ -182,16 +186,16 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
     def _compute_step(
         h: RealScalarLike,
         levy: AbstractSpaceTimeTimeLevyArea,
-        x0: LangevinX,
-        v0: LangevinX,
+        x0: _LangevinX,
+        v0: _LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _QUICSORTCoeffs,
         st: SolverState,
-    ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
+    ) -> tuple[_LangevinX, _LangevinX, _LangevinX, None]:
         dtypes = jtu.tree_map(jnp.dtype, x0)
-        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
-        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
-        kk: LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
+        w: _LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: _LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
+        kk: _LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
         gamma, u, f = langevin_args
 

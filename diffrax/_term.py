@@ -2,7 +2,7 @@ import abc
 import operator
 import warnings
 from collections.abc import Callable
-from typing import Any, cast, Generic, Optional, TypeVar, Union
+from typing import cast, Generic, Optional, TypeVar, Union
 
 import equinox as eqx
 import jax
@@ -791,12 +791,12 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 # `x` and the velocity `v`. Both of these have the same shape. So, by LangevinX we
 # denote the shape of the x component, and by LangevinTuple we denote the shape of
 # the tuple (x, v).
-LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
-LangevinTuple = tuple[LangevinX, LangevinX]
-_LangevinBM = TypeVar("_LangevinBM", bound=Union[LangevinX, AbstractBrownianIncrement])
+_LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
+_LangevinTuple = tuple[_LangevinX, _LangevinX]
+_LangevinBM = TypeVar("_LangevinBM", bound=Union[_LangevinX, AbstractBrownianIncrement])
 
 
-class _LangevinDiffusionTerm(AbstractTerm[LangevinX, _LangevinBM]):
+class _LangevinDiffusionTerm(AbstractTerm[_LangevinX, _LangevinBM]):
     r"""Represents the diffusion term in the Langevin SDE:
 
     $d \mathbf{x}_t = \mathbf{v}_t dt$
@@ -805,16 +805,11 @@ class _LangevinDiffusionTerm(AbstractTerm[LangevinX, _LangevinBM]):
     \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
     """
 
-    gamma: LangevinX
-    u: LangevinX
+    gamma: _LangevinX
+    u: _LangevinX
     control: AbstractBrownianPath
 
-    def __init__(self, gamma, u, control: AbstractBrownianPath):
-        self.gamma = gamma
-        self.u = u
-        self.control = control
-
-    def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinX:
+    def vf(self, t: RealScalarLike, y: _LangevinTuple, args: Args) -> _LangevinX:
         x, v = y
 
         def _fun(_gamma, _u, _v):
@@ -826,7 +821,7 @@ class _LangevinDiffusionTerm(AbstractTerm[LangevinX, _LangevinBM]):
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _LangevinBM:
         return self.control.evaluate(t0, t1, **kwargs)
 
-    def prod(self, vf: LangevinX, control: LangevinX) -> LangevinTuple:
+    def prod(self, vf: _LangevinX, control: _LangevinX) -> _LangevinTuple:
         if isinstance(control, AbstractBrownianIncrement):
             control = control.W
 
@@ -835,25 +830,6 @@ class _LangevinDiffusionTerm(AbstractTerm[LangevinX, _LangevinBM]):
         v_out = jtu.tree_map(operator.mul, dv, dw)
         x_out = jtu.tree_map(jnp.zeros_like, v_out)
         return x_out, v_out
-
-
-_LangevinArgs = tuple[LangevinX, LangevinX, Callable[[LangevinX], LangevinX]]
-
-
-def _langevin_drift(t, y: LangevinTuple, args: _LangevinArgs) -> LangevinTuple:
-    gamma, u, grad_f = args
-    x, v = y
-    f_x = grad_f(x)
-    d_x = v
-    d_v = jtu.tree_map(
-        lambda _gamma, _u, _v, _f_x: -_gamma * _v - _u * _f_x,
-        gamma,
-        u,
-        v,
-        f_x,
-    )
-    d_y = (d_x, d_v)
-    return d_y
 
 
 def _broadcast_pytree(source, target_tree_shape):
@@ -867,57 +843,78 @@ def _broadcast_pytree(source, target_tree_shape):
     return jtu.tree_map(_inner_broadcast, source, target_tree_shape)
 
 
-class LangevinTerm(AbstractTerm):
-    r"""Used to represent the Langevin SDE, given by:
+class _LangevinDriftTerm(AbstractTerm):
+    gamma: _LangevinX
+    u: _LangevinX
+    grad_f: Callable[[_LangevinX], _LangevinX]
 
+    def vf(self, t: RealScalarLike, y: _LangevinTuple, args: Args) -> _LangevinTuple:
+        x, v = y
+        f_x = self.grad_f(x)
+        d_x = v
+        d_v = jtu.tree_map(
+            lambda _gamma, _u, _v, _f_x: -_gamma * _v - _u * _f_x,
+            self.gamma,
+            self.u,
+            v,
+            f_x,
+        )
+        d_y = (d_x, d_v)
+        return d_y
+
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
+        return t1 - t0
+
+    def prod(self, vf: _LangevinTuple, control: RealScalarLike) -> _LangevinTuple:
+        return jtu.tree_map(lambda _vf: control * _vf, vf)
+
+
+def make_langevin_term(
+    gamma: PyTree[ArrayLike],
+    u: PyTree[ArrayLike],
+    grad_f: Callable,
+    bm: AbstractBrownianPath,
+    x0: _LangevinX,
+) -> MultiTerm[tuple[_LangevinDriftTerm, _LangevinDiffusionTerm]]:
+    r"""Creates a term that represents the Underdamped Langevin Diffusion, given by:
     $d \mathbf{x}_t = \mathbf{v}_t dt$
-
     $d \mathbf{v}_t = - \gamma \mathbf{v}_t dt - u
     \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
-
     where $\mathbf{x}_t, \mathbf{v}_t \in \mathbb{R}^d$ represent the position
     and velocity, $W$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
-    $ \gamma,u\in\mathbb{R}^{d\times d}$ are diagonal matrices representing
-    friction and a dampening parameter.
+    $ \gamma,u\in\mathbb{R}^{d\times d}$ are diagonal matrices governing
+    the friction and the dampening of the system.
+
+    **Arguments:**
+
+    - `gamma`: A vector containing the diagonal entries of the friction matrix;
+        a PyTree of the same shape as `x0`.
+    - `u`: A vector containing the diagonal entries of the dampening matrix;
+        a PyTree of the same shape as `x0`.
+    - `grad_f`: A callable representing the gradient of the potential function $f$.
+        This callable should take a PyTree of the same shape as `x0` and
+        return a PyTree of the same shape.
+    - `bm`: A Brownian path representing the Brownian motion $W$.
+    - `x0`: The initial state of the system (just the position without velocity);
+        only needed to check the PyTree structure of the other arguments.
+
+    **Returns:**
+
+    A `MultiTerm` representing the Langevin SDE.
     """
 
-    args: _LangevinArgs = eqx.field(static=True)
-    term: MultiTerm[tuple[ODETerm, _LangevinDiffusionTerm]]
+    gamma = _broadcast_pytree(gamma, x0)
+    u = _broadcast_pytree(u, x0)
+    grad_f_shape = jax.eval_shape(grad_f, x0)
 
-    def __init__(self, args, bm: AbstractBrownianPath, x0: LangevinX):
-        r"""**Arguments:**
+    def _shape_check_fun(_x, _g, _u, _fx):
+        return _x.shape == _g.shape == _u.shape == _fx.shape
 
-        - `args`: a tuple of the form $(\gamma, u, \nabla f)$
-        - `bm`: a Brownian path
-        - `x0`: a point in the state space of the process (position only),
-         needed to determine the PyTree structure and shape of the process.
-        """
-        g1, u1, grad_f = args
-        # the PyTree structure of g1 and u1 must be a prefix of the PyTree
-        # structure of x0, and the shapes must be broadcastable to the shape of
-        # each leaf of x0.
-        gamma = _broadcast_pytree(g1, x0)
-        u = _broadcast_pytree(u1, x0)
-        grad_f_shape = jax.eval_shape(grad_f, x0)
+    assert jtu.tree_all(
+        jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)
+    ), "The shapes of gamma, u, and grad_f(x0) must be the same as x0."
 
-        def _shape_check_fun(_x, _g, _u, _fx):
-            return _x.shape == _g.shape == _u.shape == _fx.shape
-
-        assert jtu.tree_all(
-            jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)
-        ), "The shapes of gamma, u, and grad_f(x0) must be the same as x0."
-
-        self.args = (gamma, u, grad_f)
-        drift = ODETerm(lambda t, y, _: _langevin_drift(t, y, self.args))
-        diffusion = _LangevinDiffusionTerm(gamma, u, bm)
-        self.term = MultiTerm(drift, diffusion)
-
-    def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> tuple[Any, ...]:
-        return self.term.vf(t, y, args)
-
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> Any:
-        return self.term.contr(t0, t1, **kwargs)
-
-    def prod(self, vf: tuple[Any, ...], control: Any) -> LangevinTuple:
-        return self.term.prod(vf, control)
+    drift = _LangevinDriftTerm(gamma, u, grad_f)
+    diffusion = _LangevinDiffusionTerm(gamma, u, bm)
+    return MultiTerm(drift, diffusion)

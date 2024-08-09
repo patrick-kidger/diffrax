@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import pytest
-from diffrax import diffeqsolve, LangevinTerm, SaveAt
+from diffrax import diffeqsolve, make_langevin_term, SaveAt
 
 from .helpers import (
     get_bqp,
@@ -26,6 +26,7 @@ def _solvers_and_orders():
     yield diffrax.ALIGN(0.1), 2.0
     yield diffrax.ShOULD(0.1), 3.0
     yield diffrax.QUICSORT(0.1), 3.0
+    yield diffrax.ShARK(), 2.0
 
 
 def get_pytree_langevin(t0=0.3, t1=1.0, dtype=jnp.float32):
@@ -63,11 +64,10 @@ def get_pytree_langevin(t0=0.3, t1=1.0, dtype=jnp.float32):
         xb = x["qq"]
         return {"rr": jtu.tree_map(lambda _x: 0.2 * _x, xa), "qq": xb}
 
-    args = g1, u1, grad_f
     w_shape = jtu.tree_map(lambda _x: jax.ShapeDtypeStruct(_x.shape, _x.dtype), x0)
 
     def get_terms(bm):
-        return LangevinTerm(args, bm, x0)
+        return make_langevin_term(g1, u1, grad_f, bm, x0)
 
     return SDE(get_terms, None, y0, t0, t1, w_shape)
 

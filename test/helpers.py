@@ -12,7 +12,7 @@ from diffrax import (
     AbstractBrownianPath,
     AbstractTerm,
     ControlTerm,
-    LangevinTerm,
+    make_langevin_term,
     MultiTerm,
     ODETerm,
     VirtualBrownianTree,
@@ -503,12 +503,12 @@ def get_time_sde(t0, t1, dtype, key, noise_dim):
 
 def get_bqp(t0=0.3, t1=15.0, dtype=jnp.float32):
     grad_f_bqp = lambda x: 4 * x * (jnp.square(x) - 1)
-    args_bqp = (dtype(0.8), dtype(0.2), grad_f_bqp)
+    gamma, u = dtype(0.8), dtype(0.2)
     y0_bqp = (dtype(0), dtype(0))
     w_shape_bqp = ()
 
     def get_terms_bqp(bm):
-        return LangevinTerm(args_bqp, bm, x0=y0_bqp[0])
+        return make_langevin_term(gamma, u, grad_f_bqp, bm, y0_bqp[0])
 
     return SDE(get_terms_bqp, None, y0_bqp, t0, t1, w_shape_bqp)
 
@@ -516,14 +516,13 @@ def get_bqp(t0=0.3, t1=15.0, dtype=jnp.float32):
 def get_harmonic_oscillator(t0=0.3, t1=15.0, dtype=jnp.float32):
     gamma_hosc = jnp.array([2, 0.5], dtype=dtype)
     u_hosc = jnp.array([0.5, 2], dtype=dtype)
-    args_hosc = (gamma_hosc, u_hosc, lambda x: 2 * x)
     x0 = jnp.zeros((2,), dtype=dtype)
     v0 = jnp.zeros((2,), dtype=dtype)
     y0_hosc = (x0, v0)
     w_shape_hosc = (2,)
 
     def get_terms_hosc(bm):
-        return LangevinTerm(args_hosc, bm, x0)
+        return make_langevin_term(gamma_hosc, u_hosc, lambda x: 2 * x, bm, x0)
 
     return SDE(get_terms_hosc, None, y0_hosc, t0, t1, w_shape_hosc)
 
@@ -538,14 +537,13 @@ def get_neals_funnel(t0=0.0, t1=16.0, dtype=jnp.float32):
 
     gamma = 2.0
     u = 1.0
-    args_neal = (gamma, u, grad_log_p)
     x0 = jnp.zeros((10,), dtype=dtype)
     v0 = jnp.zeros((10,), dtype=dtype)
     y0_neal = (x0, v0)
     w_shape_neal = (10,)
 
     def get_terms_neal(bm):
-        return LangevinTerm(args_neal, bm, x0)
+        return make_langevin_term(gamma, u, grad_log_p, bm, x0)
 
     return SDE(get_terms_neal, None, y0_neal, t0, t1, w_shape_neal)
 
@@ -593,13 +591,12 @@ def get_uld3_langevin(t0=0.3, t1=15.0, dtype=jnp.float32):
 
     u = 1.0
     gamma = 2.0
-    args = (u, gamma, grad_f)
     x0 = jnp.array([-1, 0, 1, 1, 0, -1, 1, 0, -1], dtype=dtype)
     v0 = jnp.zeros((9,), dtype=dtype)
     y0_uld3 = (x0, v0)
     w_shape_uld3 = (9,)
 
     def get_terms_uld3(bm):
-        return LangevinTerm(args, bm, x0)
+        return make_langevin_term(u, gamma, grad_f, bm, x0)
 
     return SDE(get_terms_uld3, None, y0_uld3, t0, t1, w_shape_uld3)
