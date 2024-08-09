@@ -1,3 +1,4 @@
+from .align import ALIGN as ALIGN
 from .base import (
     AbstractAdaptiveSolver as AbstractAdaptiveSolver,
     AbstractImplicitSolver as AbstractImplicitSolver,
@@ -26,6 +27,7 @@ from .milstein import (
     ItoMilstein as ItoMilstein,
     StratonovichMilstein as StratonovichMilstein,
 )
+from .quicsort import QUICSORT as QUICSORT
 from .ralston import Ralston as Ralston
 from .reversible_heun import ReversibleHeun as ReversibleHeun
 from .runge_kutta import (
@@ -42,6 +44,7 @@ from .sea import SEA as SEA
 from .semi_implicit_euler import SemiImplicitEuler as SemiImplicitEuler
 from .shark import ShARK as ShARK
 from .shark_general import GeneralShARK as GeneralShARK
+from .should import ShOULD as ShOULD
 from .sil3 import Sil3 as Sil3
 from .slowrk import SlowRK as SlowRK
 from .spark import SPaRK as SPaRK

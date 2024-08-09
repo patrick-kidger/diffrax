@@ -316,6 +316,8 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order, dtype):
         get_dt_and_controller,
         diffrax.SaveAt(t1=True),
         bm_tol=2.0 ** -(ref_level + 2),
+        levy_area=None,
+        ref_solution=None,
     )
     assert -0.2 < order - theoretical_order < 0.2
 
