@@ -166,7 +166,7 @@ def _term_compatible(
                 vf_type_expected, control_type_expected = term_args
                 try:
                     vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
-                except ValueError as e:
+                except Exception as e:
                     raise ValueError(f"Error while tracing {term}.vf: " + str(e))
                 vf_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, vf_type, vf_type_expected
@@ -178,7 +178,7 @@ def _term_compatible(
                 # Work around https://github.com/google/jax/issues/21825
                 try:
                     control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
-                except ValueError as e:
+                except Exception as e:
                     raise ValueError(f"Error while tracing {term}.contr: " + str(e))
                 control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
@@ -192,8 +192,9 @@ def _term_compatible(
     try:
         with jax.numpy_dtype_promotion("standard"):
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
-    except ValueError as e:
+    except Exception as e:
         # ValueError may also arise from mismatched tree structures
+        raise ValueError("Terms are not compatible with solver! " + str(e))
         return False, e
     return True, BaseException()
 
