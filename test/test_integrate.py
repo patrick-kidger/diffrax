@@ -627,7 +627,7 @@ def test_term_compatibility():
         compatible_vf, compatible_control
     )
     for term in incompatible_terms:
-        with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
+        with pytest.raises(ValueError, match=r"Terms are not compatible with solver! "):
             diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, (jnp.zeros((2, 1)),))
 
     diffrax.diffeqsolve(
@@ -786,5 +786,5 @@ def test_term_compatibility_pytree():
         ):
             if term is compatible_term and y0 is compatible_y0:
                 continue
-            with pytest.raises(ValueError, match=r"`terms` must be a PyTree of"):
+            with pytest.raises(ValueError, match=r"Terms are not compatible with solver! "):
                 diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, y0)
