@@ -1051,7 +1051,7 @@ def diffeqsolve(
     )
 
     if not tc:
-        raise ValueError("Terms are not compatible with solver! " + str(error))
+        raise error
 
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
