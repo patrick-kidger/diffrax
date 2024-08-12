@@ -122,6 +122,7 @@ def _term_compatible(
     terms: PyTree[AbstractTerm],
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
+    bwd_compat: bool,
 ) -> tuple[bool, Union[ValueError, BaseException]]:
     error_msg = "term_structure"
 
@@ -136,7 +137,9 @@ def _term_compatible(
                 for term, arg, term_contr_kwarg in zip(
                     term.terms, get_args(_tmp), term_contr_kwargs
                 ):
-                    if not _term_compatible(yi, args, term, arg, term_contr_kwarg):
+                    if not _term_compatible(
+                        yi, args, term, arg, term_contr_kwarg, bwd_compat
+                    ):
                         raise ValueError
             else:
                 raise ValueError(
@@ -194,8 +197,9 @@ def _term_compatible(
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except Exception as e:
         # ValueError may also arise from mismatched tree structures
+        if bwd_compat:
+            return False, e
         raise ValueError("Terms are not compatible with solver! " + str(e))
-        return False, e
     return True, BaseException()
 
 
@@ -1023,6 +1027,7 @@ def diffeqsolve(
             terms,
             (ODETerm, AbstractTerm),
             solver.term_compatible_contr_kwargs,
+            True,
         )[0]
     ):
         warnings.warn(
@@ -1037,7 +1042,12 @@ def diffeqsolve(
 
     # Error checking
     tc, error = _term_compatible(
-        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
+        y0,
+        args,
+        terms,
+        solver.term_structure,
+        solver.term_compatible_contr_kwargs,
+        False,
     )
 
     if not tc:
