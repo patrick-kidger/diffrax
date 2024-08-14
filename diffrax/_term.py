@@ -257,7 +257,7 @@ def _callable_to_path(
 # control: Shaped[Array, "*control"]
 # return: Shaped[Array, "*state"]
 def _prod(vf, control):
-    return jnp.tensordot(vf, control, axes=jnp.ndim(control))
+    return jnp.tensordot(jnp.conj(vf), control, axes=jnp.ndim(control))
 
 
 # This class exists for backward compatibility with `WeaklyDiagonalControlTerm`. If we
