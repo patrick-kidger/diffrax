@@ -2,5 +2,6 @@ beartype
 jaxlib
 optax
 pytest
+pytest-xdist
 scipy
 tqdm

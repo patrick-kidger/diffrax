@@ -12,7 +12,7 @@ flags = " ".join(map(shlex.quote, sys.argv[1:]))
 running_out = 0
 for file in here.iterdir():
     if file.is_file() and file.name.startswith("test"):
-        cmd = f"pytest {file} " + flags
+        cmd = f"pytest -n auto {file} " + flags
         out = subprocess.run(cmd, shell=True).returncode
         running_out = max(running_out, out)
 sys.exit(running_out)
