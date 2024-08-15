@@ -92,4 +92,4 @@ Some example term structures include:
         members:
             - __init__
 
-:: diffrax.make_kl_terms
+::: diffrax.make_kl_terms
