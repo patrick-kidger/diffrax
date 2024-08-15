@@ -42,15 +42,13 @@ def test_kl_solver():
         shape=(1,),
         key=jax.random.PRNGKey(0),
     )
-    terms = diffrax.MultiTerm(
-        diffrax.MultiTerm(odeterm, diffrax.ControlTerm(g, control)),
-        odeterm,
-    )
-    solver, y0 = diffrax.initialize_kl(diffrax.Heun(), y0)
+    sde1 = diffrax.MultiTerm(odeterm, diffrax.ControlTerm(g, control))
+    sde2 = diffrax.MultiTerm(odeterm, diffrax.ControlTerm(g, control))
+    terms, y0 = diffrax.make_kl_terms(sde1, sde2, y0)
     stepsize_controller = diffrax.PIDController(rtol=1e-3, atol=1e-6)
     sol = diffrax.diffeqsolve(
         terms,
-        solver,
+        diffrax.Heun(),
         t0,
         t1,
         dt0,
