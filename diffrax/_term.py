@@ -862,7 +862,7 @@ def make_kl_terms(
     y0: Y,
     linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=None),
 ) -> tuple[MultiTerm[tuple[_KLDrift, _KLControlTerm]], KLState]:
-    """
+    r"""
     This generates the term and initial state for estimating the KL divergence
     between two SDEs with the same drift. Specifically, given SDEs of the form
 
@@ -882,8 +882,8 @@ def make_kl_terms(
 
     for every time interval. This is useful for KL based latent SDEs. The output
     of the solution.ys will be a KLState containing the posterior SDE integration and the
-    KL integrations over time. Note that this method requires inverting the diffusion 
-    matrix and as such, unless the diffusion is diagonal, the inverse can be extremely 
+    KL integrations over time. Note that this method requires inverting the diffusion
+    matrix and as such, unless the diffusion is diagonal, the inverse can be extremely
     costly for higher dimenions.
 
     Each sde must be a `MultiTerm` composed of the drift `f`
@@ -930,7 +930,7 @@ def make_kl_terms(
     A tuple containing the new terms to be fed into any SDE solver,
     and the `KLState` representing the initial starting point.
 
-    """ # noqa: E501
+    """  # noqa: E501
     post_drift = posterior_sde.terms[0]
     prior_drift = prior_sde.terms[0]
     diffusion_term = posterior_sde.terms[1]

@@ -113,10 +113,3 @@ These are reversible in the same way as when applied to ODEs. [See here.](./ode_
     selection:
         members:
             - __init__
-
-::: diffrax.initialize_kl
-
-::: diffrax.KLSolver
-    selection:
-        members:
-            - __init__
