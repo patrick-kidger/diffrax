@@ -116,14 +116,13 @@ def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(
+def _assert_term_compatible(
     y: PyTree[ArrayLike],
     args: PyTree[Any],
     terms: PyTree[AbstractTerm],
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
-    bwd_compat: bool,
-) -> tuple[bool, Union[ValueError, BaseException]]:
+) -> None:
     error_msg = "term_structure"
 
     def _check(term_cls, term, term_contr_kwargs, yi):
@@ -137,10 +136,7 @@ def _term_compatible(
                 for term, arg, term_contr_kwarg in zip(
                     term.terms, get_args(_tmp), term_contr_kwargs
                 ):
-                    if not _term_compatible(
-                        yi, args, term, arg, term_contr_kwarg, bwd_compat
-                    ):
-                        raise ValueError
+                    _assert_term_compatible(yi, args, term, arg, term_contr_kwarg)
             else:
                 raise ValueError(
                     f"Term {term} is not a MultiTerm but is expected to be."
@@ -197,10 +193,7 @@ def _term_compatible(
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except Exception as e:
         # ValueError may also arise from mismatched tree structures
-        if bwd_compat:
-            return False, e
         raise ValueError("Terms are not compatible with solver! " + str(e))
-    return True, BaseException()
 
 
 def _is_subsaveat(x: Any) -> bool:
@@ -1019,39 +1012,35 @@ def diffeqsolve(
     del timelikes
 
     # Backward compatibility
-    if (
-        isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein))
-        and _term_compatible(
-            y0,
-            args,
-            terms,
-            (ODETerm, AbstractTerm),
-            solver.term_compatible_contr_kwargs,
-            True,
-        )[0]
-    ):
-        warnings.warn(
-            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-            f"{solver.__class__.__name__} is deprecated in favour of "
-            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-            "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!",
-            stacklevel=2,
-        )
-        terms = MultiTerm(*terms)
+    if isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein)):
+        try:
+            _assert_term_compatible(
+                y0,
+                args,
+                terms,
+                (ODETerm, AbstractTerm),
+                solver.term_compatible_contr_kwargs,
+            )
+            warnings.warn(
+                "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+                f"{solver.__class__.__name__} is deprecated in favour of "
+                "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+                "the same terms can now be passed used for both general "
+                "and SDE-specific solvers!",
+                stacklevel=2,
+            )
+            terms = MultiTerm(*terms)
+        except Exception as _:
+            pass
 
     # Error checking
-    tc, error = _term_compatible(
+    _assert_term_compatible(
         y0,
         args,
         terms,
         solver.term_structure,
         solver.term_compatible_contr_kwargs,
-        False,
     )
-
-    if not tc:
-        raise error
 
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
