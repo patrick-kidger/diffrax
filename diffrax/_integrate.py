@@ -953,13 +953,13 @@ def diffeqsolve(
 
     # Error checking and warning for complex dtypes
     if any(
-        eqx.is_array(xi) and jnp.iscomplexobj(xi)
+        eqx.is_array_like(xi) and jnp.iscomplexobj(xi)
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
         warnings.warn(
-            "Complex dtype support is a work in progress and may not produce correct "
-            "results. Consider splitting your computation into real and imaginary "
-            "parts instead.",
+            "Complex dtype support in Diffrax is a work in progress and may not yet "
+            "produce correct results. Consider splitting your computation into real "
+            "and imaginary parts instead.",
             stacklevel=2,
         )
 
