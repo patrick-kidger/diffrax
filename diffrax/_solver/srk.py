@@ -365,7 +365,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         bm_inc = diffusion.contr(t0, t1, use_levy=True)
         if not isinstance(bm_inc, self.minimal_levy_area):
             raise ValueError(
-                f"The brownian increment {bm_inc} does not have the "
+                f"The Brownian increment {bm_inc} does not have the "
                 f"minimal Levy Area {self.minimal_levy_area}."
             )
         w = bm_inc.W

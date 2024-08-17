@@ -193,7 +193,7 @@ def _assert_term_compatible(
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except Exception as e:
         # ValueError may also arise from mismatched tree structures
-        raise ValueError("Terms are not compatible with solver! " + str(e))
+        raise ValueError("Terms are not compatible with solver!") from e
 
 
 def _is_subsaveat(x: Any) -> bool:
@@ -1021,6 +1021,9 @@ def diffeqsolve(
                 (ODETerm, AbstractTerm),
                 solver.term_compatible_contr_kwargs,
             )
+        except Exception as _:
+            pass
+        else:
             warnings.warn(
                 "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
                 f"{solver.__class__.__name__} is deprecated in favour of "
@@ -1030,8 +1033,6 @@ def diffeqsolve(
                 stacklevel=2,
             )
             terms = MultiTerm(*terms)
-        except Exception as _:
-            pass
 
     # Error checking
     _assert_term_compatible(
