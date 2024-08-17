@@ -1,5 +1,6 @@
 import abc
-from typing import Any, Callable, Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, Generic, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -8,7 +9,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox import AbstractVar
 from jax import vmap
-from jax._src.tree_util import PyTreeDef
+from jax.tree_util import PyTreeDef
 from jaxtyping import Array, ArrayLike, PyTree
 
 from .._custom_types import (
@@ -20,19 +21,19 @@ from .._custom_types import (
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import (
-    _LangevinDiffusionTerm,
-    _LangevinDriftTerm,
-    _LangevinTuple,
-    _LangevinX,
     AbstractTerm,
+    LangevinDiffusionTerm,
+    LangevinDriftTerm,
+    LangevinTuple,
+    LangevinX,
     MultiTerm,
     WrapTerm,
 )
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
-_ErrorEstimate = TypeVar("_ErrorEstimate", None, _LangevinTuple)
-_LangevinArgs = tuple[_LangevinX, _LangevinX, Callable[[_LangevinX], _LangevinX]]
+_ErrorEstimate = TypeVar("_ErrorEstimate", None, LangevinTuple)
+_LangevinArgs = tuple[LangevinX, LangevinX, Callable[[LangevinX], LangevinX]]
 
 
 def get_args_from_terms(
@@ -40,20 +41,15 @@ def get_args_from_terms(
 ) -> _LangevinArgs:
     drift, diffusion = terms.terms
     if isinstance(drift, WrapTerm):
-        unwrapped_drift = drift.term
         assert isinstance(diffusion, WrapTerm)
-        unwrapped_diffusion = diffusion.term
-        assert isinstance(unwrapped_drift, _LangevinDriftTerm)
-        assert isinstance(unwrapped_diffusion, _LangevinDiffusionTerm)
-        gamma = unwrapped_drift.gamma
-        u = unwrapped_drift.u
-        f = unwrapped_drift.grad_f
-    else:
-        assert isinstance(drift, _LangevinDriftTerm)
-        assert isinstance(diffusion, _LangevinDiffusionTerm)
-        gamma = drift.gamma
-        u = drift.u
-        f = drift.grad_f
+        drift = drift.term
+        diffusion = diffusion.term
+
+    assert isinstance(drift, LangevinDriftTerm)
+    assert isinstance(diffusion, LangevinDiffusionTerm)
+    gamma = drift.gamma
+    u = drift.u
+    f = drift.grad_f
     return gamma, u, f
 
 
@@ -64,15 +60,12 @@ class AbstractCoeffs(eqx.Module):
 _Coeffs = TypeVar("_Coeffs", bound=AbstractCoeffs)
 
 
-# TODO: I'm not sure if I can use the _Coeffs type here,
-# given that I do not use Generic[_Coeffs] in the class definition.
-# How should I work around this?
 class SolverState(eqx.Module, Generic[_Coeffs]):
     h: RealScalarLike
-    taylor_coeffs: PyTree[_Coeffs, "_LangevinX"]
+    taylor_coeffs: PyTree[_Coeffs, "LangevinX"]
     coeffs: _Coeffs
-    rho: _LangevinX
-    prev_f: _LangevinX
+    rho: LangevinX
+    prev_f: LangevinX
 
 
 # CONCERNING COEFFICIENTS:
@@ -104,11 +97,11 @@ class AbstractLangevinSRK(
     where $v$ is the velocity, $f$ is the potential, $gamma$ and $u$ are the
     friction and momentum parameters, and $W$ is a Brownian motion.
 
-    Solvers which inherit from this class include ALIGN, SORT, ShOULD, and
-    QUIC_SORT.
+    Solvers which inherit from this class include [`diffrax.ALIGN`][],
+    [`diffrax.ShOULD`][], and [`diffrax.QUIC_SORT`][].
     """
 
-    term_structure = MultiTerm[tuple[_LangevinDriftTerm, _LangevinDiffusionTerm]]
+    term_structure = MultiTerm[tuple[LangevinDriftTerm, LangevinDiffusionTerm]]
     interpolation_cls = LocalLinearInterpolation
     taylor_threshold: RealScalarLike = eqx.field(static=True)
     _coeffs_structure: eqx.AbstractClassVar[PyTreeDef]
@@ -150,7 +143,7 @@ class AbstractLangevinSRK(
         )
 
     def _recompute_coeffs(
-        self, h, gamma: _LangevinX, tay_coeffs: PyTree[_Coeffs], state_h
+        self, h, gamma: LangevinX, tay_coeffs: PyTree[_Coeffs], state_h
     ) -> _Coeffs:
         def recompute_coeffs_leaf(c: ArrayLike, _tay_coeffs: _Coeffs):
             # Used when the step-size h changes and coefficients need to be recomputed
@@ -201,7 +194,7 @@ class AbstractLangevinSRK(
         terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: _LangevinTuple,
+        y0: LangevinTuple,
         args: PyTree,
     ) -> SolverState:
         """Precompute _SolverState which carries the Taylor coefficients and the
@@ -242,12 +235,12 @@ class AbstractLangevinSRK(
     def _compute_step(
         h: RealScalarLike,
         levy,
-        x0: _LangevinX,
-        v0: _LangevinX,
+        x0: LangevinX,
+        v0: LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _Coeffs,
         st: SolverState,
-    ) -> tuple[_LangevinX, _LangevinX, _LangevinX, _ErrorEstimate]:
+    ) -> tuple[LangevinX, LangevinX, LangevinX, _ErrorEstimate]:
         raise NotImplementedError
 
     def step(
@@ -255,11 +248,11 @@ class AbstractLangevinSRK(
         terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: _LangevinTuple,
+        y0: LangevinTuple,
         args: PyTree,
         solver_state: SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[_LangevinTuple, _ErrorEstimate, DenseInfo, SolverState, RESULTS]:
+    ) -> tuple[LangevinTuple, _ErrorEstimate, DenseInfo, SolverState, RESULTS]:
         del made_jump, args
         st = solver_state
         drift, diffusion = terms.terms
@@ -319,7 +312,7 @@ class AbstractLangevinSRK(
         self,
         terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
-        y0: _LangevinTuple,
+        y0: LangevinTuple,
         args: PyTree,
     ):
         return terms.vf(t0, y0, args)

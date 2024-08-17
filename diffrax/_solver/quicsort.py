@@ -13,7 +13,7 @@ from .._custom_types import (
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import _LangevinX
+from .._term import LangevinX
 from .langevin_srk import (
     _LangevinArgs,
     AbstractCoeffs,
@@ -186,16 +186,16 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
     def _compute_step(
         h: RealScalarLike,
         levy: AbstractSpaceTimeTimeLevyArea,
-        x0: _LangevinX,
-        v0: _LangevinX,
+        x0: LangevinX,
+        v0: LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _QUICSORTCoeffs,
         st: SolverState,
-    ) -> tuple[_LangevinX, _LangevinX, _LangevinX, None]:
+    ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
         dtypes = jtu.tree_map(jnp.dtype, x0)
-        w: _LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
-        hh: _LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
-        kk: _LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
+        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
+        kk: LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
         gamma, u, f = langevin_args
 

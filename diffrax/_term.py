@@ -791,12 +791,13 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 # `x` and the velocity `v`. Both of these have the same shape. So, by LangevinX we
 # denote the shape of the x component, and by LangevinTuple we denote the shape of
 # the tuple (x, v).
-_LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
-_LangevinTuple = tuple[_LangevinX, _LangevinX]
-_LangevinBM = TypeVar("_LangevinBM", bound=Union[_LangevinX, AbstractBrownianIncrement])
+LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
+LangevinTuple = tuple[LangevinX, LangevinX]
 
 
-class _LangevinDiffusionTerm(AbstractTerm[_LangevinX, _LangevinBM]):
+class LangevinDiffusionTerm(
+    AbstractTerm[LangevinX, Union[LangevinX, AbstractBrownianIncrement]]
+):
     r"""Represents the diffusion term in the Langevin SDE:
 
     $d \mathbf{x}_t = \mathbf{v}_t dt$
@@ -805,11 +806,11 @@ class _LangevinDiffusionTerm(AbstractTerm[_LangevinX, _LangevinBM]):
     \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
     """
 
-    gamma: _LangevinX
-    u: _LangevinX
+    gamma: LangevinX
+    u: LangevinX
     control: AbstractBrownianPath
 
-    def vf(self, t: RealScalarLike, y: _LangevinTuple, args: Args) -> _LangevinX:
+    def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinX:
         x, v = y
 
         def _fun(_gamma, _u, _v):
@@ -818,13 +819,12 @@ class _LangevinDiffusionTerm(AbstractTerm[_LangevinX, _LangevinBM]):
         d_v = jtu.tree_map(_fun, self.gamma, self.u, v)
         return d_v
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _LangevinBM:
+    def contr(
+        self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
+    ) -> Union[LangevinX, AbstractBrownianIncrement]:
         return self.control.evaluate(t0, t1, **kwargs)
 
-    def prod(self, vf: _LangevinX, control: _LangevinX) -> _LangevinTuple:
-        if isinstance(control, AbstractBrownianIncrement):
-            control = control.W
-
+    def prod(self, vf: LangevinX, control: LangevinX) -> LangevinTuple:
         dv = vf
         dw = control
         v_out = jtu.tree_map(operator.mul, dv, dw)
@@ -843,12 +843,12 @@ def _broadcast_pytree(source, target_tree_shape):
     return jtu.tree_map(_inner_broadcast, source, target_tree_shape)
 
 
-class _LangevinDriftTerm(AbstractTerm):
-    gamma: _LangevinX
-    u: _LangevinX
-    grad_f: Callable[[_LangevinX], _LangevinX]
+class LangevinDriftTerm(AbstractTerm):
+    gamma: LangevinX
+    u: LangevinX
+    grad_f: Callable[[LangevinX], LangevinX]
 
-    def vf(self, t: RealScalarLike, y: _LangevinTuple, args: Args) -> _LangevinTuple:
+    def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinTuple:
         x, v = y
         f_x = self.grad_f(x)
         d_x = v
@@ -865,7 +865,7 @@ class _LangevinDriftTerm(AbstractTerm):
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
         return t1 - t0
 
-    def prod(self, vf: _LangevinTuple, control: RealScalarLike) -> _LangevinTuple:
+    def prod(self, vf: LangevinTuple, control: RealScalarLike) -> LangevinTuple:
         return jtu.tree_map(lambda _vf: control * _vf, vf)
 
 
@@ -874,16 +874,19 @@ def make_langevin_term(
     u: PyTree[ArrayLike],
     grad_f: Callable,
     bm: AbstractBrownianPath,
-    x0: _LangevinX,
-) -> MultiTerm[tuple[_LangevinDriftTerm, _LangevinDiffusionTerm]]:
+    x0: LangevinX,
+) -> MultiTerm[tuple[LangevinDriftTerm, LangevinDiffusionTerm]]:
     r"""Creates a term that represents the Underdamped Langevin Diffusion, given by:
+
     $d \mathbf{x}_t = \mathbf{v}_t dt$
+
     $d \mathbf{v}_t = - \gamma \mathbf{v}_t dt - u
     \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
+
     where $\mathbf{x}_t, \mathbf{v}_t \in \mathbb{R}^d$ represent the position
     and velocity, $W$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
-    $ \gamma,u\in\mathbb{R}^{d\times d}$ are diagonal matrices governing
+    $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
     the friction and the dampening of the system.
 
     **Arguments:**
@@ -915,6 +918,6 @@ def make_langevin_term(
         jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)
     ), "The shapes of gamma, u, and grad_f(x0) must be the same as x0."
 
-    drift = _LangevinDriftTerm(gamma, u, grad_f)
-    diffusion = _LangevinDiffusionTerm(gamma, u, bm)
+    drift = LangevinDriftTerm(gamma, u, grad_f)
+    diffusion = LangevinDiffusionTerm(gamma, u, bm)
     return MultiTerm(drift, diffusion)

@@ -182,8 +182,6 @@ def _batch_sde_solve(
         saveat=saveat,
     )
     steps = sol.stats["num_accepted_steps"]
-    if isinstance(solver, diffrax.HalfSolver):
-        steps *= 3
     return sol.ys, steps
 
 
@@ -296,21 +294,14 @@ def sde_solver_strong_order(
     return steps_arr, errs_arr, order
 
 
-@dataclasses.dataclass(unsafe_hash=True)
+@dataclasses.dataclass(frozen=True)
 class SDE:
     get_terms: Callable[[AbstractBrownianPath], AbstractTerm]
     args: PyTree
     y0: PyTree[Array]
     t0: float
     t1: float
-    _w_shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]]
-
-    @property
-    def w_shape(self):
-        if is_tuple_of_ints(self._w_shape):
-            return self._w_shape
-        else:
-            return self._w_shape
+    w_shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]]
 
     def get_dtype(self):
         return jnp.result_type(*jtu.tree_leaves(self.y0))
