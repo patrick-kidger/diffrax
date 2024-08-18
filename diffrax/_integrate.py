@@ -775,14 +775,23 @@ def loop(
                 save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
-    def _save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+    def _save_t0_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+        if subsaveat.t0:
+            ts = save_state.ts.at[0].set(t0)
+            ys = save_state.ys.at[0].set(subsaveat.fn(t0, yfinal, args))
+            save_state = SaveState(
+                saveat_ts_index=1,
+                ts=ts,
+                ys=ys,
+                save_index=1,
+            )
         if subsaveat.ts is not None:
 
             def _body_fun(idx, _save_state):
-                ts = _save_state.ts.at[idx].set(t1)
+                ts = _save_state.ts.at[idx].set(t0)
                 ys = jtu.tree_map(
                     lambda _y, _ys: _ys.at[idx].set(_y),
-                    subsaveat.fn(t1, yfinal, args),
+                    subsaveat.fn(t0, yfinal, args),
                     _save_state.ys,
                 )
                 return SaveState(
@@ -792,15 +801,19 @@ def loop(
                     save_index=idx + 1,
                 )
 
-            save_state = jax.lax.fori_loop(0, len(subsaveat.ts), _body_fun, save_state)
+            save_idx = save_state.save_index
+            save_state = jax.lax.fori_loop(
+                save_idx, save_idx + len(subsaveat.ts), _body_fun, save_state
+            )
         return save_state
 
     # if t0 == t1 then we don't enter the integration loop. In this case we have to
-    # manually update the saved values if saveat.subs.ts is not None
+    # manually update the saved ts and ys if we want to save at t0 or at "intermediate"
+    # times specified by saveat.subs.ts
     save_state = jax.lax.cond(
         t0 == t1,
         lambda _save_state: jtu.tree_map(
-            _save_ts, saveat.subs, _save_state, is_leaf=_is_subsaveat
+            _save_t0_ts, saveat.subs, _save_state, is_leaf=_is_subsaveat
         ),
         lambda _save_state: _save_state,
         final_state.save_state,
