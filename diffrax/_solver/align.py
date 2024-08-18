@@ -19,10 +19,7 @@ from .langevin_srk import (
 )
 
 
-# UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
-# so we need 3 versions of each coefficient
-
-
+# For an explanation of the coefficients, see langevin_srk.py
 class _ALIGNCoeffs(AbstractCoeffs):
     beta: PyTree[ArrayLike]
     a1: PyTree[ArrayLike]
@@ -46,15 +43,8 @@ _ErrorEstimate = LangevinTuple
 
 class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     r"""The Adaptive Langevin via Interpolated Gradients and Noise method
-    designed by James Foster. Only works for Underdamped Langevin Diffusion
-    of the form
-
-    $$d x_t = v_t dt$$
-
-    $$d v_t = - gamma v_t dt - u ∇f(x_t) dt + (2gammau)^(1/2) dW_t$$
-
-    where $v$ is the velocity, $f$ is the potential, $gamma$ is the friction, and
-    $W$ is a Brownian motion.
+    designed by James Foster.
+    Accepts only terms given by [`diffrax.make_langevin_term`][].
     """
 
     interpolation_cls = LocalLinearInterpolation

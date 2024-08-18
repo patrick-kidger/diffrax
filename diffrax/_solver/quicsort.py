@@ -22,10 +22,9 @@ from .langevin_srk import (
 )
 
 
+# For an explanation of the coefficients, see langevin_srk.py
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
 # so we need 3 versions of each coefficient
-
-
 class _QUICSORTCoeffs(AbstractCoeffs):
     beta_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
     a_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
@@ -66,14 +65,7 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
         }
         ```
 
-    Works for underdamped Langevin SDEs of the form
-
-    $$d x_t = v_t dt$$
-
-    $$d v_t = - gamma v_t dt - u ∇f(x_t) dt + (2gammau)^(1/2) dW_t$$
-
-    where $v$ is the velocity, $f$ is the potential, $gamma$ is the friction, and
-    $W$ is a Brownian motion.
+    Accepts only terms given by [`diffrax.make_langevin_term`][].
     """
 
     interpolation_cls = LocalLinearInterpolation
@@ -246,9 +238,8 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
         ).ω
         v_out = (v_out_tilde**ω - st.rho**ω * (hh**ω - 6 * kk**ω)).ω
 
-        f_fsal = (
-            st.prev_f
-        )  # this method is not FSAL, but this is for compatibility with the base class
+        # this method is not FSAL, but for compatibility with the base class we set
+        f_fsal = st.prev_f
 
         # TODO: compute error estimate
         return x_out, v_out, f_fsal, None

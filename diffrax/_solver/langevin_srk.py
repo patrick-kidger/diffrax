@@ -198,7 +198,7 @@ class AbstractLangevinSRK(
         args: PyTree,
     ) -> SolverState:
         """Precompute _SolverState which carries the Taylor coefficients and the
-        SRK coefficients (which can be computed from h and the Taylor coeffs).
+        SRK coefficients (which can be computed from h and the Taylor coefficients).
         Some solvers of this type are FSAL, so _SolverState also carries the previous
         evaluation of grad_f.
         """
@@ -259,16 +259,18 @@ class AbstractLangevinSRK(
         gamma, u, f = get_args_from_terms(terms)
 
         h = drift.contr(t0, t1)
-        h_state = st.h
+        h_prev = st.h
         tay: PyTree[_Coeffs] = st.taylor_coeffs
         coeffs: _Coeffs = st.coeffs
 
         # If h changed recompute coefficients
-        cond = jnp.isclose(h_state, h, rtol=1e-10, atol=1e-12)
+        # Even when using constant step sizes, h can fluctuate by small amounts,
+        # so we use `jnp.isclose` for comparison
+        cond = jnp.isclose(h_prev, h, rtol=1e-10, atol=1e-12)
         coeffs = lax.cond(
             cond,
             lambda x: x,
-            lambda _: self._recompute_coeffs(h, gamma, tay, h_state),
+            lambda _: self._recompute_coeffs(h, gamma, tay, h_prev),
             coeffs,
         )
 

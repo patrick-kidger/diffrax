@@ -9,6 +9,7 @@ from diffrax import diffeqsolve, make_langevin_term, SaveAt
 from .helpers import (
     get_bqp,
     get_harmonic_oscillator,
+    path_l2_dist,
     SDE,
     simple_batch_sde_solve,
     simple_sde_order,
@@ -194,3 +195,39 @@ def test_langevin_strong_order(
     assert (
         -0.2 < order - theoretical_order < 0.25
     ), f"order={order}, theoretical_order={theoretical_order}"
+
+
+@pytest.mark.parametrize("solver_cls", _only_langevin_solvers_cls())
+def test_reverse_solve(solver_cls):
+    t0, t1 = 0.7, -1.2
+    dt0 = -0.01
+    saveat = SaveAt(ts=jnp.linspace(t0, t1, 20, endpoint=True))
+
+    gamma = jnp.array([2, 0.5], dtype=jnp.float64)
+    u = jnp.array([0.5, 2], dtype=jnp.float64)
+    x0 = jnp.zeros((2,), dtype=jnp.float64)
+    v0 = jnp.zeros((2,), dtype=jnp.float64)
+    y0 = (x0, v0)
+
+    bm = diffrax.VirtualBrownianTree(
+        t1,
+        t0,
+        tol=0.005,
+        shape=(2,),
+        key=jr.key(0),
+        levy_area=diffrax.SpaceTimeTimeLevyArea,
+    )
+    terms = diffrax.make_langevin_term(gamma, u, lambda x: 2 * x, bm, x0)
+
+    solver = solver_cls(0.01)
+    sol = diffeqsolve(terms, solver, t0, t1, dt0=dt0, y0=y0, args=None, saveat=saveat)
+
+    ref_solver = diffrax.Heun()
+    ref_sol = diffeqsolve(
+        terms, ref_solver, t0, t1, dt0=dt0, y0=y0, args=None, saveat=saveat
+    )
+
+    # print(jtu.tree_map(lambda x: x.shape, sol.ys))
+    # print(jtu.tree_map(lambda x: x.shape, ref_sol.ys))
+    error = path_l2_dist(sol.ys, ref_sol.ys)
+    assert error < 0.1
