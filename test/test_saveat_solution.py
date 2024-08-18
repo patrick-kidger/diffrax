@@ -147,6 +147,42 @@ def test_saveat_solution():
     assert sol.result == diffrax.RESULTS.successful
 
 
+@pytest.mark.parametrize("subs", [True, False])
+def test_t0_eq_t1(subs):
+    y0 = jnp.array([2.0])
+    ts = jnp.linspace(1.0, 1.0, 3)
+    if subs:
+        get0 = diffrax.SubSaveAt(
+            ts=ts,
+            t1=True,
+        )
+        get1 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+        )
+        subs = (get0, get1)
+        saveat = diffrax.SaveAt(subs=subs)
+    else:
+        saveat = diffrax.SaveAt(t0=True, t1=True, ts=ts)
+    term = diffrax.ODETerm(lambda t, y, args: y)
+    sol = diffrax.diffeqsolve(
+        term,
+        t0=ts[0],
+        t1=ts[-1],
+        y0=y0,
+        dt0=0.1,
+        solver=diffrax.Dopri5(),
+        saveat=saveat,
+    )
+    if subs:
+        compare = jnp.full((len(ts) + 1, *y0.shape), y0)
+        assert tree_allclose(sol.ys[0], compare)  # pyright: ignore
+        assert tree_allclose(sol.ys[1], compare)  # pyright: ignore
+    else:
+        compare = jnp.full((len(ts) + 2, *y0.shape), y0)
+        assert tree_allclose(sol.ys, compare)
+
+
 def test_trivial_dense():
     term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
     y0 = jnp.array([2.1])
