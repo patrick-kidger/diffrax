@@ -116,13 +116,13 @@ def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(
+def _assert_term_compatible(
     y: PyTree[ArrayLike],
     args: PyTree[Any],
     terms: PyTree[AbstractTerm],
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
-) -> bool:
+) -> None:
     error_msg = "term_structure"
 
     def _check(term_cls, term, term_contr_kwargs, yi):
@@ -136,10 +136,11 @@ def _term_compatible(
                 for term, arg, term_contr_kwarg in zip(
                     term.terms, get_args(_tmp), term_contr_kwargs
                 ):
-                    if not _term_compatible(yi, args, term, arg, term_contr_kwarg):
-                        raise ValueError
+                    _assert_term_compatible(yi, args, term, arg, term_contr_kwarg)
             else:
-                raise ValueError
+                raise ValueError(
+                    f"Term {term} is not a MultiTerm but is expected to be."
+                )
         else:
             # Check that `term` is an instance of `term_cls` (ignoring any generic
             # parameterization).
@@ -147,7 +148,7 @@ def _term_compatible(
             if origin_cls is None:
                 origin_cls = term_cls
             if not isinstance(term, origin_cls):
-                raise ValueError
+                raise ValueError(f"Term {term} is not an instance of {origin_cls}.")
 
             # Now check the generic parametrization of `term_cls`; can be one of:
             # -----------------------------------------
@@ -162,21 +163,27 @@ def _term_compatible(
                 pass
             elif n_term_args == 2:
                 vf_type_expected, control_type_expected = term_args
-                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                try:
+                    vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                except Exception as e:
+                    raise ValueError(f"Error while tracing {term}.vf: " + str(e))
                 vf_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, vf_type, vf_type_expected
                 )
                 if not vf_type_compatible:
-                    raise ValueError
+                    raise ValueError(f"Vector field term {term} is incompatible.")
 
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
-                control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
+                try:
+                    control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
+                except Exception as e:
+                    raise ValueError(f"Error while tracing {term}.contr: " + str(e))
                 control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
                 )
                 if not control_type_compatible:
-                    raise ValueError
+                    raise ValueError(f"Control term {term} is incompatible.")
             else:
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
@@ -184,10 +191,9 @@ def _term_compatible(
     try:
         with jax.numpy_dtype_promotion("standard"):
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
-    except ValueError:
+    except Exception as e:
         # ValueError may also arise from mismatched tree structures
-        return False
-    return True
+        raise ValueError("Terms are not compatible with solver!") from e
 
 
 def _is_subsaveat(x: Any) -> bool:
@@ -1007,29 +1013,36 @@ def diffeqsolve(
     del timelikes
 
     # Backward compatibility
-    if isinstance(
-        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(
-        y0, args, terms, (ODETerm, AbstractTerm), solver.term_compatible_contr_kwargs
-    ):
-        warnings.warn(
-            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-            f"{solver.__class__.__name__} is deprecated in favour of "
-            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-            "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!",
-            stacklevel=2,
-        )
-        terms = MultiTerm(*terms)
+    if isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein)):
+        try:
+            _assert_term_compatible(
+                y0,
+                args,
+                terms,
+                (ODETerm, AbstractTerm),
+                solver.term_compatible_contr_kwargs,
+            )
+        except Exception as _:
+            pass
+        else:
+            warnings.warn(
+                "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+                f"{solver.__class__.__name__} is deprecated in favour of "
+                "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+                "the same terms can now be passed used for both general "
+                "and SDE-specific solvers!",
+                stacklevel=2,
+            )
+            terms = MultiTerm(*terms)
 
-    # Error checking
-    if not _term_compatible(
-        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
-    ):
-        raise ValueError(
-            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
-            f"structure {solver.term_structure}"
-        )
+    # Error checking for term compatibility
+    _assert_term_compatible(
+        y0,
+        args,
+        terms,
+        solver.term_structure,
+        solver.term_compatible_contr_kwargs,
+    )
 
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
