@@ -1034,7 +1034,7 @@ def diffeqsolve(
             )
             terms = MultiTerm(*terms)
 
-    # Error checking
+    # Error checking for term compatibility
     _assert_term_compatible(
         y0,
         args,
