@@ -56,30 +56,56 @@ sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
 
 class AbstractBrownianIncrement(eqx.Module):
+    """
+    Abstract base class for all Brownian increments.
+    """
+
     dt: eqx.AbstractVar[PyTree[FloatScalarLike, "BM"]]
     W: eqx.AbstractVar[BM]
 
 
 class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement):
+    """
+    Abstract base class for all Space Time Levy Areas.
+    """
+
     H: eqx.AbstractVar[BM]
 
 
 class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):
+    """
+    Abstract base class for all Space Time Time Levy Areas.
+    """
+
     K: eqx.AbstractVar[BM]
 
 
 class BrownianIncrement(AbstractBrownianIncrement):
+    """
+    Pytree containing the `dt` time increment and `W` the Brownian motion.
+    """
+
     dt: PyTree[FloatScalarLike, "BM"]
     W: BM
 
 
 class SpaceTimeLevyArea(AbstractSpaceTimeLevyArea):
+    """
+    Pytree containing the `dt` time increment, `W` the Brownian motion, and `H`
+    the Space Time Levy Area.
+    """
+
     dt: PyTree[FloatScalarLike, "BM"]
     W: BM
     H: BM
 
 
 class SpaceTimeTimeLevyArea(AbstractSpaceTimeTimeLevyArea):
+    """
+    Pytree containing the `dt` time increment, `W` the Brownian motion, `H`
+    the Space Time Levy Area, and `K` the Space Time Time Levy Area.
+    """
+
     dt: PyTree[FloatScalarLike, "BM"]
     W: BM
     H: BM

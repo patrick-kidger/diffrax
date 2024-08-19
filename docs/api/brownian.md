@@ -47,13 +47,25 @@ a `VirtualBrownianTree`) should be initialized with `levy_area=SpaceTimeLevyArea
 a concrete class must be used, not its abstract parent.
 
 ::: diffrax.AbstractBrownianIncrement
+    selection:
+        members: false
 
 ::: diffrax.BrownianIncrement
+    selection:
+        members: false
 
 ::: diffrax.AbstractSpaceTimeLevyArea
+    selection:
+        members: false
 
 ::: diffrax.SpaceTimeLevyArea
+    selection:
+        members: false
 
 ::: diffrax.AbstractSpaceTimeTimeLevyArea
+    selection:
+        members: false
 
 ::: diffrax.SpaceTimeTimeLevyArea
+    selection:
+        members: false
