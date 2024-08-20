@@ -18,6 +18,7 @@ from .._custom_types import (
     RealScalarLike,
     SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea,
+    WeakSpaceSpaceLevyArea,
 )
 from .._misc import (
     force_bitcast_convert_type,
@@ -25,6 +26,11 @@ from .._misc import (
     split_by_tree,
 )
 from .base import AbstractBrownianPath
+
+
+_Levy_Areas = Union[
+    BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea, WeakSpaceSpaceLevyArea
+]
 
 
 class UnsafeBrownianPath(AbstractBrownianPath):
@@ -62,18 +68,14 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: type[
-        Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
-    ] = eqx.field(static=True)
+    levy_area: type[_Levy_Areas] = eqx.field(static=True)
     key: PRNGKeyArray
 
     def __init__(
         self,
         shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
         key: PRNGKeyArray,
-        levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
-        ] = BrownianIncrement,
+        levy_area: type[_Levy_Areas] = BrownianIncrement,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -141,9 +143,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: RealScalarLike,
         key,
         shape: jax.ShapeDtypeStruct,
-        levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
-        ],
+        levy_area: type[_Levy_Areas],
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
@@ -157,6 +157,21 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             kk_std = w_std / math.sqrt(720)
             kk = jr.normal(key_kk, shape.shape, shape.dtype) * kk_std
             levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
+        
+        elif levy_area is WeakSpaceSpaceLevyArea:
+            # TODO: add doc/reference
+            key_w, key_hh, key_b = jr.split(key, 3)
+            w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
+            hh_std = w_std / math.sqrt(12)
+            hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
+            levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
+            b_std = dt / jnp.sqrt(12)
+            # TODO: fix for more general shapes
+            assert len(shape.shape) != 1, "Must be 1D array Wiener process"
+            b = jr.normal(key_b, shape.shape + shape.shape, shape.dtype) * b_std
+            b = jnp.tril(b) - jnp.tril(b).T
+            a = jnp.outer(hh, w) - jnp.outer(w, hh) + b
+            levy_val = WeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
 
         elif levy_area is SpaceTimeLevyArea:
             key_w, key_hh = jr.split(key, 2)

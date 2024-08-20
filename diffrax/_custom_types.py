@@ -55,7 +55,7 @@ BufferDenseInfos = dict[str, PyTree[eqxi.MaybeBuffer[Shaped[Array, "times ..."]]
 sentinel: Any = eqxi.doc_repr(object(), "sentinel")
 
 
-class AbstractBrownianIncrement(eqx.Module):
+class AbstractBrownianIncrement(eqx.Module, strict=True):
     """
     Abstract base class for all Brownian increments.
     """
@@ -64,7 +64,7 @@ class AbstractBrownianIncrement(eqx.Module):
     W: eqx.AbstractVar[BM]
 
 
-class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement):
+class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement, strict=True):
     """
     Abstract base class for all Space Time Levy Areas.
     """
@@ -72,7 +72,25 @@ class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement):
     H: eqx.AbstractVar[BM]
 
 
-class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):
+class AbstractWeakSpaceSpaceLevyArea(AbstractBrownianIncrement, strict=True):
+    """
+    Abstract base class for all weak Space Space Levy Areas.
+    """
+
+    H: eqx.AbstractVar[BM]
+    A: eqx.AbstractVar[BM]
+
+
+class WeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea, strict=True):
+    """
+    Abstract base class for all weak Space Space Levy Areas.
+    """
+
+    H: BM
+    A: BM
+
+
+class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea, strict=True):
     """
     Abstract base class for all Space Time Time Levy Areas.
     """
@@ -80,7 +98,7 @@ class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):
     K: eqx.AbstractVar[BM]
 
 
-class BrownianIncrement(AbstractBrownianIncrement):
+class BrownianIncrement(AbstractBrownianIncrement, strict=True):
     """
     Pytree containing the `dt` time increment and `W` the Brownian motion.
     """
@@ -89,7 +107,7 @@ class BrownianIncrement(AbstractBrownianIncrement):
     W: BM
 
 
-class SpaceTimeLevyArea(AbstractSpaceTimeLevyArea):
+class SpaceTimeLevyArea(AbstractSpaceTimeLevyArea, strict=True):
     """
     Pytree containing the `dt` time increment, `W` the Brownian motion, and `H`
     the Space Time Levy Area.
@@ -100,7 +118,7 @@ class SpaceTimeLevyArea(AbstractSpaceTimeLevyArea):
     H: BM
 
 
-class SpaceTimeTimeLevyArea(AbstractSpaceTimeTimeLevyArea):
+class SpaceTimeTimeLevyArea(AbstractSpaceTimeTimeLevyArea, strict=True):
     """
     Pytree containing the `dt` time increment, `W` the Brownian motion, `H`
     the Space Time Levy Area, and `K` the Space Time Time Levy Area.

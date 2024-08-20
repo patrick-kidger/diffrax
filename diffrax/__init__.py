@@ -17,9 +17,11 @@ from ._custom_types import (
     AbstractBrownianIncrement as AbstractBrownianIncrement,
     AbstractSpaceTimeLevyArea as AbstractSpaceTimeLevyArea,
     AbstractSpaceTimeTimeLevyArea as AbstractSpaceTimeTimeLevyArea,
+    AbstractWeakSpaceSpaceLevyArea as AbstractWeakSpaceSpaceLevyArea,
     BrownianIncrement as BrownianIncrement,
     SpaceTimeLevyArea as SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea as SpaceTimeTimeLevyArea,
+    WeakSpaceSpaceLevyArea as WeakSpaceSpaceLevyArea,
 )
 from ._event import (
     # Deliberately not provided with `X as X` as these are now deprecated, so we'd like
