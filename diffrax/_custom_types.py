@@ -48,6 +48,7 @@ Control = PyTree[Shaped[ArrayLike, "?*control"], "C"]
 Args = PyTree[Any]
 
 BM = PyTree[Shaped[ArrayLike, "?*bm"], "BM"]
+Area = PyTree[Shaped[ArrayLike, "?*area"], "Area"]
 
 DenseInfo = dict[str, PyTree[Array]]
 DenseInfos = dict[str, PyTree[Shaped[Array, "times-1 ..."]]]
@@ -88,8 +89,9 @@ class WeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea):
     """
 
     dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
     H: BM
-    A: BM
+    A: Area
 
 
 class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):

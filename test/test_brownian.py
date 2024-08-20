@@ -36,14 +36,9 @@ def _make_struct(shape, dtype):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", _levy_areas + (diffrax.WeakSpaceSpaceLevyArea,))
+@pytest.mark.parametrize("levy_area", _levy_areas)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
-    if (
-        levy_area is diffrax.WeakSpaceSpaceLevyArea
-        and ctr is diffrax.VirtualBrownianTree
-    ):
-        return
     t0 = 0.0
     t1 = 2.0
 

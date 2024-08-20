@@ -166,7 +166,12 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
             b_std = dt / jnp.sqrt(12)
             b = jr.normal(key_b, shape.shape + shape.shape, shape.dtype) * b_std
-            b = jnp.tril(b) - jnp.tril(b).T
+            if b.ndim == 0 or b.size == 1:
+                b = jnp.zeros(shape=shape.shape + shape.shape, dtype=shape.dtype)
+            else:
+                # TODO: generalize to tensors?
+                assert b.ndim == 2
+                b = jnp.tril(b) - jnp.tril(b).T
             a = jnp.tensordot(hh, w, axes=0) - jnp.tensordot(w, hh, axes=0) + b
             levy_val = WeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
 
