@@ -159,18 +159,15 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
 
         elif levy_area is WeakSpaceSpaceLevyArea:
-            # See (7.4.1) of Foster's thesis
             key_w, key_hh, key_b = jr.split(key, 3)
             w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
             levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
             b_std = dt / jnp.sqrt(12)
-            # TODO: fix for more general shapes
-            assert len(shape.shape) != 1, "Must be 1D array Wiener process"
             b = jr.normal(key_b, shape.shape + shape.shape, shape.dtype) * b_std
             b = jnp.tril(b) - jnp.tril(b).T
-            a = jnp.outer(hh, w) - jnp.outer(w, hh) + b
+            a = jnp.tensordot(hh, w, axes=0) - jnp.tensordot(w, hh, axes=0) + b
             levy_val = WeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
 
         elif levy_area is SpaceTimeLevyArea:
