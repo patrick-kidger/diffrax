@@ -157,7 +157,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             kk_std = w_std / math.sqrt(720)
             kk = jr.normal(key_kk, shape.shape, shape.dtype) * kk_std
             levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
-        
+
         elif levy_area is WeakSpaceSpaceLevyArea:
             # See (7.4.1) of Foster's thesis
             key_w, key_hh, key_b = jr.split(key, 3)
