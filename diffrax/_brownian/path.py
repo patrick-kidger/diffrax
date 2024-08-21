@@ -163,7 +163,6 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
-            levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
             b_std = dt / jnp.sqrt(12)
             b = jr.normal(key_b, shape.shape + shape.shape, shape.dtype) * b_std
             if b.ndim == 0 or b.size == 1:
