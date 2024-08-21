@@ -1,21 +1,19 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.tree_util as jtu
-import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeLevyArea,
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import LangevinTuple, LangevinX
+from .._term import LangevinLeaf, LangevinTuple, LangevinX
 from .langevin_srk import (
     _LangevinArgs,
     AbstractCoeffs,
-    AbstractLangevinSRK,
-    SolverState,
+    AbstractFosterLangevinSRK,
 )
 
 
@@ -41,24 +39,34 @@ class _ALIGNCoeffs(AbstractCoeffs):
 _ErrorEstimate = LangevinTuple
 
 
-class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
+class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     r"""The Adaptive Langevin via Interpolated Gradients and Noise method
-    designed by James Foster.
-    Accepts only terms given by [`diffrax.make_langevin_term`][].
+    designed by James Foster. This is a second order solver for the
+    Underdamped Langevin Diffusion, the terms for which can be created using
+    [`diffrax.make_underdamped_langevin_term`][]. Uses two evaluations of the vector
+    field per step, but is FSAL, so in practice it only requires one.
+
+    ??? cite "Reference"
+
+        This is a modification of the Strang-Splitting method from Definition 4.2 of
+
+        ```bibtex
+        @misc{foster2021shiftedode,
+            title={The shifted ODE method for underdamped Langevin MCMC},
+            author={James Foster and Terry Lyons and Harald Oberhauser},
+            year={2021},
+            eprint={2101.03446},
+            archivePrefix={arXiv},
+            primaryClass={math.NA},
+            url={https://arxiv.org/abs/2101.03446},
+        }
+        ```
+
     """
 
     interpolation_cls = LocalLinearInterpolation
-    taylor_threshold: RealScalarLike = eqx.field(static=True)
-    _coeffs_structure = jtu.tree_structure(
-        _ALIGNCoeffs(
-            beta=np.array(0.0),
-            a1=np.array(0.0),
-            b1=np.array(0.0),
-            aa=np.array(0.0),
-            chh=np.array(0.0),
-        )
-    )
     minimal_levy_area = AbstractSpaceTimeLevyArea
+    taylor_threshold: RealScalarLike = eqx.field(static=True)
 
     def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
@@ -76,7 +84,9 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     def strong_order(self, terms):
         return 2.0
 
-    def _directly_compute_coeffs_leaf(self, h, c) -> _ALIGNCoeffs:
+    def _directly_compute_coeffs_leaf(
+        self, h: RealScalarLike, c: LangevinLeaf
+    ) -> _ALIGNCoeffs:
         del self
         # c is a leaf of gamma
         # compute the coefficients directly (as opposed to via Taylor expansion)
@@ -97,7 +107,7 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
             chh=chh,
         )
 
-    def _tay_coeffs_single(self, c: Array) -> _ALIGNCoeffs:
+    def _tay_coeffs_single(self, c: LangevinLeaf) -> _ALIGNCoeffs:
         del self
         # c is a leaf of gamma
         zero = jnp.zeros_like(c)
@@ -107,11 +117,18 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         c4 = c3 * c
         c5 = c4 * c
 
-        beta = jnp.stack([one, -c, c2 / 2, -c3 / 6, c4 / 24, -c5 / 120], axis=-1)
-        a1 = jnp.stack([zero, one, -c / 2, c2 / 6, -c3 / 24, c4 / 120], axis=-1)
-        b1 = jnp.stack([zero, one / 2, -c / 6, c2 / 24, -c3 / 120, c4 / 720], axis=-1)
-        aa = jnp.stack([one, -c / 2, c2 / 6, -c3 / 24, c4 / 120, -c5 / 720], axis=-1)
-        chh = jnp.stack([zero, one, -c / 2, 3 * c2 / 20, -c3 / 30, c4 / 168], axis=-1)
+        # Coefficients of the Taylor expansion, starting from 5th power
+        # to 0th power. The descending power order is because of jnp.polyval
+        beta = jnp.stack([-c5 / 120, c4 / 24, -c3 / 6, c2 / 2, -c, one], axis=-1)
+        a1 = jnp.stack([c4 / 120, -c3 / 24, c2 / 6, -c / 2, one, zero], axis=-1)
+        b1 = jnp.stack([c4 / 720, -c3 / 120, c2 / 24, -c / 6, one / 2, zero], axis=-1)
+        aa = jnp.stack([-c5 / 720, c4 / 120, -c3 / 24, c2 / 6, -c / 2, one], axis=-1)
+        chh = jnp.stack([c4 / 168, -c3 / 30, 3 * c2 / 20, -c / 2, one, zero], axis=-1)
+
+        correct_shape = c.shape + (6,)
+        assert (
+            beta.shape == a1.shape == b1.shape == aa.shape == chh.shape == correct_shape
+        )
 
         return _ALIGNCoeffs(
             beta=beta,
@@ -121,39 +138,40 @@ class ALIGN(AbstractLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
             chh=chh,
         )
 
-    @staticmethod
     def _compute_step(
+        self,
         h: RealScalarLike,
         levy: AbstractSpaceTimeLevyArea,
         x0: LangevinX,
         v0: LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _ALIGNCoeffs,
-        st: SolverState,
+        rho: LangevinX,
+        prev_f: LangevinX,
     ) -> tuple[LangevinX, LangevinX, LangevinX, LangevinTuple]:
-        dtypes = jtu.tree_map(jnp.dtype, x0)
+        dtypes = jtu.tree_map(jnp.result_type, x0)
         w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
         hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
 
         gamma, u, f = langevin_args
 
         uh = (u**ω * h).ω
-        f0 = st.prev_f
+        f0 = prev_f
         x1 = (
             x0**ω
             + coeffs.a1**ω * v0**ω
             - coeffs.b1**ω * uh**ω * f0**ω
-            + st.rho**ω * (coeffs.b1**ω * w**ω + coeffs.chh**ω * hh**ω)
+            + rho**ω * (coeffs.b1**ω * w**ω + coeffs.chh**ω * hh**ω)
         ).ω
         f1 = f(x1)
         v1 = (
             coeffs.beta**ω * v0**ω
             - u**ω * ((coeffs.a1**ω - coeffs.b1**ω) * f0**ω + coeffs.b1**ω * f1**ω)
-            + st.rho**ω * (coeffs.aa**ω * w**ω - gamma**ω * coeffs.chh**ω * hh**ω)
+            + rho**ω * (coeffs.aa**ω * w**ω - gamma**ω * coeffs.chh**ω * hh**ω)
         ).ω
 
         error_estimate = (
-            jtu.tree_map(lambda leaf: jnp.zeros_like(leaf), x0),
+            jtu.tree_map(jnp.zeros_like, x0),
             (-(u**ω) * coeffs.b1**ω * (f1**ω - f0**ω)).ω,
         )
 

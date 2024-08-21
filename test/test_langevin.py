@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import pytest
-from diffrax import diffeqsolve, make_langevin_term, SaveAt
+from diffrax import diffeqsolve, make_underdamped_langevin_term, SaveAt
 
 from .helpers import (
     get_bqp,
@@ -68,20 +68,23 @@ def get_pytree_langevin(t0=0.3, t1=1.0, dtype=jnp.float32):
     w_shape = jtu.tree_map(lambda _x: jax.ShapeDtypeStruct(_x.shape, _x.dtype), x0)
 
     def get_terms(bm):
-        return make_langevin_term(g1, u1, grad_f, bm, x0)
+        return make_underdamped_langevin_term(g1, u1, grad_f, bm)
 
     return SDE(get_terms, None, y0, t0, t1, w_shape)
 
 
-@pytest.mark.parametrize("solver_cls", _only_langevin_solvers_cls())
-@pytest.mark.parametrize("taylor", [True, False])
-@pytest.mark.parametrize("dtype", [jnp.float16, jnp.float32, jnp.float64])
-def test_shape(solver_cls, taylor, dtype):
-    if taylor:
-        solver = solver_cls(100.0)
-    else:
-        solver = solver_cls(0.01)
+# All combinations of solvers with and without Taylor expansion
+_langevin_solvers_taylor_non_taylor = [
+    solver_cls(taylor_threshold)
+    for solver_cls in _only_langevin_solvers_cls()
+    for taylor_threshold in [0.0, 100.0]
+]
+_langevin_plus_shark = [diffrax.ShARK()] + list(_langevin_solvers_taylor_non_taylor)
 
+
+@pytest.mark.parametrize("solver", _langevin_plus_shark)
+@pytest.mark.parametrize("dtype", [jnp.float16, jnp.float32, jnp.float64])
+def test_shape(solver, dtype):
     t0, t1 = 0.3, 1.0
     dt0 = 0.3
     saveat = SaveAt(ts=jnp.linspace(t0, t1, 7, dtype=dtype))
@@ -102,7 +105,6 @@ def test_shape(solver_cls, taylor, dtype):
             sol_leaf.shape == (7,) + y0_leaf.shape
         ), f"shape={sol_leaf.shape}, expected={(7,) + y0_leaf.shape}"
         assert sol_leaf.dtype == dtype, f"dtype={sol_leaf.dtype}, expected={dtype}"
-        return sol_leaf.shape
 
     jtu.tree_map(check_shape, sde.y0, sol.ys)
 
@@ -166,13 +168,15 @@ def test_langevin_strong_order(
     true_sol = true_sols[sde_name]
 
     if theoretical_order < 3:
+        # When the order is 3 the solver gets more precise than the reference
+        # solution already at level 6, but when the order is 2, we can go up
+        # to level 7.
         level_fine += 1
 
     sde = get_sde(t0, t1, jnp.float64)
 
-    # We specify the times to which we step in way that each level contains all the
-    # steps of the previous level. This is so that we can compare the solutions at
-    # all the times in saveat, and not just at the end time.
+    # We specify the times to which we step in a way that saveat is a subset
+    # of step_ts. This way the SDE was evaluated at all the times we compare at.
     def get_dt_and_controller(level):
         step_ts = jnp.linspace(t0, t1, 2**level + 1, endpoint=True)
         return None, diffrax.StepTo(ts=step_ts)
@@ -189,9 +193,7 @@ def test_langevin_strong_order(
         levy_area=levy_area,
         ref_solution=true_sol,
     )
-    # The upper bound needs to be 0.25, otherwise we fail.
-    # This still preserves a 0.05 buffer between the intervals
-    # corresponding to the different orders.
+
     assert (
         -0.2 < order - theoretical_order < 0.25
     ), f"order={order}, theoretical_order={theoretical_order}"
@@ -217,7 +219,7 @@ def test_reverse_solve(solver_cls):
         key=jr.key(0),
         levy_area=diffrax.SpaceTimeTimeLevyArea,
     )
-    terms = diffrax.make_langevin_term(gamma, u, lambda x: 2 * x, bm, x0)
+    terms = diffrax.make_underdamped_langevin_term(gamma, u, lambda x: 2 * x, bm)
 
     solver = solver_cls(0.01)
     sol = diffeqsolve(terms, solver, t0, t1, dt0=dt0, y0=y0, args=None, saveat=saveat)
@@ -227,7 +229,5 @@ def test_reverse_solve(solver_cls):
         terms, ref_solver, t0, t1, dt0=dt0, y0=y0, args=None, saveat=saveat
     )
 
-    # print(jtu.tree_map(lambda x: x.shape, sol.ys))
-    # print(jtu.tree_map(lambda x: x.shape, ref_sol.ys))
     error = path_l2_dist(sol.ys, ref_sol.ys)
     assert error < 0.1

@@ -1,21 +1,19 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.tree_util as jtu
-import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeTimeLevyArea,
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import LangevinX
+from .._term import LangevinLeaf, LangevinX
 from .langevin_srk import (
     _LangevinArgs,
     AbstractCoeffs,
-    AbstractLangevinSRK,
-    SolverState,
+    AbstractFosterLangevinSRK,
 )
 
 
@@ -58,28 +56,33 @@ class _ShOULDCoeffs(AbstractCoeffs):
         self.dtype = jnp.result_type(*all_leaves)
 
 
-class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
+class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
     r"""The Shifted-ODE Runge-Kutta Three method
-    designed by James Foster.
-    Accepts only terms given by [`diffrax.make_langevin_term`][].
+    designed by James Foster. This is a third order solver for the
+    Underdamped Langevin Diffusion, the terms for which can be created using
+    [`diffrax.make_underdamped_langevin_term`][]. Uses three evaluations of the vector
+    field per step, but is FSAL, so in practice it only requires two.
+
+    ??? cite "Reference"
+
+        This solver is based on Definition 7.1 from
+
+        ```bibtex
+        @misc{foster2021shiftedode,
+            title={The shifted ODE method for underdamped Langevin MCMC},
+            author={James Foster and Terry Lyons and Harald Oberhauser},
+            year={2021},
+            eprint={2101.03446},
+            archivePrefix={arXiv},
+            primaryClass={math.NA},
+            url={https://arxiv.org/abs/2101.03446},
+        }
+        ```
     """
 
     interpolation_cls = LocalLinearInterpolation
-    taylor_threshold: RealScalarLike = eqx.field(static=True)
-    _coeffs_structure = jtu.tree_structure(
-        _ShOULDCoeffs(
-            beta_half=np.array(0.0),
-            a_half=np.array(0.0),
-            b_half=np.array(0.0),
-            beta1=np.array(0.0),
-            a1=np.array(0.0),
-            b1=np.array(0.0),
-            aa=np.array(0.0),
-            chh=np.array(0.0),
-            ckk=np.array(0.0),
-        )
-    )
     minimal_levy_area = AbstractSpaceTimeTimeLevyArea
+    taylor_threshold: RealScalarLike = eqx.field(static=True)
 
     def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
@@ -97,7 +100,9 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
     def strong_order(self, terms):
         return 3.0
 
-    def _directly_compute_coeffs_leaf(self, h, c) -> _ShOULDCoeffs:
+    def _directly_compute_coeffs_leaf(
+        self, h: RealScalarLike, c: LangevinLeaf
+    ) -> _ShOULDCoeffs:
         del self
         # c is a leaf of gamma
         # compute the coefficients directly (as opposed to via Taylor expansion)
@@ -127,7 +132,7 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
             ckk=ckk,
         )
 
-    def _tay_coeffs_single(self, c: Array) -> _ShOULDCoeffs:
+    def _tay_coeffs_single(self, c: LangevinLeaf) -> _ShOULDCoeffs:
         del self
         # c is a leaf of gamma
         zero = jnp.zeros_like(c)
@@ -137,26 +142,37 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
         c4 = c3 * c
         c5 = c4 * c
 
+        # Coefficients of the Taylor expansion, starting from 5th power
+        # to 0th power. The descending power order is because of jnp.polyval
         beta_half = jnp.stack(
-            [one, -c / 2, c2 / 8, -c3 / 48, c4 / 384, -c5 / 3840], axis=-1
+            [-c5 / 3840, c4 / 384, -c3 / 48, c2 / 8, -c / 2, one], axis=-1
         )
-        beta1 = jnp.stack([one, -c, c2 / 2, -c3 / 6, c4 / 24, -c5 / 120], axis=-1)
-
+        beta1 = jnp.stack([-c5 / 120, c4 / 24, -c3 / 6, c2 / 2, -c, one], axis=-1)
         a_half = jnp.stack(
-            [zero, one / 2, -c / 8, c2 / 48, -c3 / 384, c4 / 3840], axis=-1
+            [c4 / 3840, -c3 / 384, c2 / 48, -c / 8, one / 2, zero], axis=-1
         )
-        a1 = jnp.stack([zero, one, -c / 2, c2 / 6, -c3 / 24, c4 / 120], axis=-1)
-        # aa = a1/h
-        aa = jnp.stack([one, -c / 2, c2 / 6, -c3 / 24, c4 / 120, -c5 / 720], axis=-1)
-
-        # b_half is not exactly b(1/2 h), but 1/2 * b(1/2 h)
+        a1 = jnp.stack([c4 / 120, -c3 / 24, c2 / 6, -c / 2, one, zero], axis=-1)
+        aa = jnp.stack([-c5 / 720, c4 / 120, -c3 / 24, c2 / 6, -c / 2, one], axis=-1)
         b_half = jnp.stack(
-            [zero, one / 8, -c / 48, c2 / 384, -c3 / 3840, c4 / 46080], axis=-1
+            [c4 / 46080, -c3 / 3840, c2 / 384, -c / 48, one / 8, zero], axis=-1
         )
-        b1 = jnp.stack([zero, one / 2, -c / 6, c2 / 24, -c3 / 120, c4 / 720], axis=-1)
+        b1 = jnp.stack([c4 / 720, -c3 / 120, c2 / 24, -c / 6, one / 2, zero], axis=-1)
+        chh = jnp.stack([c4 / 168, -c3 / 30, 3 * c2 / 20, -c / 2, one, zero], axis=-1)
+        ckk = jnp.stack([5 * c4 / 168, -c3 / 7, c2 / 2, -c, zero, zero], axis=-1)
 
-        chh = jnp.stack([zero, one, -c / 2, 3 * c2 / 20, -c3 / 30, c4 / 168], axis=-1)
-        ckk = jnp.stack([zero, zero, -c, c2 / 2, -c3 / 7, 5 * c4 / 168], axis=-1)
+        correct_shape = c.shape + (6,)
+        assert (
+            beta_half.shape
+            == a_half.shape
+            == b_half.shape
+            == beta1.shape
+            == a1.shape
+            == b1.shape
+            == aa.shape
+            == chh.shape
+            == ckk.shape
+            == correct_shape
+        )
 
         return _ShOULDCoeffs(
             beta_half=beta_half,
@@ -170,28 +186,29 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
             ckk=ckk,
         )
 
-    @staticmethod
     def _compute_step(
+        self,
         h: RealScalarLike,
         levy: AbstractSpaceTimeTimeLevyArea,
         x0: LangevinX,
         v0: LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _ShOULDCoeffs,
-        st: SolverState,
+        rho: LangevinX,
+        prev_f: LangevinX,
     ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
-        dtypes = jtu.tree_map(jnp.dtype, x0)
+        dtypes = jtu.tree_map(jnp.result_type, x0)
         w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
         hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
         kk: LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
         gamma, u, f = langevin_args
 
-        rho_w_k = (st.rho**ω * (w**ω - 12 * kk**ω)).ω
+        rho_w_k = (rho**ω * (w**ω - 12 * kk**ω)).ω
         uh = (u**ω * h).ω
 
-        f0 = st.prev_f
-        v1 = (v0**ω + st.rho**ω * (hh**ω + 6 * kk**ω)).ω
+        f0 = prev_f
+        v1 = (v0**ω + rho**ω * (hh**ω + 6 * kk**ω)).ω
         x1 = (
             x0**ω
             + coeffs.a_half**ω * v1**ω
@@ -205,7 +222,7 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
             x0**ω
             + coeffs.a1**ω * v0**ω
             - uh**ω * coeffs.b1**ω * (1 / 3 * f0**ω + 2 / 3 * f1**ω)
-            + st.rho**ω * (coeffs.b1**ω * w**ω + chh_hh_plus_ckk_kk**ω)
+            + rho**ω * (coeffs.b1**ω * w**ω + chh_hh_plus_ckk_kk**ω)
         ).ω
         f_out = f(x_out)
         v_out = (
@@ -216,7 +233,7 @@ class ShOULD(AbstractLangevinSRK[_ShOULDCoeffs, None]):
                 + 2 / 3 * coeffs.beta_half**ω * f1**ω
                 + 1 / 6 * f_out**ω
             )
-            + st.rho**ω * (coeffs.aa**ω * w**ω - gamma**ω * chh_hh_plus_ckk_kk**ω)
+            + rho**ω * (coeffs.aa**ω * w**ω - gamma**ω * chh_hh_plus_ckk_kk**ω)
         ).ω
 
         return x_out, v_out, f_out, None

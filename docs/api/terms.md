@@ -92,4 +92,4 @@ Some example term structures include:
         members:
             - __init__
 
-::: diffrax.make_langevin_term
+::: diffrax.make_underdamped_langevin_term

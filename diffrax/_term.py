@@ -791,33 +791,63 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 # `x` and the velocity `v`. Both of these have the same shape. So, by LangevinX we
 # denote the shape of the x component, and by LangevinTuple we denote the shape of
 # the tuple (x, v).
+LangevinLeaf = Shaped[Array, "*langevin"]
 LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
 LangevinTuple = tuple[LangevinX, LangevinX]
+
+
+def _broadcast_pytree(source, target_tree):
+    # Broadcasts the source PyTree to the shape and PyTree structure of
+    # target_tree_shape. Requires that source is a prefix tree of target_tree
+    # This is used to case gamma and u to the shape of x0 and v0
+    def _inner_broadcast(_src_arr, _inner_target_tree):
+        _arr = jnp.asarray(_src_arr)
+
+        def fun(_leaf):
+            return jnp.asarray(
+                jnp.broadcast_to(_arr, _leaf.shape), dtype=jnp.result_type(_leaf)
+            )
+
+        return jtu.tree_map(fun, _inner_target_tree)
+
+    return jtu.tree_map(_inner_broadcast, source, target_tree)
 
 
 class LangevinDiffusionTerm(
     AbstractTerm[LangevinX, Union[LangevinX, AbstractBrownianIncrement]]
 ):
-    r"""Represents the diffusion term in the Langevin SDE:
+    r"""Represents the diffusion term in the Underdamped Langevin Diffusion (ULD).
+    The ULD SDE takes the form:
 
-    $d \mathbf{x}_t = \mathbf{v}_t dt$
+    \begin{align*}
+        \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+        \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+        \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+    \end{align*}
 
-    $d \mathbf{v}_t = - \gamma \mathbf{v}_t dt - u
-    \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
+    where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+    and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+    $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+    $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+    the friction and the inertia of the system.
     """
 
-    gamma: LangevinX
-    u: LangevinX
+    gamma: PyTree[ArrayLike]
+    u: PyTree[ArrayLike]
     control: AbstractBrownianPath
 
     def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinX:
         x, v = y
+        # gamma, u and v can all have different pytree structures, we only know that
+        # gamma and u are prefixes of v
+        gamma = _broadcast_pytree(self.gamma, v)
+        u = _broadcast_pytree(self.u, v)
 
         def _fun(_gamma, _u, _v):
-            return jnp.sqrt(2 * _gamma * _u) * jnp.ones(_v.shape, _v.dtype)
+            return jnp.sqrt(2 * _gamma * _u)
 
-        d_v = jtu.tree_map(_fun, self.gamma, self.u, v)
-        return d_v
+        vf_v = jtu.tree_map(_fun, gamma, u, v)
+        return vf_v
 
     def contr(
         self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
@@ -825,42 +855,51 @@ class LangevinDiffusionTerm(
         return self.control.evaluate(t0, t1, **kwargs)
 
     def prod(self, vf: LangevinX, control: LangevinX) -> LangevinTuple:
-        dv = vf
+        # The vf is only for the velocity component. The position component is
+        # unaffected by the diffusion.
         dw = control
-        v_out = jtu.tree_map(operator.mul, dv, dw)
+        v_out = jtu.tree_map(operator.mul, vf, dw)
         x_out = jtu.tree_map(jnp.zeros_like, v_out)
         return x_out, v_out
 
 
-def _broadcast_pytree(source, target_tree_shape):
-    # Requires that source is a prefix tree of target_tree_shape
-    def _inner_broadcast(_src_arr, _inner_tree_shape):
-        _arr = jnp.asarray(_src_arr)
-        return jtu.tree_map(
-            lambda _leaf: jnp.broadcast_to(_arr, _leaf.shape), _inner_tree_shape
-        )
-
-    return jtu.tree_map(_inner_broadcast, source, target_tree_shape)
-
-
 class LangevinDriftTerm(AbstractTerm):
-    gamma: LangevinX
-    u: LangevinX
+    r"""Represents the drift term in the Underdamped Langevin Diffusion (ULD).
+    The ULD SDE takes the form:
+
+    \begin{align*}
+        \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+        \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+        \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+    \end{align*}
+
+    where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+    and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+    $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+    $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+    the friction and the inertia of the system.
+    """
+
+    gamma: PyTree[ArrayLike]
+    u: PyTree[ArrayLike]
     grad_f: Callable[[LangevinX], LangevinX]
 
     def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinTuple:
         x, v = y
+        # gamma, u and v can all have different pytree structures, we only know that
+        # gamma and u are prefixes of v (which is the same as x)
+        gamma = _broadcast_pytree(self.gamma, v)
+        u = _broadcast_pytree(self.u, v)
+
         f_x = self.grad_f(x)
-        d_x = v
-        d_v = jtu.tree_map(
-            lambda _gamma, _u, _v, _f_x: -_gamma * _v - _u * _f_x,
-            self.gamma,
-            self.u,
-            v,
-            f_x,
-        )
-        d_y = (d_x, d_v)
-        return d_y
+        vf_x = v
+
+        def fun(_gamma, _u, _v, _f_x):
+            return -_gamma * _v - _u * _f_x
+
+        vf_v = jtu.tree_map(fun, gamma, u, v, f_x)
+        vf_y = (vf_x, vf_v)
+        return vf_y
 
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
         return t1 - t0
@@ -869,54 +908,44 @@ class LangevinDriftTerm(AbstractTerm):
         return jtu.tree_map(lambda _vf: control * _vf, vf)
 
 
-def make_langevin_term(
+def make_underdamped_langevin_term(
     gamma: PyTree[ArrayLike],
     u: PyTree[ArrayLike],
-    grad_f: Callable,
+    grad_f: Callable[[LangevinX], LangevinX],
     bm: AbstractBrownianPath,
-    x0: LangevinX,
 ) -> MultiTerm[tuple[LangevinDriftTerm, LangevinDiffusionTerm]]:
     r"""Creates a term that represents the Underdamped Langevin Diffusion, given by:
 
-    $d \mathbf{x}_t = \mathbf{v}_t dt$
+    \begin{align*}
+        \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+        \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+        \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+    \end{align*}
 
-    $d \mathbf{v}_t = - \gamma \mathbf{v}_t dt - u
-    \nabla f( \mathbf{x}_t ) dt + \sqrt{2 \gamma u} d W_t.$
-
-    where $\mathbf{x}_t, \mathbf{v}_t \in \mathbb{R}^d$ represent the position
-    and velocity, $W$ is a Brownian motion in $\mathbb{R}^d$,
+    where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+    and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
     $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
-    the friction and the dampening of the system.
+    the friction and the inertia of the system.
 
     **Arguments:**
 
     - `gamma`: A vector containing the diagonal entries of the friction matrix;
-        a PyTree of the same shape as `x0`.
+        a scalar or a PyTree of the same shape as the position vector $x$.
     - `u`: A vector containing the diagonal entries of the dampening matrix;
-        a PyTree of the same shape as `x0`.
+        a scalar or a PyTree of the same shape as the position vector $x$.
     - `grad_f`: A callable representing the gradient of the potential function $f$.
-        This callable should take a PyTree of the same shape as `x0` and
+        This callable should take a PyTree of the same shape as $x$ and
         return a PyTree of the same shape.
-    - `bm`: A Brownian path representing the Brownian motion $W$.
-    - `x0`: The initial state of the system (just the position without velocity);
-        only needed to check the PyTree structure of the other arguments.
+    - `bm`: A Brownian path representing the Brownian motion $w$.
 
     **Returns:**
 
     A `MultiTerm` representing the Langevin SDE.
     """
-
-    gamma = _broadcast_pytree(gamma, x0)
-    u = _broadcast_pytree(u, x0)
-    grad_f_shape = jax.eval_shape(grad_f, x0)
-
-    def _shape_check_fun(_x, _g, _u, _fx):
-        return _x.shape == _g.shape == _u.shape == _fx.shape
-
-    assert jtu.tree_all(
-        jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)
-    ), "The shapes of gamma, u, and grad_f(x0) must be the same as x0."
+    # In practice we don't require the PyTree structure of gamma and u to be the same
+    # as x and v. We only require that they are prefixes of x and v, in a way that
+    # allows us to call _broadcast_pytree(gamma, x) and _broadcast_pytree(u, x).
 
     drift = LangevinDriftTerm(gamma, u, grad_f)
     diffusion = LangevinDiffusionTerm(gamma, u, bm)

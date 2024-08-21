@@ -4,21 +4,19 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree
+from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeTimeLevyArea,
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import LangevinX
+from .._term import LangevinLeaf, LangevinX
 from .langevin_srk import (
     _LangevinArgs,
     AbstractCoeffs,
-    AbstractLangevinSRK,
-    SolverState,
+    AbstractFosterLangevinSRK,
 )
 
 
@@ -26,11 +24,11 @@ from .langevin_srk import (
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
 # so we need 3 versions of each coefficient
 class _QUICSORTCoeffs(AbstractCoeffs):
-    beta_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
-    a_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
-    b_lr1: PyTree[ArrayLike]  # (gamma, 3, *taylor)
-    a_third: PyTree[ArrayLike]  # (gamma, 1, *taylor)
-    a_div_h: PyTree[ArrayLike]  # (gamma, 1, *taylor)
+    beta_lr1: PyTree[ArrayLike]  # gamma.shape + (3, *taylor)
+    a_lr1: PyTree[ArrayLike]  # gamma.shape + (3, *taylor)
+    b_lr1: PyTree[ArrayLike]  # gamma.shape + (3, *taylor)
+    a_third: PyTree[ArrayLike]  # gamma.shape + (1, *taylor)
+    a_div_h: PyTree[ArrayLike]  # gamma.shape + (1, *taylor)
     dtype: jnp.dtype = eqx.field(static=True)
 
     def __init__(self, beta_lr1, a_lr1, b_lr1, a_third, a_div_h):
@@ -45,12 +43,30 @@ class _QUICSORTCoeffs(AbstractCoeffs):
         self.dtype = jnp.result_type(*all_leaves)
 
 
-class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
+class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
     r"""The QUadrature Inspired and Contractive Shifted ODE with Runge-Kutta Three
-    method by Daire O'Kane and James Foster, which is a third order version of the
-    UBU method from
+    method by James Foster and Daire O'Kane. This is a third order solver for the
+    Underdamped Langevin Diffusion, the terms for which can be created using
+    [`diffrax.make_underdamped_langevin_term`][]. Uses two evaluations of the vector
+    field per step.
 
     ??? cite "Reference"
+
+        This is a variant of the SORT method from Definition 1.2 of
+
+        ```bibtex
+        @misc{foster2021shiftedode,
+            title={The shifted ODE method for underdamped Langevin MCMC},
+            author={James Foster and Terry Lyons and Harald Oberhauser},
+            year={2021},
+            eprint={2101.03446},
+            archivePrefix={arXiv},
+            primaryClass={math.NA},
+            url={https://arxiv.org/abs/2101.03446},
+        }
+        ```
+
+        with the modifications inspired by the UBU method from
 
         ```bibtex
         @misc{chada2024unbiased,
@@ -64,22 +80,11 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
             url={https://arxiv.org/abs/2311.05025},
         }
         ```
-
-    Accepts only terms given by [`diffrax.make_langevin_term`][].
     """
 
     interpolation_cls = LocalLinearInterpolation
-    taylor_threshold: RealScalarLike = eqx.field(static=True)
-    _coeffs_structure = jtu.tree_structure(
-        _QUICSORTCoeffs(
-            beta_lr1=np.array(0.0),
-            a_lr1=np.array(0.0),
-            b_lr1=np.array(0.0),
-            a_third=np.array(0.0),
-            a_div_h=np.array(0.0),
-        )
-    )
     minimal_levy_area = AbstractSpaceTimeTimeLevyArea
+    taylor_threshold: RealScalarLike = eqx.field(static=True)
 
     def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
@@ -97,7 +102,9 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
     def strong_order(self, terms):
         return 3.0
 
-    def _directly_compute_coeffs_leaf(self, h, c) -> _QUICSORTCoeffs:
+    def _directly_compute_coeffs_leaf(
+        self, h: RealScalarLike, c: LangevinLeaf
+    ) -> _QUICSORTCoeffs:
         del self
         # compute the coefficients directly (as opposed to via Taylor expansion)
         original_shape = c.shape
@@ -105,11 +112,9 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
         alpha = c * h
         l = 0.5 - math.sqrt(3) / 6
         r = 0.5 + math.sqrt(3) / 6
-        l_r_1 = jnp.array([l, r, 1.0], dtype=jnp.dtype(c))
+        l_r_1 = jnp.array([l, r, 1.0], dtype=jnp.result_type(c))
         alpha_lr1 = alpha * l_r_1
-        assert alpha_lr1.shape == original_shape + (
-            3,
-        ), f"expected {original_shape + (3,)}, got {alpha_lr1.shape}"
+        assert alpha_lr1.shape == original_shape + (3,)
         beta_lr1 = jnp.exp(-alpha_lr1)
         a_lr1 = (1.0 - beta_lr1) / c
         b_lr1 = (beta_lr1 + alpha_lr1 - 1.0) / (c**2 * h)
@@ -126,10 +131,10 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
             a_div_h=a_div_h,
         )
 
-    def _tay_coeffs_single(self, c: Array) -> _QUICSORTCoeffs:
+    def _tay_coeffs_single(self, c: LangevinLeaf) -> _QUICSORTCoeffs:
         del self
         # c is a leaf of gamma
-        dtype = jnp.dtype(c)
+        dtype = jnp.result_type(c)
         zero = jnp.zeros_like(c)
         one = jnp.ones_like(c)
         c2 = jnp.square(c)
@@ -137,31 +142,36 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
         c4 = c3 * c
         c5 = c4 * c
 
+        # Compute the coefficients of the Taylor expansion, starting from 5th power
+        # to 0th power. The descending power order is because of jnp.polyval
+
+        # Some coefficients must be computed at h*l, h*r and h*1, so we
+        # pre-multiply the coefficients with powers of l, r and 1.
         l = 0.5 - math.sqrt(3) / 6
         r = 0.5 + math.sqrt(3) / 6
         lr1 = jnp.expand_dims(jnp.array([l, r, 1.0], dtype=dtype), axis=-1)
-        exponents = jnp.expand_dims(jnp.arange(0, 6, dtype=dtype), axis=0)
+        exponents = jnp.expand_dims(jnp.arange(5, -1, step=-1, dtype=dtype), axis=0)
         lr1_pows = jnp.power(lr1, exponents)
         assert lr1_pows.shape == (3, 6)
 
-        beta = jnp.stack([one, -c, c2 / 2, -c3 / 6, c4 / 24, -c5 / 120], axis=-1)
-        a = jnp.stack([zero, one, -c / 2, c2 / 6, -c3 / 24, c4 / 120], axis=-1)
-        b = jnp.stack([zero, one / 2, -c / 6, c2 / 24, -c3 / 120, c4 / 720], axis=-1)
+        beta = jnp.stack([-c5 / 120, c4 / 24, -c3 / 6, c2 / 2, -c, one], axis=-1)
+        a = jnp.stack([c4 / 120, -c3 / 24, c2 / 6, -c / 2, one, zero], axis=-1)
+        b = jnp.stack([c4 / 720, -c3 / 120, c2 / 24, -c / 6, one / 2, zero], axis=-1)
 
         with jax.numpy_rank_promotion("allow"):
             beta_lr1 = lr1_pows * jnp.expand_dims(beta, axis=c.ndim)
             a_lr1 = lr1_pows * jnp.expand_dims(a, axis=c.ndim)
-            # b needs an extra power of l and r
+            # b needs an extra power of lr1 (just work out the expansion to see why)
             b_lr1 = lr1_pows * lr1 * jnp.expand_dims(b, axis=c.ndim)
         assert beta_lr1.shape == a_lr1.shape == b_lr1.shape == c.shape + (3, 6)
 
         # a_third = (1 - exp(-1/3 * gamma * h))/gamma
         a_third = jnp.stack(
-            [zero, one / 3, -c / 18, c2 / 162, -c3 / 1944, c4 / 29160], axis=-1
+            [c4 / 29160, -c3 / 1944, c2 / 162, -c / 18, one / 3, zero], axis=-1
         )
         a_third = jnp.expand_dims(a_third, axis=c.ndim)
         a_div_h = jnp.stack(
-            [one, -c / 2, c2 / 6, -c3 / 24, c4 / 120, -c5 / 720], axis=-1
+            [-c5 / 720, c4 / 120, -c3 / 24, c2 / 6, -c / 2, one], axis=-1
         )
         a_div_h = jnp.expand_dims(a_div_h, axis=c.ndim)
         assert a_third.shape == a_div_h.shape == c.shape + (1, 6)
@@ -174,47 +184,42 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
             a_div_h=a_div_h,
         )
 
-    @staticmethod
     def _compute_step(
+        self,
         h: RealScalarLike,
         levy: AbstractSpaceTimeTimeLevyArea,
         x0: LangevinX,
         v0: LangevinX,
         langevin_args: _LangevinArgs,
         coeffs: _QUICSORTCoeffs,
-        st: SolverState,
+        rho: LangevinX,
+        prev_f: LangevinX,
     ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
-        dtypes = jtu.tree_map(jnp.dtype, x0)
+        dtypes = jtu.tree_map(jnp.result_type, x0)
         w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
         hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
         kk: LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
         gamma, u, f = langevin_args
 
-        def _l(coeff):
-            return jtu.tree_map(lambda arr: arr[..., 0], coeff)
+        def _extract_coeffs(coeff, index):
+            return jtu.tree_map(lambda arr: arr[..., index], coeff)
 
-        def _r(coeff):
-            return jtu.tree_map(lambda arr: arr[..., 1], coeff)
+        beta_l = _extract_coeffs(coeffs.beta_lr1, 0)
+        beta_r = _extract_coeffs(coeffs.beta_lr1, 1)
+        beta_1 = _extract_coeffs(coeffs.beta_lr1, 2)
+        a_l = _extract_coeffs(coeffs.a_lr1, 0)
+        a_r = _extract_coeffs(coeffs.a_lr1, 1)
+        a_1 = _extract_coeffs(coeffs.a_lr1, 2)
+        b_l = _extract_coeffs(coeffs.b_lr1, 0)
+        b_r = _extract_coeffs(coeffs.b_lr1, 1)
+        b_1 = _extract_coeffs(coeffs.b_lr1, 2)
+        a_third = _extract_coeffs(coeffs.a_third, 0)
+        a_div_h = _extract_coeffs(coeffs.a_div_h, 0)
 
-        def _one(coeff):
-            return jtu.tree_map(lambda arr: arr[..., 2], coeff)
-
-        beta_l = _l(coeffs.beta_lr1)
-        beta_r = _r(coeffs.beta_lr1)
-        beta_1 = _one(coeffs.beta_lr1)
-        a_l = _l(coeffs.a_lr1)
-        a_r = _r(coeffs.a_lr1)
-        a_1 = _one(coeffs.a_lr1)
-        b_l = _l(coeffs.b_lr1)
-        b_r = _r(coeffs.b_lr1)
-        b_1 = _one(coeffs.b_lr1)
-        a_third = _l(coeffs.a_third)
-        a_div_h = _l(coeffs.a_div_h)
-
-        rho_w_k = (st.rho**ω * (w**ω - 12 * kk**ω)).ω
+        rho_w_k = (rho**ω * (w**ω - 12 * kk**ω)).ω
         uh = (u**ω * h).ω
-        v_tilde = (v0**ω + st.rho**ω * (hh**ω + 6 * kk**ω)).ω
+        v_tilde = (v0**ω + rho**ω * (hh**ω + 6 * kk**ω)).ω
 
         x1 = (x0**ω + a_l**ω * v_tilde**ω + b_l**ω * rho_w_k**ω).ω
         f1uh = (f(x1) ** ω * uh**ω).ω
@@ -236,10 +241,10 @@ class QUICSORT(AbstractLangevinSRK[_QUICSORTCoeffs, None]):
             - 0.5 * (beta_r**ω * f1uh**ω + beta_l**ω * f2uh**ω)
             + a_div_h**ω * rho_w_k**ω
         ).ω
-        v_out = (v_out_tilde**ω - st.rho**ω * (hh**ω - 6 * kk**ω)).ω
+        v_out = (v_out_tilde**ω - rho**ω * (hh**ω - 6 * kk**ω)).ω
 
         # this method is not FSAL, but for compatibility with the base class we set
-        f_fsal = st.prev_f
+        f_fsal = prev_f
 
         # TODO: compute error estimate
         return x_out, v_out, f_fsal, None

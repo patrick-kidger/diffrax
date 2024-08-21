@@ -12,7 +12,7 @@ from diffrax import (
     AbstractBrownianPath,
     AbstractTerm,
     ControlTerm,
-    make_langevin_term,
+    make_underdamped_langevin_term,
     MultiTerm,
     ODETerm,
     VirtualBrownianTree,
@@ -499,7 +499,7 @@ def get_bqp(t0=0.3, t1=15.0, dtype=jnp.float32):
     w_shape_bqp = ()
 
     def get_terms_bqp(bm):
-        return make_langevin_term(gamma, u, grad_f_bqp, bm, y0_bqp[0])
+        return make_underdamped_langevin_term(gamma, u, grad_f_bqp, bm)
 
     return SDE(get_terms_bqp, None, y0_bqp, t0, t1, w_shape_bqp)
 
@@ -513,7 +513,7 @@ def get_harmonic_oscillator(t0=0.3, t1=15.0, dtype=jnp.float32):
     w_shape_hosc = (2,)
 
     def get_terms_hosc(bm):
-        return make_langevin_term(gamma_hosc, u_hosc, lambda x: 2 * x, bm, x0)
+        return make_underdamped_langevin_term(gamma_hosc, u_hosc, lambda x: 2 * x, bm)
 
     return SDE(get_terms_hosc, None, y0_hosc, t0, t1, w_shape_hosc)
 
@@ -534,7 +534,7 @@ def get_neals_funnel(t0=0.0, t1=16.0, dtype=jnp.float32):
     w_shape_neal = (10,)
 
     def get_terms_neal(bm):
-        return make_langevin_term(gamma, u, grad_log_p, bm, x0)
+        return make_underdamped_langevin_term(gamma, u, grad_log_p, bm)
 
     return SDE(get_terms_neal, None, y0_neal, t0, t1, w_shape_neal)
 
@@ -588,6 +588,6 @@ def get_uld3_langevin(t0=0.3, t1=15.0, dtype=jnp.float32):
     w_shape_uld3 = (9,)
 
     def get_terms_uld3(bm):
-        return make_langevin_term(u, gamma, grad_f, bm, x0)
+        return make_underdamped_langevin_term(u, gamma, grad_f, bm)
 
     return SDE(get_terms_uld3, None, y0_uld3, t0, t1, w_shape_uld3)
