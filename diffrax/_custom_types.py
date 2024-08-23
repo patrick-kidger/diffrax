@@ -82,10 +82,22 @@ class AbstractWeakSpaceSpaceLevyArea(AbstractBrownianIncrement):
     A: eqx.AbstractVar[BM]
 
 
-class WeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea):
+class DavieWeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea):
     """
     Davie's approximation to weak Space Space Levy Areas.
     See (7.4.1) of Foster's thesis.
+    """
+
+    dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
+    H: BM
+    A: Area
+
+
+class DavieFosterWeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea):
+    """
+    Davie's approximation to weak Space Space Levy Areas.
+    See (7.4.2) of Foster's thesis.
     """
 
     dt: PyTree[FloatScalarLike, "BM"]

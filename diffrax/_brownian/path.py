@@ -14,11 +14,12 @@ from lineax.internal import complex_to_real_dtype
 from .._custom_types import (
     AbstractBrownianIncrement,
     BrownianIncrement,
+    DavieFosterWeakSpaceSpaceLevyArea,
+    DavieWeakSpaceSpaceLevyArea,
     levy_tree_transpose,
     RealScalarLike,
     SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea,
-    WeakSpaceSpaceLevyArea,
 )
 from .._misc import (
     force_bitcast_convert_type,
@@ -29,7 +30,11 @@ from .base import AbstractBrownianPath
 
 
 _Levy_Areas = Union[
-    BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea, WeakSpaceSpaceLevyArea
+    BrownianIncrement,
+    SpaceTimeLevyArea,
+    SpaceTimeTimeLevyArea,
+    DavieWeakSpaceSpaceLevyArea,
+    DavieFosterWeakSpaceSpaceLevyArea,
 ]
 
 
@@ -158,21 +163,56 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             kk = jr.normal(key_kk, shape.shape, shape.dtype) * kk_std
             levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
 
-        elif levy_area is WeakSpaceSpaceLevyArea:
+        elif levy_area is DavieWeakSpaceSpaceLevyArea:
             key_w, key_hh, key_b = jr.split(key, 3)
             w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
             hh_std = w_std / math.sqrt(12)
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
-            b_std = dt / jnp.sqrt(12)
-            b = jr.normal(key_b, shape.shape + shape.shape, shape.dtype) * b_std
-            if b.ndim == 0 or b.size == 1:
-                b = jnp.zeros(shape=shape.shape + shape.shape, dtype=shape.dtype)
+            if w.ndim == 0 or w.ndim == 1:
+                a = jnp.zeros_like(w, dtype=shape.dtype)
+                levy_val = DavieWeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
             else:
-                # TODO: generalize to tensors?
-                assert b.ndim == 2
-                b = jnp.tril(b) - jnp.tril(b).T
-            a = jnp.tensordot(hh, w, axes=0) - jnp.tensordot(w, hh, axes=0) + b
-            levy_val = WeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
+                b_std = (dt / jnp.sqrt(12)).astype(shape.dtype)
+                b = (
+                    jr.normal(key_b, shape.shape + shape.shape[-1:], shape.dtype)
+                    * b_std
+                )
+                b = b - b.transpose(*range(b.ndim - 2), -1, -2)
+                a = jnp.expand_dims(hh, -1) * jnp.expand_dims(w, -2) - jnp.expand_dims(
+                    w, -1
+                ) * jnp.expand_dims(hh, -2)
+                a += b
+                levy_val = DavieWeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
+
+        elif levy_area is DavieFosterWeakSpaceSpaceLevyArea:
+            key_w, key_hh, key_b = jr.split(key, 3)
+            w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
+            hh_std = w_std / math.sqrt(12)
+            hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
+            if w.ndim == 0 or w.ndim == 1:
+                a = jnp.zeros_like(w, dtype=shape.dtype)
+                levy_val = DavieFosterWeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
+            else:
+                tenth_dt = (0.1 * dt).astype(shape.dtype)
+                hh_squared = hh**2
+                b_std = jnp.sqrt(
+                    tenth_dt
+                    * (
+                        tenth_dt
+                        + jnp.expand_dims(hh_squared, -1)
+                        + jnp.expand_dims(hh_squared, -2)
+                    )
+                ).astype(shape.dtype)
+                b = (
+                    jr.normal(key_b, shape.shape + shape.shape[-1:], shape.dtype)
+                    * b_std
+                )
+                b = b - b.transpose(*range(b.ndim - 2), -1, -2)
+                a = jnp.expand_dims(hh, -1) * jnp.expand_dims(w, -2) - jnp.expand_dims(
+                    w, -1
+                ) * jnp.expand_dims(hh, -2)
+                a += b
+                levy_val = DavieFosterWeakSpaceSpaceLevyArea(dt=dt, W=w, H=hh, A=a)
 
         elif levy_area is SpaceTimeLevyArea:
             key_w, key_hh = jr.split(key, 2)
