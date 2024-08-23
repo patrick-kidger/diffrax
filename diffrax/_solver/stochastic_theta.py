@@ -42,13 +42,13 @@ class StochasticTheta(
     r"""Stochastic Theta method.
 
     Stochastic A stable 0.5 strong order (1.0 weak order) SDIRK method. Has an embedded
-    1st order Euler method for adaptive step sizing. Uses 1 stage. Uses a 1st order local
-    linear interpolation for dense/ts output.
+    1st order Euler method for adaptive step sizing. Uses 1 stage. Uses a 1st order
+    local linear interpolation for dense/ts output.
 
     !!! warning
 
-        If `theta` is 0, this results in an explicit Euler step, which is also how the error
-        estimate is computed (which would result in estimated error being 0).
+        If `theta` is 0, this results in an explicit Euler step, which is also how the
+        error estimate is computed (which would result in estimated error being 0).
 
     ??? cite "Reference"
 

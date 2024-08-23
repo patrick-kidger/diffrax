@@ -55,13 +55,20 @@ def test_implicit_euler_adaptive():
 
 
 def test_stochastic_theta_adaptive():
-    term = diffrax.ODETerm(lambda t, y, args: -10 * y**3)
-    solver1 = diffrax.ImplicitEuler(root_finder=diffrax.VeryChord(rtol=1e-5, atol=1e-5))
-    solver2 = diffrax.ImplicitEuler()
     t0 = 0
     t1 = 1
     dt0 = 1
     y0 = 1.0
+
+    ode = diffrax.ODETerm(lambda t, y, args: -10 * y**3)
+    path = diffrax.VirtualBrownianTree(t0, t1, 1e-5, (1,), key=jax.random.key(0))
+    diff = diffrax.ControlTerm(lambda t, y, args: jnp.array([1.0]), path)
+    term = diffrax.MultiTerm(ode, diff)
+
+    solver1 = diffrax.StochasticTheta(
+        1.0, root_finder=diffrax.VeryChord(rtol=1e-5, atol=1e-5)
+    )
+    solver2 = diffrax.StochasticTheta(1.0)
     stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
     out1 = diffrax.diffeqsolve(term, solver1, t0, t1, dt0, y0, throw=False)
     out2 = diffrax.diffeqsolve(
