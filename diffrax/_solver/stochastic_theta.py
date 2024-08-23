@@ -17,9 +17,16 @@ _SolverState: TypeAlias = None
 
 
 def _implicit_relation(z1, nonlinear_solve_args):
-    vf_prod_drift, t1, y0, args, control, k0_drift, k0_diff, theta = (
-        nonlinear_solve_args
-    )
+    (
+        vf_prod_drift,
+        t1,
+        y0,
+        args,
+        control,
+        k0_drift,
+        k0_diff,
+        theta,
+    ) = nonlinear_solve_args
     add_state = (y0**ω + z1**ω).ω
     implicit_drift = (vf_prod_drift(t1, add_state, args, control) ** ω * theta).ω
     euler_drift = ((1 - theta) * k0_drift**ω).ω
@@ -61,9 +68,9 @@ class StochasticTheta(
 
     theta: float
     term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
-    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
-        LocalLinearInterpolation
-    )
+    interpolation_cls: ClassVar[
+        Callable[..., LocalLinearInterpolation]
+    ] = LocalLinearInterpolation
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(optx.Chord)()
     root_find_max_steps: int = 10
 
