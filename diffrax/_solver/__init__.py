@@ -50,4 +50,5 @@ from .srk import (
     AbstractSRK as AbstractSRK,
     StochasticButcherTableau as StochasticButcherTableau,
 )
+from .stochastic_theta import StochasticTheta as StochasticTheta
 from .tsit5 import Tsit5 as Tsit5

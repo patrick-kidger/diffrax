@@ -67,6 +67,16 @@ These solvers can be used to solve SDEs just as well as they can be used to solv
     selection:
         members: false
 
+
+### Implicit Runge--Kutta (IRK) methods
+
+These are SDE only IRK methods.
+
+::: diffrax.StochasticTheta
+    selection:
+        members: false
+
+
 ### Stochastic Runge--Kutta (SRK)
 
 These are a particularly important class of SDE-only solvers.
