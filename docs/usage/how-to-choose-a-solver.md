@@ -42,54 +42,51 @@ For "split stiffness" problems, with one term that is stiff and another term tha
 
 ## Stochastic differential equations
 
-SDE solvers are relatively specialised depending on the type of problem. Each solver will converge to either the Itô solution or the Stratonovich solution. In addition some solvers require "commutative noise".
+SDE solvers are relatively specialised depending on the type of problem. Each solver will converge to either the Itô solution or the Stratonovich solution of the SDE. The Itô and Stratonovich solutions coincide iff the SDE has additive noise (as defined below). In addition some solvers require the SDE to have "commutative noise" or "additive noise". All of these terms are defined below.
 
-!!! info "Commutative noise"
+### General (noncommutative) noise
+This includes any SDE of the form $dy(t) = f(y(t), t) dt + g(y(t), t) dw(t),$ where $t \in [0, T]$, $y(t) \in \mathbb{R}^e$, and $w$ is a standard Brownian motion on $\mathbb{R}^d$. We refer to $f: \mathbb{R}^e \times [0, T] \to \mathbb{R}^e$ as the drift vector field (VF) and $g: \mathbb{R}^e \times [0, T] \to \mathbb{R}^{e \times d}$ is the diffusion matrix field with columns $g_i$ for $i = 1, \ldots, d$.
 
-    Consider the SDE
 
-    $\mathrm{d}y(t) = μ(t, y(t))\mathrm{d}t + σ(t, y(t))\mathrm{d}w(t)$
+### Commutative noise
+The diffusion matrix $σ$ is said to satisfy the commutativity condition if
 
-    then the diffusion matrix $σ$ is said to satisfy the commutativity condition if
+$\sum_{i=1}^d g_{i, j} \frac{\partial g_{k, l}}{\partial y_i} = \sum_{i=1}^d g_{i, l} \frac{\partial g_{k, j}}{\partial y_i}$
 
-    $\sum_{i=1}^d σ_{i, j} \frac{\partial σ_{k, l}}{\partial y_i} = \sum_{i=1}^d σ_{i, l} \frac{\partial σ_{k, j}}{\partial y_i}$
+For example, this holds:
 
-    Some common special cases in which this condition is satisfied are:
+- when $g$ is a diagonal operator (i.e. $g(y,t)$ is a diagonal matrix for all $y, t$ and the i-th diagonal entry depends only on $y_i$),
+- when the dimension of BM is $d=1$, or
+- when the noise is additive (see below).
 
-    - the diffusion is additive ($σ$ is independent of $y$);
-    - the noise is scalar ($w$ is scalar-valued);
-    - the diffusion is diagonal ($σ$ is a diagonal matrix and such that the i-th
-        diagonal entry depends only on $y_i$; *not* to be confused with the simpler
-        but insufficient condition that $σ$ is only a diagonal matrix)
+- The solver with the highest order of convergence for commutative noise SDEs is [`diffrax.SlowRK`][]. [`diffrax.ItoMilstein`][] and [`diffrax.StratonovichMilstein`][] are alternatives which evaluate the vector field fewer times per step, but also compute its derivative.
+
+
+### Additive noise
+We say that the diffusion is additive when $g$ does not depend on $y(t)$ and the SDE can be written as $dy(t) = f(y(t), t) dt + g(t) dw(t)$.
+
+Additive noise is a special case of commutative noise. For additive noise SDEs, the Itô and Stratonovich solutions conicide. Some solvers are specifically designed for additive noise SDEs, of these [`diffrax.SEA`][] is the cheapest, [`diffrax.ShARK`][] is the most accurate and [`diffrax.SRA1`][] is another alternative.
 
 ### Itô
 
 For Itô SDEs:
 
+- For general noise [`diffrax.Euler`][] is a typical choice.
 - If the noise is commutative then [`diffrax.ItoMilstein`][] is a typical choice;
-- If the noise is noncommutative then [`diffrax.Euler`][] is a typical choice.
 
 ### Stratonovich
 
 For Stratonovich SDEs:
 
 - If cheap low-accuracy solves are desired then [`diffrax.EulerHeun`][] is a typical choice.
-- Otherwise, and if the noise is commutative, then [`diffrax.SlowRK`][] has the best order of convergence, but is expensive per step. [`diffrax.StratonovichMilstein`][] is a good cheap alternative.
-- If the noise is noncommutative, [`diffrax.GeneralShARK`][] is the most efficient choice, while [`diffrax.Heun`][] is a good cheap alternative.
-- If the noise is noncommutative and an embedded method for adaptive step size control is desired, then [`diffrax.SPaRK`][] is the recommended choice.
+- For general noise, [`diffrax.GeneralShARK`][] is the most efficient choice, while [`diffrax.Heun`][] is a good cheap alternative.
+- If an embedded method for adaptive step size control is desired and the noise is noncommutative then [`diffrax.SPaRK`][] is the recommended choice.
+- If the noise is commutative, then [`diffrax.SlowRK`][] has the best order of convergence, but is expensive per step. [`diffrax.StratonovichMilstein`][] is a good cheaper alternative.
 
-### Additive noise
+### More information about SDE solvers
 
-Consider the SDE
-
-$\mathrm{d}y(t) = μ(t, y(t))\mathrm{d}t + σ(t, y(t))\mathrm{d}w(t)$
-
-Then the diffusion matrix $σ$ is said to be additive if $σ(t, y) = σ(t)$. That is to say if the diffusion is independent of $y$.
-
-In this case the Itô solution and the Stratonovich solution coincide, and mathematically speaking the choice of Itô vs Stratonovich is unimportant. Special solvers for additive-noise SDEs tend to do particularly well as compared to the general Itô or Stratonovich solvers discussed above.
-
-- The cheapest (but least accurate) solver is [`diffrax.SEA`][].
-- Otherwise [`diffrax.ShARK`][] or [`diffrax.SRA1`][] are good choices.
+A detailed example of how to simulate SDEs can be found in the [SDE example](../examples/sde_example.ipynb).
+A table of all SDE solvers and their properties can be found in [SDE solver table](../devdocs/SDE_solver_table.md).
 
 ---
 
