@@ -355,10 +355,6 @@ def loop(
         # step sizes, all that jazz.
         #
         if delays is None:
-            # jax.debug.print("state.tprev {}", state.tprev)
-            # jax.debug.print("state.tnext {}", state.tnext)
-            # jax.debug.print("state.y  {}", state.y)
-            # jax.debug.print("state.controller_state {}", state.controller_state)
             (y, y_error, dense_info, solver_state, solver_result) = solver.step(
                 terms,
                 state.tprev,
@@ -1682,7 +1678,6 @@ def diffeqsolve(
         "num_dde_explicit_step": final_state.num_dde_explicit_step,
         **aux_stats,
     }
-    # jax.debug.print("stats {}", stats)
     result = final_state.result
     event_mask = final_state.event_mask
     sol = Solution(
