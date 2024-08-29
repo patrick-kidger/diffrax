@@ -1,22 +1,97 @@
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import equinox as eqx
+import jax
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from equinox.internal import unvmap_any
-from jaxtyping import Array, PyTree
+from equinox.internal import unvmap_any, ω
+from jaxtyping import Array, Bool, PyTree, Scalar
 from optimistix import (
+    AbstractFixedPointSolver,
     fixed_point,
-    FixedPointIteration,
     Newton,
+    RecursiveCheckpointAdjoint,
+    RESULTS,
+    rms_norm,
     root_find,
 )
+from optimistix._custom_types import Aux, Fn, Y
 
 from ._custom_types import IntScalarLike, RealScalarLike, VF
 from ._global_interpolation import DenseInterpolation
 from ._local_interpolation import AbstractLocalInterpolation
 from ._term import VectorFieldWrapper
+
+
+class _FixedPointState(eqx.Module, strict=True):
+    relative_error: Array
+    steps: Array
+
+
+class ModifiedFixedPointIteration(AbstractFixedPointSolver):
+    rtol: float
+    atol: float
+    implicit_step: bool
+    max_steps: int = eqx.field(static=True)
+    norm: Callable[[PyTree], Scalar] = rms_norm
+
+    def init(
+        self,
+        fn: Fn[Y, Y, Aux],
+        y: Y,
+        args: PyTree,
+        options: dict[str, Any],
+        f_struct: PyTree[jax.ShapeDtypeStruct],
+        aux_struct: PyTree[jax.ShapeDtypeStruct],
+        tags: frozenset[object],
+    ) -> _FixedPointState:
+        del fn, y, args, options, f_struct, aux_struct
+        return _FixedPointState(jnp.array(jnp.inf), jnp.array(0))
+
+    def step(
+        self,
+        fn: Fn[Y, Y, Aux],
+        y: Y,
+        args: PyTree,
+        options: dict[str, Any],
+        state: _FixedPointState,
+        tags: frozenset[object],
+    ) -> tuple[Y, _FixedPointState, Aux]:
+        new_y, aux = fn(y, args)
+        error = (y**ω - new_y**ω).ω
+        scale = (self.atol + self.rtol * ω(new_y).call(jnp.abs)).ω
+        new_state = _FixedPointState(
+            self.norm((error**ω / scale**ω).ω), state.steps + 1
+        )
+        return new_y, new_state, aux
+
+    def terminate(
+        self,
+        fn: Fn[Y, Y, Aux],
+        y: Y,
+        args: PyTree,
+        options: dict[str, Any],
+        state: _FixedPointState,
+        tags: frozenset[object],
+    ) -> tuple[Bool[Array, ""], RESULTS]:
+        return (
+            ((state.relative_error < 1) | jnp.invert(self.implicit_step))
+            & (state.steps > 0)
+        ), RESULTS.successful
+
+    def postprocess(
+        self,
+        fn: Fn[Y, Y, Aux],
+        y: Y,
+        aux: Aux,
+        args: PyTree,
+        options: dict[str, Any],
+        state: _FixedPointState,
+        tags: frozenset[object],
+        result: RESULTS,
+    ) -> tuple[Y, Aux, dict[str, Any]]:
+        return y, aux, {}
 
 
 class Delays(eqx.Module):
@@ -85,10 +160,7 @@ class HistoryVectorField(eqx.Module):
                     switch,
                     [
                         lambda: self.y0_history(at_most_t0),
-                        # this is where the ImplicitAdjoint breaks for some reason
-                        # with fixedpoint unless with change jacobian rule to
-                        # jax.jacrev in Lineax's _misc.py
-                        lambda: self.dense_interp.evaluate(t0_to_tprev),  # type: ignore
+                        lambda: self.dense_interp.evaluate(t0_to_tprev),  # pyright: ignore
                         lambda: step_interpolation.evaluate(at_least_tprev),
                     ],
                 )
@@ -188,7 +260,13 @@ def history_extrapolation_implicit(
 
         return new_dense_info, (y, y_error, solver_state, solver_result)
 
-    solv = FixedPointIteration(rtol=delays.rtol, atol=delays.atol)
+    solv = ModifiedFixedPointIteration(
+        rtol=delays.rtol,
+        atol=delays.atol,
+        norm=rms_norm,
+        implicit_step=implicit_step,
+        max_steps=100,
+    )
 
     nonlinear_args = (
         terms,
@@ -201,14 +279,16 @@ def history_extrapolation_implicit(
         state,
         args,
     )
-
     sol = fixed_point(
         fn,
         solv,
         init_guess,
         nonlinear_args,
         has_aux=True,
+        throw=False,
+        adjoint=RecursiveCheckpointAdjoint(),
     )
+
     dense_info, (y, y_error, solver_state, solver_result) = sol.value, sol.aux
 
     return y, y_error, dense_info, solver_state, solver_result
@@ -288,8 +368,8 @@ def maybe_find_discontinuity(
                 - delay(t, dense_discont.evaluate(t), args)
                 - _d
             )
-            _discont = root_find(_h, _discont_solver, _tb, args)  # type: ignore
-            _discont = _discont_solver(_h, _tb, args).root  # type: ignore
+            _discont = root_find(_h, _discont_solver, _tb, args)
+            # _discont = _discont_solver(_h, _tb, args).root
             _disconts.append(_discont.value)
         _disconts = jnp.stack(_disconts)
 
