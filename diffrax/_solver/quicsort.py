@@ -12,15 +12,15 @@ from .._custom_types import (
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import LangevinLeaf, LangevinX
-from .langevin_srk import (
-    _LangevinArgs,
+from .._term import UnderdampedLangevinLeaf, UnderdampedLangevinX
+from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
+    ULDArgs,
 )
 
 
-# For an explanation of the coefficients, see langevin_srk.py
+# For an explanation of the coefficients, see foster_langevin_srk.py
 # UBU evaluates at l = (3 -sqrt(3))/6, at r = (3 + sqrt(3))/6 and at 1,
 # so we need 3 versions of each coefficient
 class _QUICSORTCoeffs(AbstractCoeffs):
@@ -103,7 +103,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         return 3.0
 
     def _directly_compute_coeffs_leaf(
-        self, h: RealScalarLike, c: LangevinLeaf
+        self, h: RealScalarLike, c: UnderdampedLangevinLeaf
     ) -> _QUICSORTCoeffs:
         del self
         # compute the coefficients directly (as opposed to via Taylor expansion)
@@ -131,7 +131,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
             a_div_h=a_div_h,
         )
 
-    def _tay_coeffs_single(self, c: LangevinLeaf) -> _QUICSORTCoeffs:
+    def _tay_coeffs_single(self, c: UnderdampedLangevinLeaf) -> _QUICSORTCoeffs:
         del self
         # c is a leaf of gamma
         dtype = jnp.result_type(c)
@@ -188,19 +188,19 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         self,
         h: RealScalarLike,
         levy: AbstractSpaceTimeTimeLevyArea,
-        x0: LangevinX,
-        v0: LangevinX,
-        langevin_args: _LangevinArgs,
+        x0: UnderdampedLangevinX,
+        v0: UnderdampedLangevinX,
+        uld_args: ULDArgs,
         coeffs: _QUICSORTCoeffs,
-        rho: LangevinX,
-        prev_f: LangevinX,
-    ) -> tuple[LangevinX, LangevinX, LangevinX, None]:
+        rho: UnderdampedLangevinX,
+        prev_f: UnderdampedLangevinX,
+    ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, UnderdampedLangevinX, None]:
         dtypes = jtu.tree_map(jnp.result_type, x0)
-        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
-        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
-        kk: LangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
+        w: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
+        kk: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
-        gamma, u, f = langevin_args
+        gamma, u, f = uld_args
 
         def _extract_coeffs(coeff, index):
             return jtu.tree_map(lambda arr: arr[..., index], coeff)

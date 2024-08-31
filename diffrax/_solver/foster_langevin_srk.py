@@ -22,32 +22,36 @@ from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import (
     AbstractTerm,
-    LangevinDiffusionTerm,
-    LangevinDriftTerm,
-    LangevinLeaf,
-    LangevinTuple,
-    LangevinX,
     MultiTerm,
+    UnderdampedLangevinDiffusionTerm,
+    UnderdampedLangevinDriftTerm,
+    UnderdampedLangevinLeaf,
+    UnderdampedLangevinTuple,
+    UnderdampedLangevinX,
     WrapTerm,
 )
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
-_ErrorEstimate = TypeVar("_ErrorEstimate", None, LangevinTuple)
-_LangevinArgs = tuple[LangevinX, LangevinX, Callable[[LangevinX], LangevinX]]
+_ErrorEstimate = TypeVar("_ErrorEstimate", None, UnderdampedLangevinTuple)
+ULDArgs = tuple[
+    UnderdampedLangevinX,
+    UnderdampedLangevinX,
+    Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+]
 
 
 def _get_args_from_terms(
     terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
-) -> tuple[PyTree, PyTree, Callable[[LangevinX], LangevinX]]:
+) -> tuple[PyTree, PyTree, Callable[[UnderdampedLangevinX], UnderdampedLangevinX]]:
     drift, diffusion = terms.terms
     if isinstance(drift, WrapTerm):
         assert isinstance(diffusion, WrapTerm)
         drift = drift.term
         diffusion = diffusion.term
 
-    assert isinstance(drift, LangevinDriftTerm)
-    assert isinstance(diffusion, LangevinDiffusionTerm)
+    assert isinstance(drift, UnderdampedLangevinDriftTerm)
+    assert isinstance(diffusion, UnderdampedLangevinDiffusionTerm)
     gamma = drift.gamma
     u = drift.u
     f = drift.grad_f
@@ -93,13 +97,13 @@ _Coeffs = TypeVar("_Coeffs", bound=AbstractCoeffs)
 
 
 class SolverState(eqx.Module, Generic[_Coeffs]):
-    gamma: LangevinX
-    u: LangevinX
+    gamma: UnderdampedLangevinX
+    u: UnderdampedLangevinX
     h: RealScalarLike
-    taylor_coeffs: PyTree[_Coeffs, "LangevinX"]
+    taylor_coeffs: PyTree[_Coeffs, "UnderdampedLangevinX"]
     coeffs: _Coeffs
-    rho: LangevinX
-    prev_f: LangevinX
+    rho: UnderdampedLangevinX
+    prev_f: UnderdampedLangevinX
 
 
 class AbstractFosterLangevinSRK(
@@ -126,14 +130,16 @@ class AbstractFosterLangevinSRK(
     [`diffrax.ShOULD`][], and [`diffrax.QUIC_SORT`][].
     """
 
-    term_structure = MultiTerm[tuple[LangevinDriftTerm, LangevinDiffusionTerm]]
+    term_structure = MultiTerm[
+        tuple[UnderdampedLangevinDriftTerm, UnderdampedLangevinDiffusionTerm]
+    ]
     interpolation_cls = LocalLinearInterpolation
     minimal_levy_area: eqx.AbstractClassVar[type[AbstractBrownianIncrement]]
     taylor_threshold: AbstractVar[RealScalarLike]
 
     @abc.abstractmethod
     def _directly_compute_coeffs_leaf(
-        self, h: RealScalarLike, c: LangevinLeaf
+        self, h: RealScalarLike, c: UnderdampedLangevinLeaf
     ) -> _Coeffs:
         r"""This method specifies how to compute the SRK coefficients directly
         (as opposed to via Taylor expansion). This function is then mapped over the
@@ -151,7 +157,7 @@ class AbstractFosterLangevinSRK(
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _tay_coeffs_single(self, c: LangevinLeaf) -> _Coeffs:
+    def _tay_coeffs_single(self, c: UnderdampedLangevinLeaf) -> _Coeffs:
         r"""This method specifies how to compute the Taylor coefficients for a
         single leaf of gamma. These coefficients are then used to compute the SRK
         coefficients using the Taylor expansion. This function is then mapped over
@@ -184,14 +190,17 @@ class AbstractFosterLangevinSRK(
         return jtu.tree_map(eval_taylor_fun, tay_coeffs)
 
     def _recompute_coeffs(
-        self, h: RealScalarLike, gamma: LangevinX, tay_coeffs: PyTree[_Coeffs]
+        self,
+        h: RealScalarLike,
+        gamma: UnderdampedLangevinX,
+        tay_coeffs: PyTree[_Coeffs],
     ) -> _Coeffs:
         r"""When h changes, the SRK coefficients (which depend on h) are recomputed
         using this function."""
         # Inner will record the tree structure of the coefficients
         inner = sentinel = object()
 
-        def recompute_coeffs_leaf(c: LangevinLeaf, _tay_coeffs: _Coeffs):
+        def recompute_coeffs_leaf(c: UnderdampedLangevinLeaf, _tay_coeffs: _Coeffs):
             # c is a leaf of gamma
             # Depending on the size of h*gamma choose whether the Taylor expansion or
             # direct computation is more accurate.
@@ -250,7 +259,7 @@ class AbstractFosterLangevinSRK(
         terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: LangevinTuple,
+        y0: UnderdampedLangevinTuple,
         args: PyTree,
     ) -> SolverState:
         """Precompute _SolverState which carries the Taylor coefficients and the
@@ -300,14 +309,16 @@ class AbstractFosterLangevinSRK(
         self,
         h: RealScalarLike,
         levy,
-        x0: LangevinX,
-        v0: LangevinX,
-        langevin_args: _LangevinArgs,
+        x0: UnderdampedLangevinX,
+        v0: UnderdampedLangevinX,
+        uld_args: ULDArgs,
         coeffs: _Coeffs,
-        rho: LangevinX,
-        prev_f: LangevinX,
-    ) -> tuple[LangevinX, LangevinX, LangevinX, _ErrorEstimate]:
-        r"""This method specifies how to compute a single step of the Langevin SRK
+        rho: UnderdampedLangevinX,
+        prev_f: UnderdampedLangevinX,
+    ) -> tuple[
+        UnderdampedLangevinX, UnderdampedLangevinX, UnderdampedLangevinX, _ErrorEstimate
+    ]:
+        r"""This method specifies how to compute a single step of the ULD SRK
         method. This holds just the computation that differs between the different
         SRK methods. The common bits are handled by the `step` method."""
         raise NotImplementedError
@@ -317,11 +328,13 @@ class AbstractFosterLangevinSRK(
         terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
-        y0: LangevinTuple,
+        y0: UnderdampedLangevinTuple,
         args: PyTree,
         solver_state: SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[LangevinTuple, _ErrorEstimate, DenseInfo, SolverState, RESULTS]:
+    ) -> tuple[
+        UnderdampedLangevinTuple, _ErrorEstimate, DenseInfo, SolverState, RESULTS
+    ]:
         del args
         st = solver_state
         drift, diffusion = terms.terms
@@ -352,7 +365,9 @@ class AbstractFosterLangevinSRK(
         )
 
         x0, v0 = y0
-        prev_f = lax.cond(made_jump, lambda: grad_f(x0), lambda: st.prev_f)
+        prev_f = lax.cond(
+            eqxi.unvmap_any(made_jump), lambda: grad_f(x0), lambda: st.prev_f
+        )
 
         # The actual step computation, handled by the subclass
         x_out, v_out, f_fsal, error = self._compute_step(
@@ -389,7 +404,7 @@ class AbstractFosterLangevinSRK(
         self,
         terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
-        y0: LangevinTuple,
+        y0: UnderdampedLangevinTuple,
         args: PyTree,
     ):
         return terms.vf(t0, y0, args)

@@ -9,15 +9,19 @@ from .._custom_types import (
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
-from .._term import LangevinLeaf, LangevinTuple, LangevinX
-from .langevin_srk import (
-    _LangevinArgs,
+from .._term import (
+    UnderdampedLangevinLeaf,
+    UnderdampedLangevinTuple,
+    UnderdampedLangevinX,
+)
+from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
+    ULDArgs,
 )
 
 
-# For an explanation of the coefficients, see langevin_srk.py
+# For an explanation of the coefficients, see foster_langevin_srk.py
 class _ALIGNCoeffs(AbstractCoeffs):
     beta: PyTree[ArrayLike]
     a1: PyTree[ArrayLike]
@@ -36,7 +40,7 @@ class _ALIGNCoeffs(AbstractCoeffs):
         self.dtype = jnp.result_type(*all_leaves)
 
 
-_ErrorEstimate = LangevinTuple
+_ErrorEstimate = UnderdampedLangevinTuple
 
 
 class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
@@ -85,7 +89,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         return 2.0
 
     def _directly_compute_coeffs_leaf(
-        self, h: RealScalarLike, c: LangevinLeaf
+        self, h: RealScalarLike, c: UnderdampedLangevinLeaf
     ) -> _ALIGNCoeffs:
         del self
         # c is a leaf of gamma
@@ -107,7 +111,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
             chh=chh,
         )
 
-    def _tay_coeffs_single(self, c: LangevinLeaf) -> _ALIGNCoeffs:
+    def _tay_coeffs_single(self, c: UnderdampedLangevinLeaf) -> _ALIGNCoeffs:
         del self
         # c is a leaf of gamma
         zero = jnp.zeros_like(c)
@@ -142,18 +146,23 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         self,
         h: RealScalarLike,
         levy: AbstractSpaceTimeLevyArea,
-        x0: LangevinX,
-        v0: LangevinX,
-        langevin_args: _LangevinArgs,
+        x0: UnderdampedLangevinX,
+        v0: UnderdampedLangevinX,
+        uld_args: ULDArgs,
         coeffs: _ALIGNCoeffs,
-        rho: LangevinX,
-        prev_f: LangevinX,
-    ) -> tuple[LangevinX, LangevinX, LangevinX, LangevinTuple]:
+        rho: UnderdampedLangevinX,
+        prev_f: UnderdampedLangevinX,
+    ) -> tuple[
+        UnderdampedLangevinX,
+        UnderdampedLangevinX,
+        UnderdampedLangevinX,
+        UnderdampedLangevinTuple,
+    ]:
         dtypes = jtu.tree_map(jnp.result_type, x0)
-        w: LangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
-        hh: LangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
+        w: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
+        hh: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
 
-        gamma, u, f = langevin_args
+        gamma, u, f = uld_args
 
         uh = (u**ω * h).ω
         f0 = prev_f

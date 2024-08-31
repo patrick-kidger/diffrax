@@ -788,12 +788,14 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 
 
 # The Underdamped Langevin SDE trajectory consists of two components: the position
-# `x` and the velocity `v`. Both of these have the same shape. So, by LangevinX we
-# denote the shape of the x component, and by LangevinTuple we denote the shape of
-# the tuple (x, v).
-LangevinLeaf = Shaped[Array, "*langevin"]
-LangevinX = PyTree[Shaped[Array, "?*langevin"], "LangevinX"]
-LangevinTuple = tuple[LangevinX, LangevinX]
+# `x` and the velocity `v`. Both of these have the same shape.
+# So, by UnderdampedLangevinX we denote the shape of the x component, and by
+# UnderdampedLangevinTuple we denote the shape of the tuple (x, v).
+UnderdampedLangevinLeaf = Shaped[Array, "*underdamped_langevin"]
+UnderdampedLangevinX = PyTree[
+    Shaped[Array, "?*underdamped_langevin"], "UnderdampedLangevinX"
+]
+UnderdampedLangevinTuple = tuple[UnderdampedLangevinX, UnderdampedLangevinX]
 
 
 def _broadcast_pytree(source, target_tree):
@@ -813,8 +815,10 @@ def _broadcast_pytree(source, target_tree):
     return jtu.tree_map(_inner_broadcast, source, target_tree)
 
 
-class LangevinDiffusionTerm(
-    AbstractTerm[LangevinX, Union[LangevinX, AbstractBrownianIncrement]]
+class UnderdampedLangevinDiffusionTerm(
+    AbstractTerm[
+        UnderdampedLangevinX, Union[UnderdampedLangevinX, AbstractBrownianIncrement]
+    ]
 ):
     r"""Represents the diffusion term in the Underdamped Langevin Diffusion (ULD).
     The ULD SDE takes the form:
@@ -836,25 +840,29 @@ class LangevinDiffusionTerm(
     u: PyTree[ArrayLike]
     control: AbstractBrownianPath
 
-    def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinX:
+    def vf(
+        self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
+    ) -> UnderdampedLangevinX:
         x, v = y
         # gamma, u and v can all have different pytree structures, we only know that
         # gamma and u are prefixes of v
         gamma = _broadcast_pytree(self.gamma, v)
         u = _broadcast_pytree(self.u, v)
 
-        def _fun(_gamma, _u, _v):
+        def _fun(_gamma, _u):
             return jnp.sqrt(2 * _gamma * _u)
 
-        vf_v = jtu.tree_map(_fun, gamma, u, v)
+        vf_v = jtu.tree_map(_fun, gamma, u)
         return vf_v
 
     def contr(
         self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
-    ) -> Union[LangevinX, AbstractBrownianIncrement]:
+    ) -> Union[UnderdampedLangevinX, AbstractBrownianIncrement]:
         return self.control.evaluate(t0, t1, **kwargs)
 
-    def prod(self, vf: LangevinX, control: LangevinX) -> LangevinTuple:
+    def prod(
+        self, vf: UnderdampedLangevinX, control: UnderdampedLangevinX
+    ) -> UnderdampedLangevinTuple:
         # The vf is only for the velocity component. The position component is
         # unaffected by the diffusion.
         dw = control
@@ -863,7 +871,7 @@ class LangevinDiffusionTerm(
         return x_out, v_out
 
 
-class LangevinDriftTerm(AbstractTerm):
+class UnderdampedLangevinDriftTerm(AbstractTerm):
     r"""Represents the drift term in the Underdamped Langevin Diffusion (ULD).
     The ULD SDE takes the form:
 
@@ -882,9 +890,11 @@ class LangevinDriftTerm(AbstractTerm):
 
     gamma: PyTree[ArrayLike]
     u: PyTree[ArrayLike]
-    grad_f: Callable[[LangevinX], LangevinX]
+    grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX]
 
-    def vf(self, t: RealScalarLike, y: LangevinTuple, args: Args) -> LangevinTuple:
+    def vf(
+        self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
+    ) -> UnderdampedLangevinTuple:
         x, v = y
         # gamma, u and v can all have different pytree structures, we only know that
         # gamma and u are prefixes of v (which is the same as x)
@@ -904,16 +914,18 @@ class LangevinDriftTerm(AbstractTerm):
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
         return t1 - t0
 
-    def prod(self, vf: LangevinTuple, control: RealScalarLike) -> LangevinTuple:
+    def prod(
+        self, vf: UnderdampedLangevinTuple, control: RealScalarLike
+    ) -> UnderdampedLangevinTuple:
         return jtu.tree_map(lambda _vf: control * _vf, vf)
 
 
 def make_underdamped_langevin_term(
     gamma: PyTree[ArrayLike],
     u: PyTree[ArrayLike],
-    grad_f: Callable[[LangevinX], LangevinX],
+    grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
     bm: AbstractBrownianPath,
-) -> MultiTerm[tuple[LangevinDriftTerm, LangevinDiffusionTerm]]:
+) -> MultiTerm[tuple[UnderdampedLangevinDriftTerm, UnderdampedLangevinDiffusionTerm]]:
     r"""Creates a term that represents the Underdamped Langevin Diffusion, given by:
 
     \begin{align*}
@@ -941,12 +953,12 @@ def make_underdamped_langevin_term(
 
     **Returns:**
 
-    A `MultiTerm` representing the Langevin SDE.
+    A `MultiTerm` representing the Underdamped Langevin SDE.
     """
     # In practice we don't require the PyTree structure of gamma and u to be the same
     # as x and v. We only require that they are prefixes of x and v, in a way that
     # allows us to call _broadcast_pytree(gamma, x) and _broadcast_pytree(u, x).
 
-    drift = LangevinDriftTerm(gamma, u, grad_f)
-    diffusion = LangevinDiffusionTerm(gamma, u, bm)
+    drift = UnderdampedLangevinDriftTerm(gamma, u, grad_f)
+    diffusion = UnderdampedLangevinDiffusionTerm(gamma, u, bm)
     return MultiTerm(drift, diffusion)

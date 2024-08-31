@@ -16,7 +16,7 @@ from .helpers import (
 )
 
 
-def _only_langevin_solvers_cls():
+def _only_uld_solvers_cls():
     yield diffrax.ALIGN
     yield diffrax.ShOULD
     yield diffrax.QUICSORT
@@ -30,7 +30,7 @@ def _solvers_and_orders():
     yield diffrax.ShARK(), 2.0
 
 
-def get_pytree_langevin(t0=0.3, t1=1.0, dtype=jnp.float32):
+def get_pytree_uld(t0=0.3, t1=1.0, dtype=jnp.float32):
     def make_pytree(array_factory):
         return {
             "rr": (
@@ -74,22 +74,22 @@ def get_pytree_langevin(t0=0.3, t1=1.0, dtype=jnp.float32):
 
 
 # All combinations of solvers with and without Taylor expansion
-_langevin_solvers_taylor_non_taylor = [
+_uld_solvers_taylor_non_taylor = [
     solver_cls(taylor_threshold)
-    for solver_cls in _only_langevin_solvers_cls()
+    for solver_cls in _only_uld_solvers_cls()
     for taylor_threshold in [0.0, 100.0]
 ]
-_langevin_plus_shark = [diffrax.ShARK()] + list(_langevin_solvers_taylor_non_taylor)
+_uld_plus_shark = [diffrax.ShARK()] + list(_uld_solvers_taylor_non_taylor)
 
 
-@pytest.mark.parametrize("solver", _langevin_plus_shark)
+@pytest.mark.parametrize("solver", _uld_plus_shark)
 @pytest.mark.parametrize("dtype", [jnp.float16, jnp.float32, jnp.float64])
 def test_shape(solver, dtype):
     t0, t1 = 0.3, 1.0
     dt0 = 0.3
     saveat = SaveAt(ts=jnp.linspace(t0, t1, 7, dtype=dtype))
 
-    sde = get_pytree_langevin(t0, t1, dtype)
+    sde = get_pytree_uld(t0, t1, dtype)
     bm = sde.get_bm(jr.key(5678), diffrax.SpaceTimeTimeLevyArea, tol=0.2)
     terms = sde.get_terms(bm)
 
@@ -116,7 +116,7 @@ sdes = (
 
 
 @pytest.fixture(scope="module")
-def fine_langevin_solutions():
+def fine_uld_solutions():
     bmkey = jr.key(5678)
     num_samples = 2000
     bmkeys = jr.split(bmkey, num=num_samples)
@@ -151,8 +151,8 @@ def fine_langevin_solutions():
 
 @pytest.mark.parametrize("get_sde,sde_name", sdes)
 @pytest.mark.parametrize("solver,theoretical_order", _solvers_and_orders())
-def test_langevin_strong_order(
-    get_sde, sde_name, solver, theoretical_order, fine_langevin_solutions
+def test_uld_strong_order(
+    get_sde, sde_name, solver, theoretical_order, fine_uld_solutions
 ):
     (
         true_sols,
@@ -164,7 +164,7 @@ def test_langevin_strong_order(
         level_fine,
         levy_area,
         bm_tol,
-    ) = fine_langevin_solutions
+    ) = fine_uld_solutions
     true_sol = true_sols[sde_name]
 
     if theoretical_order < 3:
@@ -199,7 +199,7 @@ def test_langevin_strong_order(
     ), f"order={order}, theoretical_order={theoretical_order}"
 
 
-@pytest.mark.parametrize("solver_cls", _only_langevin_solvers_cls())
+@pytest.mark.parametrize("solver_cls", _only_uld_solvers_cls())
 def test_reverse_solve(solver_cls):
     t0, t1 = 0.7, -1.2
     dt0 = -0.01
