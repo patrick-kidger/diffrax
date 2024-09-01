@@ -44,7 +44,13 @@ UnderdampedLangevinArgs = tuple[
 
 def _get_args_from_terms(
     terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
-) -> tuple[PyTree, PyTree, Callable[[UnderdampedLangevinX], UnderdampedLangevinX]]:
+) -> tuple[
+    PyTree,
+    PyTree,
+    PyTree,
+    PyTree,
+    Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+]:
     drift, diffusion = terms.terms
     if isinstance(drift, WrapTerm):
         assert isinstance(diffusion, WrapTerm)
@@ -53,10 +59,12 @@ def _get_args_from_terms(
 
     assert isinstance(drift, UnderdampedLangevinDriftTerm)
     assert isinstance(diffusion, UnderdampedLangevinDiffusionTerm)
-    gamma = drift.gamma
-    u = drift.u
+    gamma_drift = drift.gamma
+    u_drift = drift.u
     f = drift.grad_f
-    return gamma, u, f
+    gamma_diffusion = diffusion.gamma
+    u_diffusion = diffusion.u
+    return gamma_drift, u_drift, gamma_diffusion, u_diffusion, f
 
 
 # CONCERNING COEFFICIENTS:
@@ -248,23 +256,46 @@ class AbstractFosterLangevinSRK(
         evaluation of grad_f.
         """
         drift, diffusion = terms.terms
-        gamma, u, grad_f = _get_args_from_terms(terms)
+        (
+            gamma_drift,
+            u_drift,
+            gamma_diffusion,
+            u_diffusion,
+            grad_f,
+        ) = _get_args_from_terms(terms)
 
         h = drift.contr(t0, t1)
         x0, v0 = y0
 
-        gamma = broadcast_underdamped_langevin_arg(gamma, x0, "gamma")
-        u = broadcast_underdamped_langevin_arg(u, x0, "u")
+        gamma = broadcast_underdamped_langevin_arg(gamma_drift, x0, "gamma")
+        u = broadcast_underdamped_langevin_arg(u_drift, x0, "u")
+
+        # Check that drift and diffusion have the same arguments
+        gamma_diffusion = broadcast_underdamped_langevin_arg(
+            gamma_diffusion, x0, "gamma"
+        )
+        u_diffusion = broadcast_underdamped_langevin_arg(u_diffusion, x0, "u")
+
+        def compare_args_fun(arg1, arg2):
+            arg = eqx.error_if(
+                arg1,
+                jnp.any(arg1 != arg2),
+                "The arguments of the drift and diffusion terms must match.",
+            )
+            return arg
+
+        gamma = jtu.tree_map(compare_args_fun, gamma, gamma_diffusion)
+        u = jtu.tree_map(compare_args_fun, u, u_diffusion)
 
         try:
             grad_f_shape = jax.eval_shape(grad_f, x0)
         except ValueError:
             raise UnderdampedLangevinStructureError("grad_f")
 
-        def _shape_check_fun(_x, _g, _u, _fx):
+        def shape_check_fun(_x, _g, _u, _fx):
             return _x.shape == _g.shape == _u.shape == _fx.shape
 
-        if not jtu.tree_all(jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)):
+        if not jtu.tree_all(jtu.tree_map(shape_check_fun, x0, gamma, u, grad_f_shape)):
             raise UnderdampedLangevinStructureError(None)
 
         tay_coeffs = jtu.tree_map(self._tay_coeffs_single, gamma)
@@ -342,7 +373,7 @@ class AbstractFosterLangevinSRK(
         old_coeffs: _Coeffs = st.coeffs
 
         gamma, u, rho = st.gamma, st.u, st.rho
-        _, _, grad_f = _get_args_from_terms(terms)
+        _, _, _, _, grad_f = _get_args_from_terms(terms)
 
         # If h changed, recompute coefficients
         # Even when using constant step sizes, h can fluctuate by small amounts,

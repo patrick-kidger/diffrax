@@ -238,3 +238,44 @@ def test_reverse_solve(solver_cls):
 
     error = path_l2_dist(sol.ys, ref_sol.ys)
     assert error < 0.1
+
+
+# Here we check that if the drift and diffusion term have different arguments,
+# an error is thrown.
+def test_different_args():
+    x0 = (jnp.ones(2), jnp.zeros(2))
+    v0 = (jnp.zeros(2), jnp.zeros(2))
+    y0 = (x0, v0)
+    g1 = (jnp.array([1, 2]), jnp.array([1, 2]))
+    u1 = (jnp.array([1, 2]), 1)
+    g2 = (jnp.array([1, 2]), jnp.array([1, 3]))
+    u2 = (jnp.array([1, 2]), jnp.ones((2,)))
+    grad_f = lambda x: x
+
+    w_shape = (
+        jax.ShapeDtypeStruct((2,), jnp.float64),
+        jax.ShapeDtypeStruct((2,), jnp.float64),
+    )
+    bm = diffrax.VirtualBrownianTree(
+        0,
+        1,
+        tol=0.05,
+        shape=w_shape,
+        key=jr.key(0),
+        levy_area=diffrax.SpaceTimeTimeLevyArea,
+    )
+
+    drift_term = diffrax.UnderdampedLangevinDriftTerm(g1, u1, grad_f)
+
+    # This one should fail
+    diffusion_term_a = diffrax.UnderdampedLangevinDiffusionTerm(g2, u1, bm)
+    terms_a = diffrax.MultiTerm(drift_term, diffusion_term_a)
+
+    # This one should not fail
+    diffusion_term_b = diffrax.UnderdampedLangevinDiffusionTerm(g1, u2, bm)
+    terms_b = diffrax.MultiTerm(drift_term, diffusion_term_b)
+
+    solver = diffrax.ShOULD(0.01)
+    with pytest.raises(Exception):
+        diffeqsolve(terms_a, solver, 0, 1, 0.1, y0, args=None)
+    diffeqsolve(terms_b, solver, 0, 1, 0.1, y0, args=None)
