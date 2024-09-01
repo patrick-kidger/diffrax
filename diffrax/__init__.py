@@ -71,6 +71,7 @@ from ._solver import (
     AbstractDIRK as AbstractDIRK,
     AbstractERK as AbstractERK,
     AbstractESDIRK as AbstractESDIRK,
+    AbstractFosterLangevinSRK as AbstractFosterLangevinSRK,
     AbstractImplicitSolver as AbstractImplicitSolver,
     AbstractItoSolver as AbstractItoSolver,
     AbstractRungeKutta as AbstractRungeKutta,
@@ -129,6 +130,8 @@ from ._term import (
     make_underdamped_langevin_term as make_underdamped_langevin_term,
     MultiTerm as MultiTerm,
     ODETerm as ODETerm,
+    UnderdampedLangevinDiffusionTerm as UnderdampedLangevinDiffusionTerm,
+    UnderdampedLangevinDriftTerm as UnderdampedLangevinDriftTerm,
     WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm,
 )
 

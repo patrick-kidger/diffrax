@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 
 import equinox as eqx
 import jax
@@ -16,7 +17,7 @@ from .._term import UnderdampedLangevinLeaf, UnderdampedLangevinX
 from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
-    ULDArgs,
+    UnderdampedLangevinArgs,
 )
 
 
@@ -85,6 +86,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
     interpolation_cls = LocalLinearInterpolation
     minimal_levy_area = AbstractSpaceTimeTimeLevyArea
     taylor_threshold: RealScalarLike = eqx.field(static=True)
+    _is_fsal = False
 
     def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
@@ -107,12 +109,13 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
     ) -> _QUICSORTCoeffs:
         del self
         # compute the coefficients directly (as opposed to via Taylor expansion)
-        original_shape = c.shape
+        original_shape = jnp.shape(c)
         c = jnp.expand_dims(c, axis=c.ndim)
         alpha = c * h
         l = 0.5 - math.sqrt(3) / 6
         r = 0.5 + math.sqrt(3) / 6
         l_r_1 = jnp.array([l, r, 1.0], dtype=jnp.result_type(c))
+        l_r_1 = jnp.broadcast_to(l_r_1, original_shape + (3,))
         alpha_lr1 = alpha * l_r_1
         assert alpha_lr1.shape == original_shape + (3,)
         beta_lr1 = jnp.exp(-alpha_lr1)
@@ -163,7 +166,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
             a_lr1 = lr1_pows * jnp.expand_dims(a, axis=c.ndim)
             # b needs an extra power of lr1 (just work out the expansion to see why)
             b_lr1 = lr1_pows * lr1 * jnp.expand_dims(b, axis=c.ndim)
-        assert beta_lr1.shape == a_lr1.shape == b_lr1.shape == c.shape + (3, 6)
+        assert beta_lr1.shape == a_lr1.shape == b_lr1.shape == jnp.shape(c) + (3, 6)
 
         # a_third = (1 - exp(-1/3 * gamma * h))/gamma
         a_third = jnp.stack(
@@ -174,7 +177,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
             [-c5 / 720, c4 / 120, -c3 / 24, c2 / 6, -c / 2, one], axis=-1
         )
         a_div_h = jnp.expand_dims(a_div_h, axis=c.ndim)
-        assert a_third.shape == a_div_h.shape == c.shape + (1, 6)
+        assert a_third.shape == a_div_h.shape == jnp.shape(c) + (1, 6)
 
         return _QUICSORTCoeffs(
             beta_lr1=beta_lr1,
@@ -190,11 +193,12 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         levy: AbstractSpaceTimeTimeLevyArea,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: ULDArgs,
+        uld_args: UnderdampedLangevinArgs,
         coeffs: _QUICSORTCoeffs,
         rho: UnderdampedLangevinX,
-        prev_f: UnderdampedLangevinX,
+        prev_f: Optional[UnderdampedLangevinX],
     ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, UnderdampedLangevinX, None]:
+        del prev_f
         dtypes = jtu.tree_map(jnp.result_type, x0)
         w: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
         hh: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
@@ -243,8 +247,5 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         ).ω
         v_out = (v_out_tilde**ω - rho**ω * (hh**ω - 6 * kk**ω)).ω
 
-        # this method is not FSAL, but for compatibility with the base class we set
-        f_fsal = prev_f
-
         # TODO: compute error estimate
-        return x_out, v_out, f_fsal, None
+        return x_out, v_out, None, None

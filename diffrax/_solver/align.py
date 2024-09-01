@@ -17,7 +17,7 @@ from .._term import (
 from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
-    ULDArgs,
+    UnderdampedLangevinArgs,
 )
 
 
@@ -71,6 +71,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     interpolation_cls = LocalLinearInterpolation
     minimal_levy_area = AbstractSpaceTimeLevyArea
     taylor_threshold: RealScalarLike = eqx.field(static=True)
+    _is_fsal = True
 
     def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
@@ -129,7 +130,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         aa = jnp.stack([-c5 / 720, c4 / 120, -c3 / 24, c2 / 6, -c / 2, one], axis=-1)
         chh = jnp.stack([c4 / 168, -c3 / 30, 3 * c2 / 20, -c / 2, one, zero], axis=-1)
 
-        correct_shape = c.shape + (6,)
+        correct_shape = jnp.shape(c) + (6,)
         assert (
             beta.shape == a1.shape == b1.shape == aa.shape == chh.shape == correct_shape
         )
@@ -148,7 +149,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         levy: AbstractSpaceTimeLevyArea,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: ULDArgs,
+        uld_args: UnderdampedLangevinArgs,
         coeffs: _ALIGNCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: UnderdampedLangevinX,

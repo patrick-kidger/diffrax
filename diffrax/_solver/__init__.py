@@ -13,6 +13,7 @@ from .dopri5 import Dopri5 as Dopri5
 from .dopri8 import Dopri8 as Dopri8
 from .euler import Euler as Euler
 from .euler_heun import EulerHeun as EulerHeun
+from .foster_langevin_srk import AbstractFosterLangevinSRK as AbstractFosterLangevinSRK
 from .heun import Heun as Heun
 from .implicit_euler import ImplicitEuler as ImplicitEuler
 from .kencarp3 import KenCarp3 as KenCarp3

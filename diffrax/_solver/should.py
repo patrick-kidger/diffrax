@@ -13,7 +13,7 @@ from .._term import UnderdampedLangevinLeaf, UnderdampedLangevinX
 from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
-    ULDArgs,
+    UnderdampedLangevinArgs,
 )
 
 
@@ -83,6 +83,7 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
     interpolation_cls = LocalLinearInterpolation
     minimal_levy_area = AbstractSpaceTimeTimeLevyArea
     taylor_threshold: RealScalarLike = eqx.field(static=True)
+    _is_fsal = True
 
     def __init__(self, taylor_threshold: RealScalarLike = 0.1):
         r"""**Arguments:**
@@ -160,7 +161,7 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
         chh = jnp.stack([c4 / 168, -c3 / 30, 3 * c2 / 20, -c / 2, one, zero], axis=-1)
         ckk = jnp.stack([5 * c4 / 168, -c3 / 7, c2 / 2, -c, zero, zero], axis=-1)
 
-        correct_shape = c.shape + (6,)
+        correct_shape = jnp.shape(c) + (6,)
         assert (
             beta_half.shape
             == a_half.shape
@@ -192,7 +193,7 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
         levy: AbstractSpaceTimeTimeLevyArea,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: ULDArgs,
+        uld_args: UnderdampedLangevinArgs,
         coeffs: _ShOULDCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: UnderdampedLangevinX,

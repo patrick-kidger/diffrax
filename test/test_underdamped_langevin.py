@@ -16,6 +16,7 @@ from .helpers import (
 )
 
 
+# ULD stands for Underdamped Langevin Diffusion
 def _only_uld_solvers_cls():
     yield diffrax.ALIGN
     yield diffrax.ShOULD
@@ -34,11 +35,17 @@ def get_pytree_uld(t0=0.3, t1=1.0, dtype=jnp.float32):
     def make_pytree(array_factory):
         return {
             "rr": (
-                array_factory((2,), dtype),
-                array_factory((2,), dtype),
+                array_factory((1, 3, 2), dtype),
+                array_factory(
+                    (
+                        3,
+                        2,
+                    ),
+                    dtype,
+                ),
             ),
             "qq": (
-                array_factory((2,), dtype),
+                array_factory((1, 2), dtype),
                 array_factory((3,), dtype),
             ),
         }
@@ -48,7 +55,7 @@ def get_pytree_uld(t0=0.3, t1=1.0, dtype=jnp.float32):
     y0 = (x0, v0)
 
     g1 = {
-        "rr": 0.001 * jnp.ones((2,), dtype),
+        "rr": 0.001 * jnp.ones((3, 2), dtype),
         "qq": (
             jnp.ones((), dtype),
             10 * jnp.ones((3,), dtype),

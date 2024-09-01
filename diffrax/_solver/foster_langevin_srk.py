@@ -1,6 +1,6 @@
 import abc
 from collections.abc import Callable
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -9,7 +9,6 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox import AbstractVar
-from jax import vmap
 from jaxtyping import PyTree
 
 from .._custom_types import (
@@ -22,19 +21,21 @@ from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import (
     AbstractTerm,
+    broadcast_underdamped_langevin_arg,
     MultiTerm,
     UnderdampedLangevinDiffusionTerm,
     UnderdampedLangevinDriftTerm,
     UnderdampedLangevinLeaf,
+    UnderdampedLangevinStructureError,
     UnderdampedLangevinTuple,
     UnderdampedLangevinX,
     WrapTerm,
 )
-from .base import AbstractItoSolver, AbstractStratonovichSolver
+from .base import AbstractStratonovichSolver
 
 
 _ErrorEstimate = TypeVar("_ErrorEstimate", None, UnderdampedLangevinTuple)
-ULDArgs = tuple[
+UnderdampedLangevinArgs = tuple[
     UnderdampedLangevinX,
     UnderdampedLangevinX,
     Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
@@ -56,23 +57,6 @@ def _get_args_from_terms(
     u = drift.u
     f = drift.grad_f
     return gamma, u, f
-
-
-def _broadcast_pytree(source, target_tree):
-    # Broadcasts the source PyTree to the shape and PyTree structure of
-    # target_tree_shape. Requires that source is a prefix tree of target_tree
-    # This is used to case gamma and u to the shape of x0 and v0
-    def _inner_broadcast(_src_arr, _inner_target_tree):
-        _arr = jnp.asarray(_src_arr)
-
-        def fun(_leaf):
-            return jnp.asarray(
-                jnp.broadcast_to(_arr, _leaf.shape), dtype=jnp.result_type(_leaf)
-            )
-
-        return jtu.tree_map(fun, _inner_target_tree)
-
-    return jtu.tree_map(_inner_broadcast, source, target_tree)
 
 
 # CONCERNING COEFFICIENTS:
@@ -103,12 +87,11 @@ class SolverState(eqx.Module, Generic[_Coeffs]):
     taylor_coeffs: PyTree[_Coeffs, "UnderdampedLangevinX"]
     coeffs: _Coeffs
     rho: UnderdampedLangevinX
-    prev_f: UnderdampedLangevinX
+    prev_f: Optional[UnderdampedLangevinX]
 
 
 class AbstractFosterLangevinSRK(
     AbstractStratonovichSolver[SolverState],
-    AbstractItoSolver[SolverState],
     Generic[_Coeffs, _ErrorEstimate],
 ):
     r"""Abstract class for Stochastic Runge Kutta methods specifically designed
@@ -124,10 +107,10 @@ class AbstractFosterLangevinSRK(
     and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
     $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
-    the friction and the inertia of the system.
+    the friction and the damping of the system.
 
     Solvers which inherit from this class include [`diffrax.ALIGN`][],
-    [`diffrax.ShOULD`][], and [`diffrax.QUIC_SORT`][].
+    [`diffrax.ShOULD`][], and [`diffrax.QUICSORT`][].
     """
 
     term_structure = MultiTerm[
@@ -136,6 +119,7 @@ class AbstractFosterLangevinSRK(
     interpolation_cls = LocalLinearInterpolation
     minimal_levy_area: eqx.AbstractClassVar[type[AbstractBrownianIncrement]]
     taylor_threshold: AbstractVar[RealScalarLike]
+    _is_fsal: eqx.AbstractClassVar[bool]
 
     @abc.abstractmethod
     def _directly_compute_coeffs_leaf(
@@ -211,11 +195,7 @@ class AbstractFosterLangevinSRK(
                 cond = jnp.expand_dims(cond, axis=-1)
 
             def select_tay_or_direct():
-                if jnp.ndim(c) == 0:
-                    direct_out = self._directly_compute_coeffs_leaf(h, c)
-                else:
-                    fun = lambda _c: self._directly_compute_coeffs_leaf(h, _c)
-                    direct_out = vmap(fun)(c)
+                direct_out = self._directly_compute_coeffs_leaf(h, c)
 
                 def _choose(tay_leaf, direct_leaf):
                     assert tay_leaf.ndim == direct_leaf.ndim == cond.ndim, (
@@ -251,7 +231,7 @@ class AbstractFosterLangevinSRK(
         tree_with_coeffs = jtu.tree_map(recompute_coeffs_leaf, gamma, tay_coeffs)
         outer = jtu.tree_structure(gamma)
         assert inner is not sentinel, "inner tree structure not set"
-        coeffs_with_tree = jtu.tree_transpose(outer, inner, tree_with_coeffs)  # type: ignore
+        coeffs_with_tree = jtu.tree_transpose(outer, inner, tree_with_coeffs)  # pyright: ignore
         return coeffs_with_tree
 
     def init(
@@ -273,16 +253,19 @@ class AbstractFosterLangevinSRK(
         h = drift.contr(t0, t1)
         x0, v0 = y0
 
-        gamma = _broadcast_pytree(gamma, x0)
-        u = _broadcast_pytree(u, x0)
-        grad_f_shape = jax.eval_shape(grad_f, x0)
+        gamma = broadcast_underdamped_langevin_arg(gamma, x0, "gamma")
+        u = broadcast_underdamped_langevin_arg(u, x0, "u")
+
+        try:
+            grad_f_shape = jax.eval_shape(grad_f, x0)
+        except ValueError:
+            raise UnderdampedLangevinStructureError("grad_f")
 
         def _shape_check_fun(_x, _g, _u, _fx):
             return _x.shape == _g.shape == _u.shape == _fx.shape
 
-        assert jtu.tree_all(
-            jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)
-        ), "The shapes of gamma, u, and grad_f(x0) must be the same as x0."
+        if not jtu.tree_all(jtu.tree_map(_shape_check_fun, x0, gamma, u, grad_f_shape)):
+            raise UnderdampedLangevinStructureError(None)
 
         tay_coeffs = jtu.tree_map(self._tay_coeffs_single, gamma)
         # tay_coeffs have the same tree structure as gamma, with each leaf being a
@@ -291,6 +274,7 @@ class AbstractFosterLangevinSRK(
 
         coeffs = self._recompute_coeffs(h, gamma, tay_coeffs)
         rho = jtu.tree_map(lambda c, _u: jnp.sqrt(2 * c * _u), gamma, u)
+        prev_f = grad_f(x0) if self._is_fsal else None
 
         state_out = SolverState(
             gamma=gamma,
@@ -299,7 +283,7 @@ class AbstractFosterLangevinSRK(
             taylor_coeffs=tay_coeffs,
             coeffs=coeffs,
             rho=rho,
-            prev_f=grad_f(x0),
+            prev_f=prev_f,
         )
 
         return state_out
@@ -311,16 +295,29 @@ class AbstractFosterLangevinSRK(
         levy,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: ULDArgs,
+        uld_args: UnderdampedLangevinArgs,
         coeffs: _Coeffs,
         rho: UnderdampedLangevinX,
-        prev_f: UnderdampedLangevinX,
+        prev_f: Optional[UnderdampedLangevinX],
     ) -> tuple[
-        UnderdampedLangevinX, UnderdampedLangevinX, UnderdampedLangevinX, _ErrorEstimate
+        UnderdampedLangevinX,
+        UnderdampedLangevinX,
+        Optional[UnderdampedLangevinX],
+        _ErrorEstimate,
     ]:
-        r"""This method specifies how to compute a single step of the ULD SRK
-        method. This holds just the computation that differs between the different
-        SRK methods. The common bits are handled by the `step` method."""
+        r"""This method specifies how to compute a single step of the Underdamped
+        Langevin SRK method.
+        This holds just the computation that differs between the different
+        SRK methods. The common bits are handled by the `step` method.
+
+        **Returns:**
+
+        (x_out, v_out, f_fsal, error), where:
+
+        - `x_out` and `v_out` are the new position and velocity.
+        - `f_fsal` is the new evaluation of the gradient of the potential function.
+        - `error` is the error estimate.
+        """
         raise NotImplementedError
 
     def step(
@@ -359,15 +356,19 @@ class AbstractFosterLangevinSRK(
 
         # compute the Brownian increment and space-time(-time) Levy area
         levy = diffusion.contr(t0, t1, use_levy=True)
-        assert isinstance(levy, self.minimal_levy_area), (
-            f"The Brownian motion must have"
-            f" `levy_area={self.minimal_levy_area.__name__}`"
-        )
+        if not isinstance(levy, self.minimal_levy_area):
+            raise ValueError(
+                f"The Brownian motion must have"
+                f" `levy_area={self.minimal_levy_area.__name__}`"
+            )
 
         x0, v0 = y0
-        prev_f = lax.cond(
-            eqxi.unvmap_any(made_jump), lambda: grad_f(x0), lambda: st.prev_f
-        )
+        if made_jump is False:
+            prev_f = st.prev_f
+        else:
+            prev_f = lax.cond(
+                eqxi.unvmap_any(made_jump), lambda: grad_f(x0), lambda: st.prev_f
+            )
 
         # The actual step computation, handled by the subclass
         x_out, v_out, f_fsal, error = self._compute_step(
@@ -384,7 +385,13 @@ class AbstractFosterLangevinSRK(
                 f" v_out: {_v.shape}, x_out: {_x.shape}, f_fsal: {_f.shape}"
             )
 
-        jtu.tree_map(check_shapes_dtypes, x_out, v_out, f_fsal, x0)
+        # Some children classes may not use f_fsal, so we allow it to be None
+        if self._is_fsal:
+            _f_fsal = f_fsal
+        else:
+            assert f_fsal is None
+            _f_fsal = x0
+        jtu.tree_map(check_shapes_dtypes, x_out, v_out, _f_fsal, x0)
 
         y1 = (x_out, v_out)
 

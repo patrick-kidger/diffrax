@@ -798,11 +798,42 @@ UnderdampedLangevinX = PyTree[
 UnderdampedLangevinTuple = tuple[UnderdampedLangevinX, UnderdampedLangevinX]
 
 
+class UnderdampedLangevinStructureError(Exception):
+    """Raised when the structure of the arguments in the Underdamped Langevin
+    terms is incorrect."""
+
+    # Without this, the ValueError would be caught in _integrate._term_compatible,
+    # which would then give a less informative error message.
+    def __init__(self, problematic_arg: Optional[str]):
+        if problematic_arg is None:
+            msg = (
+                "If `x` is the position of the Underdamped Langevin diffusion,"
+                " then the PyTree structures and shapes of `grad_f(x)` and of "
+                "the arguments `gamma` and `u` must be the same as the structure"
+                " and shapes of x."
+            )
+        elif problematic_arg == "grad_f":
+            msg = (
+                "The function `grad_f` in the Underdamped Langevin term must be"
+                " a callable, whose input and output have the same PyTree structure"
+                " and shapes as the position `x`."
+            )
+        else:
+            msg = (
+                f"If `x` is the position of the Underdamped Langevin diffusion,"
+                f" then the PyTree structure and shapes of the argument"
+                f" `{problematic_arg}` must be the same as the structure and"
+                f" shapes of x."
+            )
+
+        super().__init__(msg)
+
+
 def _broadcast_pytree(source, target_tree):
     # Broadcasts the source PyTree to the shape and PyTree structure of
     # target_tree_shape. Requires that source is a prefix tree of target_tree
-    # This is used to case gamma and u to the shape of x0 and v0
-    def _inner_broadcast(_src_arr, _inner_target_tree):
+    # This is used to broadcast gamma and u to the shape of x0 and v0
+    def inner_broadcast(_src_arr, _inner_target_tree):
         _arr = jnp.asarray(_src_arr)
 
         def fun(_leaf):
@@ -812,7 +843,17 @@ def _broadcast_pytree(source, target_tree):
 
         return jtu.tree_map(fun, _inner_target_tree)
 
-    return jtu.tree_map(_inner_broadcast, source, target_tree)
+    return jtu.tree_map(inner_broadcast, source, target_tree)
+
+
+def broadcast_underdamped_langevin_arg(
+    arg: PyTree[ArrayLike], x: UnderdampedLangevinX, arg_name: str
+) -> UnderdampedLangevinX:
+    """Broadcasts the argument `arg` to the same structure as the position `x`."""
+    try:
+        return _broadcast_pytree(arg, x)
+    except ValueError:
+        raise UnderdampedLangevinStructureError(arg_name)
 
 
 class UnderdampedLangevinDiffusionTerm(
@@ -833,12 +874,31 @@ class UnderdampedLangevinDiffusionTerm(
     and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
     $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
-    the friction and the inertia of the system.
+    the friction and the damping of the system.
     """
 
     gamma: PyTree[ArrayLike]
     u: PyTree[ArrayLike]
     control: AbstractBrownianPath
+
+    def __init__(
+        self,
+        gamma: PyTree[ArrayLike],
+        u: PyTree[ArrayLike],
+        bm: AbstractBrownianPath,
+    ):
+        r"""
+        **Arguments:**
+
+        - `gamma`: A vector containing the diagonal entries of the friction matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `u`: A vector containing the diagonal entries of the damping matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `bm`: A Brownian path representing the Brownian motion $w$.
+        """
+        self.gamma = gamma
+        self.u = u
+        self.control = bm
 
     def vf(
         self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
@@ -846,8 +906,9 @@ class UnderdampedLangevinDiffusionTerm(
         x, v = y
         # gamma, u and v can all have different pytree structures, we only know that
         # gamma and u are prefixes of v
-        gamma = _broadcast_pytree(self.gamma, v)
-        u = _broadcast_pytree(self.u, v)
+
+        gamma = broadcast_underdamped_langevin_arg(self.gamma, v, "gamma")
+        u = broadcast_underdamped_langevin_arg(self.u, v, "u")
 
         def _fun(_gamma, _u):
             return jnp.sqrt(2 * _gamma * _u)
@@ -885,12 +946,33 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
     and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
     $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
-    the friction and the inertia of the system.
+    the friction and the damping of the system.
     """
 
     gamma: PyTree[ArrayLike]
     u: PyTree[ArrayLike]
     grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX]
+
+    def __init__(
+        self,
+        gamma: PyTree[ArrayLike],
+        u: PyTree[ArrayLike],
+        grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+    ):
+        r"""
+        **Arguments:**
+
+        - `gamma`: A vector containing the diagonal entries of the friction matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `u`: A vector containing the diagonal entries of the damping matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `grad_f`: A callable representing the gradient of the potential function $f$.
+            This callable should take a PyTree of the same shape as $x$ and
+            return a PyTree of the same shape.
+        """
+        self.gamma = gamma
+        self.u = u
+        self.grad_f = grad_f
 
     def vf(
         self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
@@ -898,16 +980,19 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
         x, v = y
         # gamma, u and v can all have different pytree structures, we only know that
         # gamma and u are prefixes of v (which is the same as x)
-        gamma = _broadcast_pytree(self.gamma, v)
-        u = _broadcast_pytree(self.u, v)
 
-        f_x = self.grad_f(x)
-        vf_x = v
+        gamma = broadcast_underdamped_langevin_arg(self.gamma, v, "gamma")
+        u = broadcast_underdamped_langevin_arg(self.u, v, "u")
 
         def fun(_gamma, _u, _v, _f_x):
             return -_gamma * _v - _u * _f_x
 
-        vf_v = jtu.tree_map(fun, gamma, u, v, f_x)
+        vf_x = v
+        try:
+            f_x = self.grad_f(x)
+            vf_v = jtu.tree_map(fun, gamma, u, v, f_x)
+        except ValueError:
+            raise UnderdampedLangevinStructureError("grad_f")
         vf_y = (vf_x, vf_v)
         return vf_y
 
@@ -938,13 +1023,13 @@ def make_underdamped_langevin_term(
     and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
     $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
     $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
-    the friction and the inertia of the system.
+    the friction and the damping of the system.
 
     **Arguments:**
 
     - `gamma`: A vector containing the diagonal entries of the friction matrix;
         a scalar or a PyTree of the same shape as the position vector $x$.
-    - `u`: A vector containing the diagonal entries of the dampening matrix;
+    - `u`: A vector containing the diagonal entries of the damping matrix;
         a scalar or a PyTree of the same shape as the position vector $x$.
     - `grad_f`: A callable representing the gradient of the potential function $f$.
         This callable should take a PyTree of the same shape as $x$ and
@@ -953,7 +1038,8 @@ def make_underdamped_langevin_term(
 
     **Returns:**
 
-    A `MultiTerm` representing the Underdamped Langevin SDE.
+    `MultiTerm(UnderdampedLangevinDriftTerm(gamma, u, grad_f),
+     UnderdampedLangevinDiffusionTerm(gamma, u, bm))`
     """
     # In practice we don't require the PyTree structure of gamma and u to be the same
     # as x and v. We only require that they are prefixes of x and v, in a way that
