@@ -149,7 +149,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         levy: AbstractSpaceTimeLevyArea,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: UnderdampedLangevinArgs,
+        underdamped_langevin_args: UnderdampedLangevinArgs,
         coeffs: _ALIGNCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: UnderdampedLangevinX,
@@ -163,7 +163,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         w: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
         hh: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
 
-        gamma, u, f = uld_args
+        gamma, u, f = underdamped_langevin_args
 
         uh = (u**ω * h).ω
         f0 = prev_f

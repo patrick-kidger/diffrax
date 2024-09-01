@@ -1,7 +1,7 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from equinox.internal import ω
+from equinox.internal import scan_trick, ω
 from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
@@ -193,7 +193,7 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
         levy: AbstractSpaceTimeTimeLevyArea,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: UnderdampedLangevinArgs,
+        underdamped_langevin_args: UnderdampedLangevinArgs,
         coeffs: _ShOULDCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: UnderdampedLangevinX,
@@ -203,7 +203,9 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
         hh: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
         kk: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
-        gamma, u, f = uld_args
+        chh_hh_plus_ckk_kk = (coeffs.chh**ω * hh**ω + coeffs.ckk**ω * kk**ω).ω
+
+        gamma, u, f = underdamped_langevin_args
 
         rho_w_k = (rho**ω * (w**ω - 12 * kk**ω)).ω
         uh = (u**ω * h).ω
@@ -215,17 +217,28 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
             + coeffs.a_half**ω * v1**ω
             + coeffs.b_half**ω * (-(uh**ω) * f0**ω + rho_w_k**ω)
         ).ω
-        f1 = f(x1)
 
-        chh_hh_plus_ckk_kk = (coeffs.chh**ω * hh**ω + coeffs.ckk**ω * kk**ω).ω
+        # Use equinox.internal.scan_trick to compute f1, x_out and f_out in one go
+        # carry = x, f1, f2. We use x0 as the initial value for f1 and f2
+        init = x1, x0, x0
 
-        x_out = (
-            x0**ω
-            + coeffs.a1**ω * v0**ω
-            - uh**ω * coeffs.b1**ω * (1 / 3 * f0**ω + 2 / 3 * f1**ω)
-            + rho**ω * (coeffs.b1**ω * w**ω + chh_hh_plus_ckk_kk**ω)
-        ).ω
-        f_out = f(x_out)
+        def fn(carry):
+            x, _f, _ = carry
+            fx = f(x)
+            return x, _f, fx
+
+        def compute_x2(carry):
+            _, _, _f1 = carry
+            x = (
+                x0**ω
+                + coeffs.a1**ω * v0**ω
+                - uh**ω * coeffs.b1**ω * (1 / 3 * f0**ω + 2 / 3 * _f1**ω)
+                + rho**ω * (coeffs.b1**ω * w**ω + chh_hh_plus_ckk_kk**ω)
+            ).ω
+            return x, _f1, _f1
+
+        x_out, f1, f_out = scan_trick(fn, [compute_x2], init)
+
         v_out = (
             coeffs.beta1**ω * v0**ω
             - uh**ω

@@ -34,16 +34,7 @@ def _solvers_and_orders():
 def get_pytree_uld(t0=0.3, t1=1.0, dtype=jnp.float32):
     def make_pytree(array_factory):
         return {
-            "rr": (
-                array_factory((1, 3, 2), dtype),
-                array_factory(
-                    (
-                        3,
-                        2,
-                    ),
-                    dtype,
-                ),
-            ),
+            "rr": (array_factory((1, 3, 2), dtype), array_factory((3, 2), dtype)),
             "qq": (
                 array_factory((1, 2), dtype),
                 array_factory((3,), dtype),

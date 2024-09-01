@@ -326,7 +326,7 @@ class AbstractFosterLangevinSRK(
         levy,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: UnderdampedLangevinArgs,
+        underdamped_langevin_args: UnderdampedLangevinArgs,
         coeffs: _Coeffs,
         rho: UnderdampedLangevinX,
         prev_f: Optional[UnderdampedLangevinX],

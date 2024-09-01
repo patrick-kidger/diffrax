@@ -5,7 +5,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-from equinox.internal import ω
+from equinox.internal import scan_trick, ω
 from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
@@ -193,7 +193,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         levy: AbstractSpaceTimeTimeLevyArea,
         x0: UnderdampedLangevinX,
         v0: UnderdampedLangevinX,
-        uld_args: UnderdampedLangevinArgs,
+        underdamped_langevin_args: UnderdampedLangevinArgs,
         coeffs: _QUICSORTCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: Optional[UnderdampedLangevinX],
@@ -204,7 +204,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         hh: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.H, dtypes)
         kk: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.K, dtypes)
 
-        gamma, u, f = uld_args
+        gamma, u, f = underdamped_langevin_args
 
         def _extract_coeffs(coeff, index):
             return jtu.tree_map(lambda arr: arr[..., index], coeff)
@@ -226,12 +226,24 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         v_tilde = (v0**ω + rho**ω * (hh**ω + 6 * kk**ω)).ω
 
         x1 = (x0**ω + a_l**ω * v_tilde**ω + b_l**ω * rho_w_k**ω).ω
-        f1uh = (f(x1) ** ω * uh**ω).ω
 
-        x2 = (
-            x0**ω + a_r**ω * v_tilde**ω + b_r**ω * rho_w_k**ω - a_third**ω * f1uh**ω
-        ).ω
-        f2uh = (f(x2) ** ω * uh**ω).ω
+        # Use eqinox.internal.scan_trick to compute f1, x2 and f2 in one go
+        # carry = x, f1, f2. We use x0 as the initial value for f1 and f2
+        init = x1, x0, x0
+
+        def fn(carry):
+            x, _f, _ = carry
+            fx_uh = (f(x) ** ω * uh**ω).ω
+            return x, _f, fx_uh
+
+        def compute_x2(carry):
+            _, _, f1 = carry
+            x = (
+                x0**ω + a_r**ω * v_tilde**ω + b_r**ω * rho_w_k**ω - a_third**ω * f1**ω
+            ).ω
+            return x, f1, f1
+
+        x2, f1uh, f2uh = scan_trick(fn, [compute_x2], init)
 
         x_out = (
             x0**ω
