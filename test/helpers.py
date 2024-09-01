@@ -12,9 +12,10 @@ from diffrax import (
     AbstractBrownianPath,
     AbstractTerm,
     ControlTerm,
-    make_underdamped_langevin_term,
     MultiTerm,
     ODETerm,
+    UnderdampedLangevinDiffusionTerm,
+    UnderdampedLangevinDriftTerm,
     VirtualBrownianTree,
 )
 from diffrax._misc import is_tuple_of_ints
@@ -490,6 +491,12 @@ def get_time_sde(t0, t1, dtype, key, noise_dim):
         return MultiTerm(ODETerm(_drift), ControlTerm(_diffusion, bm))
 
     return SDE(get_terms, args, y0, t0, t1, (noise_dim,))
+
+
+def make_underdamped_langevin_term(gamma, u, grad_f, bm):
+    drift = UnderdampedLangevinDriftTerm(gamma, u, grad_f)
+    diffusion = UnderdampedLangevinDiffusionTerm(gamma, u, bm)
+    return MultiTerm(drift, diffusion)
 
 
 def get_bqp(t0=0.3, t1=15.0, dtype=jnp.float32):

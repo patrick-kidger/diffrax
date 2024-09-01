@@ -127,7 +127,6 @@ from ._step_size_controller import (
 from ._term import (
     AbstractTerm as AbstractTerm,
     ControlTerm as ControlTerm,
-    make_underdamped_langevin_term as make_underdamped_langevin_term,
     MultiTerm as MultiTerm,
     ODETerm as ODETerm,
     UnderdampedLangevinDiffusionTerm as UnderdampedLangevinDiffusionTerm,

@@ -4,11 +4,12 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import pytest
-from diffrax import diffeqsolve, make_underdamped_langevin_term, SaveAt
+from diffrax import diffeqsolve, SaveAt
 
 from .helpers import (
     get_bqp,
     get_harmonic_oscillator,
+    make_underdamped_langevin_term,
     path_l2_dist,
     SDE,
     simple_batch_sde_solve,
@@ -217,7 +218,7 @@ def test_reverse_solve(solver_cls):
         key=jr.key(0),
         levy_area=diffrax.SpaceTimeTimeLevyArea,
     )
-    terms = diffrax.make_underdamped_langevin_term(gamma, u, lambda x: 2 * x, bm)
+    terms = make_underdamped_langevin_term(gamma, u, lambda x: 2 * x, bm)
 
     solver = solver_cls(0.01)
     sol = diffeqsolve(terms, solver, t0, t1, dt0=dt0, y0=y0, args=None, saveat=saveat)

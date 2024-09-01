@@ -412,23 +412,17 @@ class AbstractFosterLangevinSRK(
             h, levy, x0, v0, (gamma, u, grad_f), coeffs, rho, prev_f
         )
 
-        def check_shapes_dtypes(_x, _v, _f, _x0):
-            assert _x.dtype == _v.dtype == _f.dtype == _x0.dtype, (
-                f"dtypes don't match. x0: {x0.dtype},"
-                f" v_out: {_v.dtype}, x_out: {_x.dtype}, f_fsal: {_f.dtype}"
-            )
-            assert _x.shape == _v.shape == _f.shape == _x0.shape, (
-                f"Shapes don't match. x0: {x0.shape},"
-                f" v_out: {_v.shape}, x_out: {_x.shape}, f_fsal: {_f.shape}"
-            )
+        def check_shapes_dtypes(arg, *args):
+            for x in args:
+                assert x.shape == arg.shape
+                assert x.dtype == arg.dtype
 
         # Some children classes may not use f_fsal, so we allow it to be None
         if self._is_fsal:
-            _f_fsal = f_fsal
+            jtu.tree_map(check_shapes_dtypes, x_out, v_out, f_fsal, x0)
         else:
             assert f_fsal is None
-            _f_fsal = x0
-        jtu.tree_map(check_shapes_dtypes, x_out, v_out, _f_fsal, x0)
+            jtu.tree_map(check_shapes_dtypes, x_out, v_out, x0)
 
         y1 = (x_out, v_out)
 
