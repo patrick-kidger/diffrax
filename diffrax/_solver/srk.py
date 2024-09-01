@@ -28,7 +28,7 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractTerm, MultiTerm
 from .base import AbstractSolver
 
 
@@ -276,11 +276,21 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
     @property
     def term_structure(self):
-        return MultiTerm[tuple[ODETerm, AbstractTerm[Any, self.minimal_levy_area]]]
+        return MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, self.minimal_levy_area],
+            ]
+        ]
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm[Any, AbstractBrownianIncrement]]],
+        terms: MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, AbstractBrownianIncrement],
+            ]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -314,7 +324,12 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm[Any, AbstractBrownianIncrement]]],
+        terms: MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, AbstractBrownianIncrement],
+            ]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -647,7 +662,12 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
     def func(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm[Any, AbstractBrownianIncrement]]],
+        terms: MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, AbstractBrownianIncrement],
+            ]
+        ],
         t0: RealScalarLike,
         y0: Y,
         args: PyTree,

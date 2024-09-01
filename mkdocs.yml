@@ -111,6 +111,7 @@ nav:
         - Kalman filter: 'examples/kalman_filter.ipynb'
         - Second-order sensitivities: 'examples/hessian.ipynb'
         - Nonlinear heat PDE: 'examples/nonlinear_heat_pde.ipynb'
+        - Underdamped Langevin diffusion: 'examples/underdamped_langevin_example.ipynb'
     - Basic API:
         - 'api/diffeqsolve.md'
         - Solvers:
