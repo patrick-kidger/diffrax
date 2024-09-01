@@ -14,8 +14,11 @@ from diffrax import (
     ControlTerm,
     MultiTerm,
     ODETerm,
+    UnderdampedLangevinDiffusionTerm,
+    UnderdampedLangevinDriftTerm,
     VirtualBrownianTree,
 )
+from diffrax._misc import is_tuple_of_ints
 from jax import Array
 from jaxtyping import PRNGKeyArray, PyTree, Shaped
 
@@ -116,7 +119,7 @@ def path_l2_dist(
 def _get_minimal_la(solver):
     while isinstance(solver, diffrax.HalfSolver):
         solver = solver.solver
-    return getattr(solver, "minimal_levy_area", diffrax.BrownianIncrement)
+    return getattr(solver, "minimal_levy_area", diffrax.AbstractBrownianIncrement)
 
 
 def _abstract_la_to_la(abstract_la):
@@ -137,7 +140,7 @@ def _abstract_la_to_la(abstract_la):
 def _batch_sde_solve(
     key: PRNGKeyArray,
     get_terms: Callable[[diffrax.AbstractBrownianPath], diffrax.AbstractTerm],
-    w_shape: tuple[int, ...],
+    w_shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
     t0: float,
     t1: float,
     y0: PyTree[Array],
@@ -152,7 +155,10 @@ def _batch_sde_solve(
     abstract_levy_area = _get_minimal_la(solver) if levy_area is None else levy_area
     concrete_la = _abstract_la_to_la(abstract_levy_area)
     dtype = jnp.result_type(*jtu.tree_leaves(y0))
-    struct = jax.ShapeDtypeStruct(w_shape, dtype)
+    if is_tuple_of_ints(w_shape):
+        struct = jax.ShapeDtypeStruct(w_shape, dtype)
+    else:
+        struct = w_shape
     bm = diffrax.VirtualBrownianTree(
         t0=t0,
         t1=t1,
@@ -176,7 +182,8 @@ def _batch_sde_solve(
         stepsize_controller=controller,
         saveat=saveat,
     )
-    return sol.ys, sol.stats["num_accepted_steps"]
+    steps = sol.stats["num_accepted_steps"]
+    return sol.ys, steps
 
 
 def _resulting_levy_area(
@@ -220,7 +227,7 @@ def sde_solver_strong_order(
     y0: PyTree[Array],
     args: PyTree,
     solver: diffrax.AbstractSolver,
-    ref_solver: diffrax.AbstractSolver,
+    ref_solver: Optional[diffrax.AbstractSolver],
     levels: tuple[int, int],
     ref_level: int,
     get_dt_and_controller: Callable[
@@ -228,30 +235,37 @@ def sde_solver_strong_order(
     ],
     saveat: diffrax.SaveAt,
     bm_tol: float,
+    levy_area: Optional[type[diffrax.AbstractBrownianIncrement]],
+    ref_solution: Optional[PyTree[Array]],
 ):
-    levy_area1 = _get_minimal_la(solver)
-    levy_area2 = _get_minimal_la(ref_solver)
-    # Stricter levy_area requirements inherit from less strict ones
-    levy_area = _resulting_levy_area(levy_area1, levy_area2)
+    if levy_area is None:
+        levy_area1 = _get_minimal_la(solver)
+        levy_area2 = _get_minimal_la(ref_solver)
+        # Stricter levy_area requirements inherit from less strict ones
+        levy_area = _resulting_levy_area(levy_area1, levy_area2)
 
     level_coarse, level_fine = levels
 
-    dt, step_controller = get_dt_and_controller(ref_level)
-    correct_sols, _ = _batch_sde_solve(
-        keys,
-        get_terms,
-        w_shape,
-        t0,
-        t1,
-        y0,
-        args,
-        ref_solver,
-        levy_area,
-        dt,
-        step_controller,
-        bm_tol,
-        saveat,
-    )
+    if ref_solution is None:
+        assert ref_solver is not None
+        dt, step_controller = get_dt_and_controller(ref_level)
+        correct_sols, _ = _batch_sde_solve(
+            keys,
+            get_terms,
+            w_shape,
+            t0,
+            t1,
+            y0,
+            args,
+            ref_solver,
+            levy_area,
+            dt,
+            step_controller,
+            bm_tol,
+            saveat,
+        )
+    else:
+        correct_sols = ref_solution
 
     errs_list, steps_list = [], []
     for level in range(level_coarse, level_fine + 1):
@@ -288,7 +302,7 @@ class SDE:
     y0: PyTree[Array]
     t0: float
     t1: float
-    w_shape: tuple[int, ...]
+    w_shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]]
 
     def get_dtype(self):
         return jnp.result_type(*jtu.tree_leaves(self.y0))
@@ -296,11 +310,18 @@ class SDE:
     def get_bm(
         self,
         bm_key: PRNGKeyArray,
-        levy_area: type[Union[diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea]],
+        levy_area: type[
+            Union[
+                diffrax.BrownianIncrement,
+                diffrax.SpaceTimeLevyArea,
+                diffrax.SpaceTimeTimeLevyArea,
+            ]
+        ],
         tol: float,
     ):
-        shp_dtype = jax.ShapeDtypeStruct(self.w_shape, dtype=self.get_dtype())
-        return VirtualBrownianTree(self.t0, self.t1, tol, shp_dtype, bm_key, levy_area)
+        return VirtualBrownianTree(
+            self.t0, self.t1, tol, self.w_shape, bm_key, levy_area
+        )
 
 
 # A more concise function for use in the examples
@@ -313,6 +334,8 @@ def simple_sde_order(
     get_dt_and_controller,
     saveat,
     bm_tol,
+    levy_area,
+    ref_solution,
 ):
     _, level_fine = levels
     ref_level = level_fine + 2
@@ -331,6 +354,8 @@ def simple_sde_order(
         get_dt_and_controller,
         saveat,
         bm_tol,
+        levy_area,
+        ref_solution,
     )
 
 
@@ -466,3 +491,110 @@ def get_time_sde(t0, t1, dtype, key, noise_dim):
         return MultiTerm(ODETerm(_drift), ControlTerm(_diffusion, bm))
 
     return SDE(get_terms, args, y0, t0, t1, (noise_dim,))
+
+
+def make_underdamped_langevin_term(gamma, u, grad_f, bm):
+    drift = UnderdampedLangevinDriftTerm(gamma, u, grad_f)
+    diffusion = UnderdampedLangevinDiffusionTerm(gamma, u, bm)
+    return MultiTerm(drift, diffusion)
+
+
+def get_bqp(t0=0.3, t1=15.0, dtype=jnp.float32):
+    grad_f_bqp = lambda x: 4 * x * (jnp.square(x) - 1)
+    gamma, u = dtype(0.8), dtype(0.2)
+    y0_bqp = (dtype(0), dtype(0))
+    w_shape_bqp = ()
+
+    def get_terms_bqp(bm):
+        return make_underdamped_langevin_term(gamma, u, grad_f_bqp, bm)
+
+    return SDE(get_terms_bqp, None, y0_bqp, t0, t1, w_shape_bqp)
+
+
+def get_harmonic_oscillator(t0=0.3, t1=15.0, dtype=jnp.float32):
+    gamma_hosc = jnp.array([2, 0.5], dtype=dtype)
+    u_hosc = jnp.array([0.5, 2], dtype=dtype)
+    x0 = jnp.zeros((2,), dtype=dtype)
+    v0 = jnp.zeros((2,), dtype=dtype)
+    y0_hosc = (x0, v0)
+    w_shape_hosc = (2,)
+
+    def get_terms_hosc(bm):
+        return make_underdamped_langevin_term(gamma_hosc, u_hosc, lambda x: 2 * x, bm)
+
+    return SDE(get_terms_hosc, None, y0_hosc, t0, t1, w_shape_hosc)
+
+
+def get_neals_funnel(t0=0.0, t1=16.0, dtype=jnp.float32):
+    def log_p(x):
+        z_term = x[0] ** 2 / 6.0
+        y_term = jnp.sum(x[1:] ** 2) / jax.lax.stop_gradient(2.0 * jnp.exp(x[0] / 4.0))
+        return z_term + y_term
+
+    grad_log_p = jax.grad(log_p)
+
+    gamma = 2.0
+    u = 1.0
+    x0 = jnp.zeros((10,), dtype=dtype)
+    v0 = jnp.zeros((10,), dtype=dtype)
+    y0_neal = (x0, v0)
+    w_shape_neal = (10,)
+
+    def get_terms_neal(bm):
+        return make_underdamped_langevin_term(gamma, u, grad_log_p, bm)
+
+    return SDE(get_terms_neal, None, y0_neal, t0, t1, w_shape_neal)
+
+
+def get_uld3_langevin(t0=0.3, t1=15.0, dtype=jnp.float32):
+    # Three particles in 3D space with a potential that has three local minima,
+    # at (2, 2, 2), (-2, -2, -2) and (3, -1, 0).
+    def single_particle_potential(x):
+        assert x.shape == (3,)
+        return 1.0 * (
+            jnp.sum((x - 2.0 * jnp.ones((3,), dtype=dtype)) ** 2)
+            * jnp.sum((x + 2.0 * jnp.ones((3,), dtype=dtype)) ** 2)
+            * jnp.sum((x - jnp.array([3, -1, 0], dtype=dtype)) ** 2)
+        )
+
+    def potential(x):
+        assert x.shape == (9,)
+        return (
+            single_particle_potential(x[:3])
+            + single_particle_potential(x[3:6])
+            + single_particle_potential(x[6:])
+        )
+
+    grad_potential = jax.grad(potential)
+
+    def single_circ(x):
+        assert x.shape == (3,)
+        return 0.1 * jnp.array([x[1], -x[0], 0.0])
+
+    def circular_term(x):
+        assert x.shape == (9,)
+        return jnp.concatenate(
+            [
+                single_circ(x[:3]),
+                single_circ(x[3:6]),
+                single_circ(x[6:]),
+            ]
+        )
+
+    def grad_f(x):
+        assert x.shape == (9,)
+        # x0 and x1 will do a circular motion, so we will add a term of the form
+        force = grad_potential(x) + circular_term(x)
+        return 10.0 * force / (jnp.sum(jnp.abs(force)) + 10.0)
+
+    u = 1.0
+    gamma = 2.0
+    x0 = jnp.array([-1, 0, 1, 1, 0, -1, 1, 0, -1], dtype=dtype)
+    v0 = jnp.zeros((9,), dtype=dtype)
+    y0_uld3 = (x0, v0)
+    w_shape_uld3 = (9,)
+
+    def get_terms_uld3(bm):
+        return make_underdamped_langevin_term(u, gamma, grad_f, bm)
+
+    return SDE(get_terms_uld3, None, y0_uld3, t0, t1, w_shape_uld3)

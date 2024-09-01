@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -7,7 +7,7 @@ from equinox.internal import ω
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractTerm, MultiTerm
 from .base import AbstractStratonovichSolver
 
 
@@ -26,7 +26,9 @@ class EulerHeun(AbstractStratonovichSolver):
     Used to solve SDEs, and converges to the Stratonovich solution.
     """
 
-    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    term_structure: ClassVar = MultiTerm[
+        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+    ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
@@ -39,7 +41,7 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -49,7 +51,7 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
