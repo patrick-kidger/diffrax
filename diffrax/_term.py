@@ -798,37 +798,6 @@ UnderdampedLangevinX = PyTree[
 UnderdampedLangevinTuple = tuple[UnderdampedLangevinX, UnderdampedLangevinX]
 
 
-class UnderdampedLangevinStructureError(Exception):
-    """Raised when the structure of the arguments in the Underdamped Langevin
-    terms is incorrect."""
-
-    # Without this, the ValueError would be caught in _integrate._term_compatible,
-    # which would then give a less informative error message.
-    def __init__(self, problematic_arg: Optional[str]):
-        if problematic_arg is None:
-            msg = (
-                "If `x` is the position of the Underdamped Langevin diffusion,"
-                " then the PyTree structures and shapes of `grad_f(x)` and of "
-                "the arguments `gamma` and `u` must be the same as the structure"
-                " and shapes of x."
-            )
-        elif problematic_arg == "grad_f":
-            msg = (
-                "The function `grad_f` in the Underdamped Langevin term must be"
-                " a callable, whose input and output have the same PyTree structure"
-                " and shapes as the position `x`."
-            )
-        else:
-            msg = (
-                f"If `x` is the position of the Underdamped Langevin diffusion,"
-                f" then the PyTree structure and shapes of the argument"
-                f" `{problematic_arg}` must be the same as the structure and"
-                f" shapes of x."
-            )
-
-        super().__init__(msg)
-
-
 def _broadcast_pytree(source, target_tree):
     # Broadcasts the source PyTree to the shape and PyTree structure of
     # target_tree_shape. Requires that source is a prefix tree of target_tree
@@ -853,7 +822,11 @@ def broadcast_underdamped_langevin_arg(
     try:
         return _broadcast_pytree(arg, x)
     except ValueError:
-        raise UnderdampedLangevinStructureError(arg_name)
+        raise RuntimeError(
+            "The PyTree structure and shapes of the arguments `gamma` and `u`"
+            "in the Underdamped Langevin term must be the same as the structure"
+            "and shapes of the position `x`."
+        )
 
 
 class UnderdampedLangevinDiffusionTerm(
@@ -992,7 +965,11 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
             f_x = self.grad_f(x)
             vf_v = jtu.tree_map(fun, gamma, u, v, f_x)
         except ValueError:
-            raise UnderdampedLangevinStructureError("grad_f")
+            raise RuntimeError(
+                "The function `grad_f` in the Underdamped Langevin term must be"
+                " a callable, whose input and output have the same PyTree structure"
+                " and shapes as the position `x`."
+            )
         vf_y = (vf_x, vf_v)
         return vf_y
 

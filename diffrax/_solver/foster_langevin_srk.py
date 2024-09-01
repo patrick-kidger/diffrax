@@ -26,7 +26,6 @@ from .._term import (
     UnderdampedLangevinDiffusionTerm,
     UnderdampedLangevinDriftTerm,
     UnderdampedLangevinLeaf,
-    UnderdampedLangevinStructureError,
     UnderdampedLangevinTuple,
     UnderdampedLangevinX,
     WrapTerm,
@@ -290,13 +289,20 @@ class AbstractFosterLangevinSRK(
         try:
             grad_f_shape = jax.eval_shape(grad_f, x0)
         except ValueError:
-            raise UnderdampedLangevinStructureError("grad_f")
+            raise RuntimeError(
+                "The function `grad_f` in the Underdamped Langevin term must be"
+                " a callable, whose input and output have the same PyTree structure"
+                " and shapes as the position `x`."
+            )
 
         def shape_check_fun(_x, _g, _u, _fx):
             return _x.shape == _g.shape == _u.shape == _fx.shape
 
         if not jtu.tree_all(jtu.tree_map(shape_check_fun, x0, gamma, u, grad_f_shape)):
-            raise UnderdampedLangevinStructureError(None)
+            raise RuntimeError(
+                "The shapes and PyTree structures of x0, gamma, u, and grad_f(x0)"
+                " must match."
+            )
 
         tay_coeffs = jtu.tree_map(self._tay_coeffs_single, gamma)
         # tay_coeffs have the same tree structure as gamma, with each leaf being a
