@@ -85,10 +85,10 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
 
     interpolation_cls = LocalLinearInterpolation
     minimal_levy_area = AbstractSpaceTimeTimeLevyArea
-    taylor_threshold: RealScalarLike = eqx.field(static=True)
+    taylor_threshold: float = eqx.field(static=True)
     _is_fsal = False
 
-    def __init__(self, taylor_threshold: RealScalarLike = 0.1):
+    def __init__(self, taylor_threshold: float = 0.1):
         r"""**Arguments:**
 
         - `taylor_threshold`: If the product `h*gamma` is less than this, then
@@ -99,9 +99,11 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         self.taylor_threshold = taylor_threshold
 
     def order(self, terms):
+        del terms
         return 3
 
     def strong_order(self, terms):
+        del terms
         return 3.0
 
     def _directly_compute_coeffs_leaf(

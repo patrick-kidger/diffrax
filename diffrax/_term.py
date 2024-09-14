@@ -3,6 +3,7 @@ import operator
 import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
+from typing_extensions import TypeAlias
 
 import equinox as eqx
 import jax
@@ -791,11 +792,11 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 # `x` and the velocity `v`. Both of these have the same shape.
 # So, by UnderdampedLangevinX we denote the shape of the x component, and by
 # UnderdampedLangevinTuple we denote the shape of the tuple (x, v).
-UnderdampedLangevinLeaf = Shaped[Array, "*underdamped_langevin"]
-UnderdampedLangevinX = PyTree[
+UnderdampedLangevinLeaf: TypeAlias = Shaped[Array, " *underdamped_langevin"]
+UnderdampedLangevinX: TypeAlias = PyTree[
     Shaped[Array, "?*underdamped_langevin"], "UnderdampedLangevinX"
 ]
-UnderdampedLangevinTuple = tuple[UnderdampedLangevinX, UnderdampedLangevinX]
+UnderdampedLangevinTuple: TypeAlias = tuple[UnderdampedLangevinX, UnderdampedLangevinX]
 
 
 def _broadcast_pytree(source, target_tree):
