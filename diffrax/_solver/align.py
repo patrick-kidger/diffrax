@@ -46,8 +46,9 @@ _ErrorEstimate = UnderdampedLangevinTuple
 class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
     r"""The Adaptive Langevin via Interpolated Gradients and Noise method
     designed by James Foster. This is a second order solver for the
-    Underdamped Langevin Diffusion, the terms for which can be created using
-    [`diffrax.make_underdamped_langevin_term`][]. Uses two evaluations of the vector
+    Underdamped Langevin Diffusion, and accepts terms of the form
+    `MultiTerm(UnderdampedLangevinDriftTerm, UnderdampedLangevinDiffusionTerm)`.
+    Uses two evaluations of the vector
     field per step, but is FSAL, so in practice it only requires one.
 
     ??? cite "Reference"
