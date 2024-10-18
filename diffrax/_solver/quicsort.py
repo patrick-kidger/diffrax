@@ -47,9 +47,9 @@ class _QUICSORTCoeffs(AbstractCoeffs):
 class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
     r"""The QUadrature Inspired and Contractive Shifted ODE with Runge-Kutta Three
     method by James Foster and Daire O'Kane. This is a third order solver for the
-    Underdamped Langevin Diffusion, the terms for which can be created using
-    [`diffrax.make_underdamped_langevin_term`][]. Uses two evaluations of the vector
-    field per step.
+    Underdamped Langevin Diffusion, and accepts terms of the form
+    `MultiTerm(UnderdampedLangevinDriftTerm, UnderdampedLangevinDiffusionTerm)`.
+    Uses two evaluations of the vector field per step.
 
     ??? cite "Reference"
 
@@ -199,7 +199,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         coeffs: _QUICSORTCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: Optional[UnderdampedLangevinX],
-    ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, UnderdampedLangevinX, None]:
+    ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, None, None]:
         del prev_f
         dtypes = jtu.tree_map(jnp.result_type, x0)
         w: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
