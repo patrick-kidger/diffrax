@@ -59,8 +59,9 @@ class _ShOULDCoeffs(AbstractCoeffs):
 class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
     r"""The Shifted-ODE Runge-Kutta Three method
     designed by James Foster. This is a third order solver for the
-    Underdamped Langevin Diffusion, the terms for which can be created using
-    [`diffrax.make_underdamped_langevin_term`][]. Uses three evaluations of the vector
+    Underdamped Langevin Diffusion, the terms of the form
+    `MultiTerm(UnderdampedLangevinDriftTerm, UnderdampedLangevinDiffusionTerm)`.
+    Uses three evaluations of the vector
     field per step, but is FSAL, so in practice it only requires two.
 
     ??? cite "Reference"
