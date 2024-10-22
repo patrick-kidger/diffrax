@@ -364,7 +364,7 @@ def loop(
                 state.solver_state,
                 state.made_jump,
             )
-            num_dde_explicit_step = num_dde_implicit_step = 0
+            implicit_step = False
         else:
             min_delay = []
             flat_delays = jtu.tree_leaves(delays.delays)
@@ -439,64 +439,62 @@ def loop(
         )
         assert jnp.result_type(keep_step) is jnp.dtype(bool)
         # Finding all of the potential discontinuity roots
-        # if delays is not None:
-        #     _part_maybe_find_discontinuity = ft.partial(
-        #         maybe_find_discontinuity,
-        #         tprev,
-        #         tnext,
-        #         dense_info,
-        #         state,
-        #         delays,
-        #         solver,
-        #         args,
-        #     )
+        discont_update = False
+        if delays is not None:
+            #     _part_maybe_find_discontinuity = ft.partial(
+            #         maybe_find_discontinuity,
+            #         tprev,
+            #         tnext,
+            #         dense_info,
+            #         state,
+            #         delays,
+            #         solver,
+            #         args,
+            #     )
 
-        #     tsearch = jnp.linspace(tprev, tnext, delays.sub_intervals)
-        #     batch_tprev, batch_tnext = tsearch[:-1], tsearch[1:]
-        #     vmap_maybe_find_discontinuity_wrapper = jax.vmap(
-        #         _part_maybe_find_discontinuity, (None, 0, 0)
-        #     )
-        #     if delays.recurrent_checking:
-        #         (
-        #             tnext_candidate,
-        #             batch_discont_update,
-        #         ) = vmap_maybe_find_discontinuity_wrapper(
-        #             False, batch_tprev, batch_tnext
-        #         )
-        #     else:
-        #         (
-        #             tnext_candidate,
-        #             batch_discont_update,
-        #         ) = vmap_maybe_find_discontinuity_wrapper(
-        #             keep_step, batch_tprev, batch_tnext
-        #         )
+            #     tsearch = jnp.linspace(tprev, tnext, delays.sub_intervals)
+            #     batch_tprev, batch_tnext = tsearch[:-1], tsearch[1:]
+            #     vmap_maybe_find_discontinuity_wrapper = jax.vmap(
+            #         _part_maybe_find_discontinuity, (None, 0, 0)
+            #     )
+            #     if delays.recurrent_checking:
+            #         (
+            #             tnext_candidate,
+            #             batch_discont_update,
+            #         ) = vmap_maybe_find_discontinuity_wrapper(
+            #             False, batch_tprev, batch_tnext
+            #         )
+            #     else:
+            #         (
+            #             tnext_candidate,
+            #             batch_discont_update,
+            #         ) = vmap_maybe_find_discontinuity_wrapper(
+            #             keep_step, batch_tprev, batch_tnext
+            #         )
 
-        #     proxy_tnext = jnp.where(batch_discont_update, tnext_candidate, jnp.inf)
-        #     proxy_tnext = jnp.min(proxy_tnext)
+            #     prox_tnext = jnp.where(batch_discont_update, tnext_candidate, jnp.inf)
+            #     prox_tnext = jnp.min(prox_tnext)
 
-        #     tnext, discont_update = jax.lax.cond(
-        #         jnp.isinf(proxy_tnext),
-        #         lambda: (tnext, False),
-        #         lambda: (proxy_tnext, True),
-        #     )
+            #     tnext, discont_update = jax.lax.cond(
+            #         jnp.isinf(prox_tnext),
+            #         lambda: (tnext, False),
+            #         lambda: (prox_tnext, True),
+            #     )
+            #     assert jnp.result_type(discont_update) is jnp.dtype(bool)
 
-        #     # Count the number of steps in DDEs, just for statistical purposes
-        #     num_dde_implicit_step = state.num_dde_implicit_step + (
-        #         keep_step & implicit_step
-        #     )
-        #     num_dde_explicit_step = state.num_dde_explicit_step + (
-        #         keep_step & jnp.invert(implicit_step)
-        #     )
+            # Count the number of steps in DDEs, just for statistical purposes
+            num_dde_implicit_step = state.num_dde_implicit_step + (
+                keep_step & implicit_step
+            )
+            num_dde_explicit_step = state.num_dde_explicit_step + (
+                keep_step & jnp.invert(implicit_step)
+            )
 
-        #     assert jnp.result_type(discont_update) is jnp.dtype(bool)
-
-        # assert jnp.result_type(keep_step) is jnp.dtype(bool)
+        assert jnp.result_type(keep_step) is jnp.dtype(bool)
 
         #
         # Do some book-keeping.
         #
-        discont_update = False
-        num_dde_explicit_step = num_dde_implicit_step = 0
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
 
@@ -736,8 +734,8 @@ def loop(
             event_dense_info=event_dense_info,
             event_values=event_values,
             event_mask=event_mask,
-            num_dde_explicit_step=num_dde_explicit_step,
-            num_dde_implicit_step=num_dde_implicit_step,
+            num_dde_explicit_step=num_dde_explicit_step,  # type: ignore
+            num_dde_implicit_step=num_dde_implicit_step,  # type: ignore
             discontinuities=discontinuities,  # type: ignore
             discontinuities_save_index=discontinuities_save_index,
         )
