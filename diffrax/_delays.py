@@ -102,7 +102,7 @@ class Delays(eqx.Module):
     max_discontinuities: IntScalarLike = 100
     recurrent_checking: bool = False
     sub_intervals: IntScalarLike = 10
-    max_steps: IntScalarLike = 20
+    max_steps: IntScalarLike = 10
     rtol: RealScalarLike = 10e-3
     atol: RealScalarLike = 10e-3
 
@@ -136,7 +136,7 @@ class HistoryVectorField(eqx.Module):
         delays, treedef = jtu.tree_flatten(self.delays)
         if self.dense_interp is None:
             assert self.dense_info is None
-            for delay in self.delays:
+            for delay in delays:
                 delay_val = delay(t, y, args)
                 alpha_val = t - delay_val
                 y0_val = self.y0_history(alpha_val)
@@ -265,7 +265,7 @@ def history_extrapolation_implicit(
         atol=delays.atol,
         norm=rms_norm,
         implicit_step=implicit_step,
-        max_steps=100,
+        max_steps=delays.max_steps,
     )
 
     nonlinear_args = (
