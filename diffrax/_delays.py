@@ -18,7 +18,7 @@ from optimistix import (
 )
 from optimistix._custom_types import Aux, Fn, Y
 
-from ._custom_types import IntScalarLike, RealScalarLike, VF
+from ._custom_types import BoolScalarLike, IntScalarLike, RealScalarLike
 from ._global_interpolation import DenseInterpolation
 from ._local_interpolation import AbstractLocalInterpolation
 from ._term import VectorFieldWrapper
@@ -32,7 +32,7 @@ class _FixedPointState(eqx.Module, strict=True):
 class ModifiedFixedPointIteration(AbstractFixedPointSolver):
     rtol: float
     atol: float
-    implicit_step: bool
+    implicit_step: BoolScalarLike
     max_steps: int = eqx.field(static=True)
     norm: Callable[[PyTree], Scalar] = rms_norm
 
@@ -95,7 +95,7 @@ class ModifiedFixedPointIteration(AbstractFixedPointSolver):
 
 
 class Delays(eqx.Module):
-    """Module that incorportes all the information needed for integrating DDEs"""
+    """Module that incorporates all the information needed for integrating DDEs"""
 
     delays: PyTree[Callable]
     initial_discontinuities: Optional[Array] = jnp.array([0.0])
@@ -121,7 +121,7 @@ class HistoryVectorField(eqx.Module):
         - `delays` : DDE's different deviated arguments
     """
 
-    vector_field: VF
+    vector_field: Callable[..., PyTree]
     t0: RealScalarLike
     tprev: RealScalarLike
     tnext: RealScalarLike
