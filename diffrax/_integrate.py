@@ -115,7 +115,7 @@ class State(eqx.Module):
     event_mask: Optional[PyTree[BoolScalarLike]]
     num_dde_implicit_step: IntScalarLike
     num_dde_explicit_step: IntScalarLike
-    discontinuities: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]  # noqa: F821
+    discontinuities: Optional[eqxi.MaybeBuffer[ArrayLike]]  # noqa: F821
     discontinuities_save_index: Optional[IntScalarLike]
     # Output that is .at[].set() updated during the solve (and their indices)
 
@@ -364,7 +364,6 @@ def loop(
                 state.solver_state,
                 state.made_jump,
             )
-            implicit_step = False
         else:
             min_delay = []
             flat_delays = jtu.tree_leaves(delays.delays)
@@ -440,6 +439,7 @@ def loop(
         assert jnp.result_type(keep_step) is jnp.dtype(bool)
         # Finding all of the potential discontinuity roots
         discont_update = False
+        num_dde_explicit_step = num_dde_implicit_step = 0
         if delays is not None:
             #     _part_maybe_find_discontinuity = ft.partial(
             #         maybe_find_discontinuity,
@@ -484,11 +484,11 @@ def loop(
 
             # Count the number of steps in DDEs, just for statistical purposes
             num_dde_implicit_step = state.num_dde_implicit_step + (
-                keep_step & implicit_step
+                jnp.where(keep_step, 1, 0) & jnp.where(implicit_step, 1, 0)  # type: ignore
             )
-            num_dde_explicit_step = state.num_dde_explicit_step + (
-                keep_step & jnp.invert(implicit_step)
-            )
+            num_dde_explicit_step = state.num_dde_explicit_step + jnp.where(
+                keep_step, 1, 0
+            ) & jnp.where(jnp.invert(implicit_step), 1, 0)  # type: ignore
 
         assert jnp.result_type(keep_step) is jnp.dtype(bool)
 
@@ -711,7 +711,9 @@ def loop(
                 discontinuities = maybe_inplace_delay(
                     discontinuities_save_index + 1, tnext, discontinuities
                 )
-                discontinuities_save_index = discontinuities_save_index + discont_update
+                discontinuities_save_index = discontinuities_save_index + jnp.where(
+                    discont_update, 1, 0
+                )
 
         new_state = State(
             y=y,
@@ -734,8 +736,8 @@ def loop(
             event_dense_info=event_dense_info,
             event_values=event_values,
             event_mask=event_mask,
-            num_dde_explicit_step=num_dde_explicit_step,  # type: ignore
-            num_dde_implicit_step=num_dde_implicit_step,  # type: ignore
+            num_dde_explicit_step=num_dde_explicit_step,
+            num_dde_implicit_step=num_dde_implicit_step,
             discontinuities=discontinuities,  # type: ignore
             discontinuities_save_index=discontinuities_save_index,
         )
@@ -1001,7 +1003,7 @@ def diffeqsolve(
     t0: RealScalarLike,
     t1: RealScalarLike,
     dt0: Optional[RealScalarLike],
-    y0: PyTree[ArrayLike],
+    y0: Union[PyTree[ArrayLike], Callable[[RealScalarLike], PyTree[ArrayLike]]],
     args: PyTree[Any] = None,
     *,
     saveat: SaveAt = SaveAt(t1=True),
