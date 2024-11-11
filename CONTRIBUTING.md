@@ -23,7 +23,7 @@ pip install pre-commit
 pre-commit install
 ```
 
-These hooks use Black and isort to format the code, and flake8 to lint it.
+These hooks use ruff to lint and format the code, and pyright to type-check it.
 
 ---
 
@@ -34,7 +34,7 @@ Now make your changes. Make sure to include additional tests if necessary.
 Next verify the tests all pass:
 
 ```bash
-pip install pytest
+pip install -r test/requirements.txt
 pytest
 ```
 
@@ -54,12 +54,9 @@ Make your changes. You can then build the documentation by doing
 
 ```bash
 pip install -r docs/requirements.txt
+mkdocs build
 mkdocs serve
 ```
-Then doing `Control-C`, and running:
-```
-mkdocs serve
-```
-(So you run `mkdocs serve` twice.)
+(So you run `mkdocs` commands twice; our doc stack is a bit weird and needs this to get the correct module names in the documentation.)
 
 You can then see your local copy of the documentation by navigating to `localhost:8000` in a web browser.
