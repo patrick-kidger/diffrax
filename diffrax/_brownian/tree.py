@@ -2,6 +2,7 @@ import math
 from typing import Literal, Optional, TypeVar, Union
 from typing_extensions import TypeAlias
 
+import brainunit as u
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
@@ -280,16 +281,16 @@ class VirtualBrownianTree(AbstractBrownianPath):
     def _denormalise_bm_inc(self, x: _BrownianReturn) -> _BrownianReturn:
         # Rescaling back from [0, 1] to the original interval [t0, t1].
         interval_len = self.t1 - self.t0  # can be any dtype
-        sqrt_len = jnp.sqrt(interval_len)
+        sqrt_len = u.math.sqrt(interval_len)
 
         def mult(z):
-            dtype = jnp.result_type(z)
-            return jnp.astype(interval_len, dtype) * z
+            dtype = u.math.result_type(z)
+            return u.math.astype(interval_len, dtype) * z
 
         def sqrt_mult(z):
             # need to cast to dtype of each leaf in PyTree
-            dtype = jnp.result_type(z)
-            return jnp.astype(sqrt_len, dtype) * z
+            dtype = u.math.result_type(z)
+            return u.math.astype(sqrt_len, dtype) * z
 
         def is_dt(z):
             return z is x.dt

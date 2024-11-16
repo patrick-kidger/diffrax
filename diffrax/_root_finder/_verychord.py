@@ -128,11 +128,11 @@ class VeryChord(optx.AbstractRootFinder):
             jac, fx, self.linear_solver, state=linear_state, throw=False
         )
         diff = sol.value
-        new_y = (y**ω - diff**ω).ω
+        new_y = (ω(y) - ω(diff)).ω
 
         with jax.numpy_dtype_promotion("standard"):
             scale = (self.atol + self.rtol * ω(new_y).call(jnp.abs)).ω
-            diffsize = self.norm((diff**ω / scale**ω).ω)
+            diffsize = self.norm((ω(diff) / ω(scale)).ω)
         new_state = _VeryChordState(
             linear_state=state.linear_state,
             diff=diff,

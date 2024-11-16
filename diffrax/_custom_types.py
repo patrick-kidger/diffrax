@@ -1,6 +1,7 @@
 import typing
 from typing import Any, TYPE_CHECKING, Union
 
+import brainunit as u
 import equinox as eqx
 import equinox.internal as eqxi
 import jax.tree_util as jtu
@@ -40,7 +41,7 @@ else:
     IntScalarLike = Int[ArrayLike, ""]
 
 
-RealScalarLike = Union[FloatScalarLike, IntScalarLike]
+RealScalarLike = Union[FloatScalarLike, IntScalarLike, u.Quantity]
 
 Y = PyTree[Shaped[ArrayLike, "?*y"], "Y"]
 VF = PyTree[Shaped[ArrayLike, "?*vf"], "VF"]

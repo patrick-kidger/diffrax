@@ -2,6 +2,7 @@ import typing
 from collections.abc import Callable
 from typing import cast, Optional, TYPE_CHECKING, TypeVar
 
+import brainunit as u
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
@@ -11,7 +12,6 @@ import jax.tree_util as jtu
 import lineax.internal as lxi
 import optimistix as optx
 from jaxtyping import Real
-
 
 if TYPE_CHECKING:
     from typing import ClassVar as AbstractVar
@@ -34,7 +34,6 @@ from .._solution import RESULTS
 from .._term import AbstractTerm, ODETerm
 from .base import AbstractStepSizeController
 
-
 ω = cast(Callable, ω)
 
 
@@ -53,8 +52,9 @@ def _select_initial_step(
     norm: Callable[[PyTree], RealScalarLike],
 ) -> RealScalarLike:
     # TODO: someone needs to figure out an initial step size algorithm for SDEs.
+    time_unit = u.get_unit(t0)
     if not isinstance(terms, ODETerm):
-        return 0.01
+        return 0.01 if time_unit.is_unitless else 0.01 * time_unit
 
     def fn(carry):
         t, y, _h0, _d1, _f, _ = carry
@@ -63,30 +63,30 @@ def _select_initial_step(
 
     def intermediate(carry):
         _, _, _, _, _, f0 = carry
-        d0 = norm((y0**ω / scale**ω).ω)
-        d1 = norm((f0**ω / scale**ω).ω)
+        d0 = norm((ω(y0) / ω(scale)).ω)
+        d1 = norm((ω(f0) / ω(scale)).ω)
         _cond = (d0 < 1e-5) | (d1 < 1e-5)
         _d1 = jnp.where(_cond, 1, d1)
         h0 = jnp.where(_cond, 1e-6, 0.01 * (d0 / _d1))
         t1 = t0 + h0
-        y1 = (y0**ω + h0 * f0**ω).ω
+        y1 = (ω(y0) + h0 * ω(f0)).ω
         return t1, y1, h0, d1, f0, f0
 
-    scale = (atol + ω(y0).call(jnp.abs) * rtol).ω
+    scale = (atol + ω(y0).call(u.math.abs) * rtol).ω
     dummy_h = t0
     dummy_d = eqxi.eval_empty(norm, y0)
     dummy_f = eqxi.eval_empty(lambda: func(terms, t0, y0, args))
     _, _, h0, d1, f0, f1 = eqxi.scan_trick(
         fn, [intermediate], (t0, y0, dummy_h, dummy_d, dummy_f, dummy_f)
     )
-    d2 = norm(((f1**ω - f0**ω) / scale**ω).ω) / h0
-    max_d = jnp.maximum(d1, d2)
-    h1 = jnp.where(
+    d2 = norm(((ω(f1) - ω(f0)) / ω(scale)).ω) / h0
+    max_d = u.math.maximum(d1, d2)
+    h1 = u.math.where(
         max_d <= 1e-15,
-        jnp.maximum(1e-6, h0 * 1e-3),
+        u.math.maximum(1e-6, h0 * 1e-3),
         (0.01 / max_d) ** (1 / error_order),
     )
-    return jnp.minimum(100 * h0, h1)
+    return u.math.minimum(100 * h0, h1)
 
 
 _ControllerState = TypeVar("_ControllerState")
@@ -132,7 +132,7 @@ def _none_or_array(x):
     if x is None:
         return None
     else:
-        return jnp.asarray(x)
+        return u.math.asarray(x)
 
 
 if TYPE_CHECKING:
@@ -145,6 +145,7 @@ else:
         class _RmsNorm:
             def __repr__(self):
                 return "<function rms_norm>"
+
 
         old_rms_norm = optx.rms_norm
         rms_norm = _RmsNorm()
@@ -443,12 +444,12 @@ class PIDController(
             # I would welcome your thoughts, dear reader, if you have any insight!
             dt0 = lax.stop_gradient(dt0)
         if self.dtmax is not None:
-            dt0 = jnp.minimum(dt0, self.dtmax)
+            dt0 = u.math.minimum(dt0, self.dtmax)
         if self.dtmin is None:
             at_dtmin = jnp.array(False)
         else:
             at_dtmin = dt0 <= self.dtmin
-            dt0 = jnp.maximum(dt0, self.dtmin)
+            dt0 = u.math.maximum(dt0, self.dtmin)
 
         t1 = self._clip_step_ts(t0, t0 + dt0)
         t1, jump_next_step = self._clip_jump_ts(t0, t1)
@@ -558,7 +559,7 @@ class PIDController(
         # There are cases in which something besides the step size controller modifies
         # the step locations t0, t1; most notably the main integration routine clipping
         # steps when we're right at the end of the interval.
-        prev_dt = jnp.where(made_jump, prev_dt, t1 - t0)
+        prev_dt = u.math.where(made_jump, prev_dt, t1 - t0)
 
         #
         # Figure out how things went on the last step: error, and whether to
@@ -596,9 +597,9 @@ class PIDController(
         coeff1 = (self.icoeff + self.pcoeff + self.dcoeff) / error_order
         coeff2 = -cast(RealScalarLike, self.pcoeff + 2 * self.dcoeff) / error_order
         coeff3 = self.dcoeff / error_order
-        factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error**coeff1
-        factor2 = 1 if _zero_coeff(coeff2) else prev_inv_scaled_error**coeff2
-        factor3 = 1 if _zero_coeff(coeff3) else prev_prev_inv_scaled_error**coeff3
+        factor1 = 1 if _zero_coeff(coeff1) else inv_scaled_error ** coeff1
+        factor2 = 1 if _zero_coeff(coeff2) else prev_inv_scaled_error ** coeff2
+        factor3 = 1 if _zero_coeff(coeff3) else prev_prev_inv_scaled_error ** coeff3
         factormin = jnp.where(keep_step, 1, self.factormin)
         factor = jnp.clip(
             self.safety * factor1 * factor2 * factor3,
@@ -625,34 +626,34 @@ class PIDController(
 
         result = RESULTS.successful
         if self.dtmax is not None:
-            dt = jnp.minimum(dt, self.dtmax)
+            dt = u.math.minimum(dt, self.dtmax)
         if self.dtmin is None:
             at_dtmin = jnp.array(False)
         else:
             if not self.force_dtmin:
                 result = RESULTS.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
             at_dtmin = dt <= self.dtmin
-            dt = jnp.maximum(dt, self.dtmin)
+            dt = u.math.maximum(dt, self.dtmin)
 
         #
         # Clip next step size based on step_ts/jump_ts
         #
 
-        if jnp.issubdtype(jnp.result_type(t1), jnp.inexact):
+        if jnp.issubdtype(u.math.result_type(t1), jnp.inexact):
             # Two nextafters. If made_jump then t1 = prevbefore(jump location)
             # so now _t1 = nextafter(jump location)
             # This is important because we don't know whether or not the jump is as a
             # result of a left- or right-discontinuity, so we have to skip the jump
             # location altogether.
-            _t1 = static_select(made_jump, eqxi.nextafter(eqxi.nextafter(t1)), t1)
+            _t1 = static_select(made_jump, jax.tree.map(lambda x: eqxi.nextafter(eqxi.nextafter(x)), t1), t1)
         else:
             _t1 = t1
-        next_t0 = jnp.where(keep_step, _t1, t0)
+        next_t0 = u.math.where(keep_step, _t1, t0)
         next_t1 = self._clip_step_ts(next_t0, next_t0 + dt)
         next_t1, next_made_jump = self._clip_jump_ts(next_t0, next_t1)
 
-        inv_scaled_error = jnp.where(keep_step, inv_scaled_error, prev_inv_scaled_error)
-        prev_inv_scaled_error = jnp.where(
+        inv_scaled_error = u.math.where(keep_step, inv_scaled_error, prev_inv_scaled_error)
+        prev_inv_scaled_error = u.math.where(
             keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
         )
         controller_state = (
@@ -695,16 +696,16 @@ class PIDController(
         )
         # TODO: it should be possible to switch this O(nlogn) for just O(n) by keeping
         # track of where we were last, and using that as a hint for the next search.
-        t0_index = jnp.searchsorted(step_ts0, t0, side="right")
-        t1_index = jnp.searchsorted(step_ts1, t1, side="right")
+        t0_index = u.math.searchsorted(step_ts0, t0, side="right")
+        t1_index = u.math.searchsorted(step_ts1, t1, side="right")
         # This minimum may or may not actually be necessary. The left branch is taken
         # iff t0_index < t1_index <= len(self.step_ts), so all valid t0_index s must
         # already satisfy the minimum.
         # However, that branch is actually executed unconditionally and then where'd,
         # so we clamp it just to be sure we're not hitting undefined behaviour.
-        t1 = jnp.where(
+        t1 = u.math.where(
             t0_index < t1_index,
-            step_ts1[jnp.minimum(t0_index, len(self.step_ts) - 1)],
+            step_ts1[u.math.minimum(t0_index, len(self.step_ts) - 1)],
             t1,
         )
         return t1
@@ -715,15 +716,15 @@ class PIDController(
         if self.jump_ts is None:
             return t1, False
         assert jnp.issubdtype(self.jump_ts.dtype, jnp.inexact)
-        if not jnp.issubdtype(jnp.result_type(t0), jnp.inexact):
+        if not jnp.issubdtype(u.math.result_type(t0), jnp.inexact):
             raise ValueError(
                 "`t0`, `t1`, `dt0` must be floating point when specifying `jump_ts`. "
-                f"Got {jnp.result_type(t0)}."
+                f"Got {u.math.result_type(t0)}."
             )
-        if not jnp.issubdtype(jnp.result_type(t1), jnp.inexact):
+        if not jnp.issubdtype(u.math.result_type(t1), jnp.inexact):
             raise ValueError(
                 "`t0`, `t1`, `dt0` must be floating point when specifying `jump_ts`. "
-                f"Got {jnp.result_type(t1)}."
+                f"Got {u.math.result_type(t1)}."
             )
         jump_ts0 = upcast_or_raise(
             self.jump_ts,
@@ -737,12 +738,12 @@ class PIDController(
             "`PIDController.jump_ts`",
             "time (the result type of `t0`, `t1`, `dt0`, `SaveAt(ts=...)` etc.)",
         )
-        t0_index = jnp.searchsorted(jump_ts0, t0, side="right")
-        t1_index = jnp.searchsorted(jump_ts1, t1, side="right")
+        t0_index = u.math.searchsorted(jump_ts0, t0, side="right")
+        t1_index = u.math.searchsorted(jump_ts1, t1, side="right")
         next_made_jump = t0_index < t1_index
-        t1 = jnp.where(
+        t1 = u.math.where(
             next_made_jump,
-            eqxi.prevbefore(jump_ts1[jnp.minimum(t0_index, len(self.jump_ts) - 1)]),
+            eqxi.prevbefore(jump_ts1[u.math.minimum(t0_index, len(self.jump_ts) - 1)]),
             t1,
         )
         return t1, next_made_jump

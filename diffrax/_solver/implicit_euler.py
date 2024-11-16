@@ -19,7 +19,7 @@ _SolverState: TypeAlias = None
 
 def _implicit_relation(z1, nonlinear_solve_args):
     vf_prod, t1, y0, args, control = nonlinear_solve_args
-    diff = (vf_prod(t1, (y0**ω + z1**ω).ω, args, control) ** ω - z1**ω).ω
+    diff = (ω(vf_prod(t1, (ω(y0) + ω(z1)).ω, args, control)) - ω(z1)).ω
     return diff
 
 
@@ -90,9 +90,9 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
             max_steps=self.root_find_max_steps,
         )
         k1 = nonlinear_sol.value
-        y1 = (y0**ω + k1**ω).ω
+        y1 = (ω(y0) + ω(k1)).ω
         # Use the trapezoidal rule for adaptive step sizing.
-        y_error = (0.5 * (k1**ω - k0**ω)).ω
+        y_error = (0.5 * (ω(k1) - ω(k0))).ω
         dense_info = dict(y0=y0, y1=y1)
         solver_state = None
         result = RESULTS.promote(nonlinear_sol.result)

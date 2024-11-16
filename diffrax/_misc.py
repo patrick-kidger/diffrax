@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import Any, cast, Optional
 
+import brainunit as u
+import equinox.internal as eqxi
 import jax
 import jax.core
 import jax.lax as lax
@@ -11,7 +13,6 @@ from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
 from ._custom_types import BoolScalarLike, RealScalarLike
 
-
 _itemsize_kind_type: dict[tuple[int, str], Any] = {
     (1, "i"): jnp.int8,
     (2, "i"): jnp.int16,
@@ -21,6 +22,15 @@ _itemsize_kind_type: dict[tuple[int, str], Any] = {
     (4, "f"): jnp.float32,
     (8, "f"): jnp.float64,
 }
+
+
+def unit_at_set(xs, x, save_index):
+    return jax.tree.map(
+        lambda __ts, __t: __ts.at[save_index].set(__t),
+        xs,
+        x,
+        is_leaf=lambda x: isinstance(x, eqxi._loop.common._Buffer)
+    )
 
 
 def force_bitcast_convert_type(val, new_type):
@@ -81,8 +91,8 @@ def linear_rescale(t0, t, t1) -> Array:
     """
 
     cond = t0 == t1
-    numerator = cast(Array, jnp.where(cond, 0, t - t0))
-    denominator = cast(Array, jnp.where(cond, 1, t1 - t0))
+    numerator = cast(Array, u.math.where(cond, u.math.zeros_like(t), t - t0))
+    denominator = cast(Array, u.math.where(cond, u.math.ones_like(t1), t1 - t0))
     return numerator / denominator
 
 
@@ -159,11 +169,14 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
     elif a is b:
         return a
     else:
-        return lax.select(pred, a, b)
+        return jax.tree.map(lambda a_, b_: jax.lax.select(pred, a_, b_), a, b)
 
 
 def upcast_or_raise(
-    x: ArrayLike, array_for_dtype: ArrayLike, x_name: str, dtype_name: str
+    x: ArrayLike | u.Quantity,
+    array_for_dtype: ArrayLike | u.Quantity,
+    x_name: str,
+    dtype_name: str
 ):
     """If `JAX_NUMPY_DTYPE_PROMOTION=strict`, then this will raise an error if
     `jnp.result_type(x, array_for_dtype)` is not the same as `array_for_dtype.dtype`.
@@ -173,10 +186,10 @@ def upcast_or_raise(
     will apply. If `JAX_NUMPY_DTYPE_PROMOTION=strict` then we loosen from prohibiting
     all dtype casting, to still allowing upcasting.
     """
-    x_dtype = jnp.result_type(x)
-    target_dtype = jnp.result_type(array_for_dtype)
+    x_dtype = u.math.result_type(x)
+    target_dtype = u.math.result_type(array_for_dtype)
     with jax.numpy_dtype_promotion("standard"):
-        promote_dtype = jnp.result_type(x_dtype, target_dtype)
+        promote_dtype = u.math.result_type(x_dtype, target_dtype)
     config_value = jax.config.jax_numpy_dtype_promotion  # pyright: ignore
     if config_value == "strict":
         if target_dtype != promote_dtype:
@@ -188,4 +201,4 @@ def upcast_or_raise(
             )
     elif config_value != "standard":
         assert False, f"Unrecognised `JAX_NUMPY_DTYPE_PROMOTION={config_value}`"
-    return jnp.astype(x, promote_dtype)
+    return u.math.astype(x, promote_dtype)

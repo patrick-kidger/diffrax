@@ -12,13 +12,13 @@ from typing import (
     Union,
 )
 
+import brainunit as u
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
-import jax.tree_util as jtu
 import lineax.internal as lxi
 import optimistix as optx
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
@@ -33,13 +33,11 @@ from ._custom_types import (
     RealScalarLike,
 )
 from ._event import (
-    AbstractDiscreteTerminatingEvent,
-    DiscreteTerminatingEventToCondFn,
     Event,
 )
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
-from ._misc import linear_rescale, static_select
+from ._misc import linear_rescale, static_select, unit_at_set
 from ._progress_meter import (
     AbstractProgressMeter,
     NoProgressMeter,
@@ -53,9 +51,6 @@ from ._solver import (
     AbstractSolver,
     AbstractStratonovichSolver,
     Euler,
-    EulerHeun,
-    ItoMilstein,
-    StratonovichMilstein,
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController,
@@ -63,7 +58,7 @@ from ._step_size_controller import (
     ConstantStepSize,
     StepTo,
 )
-from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
+from ._term import AbstractTerm, MultiTerm, WrapTerm
 from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
@@ -122,8 +117,10 @@ def _assert_term_compatible(
     terms: PyTree[AbstractTerm],
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
+    t0: FloatScalarLike,
 ) -> None:
     error_msg = "term_structure"
+    time_unit = u.get_unit(t0)
 
     def _check(term_cls, term, term_contr_kwargs, yi):
         if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
@@ -136,7 +133,7 @@ def _assert_term_compatible(
                 for term, arg, term_contr_kwarg in zip(
                     term.terms, get_args(_tmp), term_contr_kwargs
                 ):
-                    _assert_term_compatible(yi, args, term, arg, term_contr_kwarg)
+                    _assert_term_compatible(yi, args, term, arg, term_contr_kwarg, t0)
             else:
                 raise ValueError(
                     f"Term {term} is not a MultiTerm but is expected to be."
@@ -163,12 +160,22 @@ def _assert_term_compatible(
                 pass
             elif n_term_args == 2:
                 vf_type_expected, control_type_expected = term_args
+                with jax.ensure_compile_time_eval():
+                    zero_time = 0.0 if time_unit.is_unitless else 0.0 * time_unit
+
                 try:
-                    vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                    vf_type = eqx.filter_eval_shape(
+                        term.vf,
+                        zero_time,
+                        yi,
+                        args
+                    )
                 except Exception as e:
                     raise ValueError(f"Error while tracing {term}.vf: " + str(e))
                 vf_type_compatible = eqx.filter_eval_shape(
-                    better_isinstance, vf_type, vf_type_expected
+                    better_isinstance,
+                    vf_type,
+                    vf_type_expected
                 )
                 if not vf_type_compatible:
                     raise ValueError(f"Vector field term {term} is incompatible.")
@@ -176,7 +183,11 @@ def _assert_term_compatible(
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
                 try:
-                    control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
+                    control_type = eqx.filter_eval_shape(
+                        contr,
+                        zero_time,
+                        zero_time,
+                    )
                 except Exception as e:
                     raise ValueError(f"Error while tracing {term}.contr: " + str(e))
                 control_type_compatible = eqx.filter_eval_shape(
@@ -190,7 +201,7 @@ def _assert_term_compatible(
 
     try:
         with jax.numpy_dtype_promotion("standard"):
-            jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
+            jax.tree.map(_check, term_structure, terms, contr_kwargs, y)
     except Exception as e:
         # ValueError may also arise from mismatched tree structures
         raise ValueError("Terms are not compatible with solver!") from e
@@ -212,7 +223,7 @@ def _outer_buffers(state):
     # `None`s, which may sometimes be treated as leaves (e.g.
     # `tree_at(_outer_buffers, ..., is_leaf=lambda x: x is None)`).
     # So we need to only get those leaves which really are a SaveState.
-    save_states = jtu.tree_leaves(state.save_state, is_leaf=is_save_state)
+    save_states = jax.tree.leaves(state.save_state, is_leaf=is_save_state)
     save_states = [x for x in save_states if is_save_state(x)]
     return (
         [s.ts for s in save_states]
@@ -233,7 +244,7 @@ def _save(
     save_index = save_state.save_index
 
     ts = ts.at[save_index].set(t)
-    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, fn(t, y, args))
+    ys = jax.tree.map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, fn(t, y, args))
     save_index = save_index + 1
 
     return eqx.tree_at(
@@ -249,9 +260,9 @@ def _clip_to_end(tprev, tnext, t1, keep_step):
         tol = 1e-10
     else:
         tol = 1e-6
-    clip = tnext > t1 - tol
-    tclip = jnp.where(keep_step, t1, tprev + 0.5 * (t1 - tprev))
-    return jnp.where(clip, tclip, tnext)
+    clip = u.get_mantissa(tnext) > u.get_mantissa(t1) - tol
+    tclip = u.math.where(keep_step, t1, tprev + 0.5 * (t1 - tprev))
+    return u.math.where(clip, tclip, tnext)
 
 
 def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
@@ -298,7 +309,7 @@ def loop(
             save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
         return save_state
 
-    save_state = jtu.tree_map(
+    save_state = jax.tree.map(
         save_t0, saveat.subs, init_state.save_state, is_leaf=_is_subsaveat
     )
     init_state = eqx.tree_at(
@@ -311,7 +322,7 @@ def loop(
         if static_result is None:
             result = state.result
         else:
-            result = jtu.tree_map(_maybe_static, static_result, state.result)
+            result = jax.tree.map(_maybe_static, static_result, state.result)
         made_jump = _maybe_static(static_made_jump, state.made_jump)
         return eqx.tree_at(
             lambda s: (s.result, s.made_jump), state, (result, made_jump)
@@ -348,7 +359,7 @@ def loop(
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
         # we get a negative value for y, and then get a NaN vector field. (And then
         # everything breaks.) See #143.
-        y_error = jtu.tree_map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
+        y_error = jax.tree.map(lambda x: jnp.where(jnp.isnan(x), jnp.inf, x), y_error)
 
         error_order = solver.error_order(terms)
         (
@@ -374,7 +385,7 @@ def loop(
         # Do some book-keeping.
         #
 
-        tprev = jnp.minimum(tprev, t1)
+        tprev = u.math.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
 
         progress_meter_state = progress_meter.step(
@@ -385,8 +396,8 @@ def loop(
         # step was accepted) by the stepsize controller. But it doesn't get access to
         # these parts, so we do them here.
         keep = lambda a, b: jnp.where(keep_step, a, b)
-        y = jtu.tree_map(keep, y, state.y)
-        solver_state = jtu.tree_map(keep, solver_state, state.solver_state)
+        y = jax.tree.map(keep, y, state.y)
+        solver_state = jax.tree.map(keep, solver_state, state.solver_state)
         made_jump = static_select(keep_step, made_jump, state.made_jump)
         solver_result = RESULTS.where(keep_step, solver_result, RESULTS.successful)
 
@@ -412,7 +423,9 @@ def loop(
         #
 
         interpolator = solver.interpolation_cls(
-            t0=state.tprev, t1=state.tnext, **dense_info
+            t0=state.tprev,
+            t1=state.tnext,
+            **dense_info
         )
         save_state = state.save_state
         dense_ts = state.dense_ts
@@ -435,12 +448,8 @@ def loop(
             def _body_fun(_save_state):
                 _t = ts[_save_state.saveat_ts_index]
                 _y = interpolator.evaluate(_t)
-                _ts = _save_state.ts.at[_save_state.save_index].set(_t)
-                _ys = jtu.tree_map(
-                    lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
-                    fn(_t, _y, args),
-                    _save_state.ys,
-                )
+                _ts = unit_at_set(_save_state.ts, _t, _save_state.save_index)
+                _ys = unit_at_set(_save_state.ys, fn(_t, _y, args), _save_state.save_index)
                 return SaveState(
                     saveat_ts_index=_save_state.saveat_ts_index + 1,
                     ts=_ts,
@@ -457,17 +466,18 @@ def loop(
                 checkpoints=len(ts),
             )
 
-        save_state = jtu.tree_map(
+        save_state = jax.tree.map(
             save_ts, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
 
         def maybe_inplace(i, u, x):
-            return eqxi.buffer_at_set(x, i, u, pred=keep_step)
+            return jax.tree.map(lambda x_, u_: eqxi.buffer_at_set(x_, i, u_, pred=keep_step), x, u,
+                                is_leaf=lambda x: isinstance(x, eqxi._loop.common._Buffer))
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.steps:
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
-                ys = jtu.tree_map(
+                ys = jax.tree.map(
                     ft.partial(maybe_inplace, save_state.save_index),
                     subsaveat.fn(tprev, y, args),
                     save_state.ys,
@@ -480,13 +490,13 @@ def loop(
                 )
             return save_state
 
-        save_state = jtu.tree_map(
+        save_state = jax.tree.map(
             save_steps, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
 
         if saveat.dense:
             dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
-            dense_infos = jtu.tree_map(
+            dense_infos = jax.tree.map(
                 ft.partial(maybe_inplace, dense_save_index),
                 dense_info,
                 dense_infos,
@@ -519,10 +529,10 @@ def loop(
                     max_steps=max_steps,
                 )
                 assert jnp.shape(old_event_value_i) == ()
-                if jtu.tree_structure(new_event_value_i) != jtu.tree_structure(0):
+                if jax.tree.structure(new_event_value_i) != jax.tree.structure(0):
                     raise ValueError(
                         "Event functions must return a scalar, got PyTree with shape "
-                        f"{jtu.tree_structure(new_event_value_i)}."
+                        f"{jax.tree.structure(new_event_value_i)}."
                     )
                 if jnp.shape(new_event_value_i) != ():
                     raise ValueError(
@@ -550,24 +560,24 @@ def loop(
                     )
                 return new_event_value_i, event_mask_i
 
-            event_values__mask = jtu.tree_map(
+            event_values__mask = jax.tree.map(
                 _outer_cond_fn,
                 event.cond_fn,
                 state.event_values,
                 is_leaf=callable,
             )
-            event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
-            event_values, event_mask = jtu.tree_transpose(
+            event_structure = jax.tree.structure(event.cond_fn, is_leaf=callable)
+            event_values, event_mask = jax.tree.transpose(
                 event_structure,
-                jtu.tree_structure((0, 0)),
+                jax.tree.structure((0, 0)),
                 event_values__mask,
             )
             had_event = False
             event_mask_leaves = []
-            for event_mask_i in jtu.tree_leaves(event_mask):
+            for event_mask_i in jax.tree.leaves(event_mask):
                 event_mask_leaves.append(event_mask_i & jnp.invert(had_event))
                 had_event = event_mask_i | had_event
-            event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
+            event_mask = jax.tree.unflatten(event_structure, event_mask_leaves)
             result = RESULTS.where(
                 had_event,
                 RESULTS.event_occurred,
@@ -636,7 +646,7 @@ def loop(
         # If we're on this branch, it means that an event may have triggered, and now we
         # may need to do a root find, in order to locate the event time.
         event_mask = final_state.event_mask
-        flat_mask = jtu.tree_leaves(event_mask)
+        flat_mask = jax.tree.leaves(event_mask)
         assert all(jnp.shape(x) == () for x in flat_mask)
         event_happened = jnp.any(jnp.stack(flat_mask))
 
@@ -692,7 +702,7 @@ def loop(
                     _value = jnp.where(event_happened, _value, _distance_from_t_end)
                     return _value
 
-                return jtu.tree_map(
+                return jax.tree.map(
                     _call_real,
                     event_mask,
                     event.cond_fn,
@@ -739,7 +749,7 @@ def loop(
                 mask & (ts < jnp.inf)
             )
             _ts = jnp.where(mask, jnp.inf, ts)
-            _ys = jtu.tree_map(
+            _ys = jax.tree.map(
                 lambda __ys: jnp.where(
                     mask[(...,) + (jnp.newaxis,) * (__ys.ndim - 1)], jnp.inf, __ys
                 ),
@@ -752,7 +762,7 @@ def loop(
                 save_index=_save_index,
             )
 
-        save_state = jtu.tree_map(
+        save_state = jax.tree.map(
             unsave, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
         )
 
@@ -776,7 +786,7 @@ def loop(
                 save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
-    save_state = jtu.tree_map(
+    save_state = jax.tree.map(
         _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
     )
     final_state = eqx.tree_at(
@@ -819,8 +829,6 @@ def diffeqsolve(
     solver_state: Optional[PyTree[ArrayLike]] = None,
     controller_state: Optional[PyTree[ArrayLike]] = None,
     made_jump: Optional[BoolScalarLike] = None,
-    # Exists for backward compatibility
-    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
 ) -> Solution:
     """Solves a differential equation.
 
@@ -927,24 +935,6 @@ def diffeqsolve(
     # Initial set-up
     #
 
-    # Backward compatibility
-    if discrete_terminating_event is not None:
-        warnings.warn(
-            "`diffrax.diffeqsolve(..., discrete_terminating_event=...)` is deprecated "
-            "in favour of the more general `diffrax.diffeqsolve(..., event=...)` "
-            "interface. This will be removed in some future version of Diffrax.",
-            stacklevel=2,
-        )
-        if event is None:
-            event = Event(
-                cond_fn=DiscreteTerminatingEventToCondFn(discrete_terminating_event)
-            )
-        else:
-            raise ValueError(
-                "Cannot pass both "
-                "`diffrax.diffeqsolve(..., event=..., discrete_terminating_event=...)`."
-            )
-
     # Error checking
     if dt0 is not None:
         msg = (
@@ -954,13 +944,13 @@ def diffeqsolve(
             f"dt0 with value {dt0} and type {type(dt0)}"
         )
         with jax.ensure_compile_time_eval(), jax.numpy_dtype_promotion("standard"):
-            pred = (t1 - t0) * dt0 < 0
-        dt0 = eqxi.error_if(jnp.array(dt0), pred, msg)
+            pred = u.get_mantissa((t1 - t0) * dt0) < 0
+        dt0 = eqxi.error_if(u.math.array(dt0), pred, msg)
 
     # Error checking and warning for complex dtypes
     if any(
         eqx.is_array_like(xi) and jnp.iscomplexobj(xi)
-        for xi in jtu.tree_leaves((terms, y0, args))
+        for xi in jax.tree.leaves((terms, y0, args))
     ):
         warnings.warn(
             "Complex dtype support in Diffrax is a work in progress and may not yet "
@@ -971,11 +961,12 @@ def diffeqsolve(
 
     # Allow setting e.g. t0 as an int with dt0 as a float.
     timelikes = [t0, t1, dt0] + [
-        s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)
+        s.ts for s in jax.tree.leaves(saveat.subs, is_leaf=_is_subsaveat)
     ]
     timelikes = [x for x in timelikes if x is not None]
+    time_unit = u.get_unit(timelikes[0])
     with jax.numpy_dtype_promotion("standard"):
-        time_dtype = jnp.result_type(*timelikes)
+        time_dtype = u.math.result_type(*timelikes)
     if jnp.issubdtype(time_dtype, jnp.complexfloating):
         raise ValueError(
             "Cannot use complex dtype for `t0`, `t1`, `dt0`, or `SaveAt(ts=...)`."
@@ -986,13 +977,13 @@ def diffeqsolve(
         time_dtype = lxi.default_floating_dtype()
     else:
         raise ValueError(f"Unrecognised time dtype {time_dtype}.")
-    t0 = jnp.asarray(t0, dtype=time_dtype)
-    t1 = jnp.asarray(t1, dtype=time_dtype)
+    t0 = u.math.asarray(t0, dtype=time_dtype)
+    t1 = u.math.asarray(t1, dtype=time_dtype)
     if dt0 is not None:
-        dt0 = jnp.asarray(dt0, dtype=time_dtype)
+        dt0 = u.math.asarray(dt0, dtype=time_dtype)
 
     def _get_subsaveat_ts(saveat):
-        out = [s.ts for s in jtu.tree_leaves(saveat.subs, is_leaf=_is_subsaveat)]
+        out = [s.ts for s in jax.tree.leaves(saveat.subs, is_leaf=_is_subsaveat)]
         return [x for x in out if x is not None]
 
     saveat = eqx.tree_at(
@@ -1006,34 +997,11 @@ def diffeqsolve(
     # https://github.com/patrick-kidger/diffrax/pull/197#discussion_r1130173527
     def _promote(yi):
         with jax.numpy_dtype_promotion("standard"):
-            _dtype = jnp.result_type(yi, time_dtype)  # noqa: F821
-        return jnp.asarray(yi, dtype=_dtype)
+            _dtype = u.math.result_type(yi, time_dtype)  # noqa: F821
+        return u.math.asarray(yi, dtype=_dtype)
 
-    y0 = jtu.tree_map(_promote, y0)
+    y0 = jax.tree.map(_promote, y0, is_leaf=u.math.is_quantity)
     del timelikes
-
-    # Backward compatibility
-    if isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein)):
-        try:
-            _assert_term_compatible(
-                y0,
-                args,
-                terms,
-                (ODETerm, AbstractTerm),
-                solver.term_compatible_contr_kwargs,
-            )
-        except Exception as _:
-            pass
-        else:
-            warnings.warn(
-                "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-                f"{solver.__class__.__name__} is deprecated in favour of "
-                "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-                "the same terms can now be passed used for both general "
-                "and SDE-specific solvers!",
-                stacklevel=2,
-            )
-            terms = MultiTerm(*terms)
 
     # Error checking for term compatibility
     _assert_term_compatible(
@@ -1042,6 +1010,7 @@ def diffeqsolve(
         terms,
         solver.term_structure,
         solver.term_compatible_contr_kwargs,
+        t0,
     )
 
     if is_sde(terms):
@@ -1080,7 +1049,7 @@ def diffeqsolve(
         assert not isinstance(term, MultiTerm)
         return WrapTerm(term, direction)
 
-    terms = jtu.tree_map(
+    terms = jax.tree.map(
         _wrap,
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
@@ -1152,7 +1121,7 @@ def diffeqsolve(
         else:
             return x
 
-    saveat = jtu.tree_map(_subsaveat_direction_fn, saveat, is_leaf=_is_subsaveat)
+    saveat = jax.tree.map(_subsaveat_direction_fn, saveat, is_leaf=_is_subsaveat)
 
     # Initialise states
     tprev = t0
@@ -1170,7 +1139,7 @@ def diffeqsolve(
             )
         else:
             tnext = t0 + dt0
-    tnext = jnp.minimum(tnext, t1)
+    tnext = u.math.minimum(tnext, t1)
     if solver_state is None:
         passed_solver_state = False
         solver_state = solver.init(terms, t0, tnext, y0, args)
@@ -1198,15 +1167,23 @@ def diffeqsolve(
         saveat_ts_index = 0
         save_index = 0
         ts = jnp.full(out_size, direction * jnp.inf, dtype=time_dtype)
+        ts = ts if time_unit.is_unitless else ts * time_unit
         struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
-        ys = jtu.tree_map(
-            lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
-        )
+
+        def _init(y):
+            r = u.math.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype)
+            unit = u.get_unit(y)
+            if unit.is_unitless:
+                return r
+            else:
+                return r * unit
+
+        ys = jax.tree.map(_init, struct, is_leaf=u.math.is_quantity)
         return SaveState(
             ts=ts, ys=ys, save_index=save_index, saveat_ts_index=saveat_ts_index
         )
 
-    save_state = jtu.tree_map(_allocate_output, saveat.subs, is_leaf=_is_subsaveat)
+    save_state = jax.tree.map(_allocate_output, saveat.subs, is_leaf=_is_subsaveat)
     num_steps = 0
     num_accepted_steps = 0
     num_rejected_steps = 0
@@ -1222,10 +1199,21 @@ def diffeqsolve(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
         dense_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
-        _make_full = lambda x: jnp.full(
-            (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
-        )
-        dense_infos = jtu.tree_map(_make_full, dense_info_struct)  # pyright: ignore[reportPossiblyUnboundVariable]
+        dense_ts = dense_ts if time_unit.is_unitless else dense_ts * time_unit
+
+        def _make_full(x):
+            r = jnp.full((max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype)
+            r_unit = u.get_unit(x)
+            if r_unit.is_unitless:
+                return r
+            else:
+                return r * r_unit
+
+        dense_infos = jax.tree.map(
+            _make_full,
+            dense_info_struct,
+            is_leaf=u.math.is_quantity
+        )  # pyright: ignore[reportPossiblyUnboundVariable]
         dense_save_index = 0
     else:
         dense_ts = None
@@ -1255,8 +1243,8 @@ def diffeqsolve(
         #   to the end of the interval).
         # - A floating event can't terminate on the first step (it requires a sign
         #   change).
-        event_dense_info = jtu.tree_map(
-            lambda x: jnp.empty(x.shape, x.dtype),
+        event_dense_info = jax.tree.map(
+            lambda x: u.math.empty(x.shape, x.dtype, unit=u.get_unit(x)),
             dense_info_struct,  # pyright: ignore[reportPossiblyUnboundVariable]
         )
 
@@ -1274,17 +1262,17 @@ def diffeqsolve(
                 stepsize_controller=stepsize_controller,
                 max_steps=max_steps,
             )
-            if jtu.tree_structure(event_value_i) != jtu.tree_structure(0):
+            if jax.tree.structure(event_value_i) != jax.tree.structure(0):
                 raise ValueError(
                     "Event functions must return a scalar, got PyTree with shape "
-                    f"{jtu.tree_structure(event_value_i)}."
+                    f"{jax.tree.structure(event_value_i)}."
                 )
-            if jnp.shape(event_value_i) != ():
+            if u.math.shape(event_value_i) != ():
                 raise ValueError(
                     "Event functions must return a scalar, got shape "
-                    f"{jnp.shape(event_value_i)}."
+                    f"{u.math.shape(event_value_i)}."
                 )
-            event_dtype = jnp.result_type(event_value_i)
+            event_dtype = u.math.result_type(event_value_i)
             if jnp.issubdtype(event_dtype, jnp.floating):
                 event_mask_i = False  # Has not yet had the opportunity to change sign.
             elif jnp.issubdtype(event_dtype, jnp.bool_):
@@ -1296,23 +1284,23 @@ def diffeqsolve(
                 )
             return event_value_i, event_mask_i
 
-        event_values__mask = jtu.tree_map(
+        event_values__mask = jax.tree.map(
             _outer_cond_fn,
             event.cond_fn,
             is_leaf=callable,
         )
-        event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
-        event_values, event_mask = jtu.tree_transpose(
+        event_structure = jax.tree.structure(event.cond_fn, is_leaf=callable)
+        event_values, event_mask = jax.tree.transpose(
             event_structure,
-            jtu.tree_structure((0, 0)),
+            jax.tree.structure((0, 0)),
             event_values__mask,
         )
         had_event = False
         event_mask_leaves = []
-        for event_mask_i in jtu.tree_leaves(event_mask):
+        for event_mask_i in jax.tree.leaves(event_mask):
             event_mask_leaves.append(event_mask_i & jnp.invert(had_event))
             had_event = event_mask_i | had_event
-        event_mask = jtu.tree_unflatten(event_structure, event_mask_leaves)
+        event_mask = jax.tree.unflatten(event_structure, event_mask_leaves)
         result = RESULTS.where(
             had_event,
             RESULTS.event_occurred,
@@ -1372,10 +1360,16 @@ def diffeqsolve(
 
     progress_meter.close(final_state.progress_meter_state)
     is_save_state = lambda x: isinstance(x, SaveState)
-    ts = jtu.tree_map(
-        lambda s: s.ts * direction, final_state.save_state, is_leaf=is_save_state
+    ts = jax.tree.map(
+        lambda s: s.ts * direction,
+        final_state.save_state,
+        is_leaf=is_save_state
     )
-    ys = jtu.tree_map(lambda s: s.ys, final_state.save_state, is_leaf=is_save_state)
+    ys = jax.tree.map(
+        lambda s: s.ys,
+        final_state.save_state,
+        is_leaf=is_save_state
+    )
 
     # It's important that we don't do any further postprocessing on `ys` here, as
     # it is the `final_state` value that is used when backpropagating via

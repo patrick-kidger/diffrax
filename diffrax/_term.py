@@ -4,10 +4,10 @@ import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
 
+import brainunit as u
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.tree_util as jtu
 import lineax as lx
 import numpy as np
 from equinox.internal import ω
@@ -16,7 +16,6 @@ from jaxtyping import ArrayLike, PyTree, PyTreeDef
 from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
 from ._misc import upcast_or_raise
 from ._path import AbstractPath
-
 
 _VF = TypeVar("_VF", bound=VF)
 _Control = TypeVar("_Control", bound=Control)
@@ -180,16 +179,21 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
 
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
 
-    def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
+    def vf(
+        self,
+        t: RealScalarLike,
+        y: Y,
+        args: Args
+    ) -> _VF:
         out = self.vector_field(t, y, args)
-        if jtu.tree_structure(out) != jtu.tree_structure(y):
+        if jax.tree.structure(out, is_leaf=u.math.is_quantity) != jax.tree.structure(y, is_leaf=u.math.is_quantity):
             raise ValueError(
                 "The vector field inside `ODETerm` must return a pytree with the "
-                "same structure as `y0`."
+                f"same structure as `y0`. But we got \n\n{out}\n\n and \n\n{y}"
             )
 
         def _broadcast_and_upcast(oi, yi):
-            oi = jnp.broadcast_to(oi, jnp.shape(yi))
+            oi = u.math.broadcast_to(oi, u.math.shape(yi))
             oi = upcast_or_raise(
                 oi,
                 yi,
@@ -198,12 +202,21 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
             )
             return oi
 
-        return jtu.tree_map(_broadcast_and_upcast, out, y)
+        return jax.tree.map(_broadcast_and_upcast, out, y, is_leaf=u.math.is_quantity)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        **kwargs
+    ) -> RealScalarLike:
         return t1 - t0
 
-    def prod(self, vf: _VF, control: RealScalarLike) -> Y:
+    def prod(
+        self,
+        vf: _VF,
+        control: RealScalarLike
+    ) -> Y:
         def _mul(v):
             c = upcast_or_raise(
                 control,
@@ -213,7 +226,7 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
             )
             return c * v
 
-        return jtu.tree_map(_mul, vf)
+        return jax.tree.map(_mul, vf, is_leaf=u.math.is_quantity)
 
 
 ODETerm.__init__.__doc__ = """**Arguments:**
@@ -237,14 +250,18 @@ class _CallableToPath(AbstractPath[_Control]):
         return jnp.inf
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, 
+        t0: RealScalarLike, 
+        t1: Optional[RealScalarLike] = None, 
+        left: bool = True
     ) -> _Control:
         return self.fn(t0, t1)
 
 
 def _callable_to_path(
     x: Union[
-        AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
+        AbstractPath[_Control], 
+        Callable[[RealScalarLike, RealScalarLike], _Control]
     ],
 ) -> AbstractPath[_Control]:
     if isinstance(x, AbstractPath):
@@ -257,7 +274,7 @@ def _callable_to_path(
 # control: Shaped[Array, "*control"]
 # return: Shaped[Array, "*state"]
 def _prod(vf, control):
-    return jnp.tensordot(jnp.conj(vf), control, axes=jnp.ndim(control))
+    return u.math.tensordot(u.math.conj(vf), control, axes=u.math.ndim(control))
 
 
 # This class exists for backward compatibility with `WeaklyDiagonalControlTerm`. If we
@@ -265,7 +282,8 @@ def _prod(vf, control):
 class _AbstractControlTerm(AbstractTerm[_VF, _Control]):
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
     control: Union[
-        AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
+        AbstractPath[_Control],
+        Callable[[RealScalarLike, RealScalarLike], _Control]
     ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
@@ -445,7 +463,7 @@ class ControlTerm(_AbstractControlTerm[_VF, _Control]):
         if isinstance(vf, lx.AbstractLinearOperator):
             return vf.mv(control)
         else:
-            return jtu.tree_map(_prod, vf, control)
+            return jax.tree.map(_prod, vf, control, is_leaf=u.math.is_quantity)
 
 
 class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
@@ -513,7 +531,7 @@ class WeaklyDiagonalControlTerm(_AbstractControlTerm[_VF, _Control]):
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):
-            return jtu.tree_map(operator.mul, vf, control)
+            return jax.tree.map(operator.mul, vf, control)
 
 
 class _ControlToODE(eqx.Module):
@@ -545,7 +563,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
 
     whose vector field -- control interaction is a dot product.
 
-    `MultiTerm` performs this transform. For simplicitly most differential equation
+    `MultiTerm` performs this transform. For simplicity most differential equation
     solvers (at least those built-in to Diffrax) accept just a single term, so this
     transform is a necessary part of e.g. solving an SDE with both drift and diffusion.
     """
@@ -574,7 +592,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
             term.prod(vf_, control_)
             for term, vf_, control_ in zip(self.terms, vf, control)
         ]
-        return jtu.tree_map(_sum, *out)
+        return jax.tree.map(_sum, *out, is_leaf=u.math.is_quantity)
 
     def vf_prod(
         self,
@@ -587,7 +605,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
             term.vf_prod(t, y, args, control_)
             for term, control_ in zip(self.terms, control)
         ]
-        return jtu.tree_map(_sum, *out)
+        return jax.tree.map(_sum, *out, is_leaf=u.math.is_quantity)
 
     def is_vf_expensive(
         self,
@@ -608,9 +626,11 @@ class WrapTerm(AbstractTerm[_VF, _Control]):
         return self.term.vf(t, y, args)
 
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
-        _t0 = jnp.where(self.direction == 1, t0, -t1)
-        _t1 = jnp.where(self.direction == 1, t1, -t0)
-        return (self.direction * self.term.contr(_t0, _t1, **kwargs) ** ω).ω
+        _t0 = u.math.where(self.direction == 1, t0, -t1)
+        _t1 = u.math.where(self.direction == 1, t1, -t0)
+        return jax.tree.map(lambda x: x * self.direction, 
+                            self.term.contr(_t0, _t1, **kwargs), 
+                            is_leaf=u.math.is_quantity)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):
@@ -627,8 +647,8 @@ class WrapTerm(AbstractTerm[_VF, _Control]):
         y: Y,
         args: Args,
     ) -> bool:
-        _t0 = jnp.where(self.direction == 1, t0, -t1)
-        _t1 = jnp.where(self.direction == 1, t1, -t0)
+        _t0 = u.math.where(self.direction == 1, t0, -t1)
+        _t1 = u.math.where(self.direction == 1, t1, -t0)
         return self.term.is_vf_expensive(_t0, _t1, y, args)
 
 
@@ -645,7 +665,7 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         args: Args,
     ) -> bool:
         control_struct = eqx.filter_eval_shape(self.contr, t0, t1)
-        if sum(c.size for c in jtu.tree_leaves(control_struct)) in (0, 1):
+        if sum(c.size for c in jax.tree.leaves(control_struct)) in (0, 1):
             return False
         else:
             return True
@@ -679,8 +699,8 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         # PyTree structure. (This is because `self.vf_prod` is linear in `control`.)
         control = self.contr(t, t)
 
-        y_size = sum(np.size(yi) for yi in jtu.tree_leaves(y))
-        control_size = sum(np.size(ci) for ci in jtu.tree_leaves(control))
+        y_size = sum(np.size(yi) for yi in jax.tree.leaves(y))
+        control_size = sum(np.size(ci) for ci in jax.tree.leaves(control))
         if y_size > control_size:
             make_jac = jax.jacfwd
         else:
@@ -689,12 +709,12 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         # Find the tree structure of vf_prod by smuggling it out as an additional
         # result from the Jacobian calculation.
         sentinel = vf_prod_tree = object()
-        control_tree = jtu.tree_structure(control)
+        control_tree = jax.tree.structure(control, is_leaf=u.math.is_quantity)
 
         def _fn(_control):
             _out = self.vf_prod(t, y, args, _control)
             nonlocal vf_prod_tree
-            structure = jtu.tree_structure(_out)
+            structure = jax.tree.structure(_out, is_leaf=u.math.is_quantity)
             if vf_prod_tree is sentinel:
                 vf_prod_tree = structure
             else:
@@ -704,12 +724,12 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         jac = make_jac(_fn)(control)
         assert vf_prod_tree is not sentinel
         vf_prod_tree = cast(PyTreeDef, vf_prod_tree)
-        if jtu.tree_structure(None) in (vf_prod_tree, control_tree):
+        if jax.tree.structure(None) in (vf_prod_tree, control_tree):
             # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
                 "`AdjointTerm.vf` not implemented for `None` controls or states."
             )
-        return jtu.tree_transpose(vf_prod_tree, control_tree, jac)
+        return jax.tree.transpose(vf_prod_tree, control_tree, jac)
 
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
         return self.term.contr(t0, t1, **kwargs)
@@ -724,32 +744,32 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 
         # Calculate vf_prod_tree by smuggling it out.
         sentinel = vf_prod_tree = object()
-        control_tree = jtu.tree_structure(control)
+        control_tree = jax.tree.structure(control, is_leaf=u.math.is_quantity)
 
         def _get_vf_tree(_, tree):
             nonlocal vf_prod_tree
-            structure = jtu.tree_structure(tree)
+            structure = jax.tree.structure(tree, is_leaf=u.math.is_quantity)
             if vf_prod_tree is sentinel:
                 vf_prod_tree = structure
             else:
                 assert vf_prod_tree == structure
 
-        jtu.tree_map(_get_vf_tree, control, vf)
+        jax.tree.map(_get_vf_tree, control, vf, is_leaf=u.math.is_quantity)
         assert vf_prod_tree is not sentinel
         vf_prod_tree = cast(PyTreeDef, vf_prod_tree)
 
-        vf = jtu.tree_transpose(control_tree, vf_prod_tree, vf)
+        vf = jax.tree.transpose(control_tree, vf_prod_tree, vf)
 
-        example_vf_prod = jtu.tree_unflatten(
+        example_vf_prod = jax.tree.unflatten(
             vf_prod_tree, [0 for _ in range(vf_prod_tree.num_leaves)]
         )
 
         def _contract(_, vf_piece):
-            assert jtu.tree_structure(vf_piece) == control_tree
-            _contracted = jtu.tree_map(_prod, vf_piece, control)
-            return sum(jtu.tree_leaves(_contracted), 0)
+            assert jax.tree.structure(vf_piece, is_leaf=u.math.is_quantity) == control_tree
+            _contracted = jax.tree.map(_prod, vf_piece, control, is_leaf=u.math.is_quantity)
+            return sum(jax.tree.leaves(_contracted), 0)
 
-        return jtu.tree_map(_contract, example_vf_prod, vf)
+        return jax.tree.map(_contract, example_vf_prod, vf, is_leaf=u.math.is_quantity)
 
     def vf_prod(
         self,
@@ -774,5 +794,5 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
             return _term.vf_prod(t, _y, _args, control)
 
         dy, vjp = jax.vjp(_to_vjp, y, diff_args, diff_term)
-        da_y, da_diff_args, da_diff_term = vjp((-(a_y**ω)).ω)
+        da_y, da_diff_args, da_diff_term = vjp((-(a_y ** ω)).ω)
         return dy, da_y, da_diff_args, da_diff_term

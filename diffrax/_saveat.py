@@ -1,6 +1,7 @@
 from collections.abc import Callable, Sequence
 from typing import Optional, Union
 
+import brainunit as u
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, PyTree, Real
@@ -18,7 +19,7 @@ def _convert_ts(
     if ts is None or len(ts) == 0:
         return None
     else:
-        return jnp.asarray(ts)
+        return u.math.asarray(ts)
 
 
 class SubSaveAt(eqx.Module):

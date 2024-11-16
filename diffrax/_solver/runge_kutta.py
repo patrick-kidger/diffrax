@@ -12,19 +12,18 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
-from typing_extensions import TypeAlias
 
+import brainunit as u
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
 import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
-import jax.tree_util as jtu
 import lineax.internal as lxi
 import numpy as np
 import optimistix as optx
-
+from typing_extensions import TypeAlias
 
 if TYPE_CHECKING:
     from typing import ClassVar as AbstractClassVar
@@ -45,6 +44,7 @@ from .._custom_types import (
 from .._solution import is_okay, RESULTS, update_result
 from .._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
+from .._misc import unit_at_set
 
 
 # Not a pytree node!
@@ -198,7 +198,8 @@ automatically.
 
 
 class MultiButcherTableau(eqx.Module):
-    """Wraps multiple [`diffrax.ButcherTableau`][]s together. Used in some multi-tableau
+    """
+    Wraps multiple [`diffrax.ButcherTableau`][]s together. Used in some multi-tableau
     solvers, like IMEX methods.
 
     !!! important
@@ -265,7 +266,7 @@ def _implicit_relation_f(fi, nonlinear_solve_args):
     ) = nonlinear_solve_args
     del stage_index
     diff = (
-        fi**ω - vf(ti, (yi_partial**ω + diagonal * prod(fi, control) ** ω).ω, args) ** ω
+        ω(fi) - ω(vf(ti, (ω(yi_partial) + diagonal * ω(prod(fi, control))).ω, args))
     ).ω
     return diff
 
@@ -281,7 +282,7 @@ def _implicit_relation_k(ki, nonlinear_solve_args):
     stage_index, diagonal, vf_prod, ti, yi_partial, args, control = nonlinear_solve_args
     del stage_index
     diff = (
-        ki**ω - vf_prod(ti, (yi_partial**ω + diagonal * ki**ω).ω, args, control) ** ω
+        ω(ki) - ω(vf_prod(ti, (ω(yi_partial) + diagonal * ω(ki)).ω, args, control))
     ).ω
     return diff
 
@@ -302,6 +303,7 @@ class _Leaf:
 def _sum(*x):
     assert len(x) > 0
     # Not sure if the builtin does the right thing with JAX tracers?
+    # total = u.Quantity(x[0], unit=x[1].unit)
     total = x[0]
     for xi in x[1:]:
         total = total + xi
@@ -338,12 +340,13 @@ def _filter_maybe_cond(pred, branch, value):
 def _assert_same_structure(x, y):
     x = jax.eval_shape(lambda: x)
     y = jax.eval_shape(lambda: y)
-    x, y = jtu.tree_map(lambda a: (a.shape, a.dtype), (x, y))
+    x, y = jax.tree.map(lambda a: (a.shape, a.dtype), (x, y), is_leaf=u.math.is_quantity)
     return eqx.tree_equal(x, y) is True
 
 
 class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
-    """Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
+    """
+    Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
     Runge--Kutta methods, which have a different computational structure.)
 
     Whilst this class can be subclassed directly, when defining your own Runge--Kutta
@@ -399,7 +402,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         # FSAL implies evaluating just the vector field, since we need to contract
         # the same vector field evaluation against two different controls.
         fsal = fsal and not vf_expensive
-        return vf_expensive, fsal
+        # return vf_expensive, fsal
+        return vf_expensive, False
 
     def func(
         self,
@@ -426,17 +430,18 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 # Privileged optimisations for some common cases
                 _terms = terms.term
                 if type(_terms) is ODETerm:
-                    f0 = jtu.tree_map(lambda x: jnp.zeros(x.shape, x.dtype), y0)
+                    f0 = jax.tree.map(lambda x: u.math.zeros_like(x), y0)
                 elif type(_terms) is MultiTerm:
                     if all(type(x) is ODETerm for x in _terms.terms):
                         f0 = tuple(
-                            jtu.tree_map(lambda x: jnp.zeros(x.shape, x.dtype), y0)
+                            jax.tree.map(lambda x: u.math.zeros_like(x), y0)
                             for _ in range(len(_terms.terms))
                         )
             if f0 is sentinel:
-                # Must be initialiased at zero as it is inserted into `ks` which must be
-                # initialised at zero.
-                f0 = eqxi.eval_zero(self.func, terms, t0, y0, args)
+                # Must be initialized at zero as it is inserted into `ks` which must be
+                # initialized at zero.
+                out = eqx.filter_eval_shape(self.func, terms, t0, y0, args)
+                f0 = jax.tree.map(lambda x: u.math.zeros_like(x), out)
             return first_step, f0
         else:
             return None
@@ -473,7 +478,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         #
         # Implicit methods: these all involve computing a Jacobian somewhere, and doing
         # a root find. Any root finder can be used, although in practice the chord
-        # method is typical. Indeed it is common (SDIRK; ESDIRK) to reuse the Jacobian
+        # method is typical. Indeed, it is common (SDIRK; ESDIRK) to reuse the Jacobian
         # between stages.
         #
         # Multi-tableau methods: these are cases where each term has a different
@@ -525,9 +530,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 implicit_tableau = None
                 implicit_term = None
         terms: PyTree[AbstractTerm]
-        assert jtu.tree_structure(terms, is_leaf=_is_term) == jtu.tree_structure(
-            tableaus
-        )
+        assert jax.tree.structure(terms, is_leaf=_is_term) == jax.tree.structure(tableaus)
 
         #
         # We have a choice whether to evaluate `vf` to get vector field evaluations
@@ -601,14 +604,14 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 else:
                     return fn(*_trees)
 
-            return jtu.tree_map(_fn, tableaus, *trees)
+            return jax.tree.map(_fn, tableaus, *trees, is_leaf=u.math.is_quantity)
 
         # Structure of `y` and `k`.
         def y_map(fn, *trees):
             def _fn(_, *_trees):
                 return fn(*_trees)
 
-            return jtu.tree_map(_fn, y0, *trees)
+            return jax.tree.map(_fn, y0, *trees, is_leaf=u.math.is_quantity)
 
         # Structure of `f`. Note that this is a suffix of `t_map`.
         def f_map(fn, *trees):
@@ -616,10 +619,10 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 return fn(*_trees)
 
             assert f0 is not _unused
-            return jtu.tree_map(_fn, f0, *trees)
+            return jax.tree.map(_fn, f0, *trees, is_leaf=u.math.is_quantity)
 
         def t_leaves(tree):
-            return [x.value for x in jtu.tree_leaves(t_map(_Leaf, tree))]
+            return [x.value for x in jax.tree.leaves(t_map(_Leaf, tree))]
 
         def ty_map(fn, *trees):
             return t_map(lambda *_trees: y_map(fn, *_trees), *trees)
@@ -686,7 +689,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             init_stage_index = jnp.where(eval_first_stage, 0, 1)
             # We do `fs.at[0].set(f0)` below. If we're actually going to evaluate the
             # first stage, then zero out `f0` so that that is a no-op.
-            f0 = jtu.tree_map(lambda x: jnp.where(eval_first_stage, 0, x), f0)
+            f0 = jax.tree.map(lambda x: jnp.where(eval_first_stage, 0, x), f0)
             if store_fs:
                 k0 = _unused
             else:
@@ -738,18 +741,18 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         # Create the buffers we'll populate with our f- or k-evaluations.
         #
 
-        num_stages = jtu.tree_leaves(tableaus)[0].num_stages
+        num_stages = jax.tree.leaves(tableaus)[0].num_stages
         # Must be initialised at zero as we later do matmuls against the
         # partially-filled arrays.
         if store_fs:
             assert f0 is not _unused
-            fs = f_map(lambda x: jnp.zeros((num_stages,) + x.shape, x.dtype), f0)
+            fs = f_map(lambda x: u.math.zeros((num_stages,) + x.shape, x.dtype, unit=u.get_unit(x)), f0)
             ks = _unused
         else:
             fs = _unused
             ks = t_map(
                 lambda: y_map(
-                    lambda x: jnp.zeros((num_stages,) + x.shape, x.dtype), y0
+                    lambda x: u.math.zeros((num_stages,) + x.shape, x.dtype, unit=u.get_unit(x)), y0
                 ),
             )
         if fsal:
@@ -766,7 +769,12 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             if store_fs:
                 fs = f_map(lambda x, xs: xs.at[0].set(x), f0, fs)
             else:
-                ks = ty_map(lambda x, xs: xs.at[0].set(x), k0, ks)
+                def embed_k0(x, xs):
+                    # if isinstance(x, u.Quantity) and not isinstance(xs, u.Quantity):
+                    #     xs = u.Quantity(xs, unit=x.unit)
+                    return xs.at[0].set(x)
+
+                ks = ty_map(embed_k0, k0, ks)
 
         #
         # Transform our tableaus into full square tableaus. (Rather than just the
@@ -777,7 +785,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         # benchmarked.)
         #
 
-        y0_leaves = jtu.tree_leaves(y0)
+        y0_leaves = jax.tree.leaves(y0)
         if len(y0_leaves) == 0:
             tableau_dtype = lxi.default_floating_dtype()
         else:
@@ -883,7 +891,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 implicit_predictor_i = implicit_predictor[stage_index]  # pyright: ignore
                 implicit_c_i = implicit_c[stage_index]  # pyright: ignore
                 # No floating point error
-                implicit_ti = jnp.where(implicit_c_i == 1, t1, t0 + implicit_c_i * dt)
+                implicit_ti = u.math.where(implicit_c_i == 1, t1, t0 + implicit_c_i * dt)
                 if_first_stage = ft.partial(jnp.where, stage_index == 0)
                 if eval_fs:
                     f_pred = get_implicit(
@@ -892,7 +900,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     if not fsal:
                         # FSAL => explicit first stage so the choice of predictor
                         # doesn't matter.
-                        f_pred = jtu.tree_map(if_first_stage, f0_for_jac, f_pred)
+                        f_pred = jax.tree.map(if_first_stage, f0_for_jac, f_pred)
                     assert f0 is not _unused
                     f_implicit_args = (
                         stage_index,
@@ -915,7 +923,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     if not fsal:
                         # FSAL implies explicit first stage so the choice of predictor
                         # doesn't matter.
-                        k_pred = jtu.tree_map(if_first_stage, k0_for_jac, k_pred)
+                        k_pred = jax.tree.map(if_first_stage, k0_for_jac, k_pred)
                     k_implicit_args = (
                         stage_index,
                         implicit_diagonal_i,
@@ -1018,7 +1026,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             # have its value.
             #
             # No floating point error
-            ti = t_map(lambda _c_i: jnp.where(_c_i == 1, t1, t0 + _c_i * dt), c_i)
+            ti = t_map(lambda _c_i: u.math.where(_c_i == 1, t1, t0 + _c_i * dt), c_i)
             if eval_fs:
                 assert not vf_expensive
                 assert implicit_fi is not _unused
@@ -1043,11 +1051,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             if store_fs:
                 assert fi is not _unused
                 assert fs is not _unused
-                fs = f_map(lambda x, xs: xs.at[stage_index].set(x), fi, fs)
+                ks = f_map(lambda x, xs: unit_at_set(xs, x, stage_index), fi, fs)
             else:
                 assert ki is not _unused
                 assert ks is not _unused
-                ks = ty_map(lambda x, xs: xs.at[stage_index].set(x), ki, ks)
+                ks = ty_map(lambda x, xs: unit_at_set(xs, x, stage_index), ki, ks)
             nonlocal const_result
             if const_result is const_result_sentinel:
                 const_result = result is old_result
@@ -1098,7 +1106,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 )
                 jac_f = self.root_finder.init(  # pyright: ignore
                     lambda y, a: (_implicit_relation_f(y, a), None),
-                    jtu.tree_map(jnp.zeros_like, get_implicit(f0)),
+                    jax.tree.map(jnp.zeros_like, get_implicit(f0)),
                     _filter_stop_gradient(f_implicit_args),
                     options={},
                     f_struct=jax.eval_shape(lambda: get_implicit(f0)),
@@ -1120,7 +1128,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 jac_f = _unused
                 jac_k = self.root_finder.init(  # pyright: ignore
                     lambda y, a: (_implicit_relation_k(y, a), None),
-                    jtu.tree_map(jnp.zeros_like, y0),
+                    jax.tree.map(jnp.zeros_like, y0),
                     _filter_stop_gradient(k_implicit_args),
                     options={},
                     f_struct=jax.eval_shape(lambda: y0),
@@ -1172,8 +1180,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 ks = None
             else:
                 ks = jax.vmap(prod)(fs)
-        if any(not tableau.ssal for tableau in jtu.tree_leaves(tableaus)):
-
+        if any(not tableau.ssal for tableau in jax.tree.leaves(tableaus)):
             def _increment(tab_i, k_i):
                 return vector_tree_dot(
                     jnp.asarray(tab_i.b_sol, dtype=tableau_dtype), k_i
@@ -1189,7 +1196,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             ks,
         )
         y_error = y_map(_sum, *t_leaves(y_error))
-        y_error = jtu.tree_map(
+        y_error = jax.tree.map(
             lambda _y_error: jnp.where(is_okay(result), _y_error, jnp.inf),
             y_error,
         )  # i.e. an implicit step failed to converge

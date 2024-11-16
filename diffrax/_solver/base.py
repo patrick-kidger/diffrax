@@ -12,18 +12,16 @@ from typing import (
     TypeVar,
 )
 
+import brainunit as u
 import equinox as eqx
 import jax.lax as lax
-import jax.numpy as jnp
-import jax.tree_util as jtu
+import jax.tree
 import optimistix as optx
-
 
 if TYPE_CHECKING:
     from typing import ClassVar as AbstractClassVar, ClassVar as AbstractVar
 else:
     from equinox import AbstractClassVar, AbstractVar
-from equinox.internal import ω
 from jaxtyping import PyTree
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
@@ -32,13 +30,12 @@ from .._local_interpolation import AbstractLocalInterpolation
 from .._solution import RESULTS, update_result
 from .._term import AbstractTerm, MultiTerm
 
-
 _SolverState = TypeVar("_SolverState")
 
 
 def vector_tree_dot(a, b):
-    return jtu.tree_map(
-        lambda bi: jnp.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),
+    return jax.tree.map(
+        lambda bi: u.math.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),
         b,
     )
 
@@ -68,7 +65,7 @@ def _term_compatible_contr_kwargs(term_structure):
         term_structure = origin
     if isinstance(term_structure, type) and issubclass(term_structure, AbstractTerm):
         return {}
-    return jtu.tree_map(_term_compatible_contr_kwargs, term_structure)
+    return jax.tree.map(_term_compatible_contr_kwargs, term_structure)
 
 
 class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
@@ -195,7 +192,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         [`diffrax.AbstractSolver.step`][], which operates over an interval.)
 
         For most operations differential equation solvers are interval-based, so this
-        opertion should be used sparingly. This operation is needed for things like
+        operation should be used sparingly. This operation is needed for things like
         selecting an initial step size.
 
         **Arguments:** As [`diffrax.diffeqsolve`][]
@@ -333,7 +330,10 @@ class HalfSolver(
             terms, t0, t1, y0, args, original_solver_state, made_jump
         )
 
-        y_error = (y1**ω - y1_alt**ω).call(jnp.abs).ω
+        y_error = jax.tree.map(lambda y1_, y1_alt_: u.math.abs(y1_ - y1_alt_),
+                               y1,
+                               y1_alt,
+                               is_leaf=u.math.is_quantity)
         result = update_result(result1, update_result(result2, result3))
 
         return y1, y_error, dense_info, solver_state, result
