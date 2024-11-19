@@ -27,6 +27,7 @@ from .milstein import (
     StratonovichMilstein as StratonovichMilstein,
 )
 from .ralston import Ralston as Ralston
+from .reversible import Reversible as Reversible
 from .reversible_heun import ReversibleHeun as ReversibleHeun
 from .runge_kutta import (
     AbstractDIRK as AbstractDIRK,
