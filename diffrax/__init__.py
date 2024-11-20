@@ -129,4 +129,4 @@ from ._term import (
 )
 
 
-# __version__ = importlib.metadata.version("diffrax")
+__version__ = "0.6.1"

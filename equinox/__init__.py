@@ -69,4 +69,4 @@ from ._vmap_pmap import (
 from .nn import inference_mode as tree_inference  # noqa: F401 - backward compatibility
 
 
-__version__ = importlib.metadata.version("equinox")
+__version__ = "0.11.8"

@@ -74,4 +74,4 @@ from ._solver import (
 )
 
 
-__version__ = importlib.metadata.version("optimistix")
+__version__ = "0.0.10"
