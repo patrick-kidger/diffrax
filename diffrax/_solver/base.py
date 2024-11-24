@@ -35,7 +35,7 @@ _SolverState = TypeVar("_SolverState")
 
 def vector_tree_dot(a, b):
     return jax.tree.map(
-        lambda bi: u.math.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),
+        lambda bi: u.linalg.tensordot(a, bi, axes=1, precision=lax.Precision.HIGHEST),
         b,
     )
 
