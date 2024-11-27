@@ -102,7 +102,6 @@ from ._solver import (
     Midpoint as Midpoint,
     MultiButcherTableau as MultiButcherTableau,
     Ralston as Ralston,
-    Reversible as Reversible,
     ReversibleHeun as ReversibleHeun,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,

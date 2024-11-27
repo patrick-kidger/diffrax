@@ -2,7 +2,7 @@ import abc
 import functools as ft
 import warnings
 from collections.abc import Callable, Iterable
-from typing import Any, cast, Optional, Union
+from typing import Any, cast, Optional, TypeAlias, TypeVar, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -13,14 +13,22 @@ import jax.tree_util as jtu
 import lineax as lx
 import optimistix.internal as optxi
 from equinox.internal import ω
+from jaxtyping import PyTree
 
+from ._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from ._heuristics import is_sde, is_unsafe_sde
 from ._saveat import save_y, SaveAt, SubSaveAt
+from ._solution import RESULTS, update_result
 from ._solver import (
+    AbstractAdaptiveSolver,
     AbstractItoSolver,
     AbstractRungeKutta,
+    AbstractSolver,
     AbstractStratonovichSolver,
-    Reversible,
+    AbstractWrappedSolver,
+    LeapfrogMidpoint,
+    ReversibleHeun,
+    SemiImplicitEuler,
 )
 from ._term import AbstractTerm, AdjointTerm
 
@@ -887,9 +895,9 @@ def _loop_reversible_fwd(perturbed, y__args__terms, **kwargs):
     final_state, aux_stats = _loop_reversible(y__args__terms, **kwargs)
     ts = final_state.reversible_ts
     ts_final_index = final_state.reversible_save_index
-    y1 = final_state.save_state.ys[-1]
+    ys = final_state.save_state.ys
     solver_state1 = final_state.solver_state
-    return (final_state, aux_stats), (ts, ts_final_index, y1, solver_state1)
+    return (final_state, aux_stats), (ts, ts_final_index, ys, solver_state1)
 
 
 @_loop_reversible.def_bwd
@@ -900,27 +908,44 @@ def _loop_reversible_bwd(
     y__args__terms,
     *,
     self,
+    saveat,
+    init_state,
     solver,
     event,
-    t0,
-    t1,
-    dt0,
-    init_state,
-    progress_meter,
     **kwargs,
 ):
     assert event is None
 
-    del perturbed, init_state, t1, progress_meter, self, kwargs
-    ts, ts_final_index, y1, solver_state1 = residuals
+    del perturbed, self, init_state, kwargs
+    ts, ts_final_index, ys, solver_state1 = residuals
     original_solver_state, z1 = solver_state1
     del residuals, solver_state1
 
     grad_final_state, _ = grad_final_state__aux_stats
-    # ReversibleAdjoint currently only allows SaveAt(t1=True) so grad_y1 should have
-    # the same structure as y1.
-    grad_y1 = grad_final_state.save_state.ys[-1]
-    grad_y1 = jtu.tree_map(_materialise_none, y1, grad_y1)
+    # If true we must be using SaveAt(t1=True).
+    t1_only = saveat.subs.t1
+    if t1_only:
+        y1 = (ω(ys)[-1]).ω
+        grad_ys = (ω(grad_final_state.save_state.ys)[-1]).ω
+        grad_ys = jtu.tree_map(_materialise_none, y1, grad_ys)
+        grad_y0_zeros = jtu.tree_map(jnp.zeros_like, grad_ys)
+
+    # Otherwise we must be using SaveAt(..., steps=True) due to the guard in
+    # ReversibleAdjoint. If y0 is not saved (t0=False) then we prepend grad_y0 (zeros).
+    else:
+        if saveat.subs.t0:
+            y1 = (ω(ys)[ts_final_index]).ω
+            grad_ys = grad_final_state.save_state.ys
+        else:
+            y1 = (ω(ys)[ts_final_index - 1]).ω
+            grad_ys = grad_final_state.save_state.ys
+            grad_y0 = jtu.tree_map(lambda x: jnp.zeros_like(x[0]), grad_ys)
+            grad_ys = jtu.tree_map(
+                lambda x, y: jnp.concatenate([x[None], y]), grad_y0, grad_ys
+            )
+
+        grad_ys = jtu.tree_map(_materialise_none, ys, grad_ys)
+
     del grad_final_state, grad_final_state__aux_stats
 
     y, args, terms = y__args__terms
@@ -935,48 +960,62 @@ def _loop_reversible_bwd(
     del diff_args, diff_terms, diff_z1
 
     def grad_step(state):
-        def solver_step(terms, t0, t1, y1, args):
-            step, _, _, _, _ = solver.solver.step(
-                terms, t0, t1, y1, args, (first_step, f0), False
+        def solver_step(t0, t1, original_solver_state, y0, args, terms):
+            step, _, _, original_solver_state, _ = solver.solver.step(
+                terms, t0, t1, y0, args, original_solver_state, False
             )
-            return step
+            return step, original_solver_state
 
-        ts_index, y1, solver_state, grad_y1, grad_z1, grad_args, grad_terms = state
-        (first_step, f0), z1 = solver_state
+        ts_index, y1, solver_state, grad_ys, grad_z1, grad_args, grad_terms = state
+        original_solver_state, z1 = solver_state
 
         t1 = ts[ts_index]
         t0 = ts[ts_index - 1]
-        ts_index = ts_index - 1
 
-        # TODO The solver steps switch between evaluating from z0
-        # and y1. Therefore, we re-evaluate f0 outside of the base
-        # solver to ensure the vf is correct.
-        # Can we avoid this re-evaluation?
+        if t1_only:
+            grad_y1 = grad_ys
+            grad_y0 = grad_y0_zeros  # pyright: ignore
 
-        f0 = solver.func(terms, t1, y1, args)
-        step_y1, vjp_fun_y1 = eqx.filter_vjp(solver_step, terms, t1, t0, y1, args)
+        else:
+            grad_y1 = (ω(grad_ys)[ts_index]).ω
+            grad_y0 = (ω(grad_ys)[ts_index - 1]).ω
+
+        solver_step_fn = ft.partial(solver_step, t1, t0, original_solver_state)
+        step_y1, vjp_fun_y1, original_solver_state = eqx.filter_vjp(
+            solver_step_fn, y1, args, terms, has_aux=True
+        )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
 
-        f0 = solver.func(terms, t0, z0, args)
-        step_z0, vjp_fun_z0 = eqx.filter_vjp(solver_step, terms, t0, t1, z0, args)
+        solver_step_fn = ft.partial(solver_step, t0, t1, original_solver_state)
+        step_z0, vjp_fun_z0, _ = eqx.filter_vjp(
+            solver_step_fn, z0, args, terms, has_aux=True
+        )
 
         y0 = ((1 / solver.l) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
 
         grad_step_y1 = vjp_fun_y1(grad_z1)
-        grad_y1 = (ω(grad_y1) + ω(grad_z1) - ω(grad_step_y1[3])).ω
+        grad_y1 = (ω(grad_y1) + ω(grad_z1) - ω(grad_step_y1[0])).ω
 
         grad_step_z0 = vjp_fun_z0(grad_y1)
-        grad_y0 = (solver.l * ω(grad_y1)).ω
-        grad_z0 = (ω(grad_z1) - solver.l * ω(grad_y1) + ω(grad_step_z0[3])).ω
+        grad_y0 = (solver.l * ω(grad_y1) + ω(grad_y0)).ω
+        grad_z0 = (ω(grad_z1) - solver.l * ω(grad_y1) + ω(grad_step_z0[0])).ω
 
-        grad_terms = (ω(grad_terms) - ω(grad_step_y1[0]) + ω(grad_step_z0[0])).ω
-        grad_args = (ω(grad_args) - ω(grad_step_y1[4]) + ω(grad_step_z0[4])).ω
+        grad_terms = (ω(grad_terms) - ω(grad_step_y1[2]) + ω(grad_step_z0[2])).ω
+        grad_args = (ω(grad_args) - ω(grad_step_y1[1]) + ω(grad_step_z0[1])).ω
+
+        if t1_only:
+            grad_ys = grad_y0
+        else:
+            grad_ys = (ω(grad_ys).at[ts_index].set(ω(grad_y1))).ω
+            grad_ys = (ω(grad_ys).at[ts_index - 1].set(ω(grad_y0))).ω
+
+        ts_index = ts_index - 1
 
         return (
             ts_index,
             y0,
-            ((first_step, f0), z0),
-            grad_y0,
+            (original_solver_state, z0),
+            grad_ys,
             grad_z0,
             grad_args,
             grad_terms,
@@ -990,32 +1029,83 @@ def _loop_reversible_bwd(
         ts_final_index,
         y1,
         (original_solver_state, z1),
-        grad_y1,
+        grad_ys,
         grad_z1,
         grad_args,
         grad_terms,
     )
 
     state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
-    _, _, _, grad_y0, grad_z0, grad_args, grad_terms = state
+    _, _, _, grad_ys, grad_z0, grad_args, grad_terms = state
+    if t1_only:
+        grad_y0 = grad_ys
+    else:
+        grad_y0 = (ω(grad_ys)[0]).ω
+
     return (ω(grad_y0) + ω(grad_z0)).ω, grad_args, grad_terms
 
 
 class ReversibleAdjoint(AbstractAdjoint):
     """
-    Backpropagate through [`diffrax.diffeqsolve`][] when using the
-    [`diffrax.Reversible`][] solver.
+    Backpropagate through [`diffrax.diffeqsolve`][] using the reversible solver
+    method.
 
-    This method implies very low memory usage and exact gradient calculation (up to
-    floating point errors).
+    This method automatically wraps the passed solver to create an algebraically
+    reversible version of that solver. In doing so, gradient calculation is exact
+    (up to floating point errors) and backpropagation becomes a linear in time $O(n)$
+    and constant in memory $O(1)$ algorithm in the number of steps $n$.
 
-    This will compute gradients with respect to the `terms`, `y0` and `args` arguments
-    passed to [`diffrax.diffeqsolve`][]. If you attempt to compute gradients with
-    respect to anything else (for example `t0`, or arguments passed via closure), then
-    a `CustomVJPException` will be raised. See also
-    [this FAQ](../../further_details/faq/#im-getting-a-customvjpexception)
-    entry.
+    The reversible adjoint can be used when solving ODEs/CDEs/SDEs and is
+    compatible with any [`diffrax.AbstractSolver`][]. Adaptive step sizes are also
+    supported.
+
+    !!! note
+
+        This adjoint can be less numerically stable than
+        [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.DirectAdjoint`][].
+        Stability can be largely improved by using [double (64bit) precision](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision)
+        and [smaller/adaptive step sizes](https://docs.kidger.site/diffrax/api/stepsize_controller/).
+
+    ??? cite "References"
+
+        This algorithm was developed in:
+
+        ```bibtex
+        @article{mccallum2024efficient,
+            title={Efficient, Accurate and Stable Gradients for Neural ODEs},
+            author={McCallum, Sam and Foster, James},
+            journal={arXiv preprint arXiv:2410.11648},
+            year={2024}
+        }
+        ```
+
+        And built on previous work by:
+
+        ```bibtex
+        @article{kidger2021efficient,
+            title={Efficient and accurate gradients for neural sdes},
+            author={Kidger, Patrick and Foster, James and Li, Xuechen Chen and Lyons,
+                    Terry},
+            journal={Advances in Neural Information Processing Systems},
+            volume={34},
+            pages={18747--18761},
+            year={2021}
+        }
+        ```
+
+        ```bibtex
+        @article{zhuang2021mali,
+            title={Mali: A memory efficient and reverse accurate integrator for neural
+                    odes},
+            author={Zhuang, Juntang and Dvornek, Nicha C and Tatikonda, Sekhar and
+            Duncan, James S},
+            journal={arXiv preprint arXiv:2102.04668},
+            year={2021}
+        }
+        ```
     """
+
+    l: float = 0.999
 
     def loop(
         self,
@@ -1031,19 +1121,39 @@ class ReversibleAdjoint(AbstractAdjoint):
         **kwargs,
     ):
         # `is` check because this may return a Tracer from SaveAt(ts=<array>)
-        if eqx.tree_equal(saveat, SaveAt(t1=True)) is not True:
+        if (
+            eqx.tree_equal(saveat, SaveAt(t1=True)) is not True
+            and eqx.tree_equal(saveat, SaveAt(steps=True)) is not True
+            and eqx.tree_equal(saveat, SaveAt(t0=True, steps=True)) is not True
+        ):
             raise ValueError(
-                "Can only use `adjoint=ReversibleAdjoint()` with "
-                "`saveat=SaveAt(t1=True)`."
+                "Can only use `diffrax.ReversibleAdjoint` with "
+                "`saveat=SaveAt(t1=True)` or `saveat=SaveAt(steps=True)`."
             )
 
-        if not isinstance(solver, Reversible):
-            raise ValueError(
-                "Can only use `adjoint=ReversibleAdjoint()` with "
-                "`Reversible()` solver."
+        if event is not None:
+            raise NotImplementedError(
+                "`diffrax.ReversibleAdjoint` is not compatible with events."
             )
 
+        if isinstance(solver, (SemiImplicitEuler, ReversibleHeun, LeapfrogMidpoint)):
+            raise ValueError(
+                "`diffrax.ReversibleAdjoint` is not compatible with solvers that are "
+                f"intrinsically algebraically reversible, such as {solver}."
+            )
+
+        solver = _Reversible(solver, self.l)
+        tprev = init_state.tprev
+        tnext = init_state.tnext
         y = init_state.y
+
+        init_state = eqx.tree_at(
+            lambda s: s.solver_state,
+            init_state,
+            solver.init(terms, tprev, tnext, y, args),
+            is_leaf=_is_none,
+        )
+
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
         init_state = _nondiff_solver_controller_state(
             self, init_state, passed_solver_state, passed_controller_state
@@ -1060,3 +1170,114 @@ class ReversibleAdjoint(AbstractAdjoint):
         )
         final_state = _only_transpose_ys(final_state)
         return final_state, aux_stats
+
+
+ReversibleAdjoint.__init__.__doc__ = r"""
+**Arguments:**
+
+- `l` - coupling parameter, defaults to `l=0.999`.
+
+The reversible solver introduces the coupled state $\{y_n, z_n\}_{n\geq 0}$ and the 
+coupling parameter $l\in (0, 1)$ mixes the states via $ly_n + (1-l)z_n$. This parameter 
+effects the stability of the reversible solver; decreasing it's value leads to greater 
+forward stability and increasing it's value leads to greater backward stability.
+
+In most cases the default value is sufficient. However, if you find yourself needing 
+greater control over stability it can be passed as an argument.
+"""
+
+_BaseSolverState = TypeVar("_BaseSolverState")
+_SolverState: TypeAlias = tuple[_BaseSolverState, Y]
+
+
+def _add_maybe_none(x, y):
+    if x is None:
+        return None
+    else:
+        return (ω(x) + ω(y)).ω
+
+
+class _Reversible(
+    AbstractAdaptiveSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+):
+    """
+    Reversible solver method.
+
+    Allows any solver ([`diffrax.AbstractSolver`][]) to be made algebraically
+    reversible. This is a private API, exclusively for [`diffrax.ReversibleAdjoint`][].
+    """
+
+    solver: AbstractSolver
+    l: float = 0.999
+
+    @property
+    def term_structure(self):
+        return self.solver.term_structure
+
+    @property
+    def interpolation_cls(self):  # pyright: ignore
+        return self.solver.interpolation_cls
+
+    @property
+    def term_compatible_contr_kwargs(self):
+        return self.solver.term_compatible_contr_kwargs
+
+    @property
+    def root_finder(self):
+        return self.solver.root_finder  # pyright: ignore
+
+    @property
+    def root_find_max_steps(self):
+        return self.solver.root_find_max_steps  # pyright: ignore
+
+    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+        return self.solver.order(terms)
+
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+        return self.solver.strong_order(terms)
+
+    def init(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _SolverState:
+        if isinstance(self.solver, AbstractRungeKutta):
+            object.__setattr__(self.solver.tableau, "fsal", False)
+            object.__setattr__(self.solver.tableau, "ssal", False)
+        original_solver_init = self.solver.init(terms, t0, t1, y0, args)
+        return (original_solver_init, y0)
+
+    def step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+        original_solver_state, z0 = solver_state
+
+        step_z0, z_error, dense_info, original_solver_state, result1 = self.solver.step(
+            terms, t0, t1, z0, args, original_solver_state, made_jump
+        )
+        y1 = (self.l * (ω(y0) - ω(z0)) + ω(step_z0)).ω
+
+        step_y1, y_error, _, _, result2 = self.solver.step(
+            terms, t1, t0, y1, args, original_solver_state, made_jump
+        )
+        z1 = (ω(y1) + ω(z0) - ω(step_y1)).ω
+
+        solver_state = (original_solver_state, z1)
+        result = update_result(result1, result2)
+
+        return y1, _add_maybe_none(z_error, y_error), dense_info, solver_state, result
+
+    def func(
+        self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args
+    ) -> VF:
+        return self.solver.func(terms, t0, y0, args)
