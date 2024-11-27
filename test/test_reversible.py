@@ -323,3 +323,37 @@ def test_incompatible_arguments(solver, saveat):
             stepsize_controller=diffrax.ConstantStepSize(),
             pytree_state=False,
         )
+
+
+@pytest.mark.parametrize(
+    "solver, unsafe_brownian", [(diffrax.EulerHeun(), True), (diffrax.Euler(), False)]
+)
+def test_unsafe_sde(solver, unsafe_brownian):
+    diffusion = lambda t, y, args: 1.0
+    y0 = jnp.array([0.9, 5.4])
+    args = (0.1, -1)
+    drift = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
+
+    if unsafe_brownian:
+        brownian_path = diffrax.UnsafeBrownianPath(shape=(), key=jr.PRNGKey(0))
+    else:
+        brownian_path = diffrax.VirtualBrownianTree(
+            0,
+            5,
+            tol=1e-3,
+            shape=(),
+            key=jr.PRNGKey(1),
+        )
+
+    terms = diffrax.MultiTerm(drift, diffrax.ControlTerm(diffusion, brownian_path))
+    y0__args__term = (y0, args, terms)
+
+    with pytest.raises((ValueError, NotImplementedError)):
+        loss, grads_reversible = _loss(
+            y0__args__term,
+            solver,
+            saveat=diffrax.SaveAt(t1=True),
+            adjoint=diffrax.ReversibleAdjoint(),
+            stepsize_controller=diffrax.ConstantStepSize(),
+            pytree_state=False,
+        )

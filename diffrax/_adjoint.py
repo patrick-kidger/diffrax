@@ -1142,6 +1142,26 @@ class ReversibleAdjoint(AbstractAdjoint):
                 f"intrinsically algebraically reversible, such as {solver}."
             )
 
+        if is_unsafe_sde(terms):
+            raise ValueError(
+                "`adjoint=ReversibleAdjoint()` does not support `UnsafeBrownianPath`. "
+                "Consider using `VirtualBrownianTree` instead."
+            )
+        if is_sde(terms):
+            if isinstance(solver, AbstractItoSolver):
+                raise NotImplementedError(
+                    f"`{solver.__class__.__name__}` converges to the Itô solution. "
+                    "However `ReversibleAdjoint` currently only supports Stratonovich "
+                    "SDEs."
+                )
+            elif not isinstance(solver, AbstractStratonovichSolver):
+                warnings.warn(
+                    f"{solver.__class__.__name__} is not marked as converging to "
+                    "either the Itô or the Stratonovich solution. Note that "
+                    "`ReversibleAdjoint` will only produce the correct solution for "
+                    "Stratonovich SDEs."
+                )
+
         solver = _Reversible(solver, self.l)
         tprev = init_state.tprev
         tnext = init_state.tnext
