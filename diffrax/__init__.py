@@ -6,6 +6,7 @@ from ._adjoint import (
     DirectAdjoint as DirectAdjoint,
     ImplicitAdjoint as ImplicitAdjoint,
     RecursiveCheckpointAdjoint as RecursiveCheckpointAdjoint,
+    ReversibleAdjoint as ReversibleAdjoint,
 )
 from ._autocitation import citation as citation, citation_rules as citation_rules
 from ._brownian import (

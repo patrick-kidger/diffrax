@@ -23,7 +23,7 @@ import lineax.internal as lxi
 import optimistix as optx
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
-from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
+from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint, ReversibleAdjoint
 from ._custom_types import (
     BoolScalarLike,
     BufferDenseInfos,
@@ -110,6 +110,11 @@ class State(eqx.Module):
     event_dense_info: Optional[DenseInfo]
     event_values: Optional[PyTree[Union[BoolScalarLike, RealScalarLike]]]
     event_mask: Optional[PyTree[BoolScalarLike]]
+    #
+    # Information for reversible adjoint (save ts)
+    #
+    reversible_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
+    reversible_save_index: Optional[IntScalarLike]
 
 
 def _is_none(x: Any) -> bool:
@@ -292,6 +297,11 @@ def loop(
         dense_ts = init_state.dense_ts
         dense_ts = dense_ts.at[0].set(t0)
         init_state = eqx.tree_at(lambda s: s.dense_ts, init_state, dense_ts)
+
+    if init_state.reversible_ts is not None:
+        reversible_ts = init_state.reversible_ts
+        reversible_ts = reversible_ts.at[0].set(t0)
+        init_state = eqx.tree_at(lambda s: s.reversible_ts, init_state, reversible_ts)
 
     def save_t0(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
         if subsaveat.t0:
@@ -574,6 +584,15 @@ def loop(
                 result,
             )
 
+        reversible_ts = state.reversible_ts
+        reversible_save_index = state.reversible_save_index
+
+        if state.reversible_ts is not None:
+            reversible_ts = maybe_inplace(
+                reversible_save_index + 1, tprev, reversible_ts
+            )
+            reversible_save_index = reversible_save_index + jnp.where(keep_step, 1, 0)
+
         new_state = State(
             y=y,
             tprev=tprev,
@@ -595,6 +614,8 @@ def loop(
             event_dense_info=event_dense_info,
             event_values=event_values,
             event_mask=event_mask,
+            reversible_ts=reversible_ts,  # pyright: ignore[reportArgumentType]
+            reversible_save_index=reversible_save_index,
         )
 
         return (
@@ -1320,6 +1341,18 @@ def diffeqsolve(
         )
         del had_event, event_structure, event_mask_leaves, event_values__mask
 
+    # Reversible info
+    if isinstance(adjoint, ReversibleAdjoint):
+        if max_steps is None:
+            raise ValueError(
+                "`max_steps=None` is incompatible with `ReversibleAdjoint`"
+            )
+        reversible_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
+        reversible_save_index = 0
+    else:
+        reversible_ts = None
+        reversible_save_index = None
+
     # Initialise state
     init_state = State(
         y=y0,
@@ -1342,6 +1375,8 @@ def diffeqsolve(
         event_dense_info=event_dense_info,
         event_values=event_values,
         event_mask=event_mask,
+        reversible_ts=reversible_ts,
+        reversible_save_index=reversible_save_index,
     )
 
     #
