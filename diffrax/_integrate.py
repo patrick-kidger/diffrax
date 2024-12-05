@@ -789,6 +789,10 @@ def loop(
             )
         return save_state
 
+    save_state = jtu.tree_map(
+        _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
+    )
+
     # if t0 == t1 then we don't enter the integration loop. In this case we have to
     # manually update the saved ts and ys if we want to save at "intermediate"
     # times specified by saveat.subs.ts
@@ -803,10 +807,9 @@ def loop(
             __save_state,
         ),
         lambda __save_state: __save_state,
-        final_state.save_state,
+        save_state,
     )
 
-    save_state = jtu.tree_map(_save_t1, saveat.subs, save_state, is_leaf=_is_subsaveat)
     final_state = eqx.tree_at(
         lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
     )
