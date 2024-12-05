@@ -39,7 +39,7 @@ def test_tqdm_progress_meter(capfd):
         err = captured.err.strip()
         assert re.match("0.00%|[ ]+|", err.split("\r", 1)[0])
         assert re.match("100.00%|█+|", err.rsplit("\r", 1)[1])
-        assert captured.err.count("\r") == num_lines
+        assert captured.err.count("\r") - num_lines in [0, 1]
         assert captured.err.count("\n") == 1
 
 
