@@ -27,7 +27,6 @@ _Dt0 = TypeVar("_Dt0", None, RealScalarLike, Optional[RealScalarLike])
 
 class _JumpStepState(eqx.Module, Generic[_ControllerState]):
     jump_at_next_t1: BoolScalarLike
-    prev_dt: RealScalarLike
     step_index: IntScalarLike
     jump_index: IntScalarLike
     rejected_index: IntScalarLike
@@ -266,7 +265,6 @@ class JumpStepWrapper(
         t1, inner_state = self.controller.init(
             terms, t0, t1, y0, dt0, args, func, error_order
         )
-        dt_proposal = t1 - t0
         tdtype = jnp.result_type(t0, t1)
 
         if self.step_ts is None:
@@ -310,7 +308,6 @@ class JumpStepWrapper(
 
         state = _JumpStepState(
             jump_next_step,
-            dt_proposal,
             i_step,
             i_jump,
             i_reject,
@@ -401,16 +398,6 @@ class JumpStepWrapper(
             rejected_buffer = None
 
         # Now move on to the NEXT STEP
-        dt_proposal = next_t1 - next_t0
-        # The following line is so that in case prev_dt was intended to be large,
-        # but then clipped to very small (because of step_ts or jump_ts), we don't
-        # want it to stick to very small steps (note the PID controller can only
-        # increase steps by a factor of 10 at a time).
-        dt_proposal = jnp.where(
-            keep_step, jnp.maximum(dt_proposal, st.prev_dt), dt_proposal
-        )
-        new_prev_dt = dt_proposal
-        next_t1 = next_t0 + dt_proposal
 
         # If t1 hit a jump point, and the step was kept then we need to set
         # `next_t0 = nextafter(nextafter(t1))` to ensure that we really skip
@@ -464,7 +451,6 @@ class JumpStepWrapper(
 
         state = _JumpStepState(
             jump_at_next_t1,
-            new_prev_dt,
             i_step,
             i_jump,
             i_reject,
