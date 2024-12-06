@@ -186,22 +186,29 @@ def test_t0_eq_t1(subs):
         compare_2 = jnp.concatenate(
             (compare, jnp.full((max_steps, *y0.shape), jnp.inf))
         )
-        assert tree_allclose(sol.ys[0], compare)  # pyright: ignore
-        assert tree_allclose(sol.ys[1], compare)  # pyright: ignore
-        assert tree_allclose(sol.ys[2], compare_2)  # pyright: ignore
+        ya, yb, yc = sol.ys  # pyright: ignore[reportGeneralTypeIssues]
+        assert tree_allclose(ya, compare)
+        assert tree_allclose(yb, compare)
+        assert tree_allclose(yc, compare_2)
     else:
         compare = jnp.full((len(ts) + 2, *y0.shape), y0)
         assert tree_allclose(sol.ys, compare)
 
 
-@pytest.mark.parametrize("subs", [True, False])
-def test_vmap_t0_eq_t1(subs):
+def test_t0_eq_t1_complicated():
+    """This test case also checks:
+
+    - vmap'ing
+    - non-float32 dtypes
+    - `SubSaveAt(fn=...)`
+    """
     ntsave = 4
-    y0 = jnp.array([2.0])
+    dtype = jnp.float16
+    y0 = jnp.array([2.0], dtype=dtype)
     term = diffrax.ODETerm(lambda t, y, args: y)
 
     def _solve(tf):
-        ts = jnp.linspace(0.0, tf, ntsave)
+        ts = jnp.linspace(0.0, tf, ntsave, dtype=dtype)
         get0 = diffrax.SubSaveAt(
             ts=ts,
             t1=True,
@@ -210,9 +217,15 @@ def test_vmap_t0_eq_t1(subs):
             t0=True,
             ts=ts,
         )
-        subs = (get0, get1)
+        get2 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+            steps=True,
+            fn=lambda t, y, args: jnp.where(jnp.isinf(y), 3.0, 4.0),
+        )
+        subs = (get0, get1, get2)
         saveat = diffrax.SaveAt(subs=subs)
-        return diffrax.diffeqsolve(
+        sol = diffrax.diffeqsolve(
             term,
             t0=ts[0],
             t1=ts[-1],
@@ -220,16 +233,26 @@ def test_vmap_t0_eq_t1(subs):
             dt0=0.1,
             solver=diffrax.Dopri5(),
             saveat=saveat,
+            max_steps=15,
         )
+        return sol.ys
 
-    compare = jnp.full((ntsave + 1, *y0.shape), y0)
-    sol = jax.vmap(_solve)(jnp.array([0.0, 1.0]))
-    assert tree_allclose(sol.ys[0][0], compare)  # pyright: ignore
-    assert tree_allclose(sol.ys[1][0], compare)  # pyright: ignore
+    compare = jnp.full((ntsave + 1, *y0.shape), y0, dtype=dtype)
+    compare_c = jnp.concatenate(
+        [
+            jnp.full((ntsave + 1, *y0.shape), 4.0, dtype=jnp.float64),
+            jnp.full((15, *y0.shape), jnp.inf, dtype=jnp.float64),
+        ]
+    )
+    true_ya, true_yb, true_yc = _solve(1.0)  # pyright: ignore[reportGeneralTypeIssues]
+    true_ya = jnp.stack([compare, true_ya])
+    true_yb = jnp.stack([compare, true_yb])
+    true_yc = jnp.stack([compare_c, true_yc])
 
-    regular_solve = _solve(1.0)
-    assert tree_allclose(sol.ys[0][1], regular_solve.ys[0])  # pyright: ignore
-    assert tree_allclose(sol.ys[1][1], regular_solve.ys[1])  # pyright: ignore
+    ya, yb, yc = jax.vmap(_solve)(jnp.array([0.0, 1.0]))  # pyright: ignore[reportGeneralTypeIssues]
+    assert tree_allclose(ya, true_ya)
+    assert tree_allclose(yb, true_yb)
+    assert tree_allclose(yc, true_yc)
 
 
 def test_trivial_dense():
