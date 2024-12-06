@@ -777,15 +777,30 @@ def loop(
 
     def _save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
         if subsaveat.ts is not None:
+            out_size = 1 if subsaveat.t0 else 0
+            out_size += 1 if subsaveat.t1 and not subsaveat.steps else 0
+            out_size += len(subsaveat.ts)
             ys = jtu.tree_map(
-                lambda y: jnp.stack([y] * len(save_state.ts)),
+                lambda y: jnp.stack([y] * out_size),
                 subsaveat.fn(t0, yfinal, args),
             )
+            ts = jnp.full(out_size, t0)
+            if subsaveat.steps:
+                ysteps = jtu.tree_map(
+                    lambda y: jnp.stack([y] * max_steps),
+                    subsaveat.fn(t0, jnp.full_like(yfinal, jnp.inf), args),
+                )
+                ys = jtu.tree_map(
+                    lambda _ys, _ysteps: jnp.concatenate([_ys, _ysteps], axis=0),
+                    ys,
+                    ysteps,
+                )
+                ts = jnp.concatenate((ts, jnp.full(max_steps, jnp.inf)))
             save_state = SaveState(
-                saveat_ts_index=len(save_state.ts),
-                ts=save_state.ts,
+                saveat_ts_index=out_size,
+                ts=ts,
                 ys=ys,
-                save_index=len(save_state.ts),
+                save_index=out_size,
             )
         return save_state
 

@@ -151,6 +151,7 @@ def test_saveat_solution():
 def test_t0_eq_t1(subs):
     y0 = jnp.array([2.0])
     ts = jnp.linspace(1.0, 1.0, 3)
+    max_steps = 256
     if subs:
         get0 = diffrax.SubSaveAt(
             ts=ts,
@@ -160,7 +161,12 @@ def test_t0_eq_t1(subs):
             t0=True,
             ts=ts,
         )
-        subs = (get0, get1)
+        get2 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+            steps=True,
+        )
+        subs = (get0, get1, get2)
         saveat = diffrax.SaveAt(subs=subs)
     else:
         saveat = diffrax.SaveAt(t0=True, t1=True, ts=ts)
@@ -173,11 +179,16 @@ def test_t0_eq_t1(subs):
         dt0=0.1,
         solver=diffrax.Dopri5(),
         saveat=saveat,
+        max_steps=max_steps,
     )
     if subs:
         compare = jnp.full((len(ts) + 1, *y0.shape), y0)
+        compare_2 = jnp.concatenate(
+            (compare, jnp.full((max_steps, *y0.shape), jnp.inf))
+        )
         assert tree_allclose(sol.ys[0], compare)  # pyright: ignore
         assert tree_allclose(sol.ys[1], compare)  # pyright: ignore
+        assert tree_allclose(sol.ys[2], compare_2)  # pyright: ignore
     else:
         compare = jnp.full((len(ts) + 2, *y0.shape), y0)
         assert tree_allclose(sol.ys, compare)
