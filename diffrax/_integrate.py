@@ -775,9 +775,56 @@ def loop(
                 save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
+    def _save_ts(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+        if subsaveat.ts is not None:
+            out_size = 1 if subsaveat.t0 else 0
+            out_size += 1 if subsaveat.t1 and not subsaveat.steps else 0
+            out_size += len(subsaveat.ts)
+            ys = jtu.tree_map(
+                lambda y: jnp.stack([y] * out_size),
+                subsaveat.fn(t0, yfinal, args),
+            )
+            ts = jnp.full(out_size, t0)
+            if subsaveat.steps:
+                ysteps = jtu.tree_map(
+                    lambda y: jnp.stack([y] * max_steps),
+                    subsaveat.fn(t0, jnp.full_like(yfinal, jnp.inf), args),
+                )
+                ys = jtu.tree_map(
+                    lambda _ys, _ysteps: jnp.concatenate([_ys, _ysteps], axis=0),
+                    ys,
+                    ysteps,
+                )
+                ts = jnp.concatenate((ts, jnp.full(max_steps, jnp.inf)))
+            save_state = SaveState(
+                saveat_ts_index=out_size,
+                ts=ts,
+                ys=ys,
+                save_index=out_size,
+            )
+        return save_state
+
     save_state = jtu.tree_map(
         _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
     )
+
+    # if t0 == t1 then we don't enter the integration loop. In this case we have to
+    # manually update the saved ts and ys if we want to save at "intermediate"
+    # times specified by saveat.subs.ts
+    save_state = jax.lax.cond(
+        eqxi.unvmap_any(t0 == t1),
+        lambda __save_state: jax.lax.cond(
+            t0 == t1,
+            lambda _save_state: jtu.tree_map(
+                _save_ts, saveat.subs, _save_state, is_leaf=_is_subsaveat
+            ),
+            lambda _save_state: _save_state,
+            __save_state,
+        ),
+        lambda __save_state: __save_state,
+        save_state,
+    )
+
     final_state = eqx.tree_at(
         lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
     )
