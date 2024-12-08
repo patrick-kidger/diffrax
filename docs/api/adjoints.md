@@ -44,6 +44,10 @@ Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax
     selection:
         members: false
 
+::: diffrax.ForwardAdjoint
+    selection: 
+        members: false
+
 ---
 
 ::: diffrax.adjoint_rms_seminorm
