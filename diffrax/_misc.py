@@ -146,10 +146,11 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
     # predicate is statically known.
     # This in turn allows us to perform some trace-time optimisations that XLA isn't
     # smart enough to do on its own.
-    if (
-        type(pred) is not bool
-        and type(jax.core.get_aval(pred)) is jax.core.ConcreteArray
-    ):
+    if jax.__version_info__ >= (0, 4, 36):
+        is_conrete = jax.core.is_concrete(pred)
+    else:
+        is_conrete = type(jax.core.get_aval(pred)) is jax.core.ConcreteArray
+    if type(pred) is not bool and is_conrete:
         with jax.ensure_compile_time_eval():
             pred = pred.item()
     if pred is True:

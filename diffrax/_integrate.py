@@ -262,10 +262,17 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
         return static_x
     elif static_x is None:
         return x
-    elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
-        return static_x
     else:
-        return x
+        if jax.__version_info__ >= (0, 4, 36):
+            if jax.core.is_concrete(static_x):
+                return static_x
+            else:
+                return x
+        else:
+            if type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
+                return static_x
+            else:
+                return x
 
 
 _PRINT_STATIC = False  # used in tests
