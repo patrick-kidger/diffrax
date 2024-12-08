@@ -340,7 +340,7 @@ def _test_dense_interpolation(solver, key, t1):
 
 
 @pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
-def test_dense_interpolation(solver, getkey):
+def test_dense_interpolation(solver):
     solver = implicit_tol(solver)
     key = jr.PRNGKey(5678)
     vals, true_vals, derivs, true_derivs = _test_dense_interpolation(solver, key, 1)

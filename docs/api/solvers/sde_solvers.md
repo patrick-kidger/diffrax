@@ -113,3 +113,43 @@ These are reversible in the same way as when applied to ODEs. [See here.](./ode_
     selection:
         members:
             - __init__
+
+
+---
+
+### Underdamped Langevin solvers
+
+These solvers are specifically designed for the Underdamped Langevin diffusion (ULD),
+which takes the form 
+
+\begin{align*}
+    \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+    \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+    \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+\end{align*}
+
+where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+$f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+$\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+the friction and the damping of the system.
+
+They are more precise for this diffusion than the general-purpose solvers above, but
+cannot be used for any other SDEs. They only accept special terms as described in the
+[Underdamped Langevin terms](../terms.md#underdamped-langevin-terms) section. 
+For an example of their usage, see the [Underdamped Langevin example](../../examples/underdamped_langevin_example.ipynb).
+
+::: diffrax.ALIGN
+    selection:
+        members:
+            - __init__
+
+::: diffrax.ShOULD
+    selection:
+        members:
+            - __init__
+
+::: diffrax.QUICSORT
+    selection:
+        members:
+            - __init__

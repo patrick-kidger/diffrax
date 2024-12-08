@@ -91,3 +91,38 @@ Some example term structures include:
     selection:
         members:
             - __init__
+
+
+---
+
+#### Underdamped Langevin terms
+
+These are special terms which describe the Underdamped Langevin diffusion (ULD),
+which takes the form 
+
+\begin{align*}
+    \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+    \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+    \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+\end{align*}
+
+where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+$f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+$\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+the friction and the damping of the system.
+
+These terms enable the use of ULD-specific solvers which can be found 
+[here](./solvers/sde_solvers.md#underdamped-langevin-solvers). Note that these ULD solvers will only work if given
+terms with structure `MultiTerm(UnderdampedLangevinDriftTerm(gamma, u, grad_f), UnderdampedLangevinDiffusionTerm(gamma, u, bm))`,
+where `bm` is an [`diffrax.AbstractBrownianPath`][] and the same values of `gammma` and `u` are passed to both terms.
+
+::: diffrax.UnderdampedLangevinDriftTerm
+    selection:
+        members:
+            - __init__
+
+::: diffrax.UnderdampedLangevinDiffusionTerm
+    selection:
+        members:
+            - __init__

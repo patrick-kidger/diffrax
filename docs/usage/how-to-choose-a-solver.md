@@ -91,6 +91,11 @@ In this case the Itô solution and the Stratonovich solution coincide, and mathe
 - The cheapest (but least accurate) solver is [`diffrax.SEA`][].
 - Otherwise [`diffrax.ShARK`][] or [`diffrax.SRA1`][] are good choices.
 
+### Underdamped Langevin Diffusion
+
+The Underdamped Langevin Diffusion is a special case of an SDE with additive noise.
+For details on the form of this SDE and appropriate solvers, please refer to the section on [Underdamped Langevin solvers](../api/solvers/sde_solvers.md#underdamped-langevin-solvers).
+
 ---
 
 ## Controlled differential equations

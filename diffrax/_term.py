@@ -3,6 +3,7 @@ import operator
 import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
+from typing_extensions import TypeAlias
 
 import equinox as eqx
 import jax
@@ -11,9 +12,18 @@ import jax.tree_util as jtu
 import lineax as lx
 import numpy as np
 from equinox.internal import ω
-from jaxtyping import ArrayLike, PyTree, PyTreeDef
+from jaxtyping import Array, ArrayLike, PyTree, PyTreeDef, Shaped
 
-from ._custom_types import Args, Control, IntScalarLike, RealScalarLike, VF, Y
+from ._brownian import AbstractBrownianPath
+from ._custom_types import (
+    AbstractBrownianIncrement,
+    Args,
+    Control,
+    IntScalarLike,
+    RealScalarLike,
+    VF,
+    Y,
+)
 from ._misc import upcast_or_raise
 from ._path import AbstractPath
 
@@ -776,3 +786,198 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         dy, vjp = jax.vjp(_to_vjp, y, diff_args, diff_term)
         da_y, da_diff_args, da_diff_term = vjp((-(a_y**ω)).ω)
         return dy, da_y, da_diff_args, da_diff_term
+
+
+# The Underdamped Langevin SDE trajectory consists of two components: the position
+# `x` and the velocity `v`. Both of these have the same shape.
+# So, by UnderdampedLangevinX we denote the shape of the x component, and by
+# UnderdampedLangevinTuple we denote the shape of the tuple (x, v).
+UnderdampedLangevinLeaf: TypeAlias = Shaped[Array, " *underdamped_langevin"]
+UnderdampedLangevinX: TypeAlias = PyTree[
+    Shaped[Array, "?*underdamped_langevin"], "UnderdampedLangevinX"
+]
+UnderdampedLangevinTuple: TypeAlias = tuple[UnderdampedLangevinX, UnderdampedLangevinX]
+
+
+def _broadcast_pytree(source, target_tree):
+    # Broadcasts the source PyTree to the shape and PyTree structure of
+    # target_tree_shape. Requires that source is a prefix tree of target_tree
+    # This is used to broadcast gamma and u to the shape of x0 and v0
+    def inner_broadcast(_src_arr, _inner_target_tree):
+        _arr = jnp.asarray(_src_arr)
+
+        def fun(_leaf):
+            return jnp.asarray(
+                jnp.broadcast_to(_arr, _leaf.shape), dtype=jnp.result_type(_leaf)
+            )
+
+        return jtu.tree_map(fun, _inner_target_tree)
+
+    return jtu.tree_map(inner_broadcast, source, target_tree)
+
+
+def broadcast_underdamped_langevin_arg(
+    arg: PyTree[ArrayLike], x: UnderdampedLangevinX, arg_name: str
+) -> UnderdampedLangevinX:
+    """Broadcasts the argument `arg` to the same structure as the position `x`."""
+    try:
+        return _broadcast_pytree(arg, x)
+    except ValueError:
+        raise RuntimeError(
+            "The PyTree structure and shapes of the arguments `gamma` and `u`"
+            "in the Underdamped Langevin term must be the same as the structure"
+            "and shapes of the position `x`."
+        )
+
+
+class UnderdampedLangevinDiffusionTerm(
+    AbstractTerm[
+        UnderdampedLangevinX, Union[UnderdampedLangevinX, AbstractBrownianIncrement]
+    ]
+):
+    r"""Represents the diffusion term in the Underdamped Langevin Diffusion (ULD).
+    The ULD SDE takes the form:
+
+    \begin{align*}
+        \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+        \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+        \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+    \end{align*}
+
+    where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+    and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+    $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+    $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+    the friction and the damping of the system.
+    """
+
+    gamma: PyTree[ArrayLike]
+    u: PyTree[ArrayLike]
+    control: AbstractBrownianPath
+
+    def __init__(
+        self,
+        gamma: PyTree[ArrayLike],
+        u: PyTree[ArrayLike],
+        bm: AbstractBrownianPath,
+    ):
+        r"""
+        **Arguments:**
+
+        - `gamma`: A vector containing the diagonal entries of the friction matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `u`: A vector containing the diagonal entries of the damping matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `bm`: A Brownian path representing the Brownian motion $w$.
+        """
+        self.gamma = gamma
+        self.u = u
+        self.control = bm
+
+    def vf(
+        self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
+    ) -> UnderdampedLangevinX:
+        x, v = y
+        # gamma, u and v can all have different pytree structures, we only know that
+        # gamma and u are prefixes of v
+
+        gamma = broadcast_underdamped_langevin_arg(self.gamma, v, "gamma")
+        u = broadcast_underdamped_langevin_arg(self.u, v, "u")
+
+        def _fun(_gamma, _u):
+            return jnp.sqrt(2 * _gamma * _u)
+
+        vf_v = jtu.tree_map(_fun, gamma, u)
+        return vf_v
+
+    def contr(
+        self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
+    ) -> Union[UnderdampedLangevinX, AbstractBrownianIncrement]:
+        return self.control.evaluate(t0, t1, **kwargs)
+
+    def prod(
+        self, vf: UnderdampedLangevinX, control: UnderdampedLangevinX
+    ) -> UnderdampedLangevinTuple:
+        # The vf is only for the velocity component. The position component is
+        # unaffected by the diffusion.
+        dw = control
+        v_out = jtu.tree_map(operator.mul, vf, dw)
+        x_out = jtu.tree_map(jnp.zeros_like, v_out)
+        return x_out, v_out
+
+
+class UnderdampedLangevinDriftTerm(AbstractTerm):
+    r"""Represents the drift term in the Underdamped Langevin Diffusion (ULD).
+    The ULD SDE takes the form:
+
+    \begin{align*}
+        \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+        \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+        \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+    \end{align*}
+
+    where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+    and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+    $f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+    $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+    the friction and the damping of the system.
+    """
+
+    gamma: PyTree[ArrayLike]
+    u: PyTree[ArrayLike]
+    grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX]
+
+    def __init__(
+        self,
+        gamma: PyTree[ArrayLike],
+        u: PyTree[ArrayLike],
+        grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+    ):
+        r"""
+        **Arguments:**
+
+        - `gamma`: A vector containing the diagonal entries of the friction matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `u`: A vector containing the diagonal entries of the damping matrix;
+            a scalar or a PyTree of the same shape as the position vector $x$.
+        - `grad_f`: A callable representing the gradient of the potential function $f$.
+            This callable should take a PyTree of the same shape as $x$ and
+            return a PyTree of the same shape.
+        """
+        self.gamma = gamma
+        self.u = u
+        self.grad_f = grad_f
+
+    def vf(
+        self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
+    ) -> UnderdampedLangevinTuple:
+        x, v = y
+        # gamma, u and v can all have different pytree structures, we only know that
+        # gamma and u are prefixes of v (which is the same as x)
+
+        gamma = broadcast_underdamped_langevin_arg(self.gamma, v, "gamma")
+        u = broadcast_underdamped_langevin_arg(self.u, v, "u")
+
+        def fun(_gamma, _u, _v, _f_x):
+            return -_gamma * _v - _u * _f_x
+
+        vf_x = v
+        try:
+            f_x = self.grad_f(x)
+            vf_v = jtu.tree_map(fun, gamma, u, v, f_x)
+        except ValueError:
+            raise RuntimeError(
+                "The function `grad_f` in the Underdamped Langevin term must be"
+                " a callable, whose input and output have the same PyTree structure"
+                " and shapes as the position `x`."
+            )
+        vf_y = (vf_x, vf_v)
+        return vf_y
+
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
+        return t1 - t0
+
+    def prod(
+        self, vf: UnderdampedLangevinTuple, control: RealScalarLike
+    ) -> UnderdampedLangevinTuple:
+        return jtu.tree_map(lambda _vf: control * _vf, vf)

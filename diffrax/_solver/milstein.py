@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 from typing_extensions import TypeAlias
 
 import jax
@@ -10,7 +10,7 @@ from equinox.internal import ω
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractTerm, MultiTerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -42,7 +42,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    term_structure: ClassVar = MultiTerm[
+        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+    ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
@@ -55,7 +57,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -65,7 +67,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -116,7 +118,9 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    term_structure: ClassVar = MultiTerm[
+        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+    ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
@@ -129,7 +133,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -139,7 +143,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -365,7 +369,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         y0: Y,
         args: Args,
