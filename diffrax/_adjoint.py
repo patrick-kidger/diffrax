@@ -852,3 +852,36 @@ class BacksolveAdjoint(AbstractAdjoint):
         )
         final_state = _only_transpose_ys(final_state)
         return final_state, aux_stats
+
+
+class ForwardAdjoint(AbstractAdjoint):
+    """Differentiate through a differential equation solve during the forward pass.
+
+    This is a useful adjoint to use whenever we have many more outputs than inputs to a
+    function - for instance during parameter inference for ODE models with least-squares
+    based solvers such as `optimistix.Levenberg-Marquardt`.
+    """
+
+    def loop(
+        self,
+        *,
+        solver,
+        throw,
+        passed_solver_state,
+        passed_controller_state,
+        **kwargs,
+    ):
+        del throw, passed_solver_state, passed_controller_state
+        inner_while_loop = eqx.Partial(_inner_loop, kind="lax")
+        outer_while_loop = eqx.Partial(_outer_loop, kind="lax")
+        # Support forward-mode autodiff.
+        # TODO: remove this hack once we can JVP through custom_vjps.
+        if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
+            solver = eqx.tree_at(lambda s: s.scan_kind, solver, "lax", is_leaf=_is_none)
+        final_state = self._loop(
+            solver=solver,
+            inner_while_loop=inner_while_loop,
+            outer_while_loop=outer_while_loop,
+            **kwargs,
+        )
+        return final_state
