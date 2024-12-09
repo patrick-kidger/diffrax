@@ -854,12 +854,14 @@ class BacksolveAdjoint(AbstractAdjoint):
         return final_state, aux_stats
 
 
-class ForwardAdjoint(AbstractAdjoint):
+class ForwardMode(AbstractAdjoint):
     """Differentiate through a differential equation solve during the forward pass.
+    (So it is not really an adjoint - it is a different way of quantifying the
+    sensitivity of the output to the input.)
 
-    This is a useful adjoint to use whenever we have many more outputs than inputs to a
-    function - for instance during parameter inference for ODE models with least-squares
-    based solvers such as `optimistix.Levenberg-Marquardt`.
+    ForwardMode is useful when we have many more outputs than inputs to a function - for
+    instance during parameter inference for ODE models with least-squares solvers such
+    as `optimistix.Levenberg-Marquardt`, that operate on the residuals.
     """
 
     def loop(
