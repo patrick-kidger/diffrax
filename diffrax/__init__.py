@@ -4,7 +4,7 @@ from ._adjoint import (
     AbstractAdjoint as AbstractAdjoint,
     BacksolveAdjoint as BacksolveAdjoint,
     DirectAdjoint as DirectAdjoint,
-    ForwardAdjoint as ForwardAdjoint,
+    ForwardMode as ForwardMode,
     ImplicitAdjoint as ImplicitAdjoint,
     RecursiveCheckpointAdjoint as RecursiveCheckpointAdjoint,
 )
