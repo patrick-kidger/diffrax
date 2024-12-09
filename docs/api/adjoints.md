@@ -44,7 +44,7 @@ Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax
     selection:
         members: false
 
-::: diffrax.ForwardAdjoint
+::: diffrax.ForwardMode
     selection: 
         members: false
 
