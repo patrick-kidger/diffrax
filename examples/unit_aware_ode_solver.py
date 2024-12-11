@@ -296,11 +296,11 @@ def try_ode_force_term2():
 
 if __name__ == '__main__':
     pass
-    # try2()
+    try2()
     # try_ode1()
     # try_ode2()
     # try_sde1()
-    try_cde1()
+    # try_cde1()
     # try_stiff_ode()
     # try_ode_force_term()
     # try_ode_force_term2()
