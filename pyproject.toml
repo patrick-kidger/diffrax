@@ -1,6 +1,6 @@
 [project]
-name = "diffrax-equinox-optimistix"
-version = "0.6.0"
+name = "diffrax"
+version = "0.6.1"
 description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 readme = "README.md"
 requires-python ="~=3.9"
@@ -23,7 +23,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 urls = {repository = "https://github.com/patrick-kidger/diffrax" }
-dependencies = ["jax>=0.4.28", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "typeguard==2.13.3"]
+dependencies = [
+    "jax>=0.4.28", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0",
+    "typeguard==2.13.3", "brainunit>=0.0.3.post20241211"
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -32,10 +35,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 packages = [
     "diffrax",
-    "equinox",
-    "optimistix"
 ]
-include = ["diffrax/*", "equinox/*", "optimistix/*", ]
+include = ["diffrax/*",]
 
 [tool.pytest.ini_options]
 addopts = "--jaxtyping-packages=diffrax,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
@@ -61,4 +62,4 @@ order-by-type = false
 reportIncompatibleMethodOverride = true
 reportIncompatibleVariableOverride = false  # Incompatible with eqx.AbstractVar
 reportUnnecessaryTypeIgnoreComment = true
-include = ["diffrax", "tests", "optimistix", "equinox"]
+include = ["diffrax", "tests"]

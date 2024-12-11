@@ -7,3 +7,4 @@ site/
 .all_objects.cache
 .pymon
 .idea/
+/equinox_/

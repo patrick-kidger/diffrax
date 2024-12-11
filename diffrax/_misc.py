@@ -8,6 +8,7 @@ import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 import optimistix as optx
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
@@ -156,12 +157,8 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
     # predicate is statically known.
     # This in turn allows us to perform some trace-time optimisations that XLA isn't
     # smart enough to do on its own.
-    if (
-        type(pred) is not bool
-        and type(jax.core.get_aval(pred)) is jax.core.ConcreteArray
-    ):
-        with jax.ensure_compile_time_eval():
-            pred = pred.item()
+    if isinstance(pred, (np.ndarray, np.generic)) and pred.shape == ():
+        pred = pred.item()
     if pred is True:
         return a
     elif pred is False:

@@ -20,6 +20,7 @@ import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
 import lineax.internal as lxi
+import numpy as np
 import optimistix as optx
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
@@ -269,12 +270,10 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
     # Some values (made_jump and result) are not used in many common use-cases. If we
     # detect that they're unused then we make sure they're non-Array Python values, so
     # that we can special case on them at trace time and get a performance boost.
-    if isinstance(static_x, (bool, int, float, complex)):
+    if isinstance(static_x, (bool, int, float, complex, np.ndarray)):
         return static_x
     elif static_x is None:
         return x
-    elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
-        return static_x
     else:
         return x
 

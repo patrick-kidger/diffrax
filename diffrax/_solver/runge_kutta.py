@@ -972,7 +972,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                         assert implicit_tableau.a_diagonal[0] == 0  # pyright: ignore
                         assert len(set(implicit_tableau.a_diagonal[1:])) == 1  # pyright: ignore
                         jac_stage_index = 1
-                        stage_index = eqxi.nonbatchable(stage_index)
+                    stage_index = eqxi.nonbatchable(stage_index)
                     # These `stop_gradients` are needed to work around the lack of
                     # symbolic zeros in `custom_vjp`s.
                     if eval_fs:

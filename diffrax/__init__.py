@@ -130,3 +130,7 @@ from ._term import (
 
 
 __version__ = "0.6.1"
+
+from brainunit._base import compatible_with_equinox
+compatible_with_equinox(True)
+del compatible_with_equinox
