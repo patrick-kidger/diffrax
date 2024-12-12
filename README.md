@@ -40,6 +40,10 @@ solution = diffeqsolve(term, solver, t0=0 * u.ms, t1=1 * u.ms, dt0=0.1 * u.ms, y
 
 Here, `Dopri5` refers to the Dormand--Prince 5(4) numerical differential equation solver, which is a standard choice for many problems.
 
+
+More examples for unit-aware numerical integration please see [unit-aware examples](./examples-with-units).
+
+
 ## Documentation
 
 Available at [https://docs.kidger.site/diffrax](https://docs.kidger.site/diffrax).
