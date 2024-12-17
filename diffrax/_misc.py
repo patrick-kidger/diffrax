@@ -148,7 +148,7 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
     # This in turn allows us to perform some trace-time optimisations that XLA isn't
     # smart enough to do on its own.
     if isinstance(pred, (np.ndarray, np.generic)) and pred.shape == ():
-        pred = pred.item()
+        pred = cast(BoolScalarLike, pred.item())
     if pred is True:
         return a
     elif pred is False:
