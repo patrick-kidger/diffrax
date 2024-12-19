@@ -14,6 +14,10 @@ There are multiple ways to backpropagate through a differential equation (to com
 
     Alternatively we may compute $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y_0}$ analytically. In doing so we obtain a backwards-in-time ODE that we must numerically solve to obtain the desired gradients. This is known as "optimise then discretise", and corresponds to [`diffrax.BacksolveAdjoint`][] below.
 
+!!! note
+
+    It is possible to augment the structure of the forward ODE solve to ensure algebraic reversibility of the numerical operations. As a result, backpropagation can be performed with very low memory usage and retain exact gradient calculation. This corresponds to [`diffrax.ReversibleAdjoint`][] below.
+
 ??? abstract "`diffrax.AbstractAdjoint`"
 
     ::: diffrax.AbstractAdjoint
@@ -21,7 +25,7 @@ There are multiple ways to backpropagate through a differential equation (to com
             members:
                 - loop
 
-Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.BacksolveAdjoint`][] can only be reverse-mode autodifferentiated. [`diffrax.ImplicitAdjoint`][] and [`diffrax.DirectAdjoint`][] support both forward and reverse-mode autodifferentiation.
+Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][], [`diffrax.BacksolveAdjoint`][] and [`diffrax.ReversibleAdjoint`][] can only be reverse-mode autodifferentiated. [`diffrax.ImplicitAdjoint`][] and [`diffrax.DirectAdjoint`][] support both forward and reverse-mode autodifferentiation.
 
 ---
 
@@ -43,6 +47,11 @@ Of the following options, [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax
 ::: diffrax.DirectAdjoint
     selection:
         members: false
+
+::: diffrax.ReversibleAdjoint
+    selection:
+        members:
+            - __init__
 
 ---
 
