@@ -184,7 +184,9 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
     !!! info
 
         Note that this cannot be forward-mode autodifferentiated. (E.g. using
-        `jax.jvp`.) Try using [`diffrax.DirectAdjoint`][] if that is something you need.
+        `jax.jvp`.) Try using [`diffrax.DirectAdjoint`][] if you need both forward-mode
+        and reverse-mode autodifferentiation, and [`diffrax.ForwardMode`][] if you need
+        only forward-mode autodifferentiation.
 
     ??? cite "References"
 
@@ -333,6 +335,8 @@ class DirectAdjoint(AbstractAdjoint):
 
     So unless you need forward-mode autodifferentiation then
     [`diffrax.RecursiveCheckpointAdjoint`][] should be preferred.
+    If you need only forward-mode autodifferentiation, then [`diffrax.ForwardMode`][] is
+    more efficient.
     """
 
     def loop(
@@ -852,3 +856,40 @@ class BacksolveAdjoint(AbstractAdjoint):
         )
         final_state = _only_transpose_ys(final_state)
         return final_state, aux_stats
+
+
+class ForwardMode(AbstractAdjoint):
+    """Supports forward-mode automatic differentiation through a differential equation
+    solve. This works by propagating the derivatives during the forward-pass - that is,
+    during the ODE solve, instead of solving the adjoint equations afterwards.
+    (So this is really a different way of quantifying the sensitivity of the output to
+    the input, even if its interface is that of an adjoint for convenience.)
+
+    This is useful when we have many more outputs than inputs to a function - for
+    instance during parameter inference for ODE models with least-squares solvers such
+    as `optimistix.Levenberg-Marquardt`, that operate on the residuals.
+    """
+
+    def loop(
+        self,
+        *,
+        solver,
+        throw,
+        passed_solver_state,
+        passed_controller_state,
+        **kwargs,
+    ):
+        del throw, passed_solver_state, passed_controller_state
+        inner_while_loop = eqx.Partial(_inner_loop, kind="lax")
+        outer_while_loop = eqx.Partial(_outer_loop, kind="lax")
+        # Support forward-mode autodiff.
+        # TODO: remove this hack once we can JVP through custom_vjps.
+        if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
+            solver = eqx.tree_at(lambda s: s.scan_kind, solver, "lax", is_leaf=_is_none)
+        final_state = self._loop(
+            solver=solver,
+            inner_while_loop=inner_while_loop,
+            outer_while_loop=outer_while_loop,
+            **kwargs,
+        )
+        return final_state
