@@ -121,6 +121,7 @@ from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,
     AbstractStepSizeController as AbstractStepSizeController,
     ConstantStepSize as ConstantStepSize,
+    JumpStepWrapper as JumpStepWrapper,
     PIDController as PIDController,
     StepTo as StepTo,
 )
