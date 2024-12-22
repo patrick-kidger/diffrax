@@ -172,21 +172,21 @@ def _uncallable(*args, **kwargs):
 
 
 class RecursiveCheckpointAdjoint(AbstractAdjoint):
-    """Backpropagate through [`diffrax.diffeqsolve`][] by differentiating the numerical
-    solution directly. This is sometimes known as "discretise-then-optimise", or
-    described as "backpropagation through the solver".
+    """Enables support for backpropagating through [`diffrax.diffeqsolve`][] by
+    differentiating the numerical solution directly. This is sometimes known as
+    "discretise-then-optimise", or described as "backpropagation through the solver".
 
     Uses a binomial checkpointing scheme to keep memory usage low.
 
     For most problems this is the preferred technique for backpropagating through a
-    differential equation.
+    differential equation, and as such it is the default for [`diffrax.diffeqsolve`][].
 
     !!! info
 
         Note that this cannot be forward-mode autodifferentiated. (E.g. using
-        `jax.jvp`.) Try using [`diffrax.DirectAdjoint`][] if you need both forward-mode
-        and reverse-mode autodifferentiation, and [`diffrax.ForwardMode`][] if you need
-        only forward-mode autodifferentiation.
+        `jax.jvp`.) Try using [`diffrax.ForwardMode`][] if you need forward-mode
+        autodifferentiation, or [`diffrax.DirectAdjoint`][] if you need both forward and
+        reverse-mode autodifferentiation.
 
     ??? cite "References"
 
@@ -325,18 +325,19 @@ the computation will not be autodifferentiable.
 
 
 class DirectAdjoint(AbstractAdjoint):
-    """A variant of [`diffrax.RecursiveCheckpointAdjoint`][]. The differences are that
-    `DirectAdjoint`:
+    """A variant of [`diffrax.RecursiveCheckpointAdjoint`][] that is also able to
+    support forward-mode autodifferentiation, whilst being less computationally
+    efficient. (Under-the-hood it is using several nested layers of `jax.lax.scan`s and
+    `jax.checkpoint`s, so that the cost of the solve increases with `max_steps`, even
+    if you don't need that many steps to perform the solve in practice.)
 
-    - Is less time+memory efficient at reverse-mode autodifferentiation (specifically,
-      these will increase every time `max_steps` increases passes a power of 16);
-    - Cannot be reverse-mode autodifferentated if `max_steps is None`;
-    - Supports forward-mode autodifferentiation.
+    !!! warning
 
-    So unless you need forward-mode autodifferentiation then
-    [`diffrax.RecursiveCheckpointAdjoint`][] should be preferred.
-    If you need only forward-mode autodifferentiation, then [`diffrax.ForwardMode`][] is
-    more efficient.
+        This method is not recommended! In practice you should almost always use either
+        [`diffrax.RecursiveCheckpointAdjoint`][] or [`diffrax.ForwardMode`][], depending
+        on whether you need reverse or forward mode autodifferentiation. As this method
+        is far less computationally efficient, then in practice it is only useful if you
+        really **really** need to be able to support both kinds of autodifferentiation.
     """
 
     def loop(
@@ -729,24 +730,26 @@ class BacksolveAdjoint(AbstractAdjoint):
     "optimise-then-discretise", the "continuous adjoint method" or simply the "adjoint
     method".
 
-    This method implies very low memory usage, but the
-    computed gradients will only be approximate. As such other methods are generally
-    preferred unless exceeding memory is a concern.
+    !!! warning
+
+        This method is not recommended! It was popularised by
+        [this paper](https://arxiv.org/abs/1806.07366), and for this reason it is
+        sometimes erroneously believed to be a better method for backpropagation than
+        other choices available.
+
+        In practice whilst `BacksolveAdjoint` indeed has very low memory usage, its
+        computed gradients will also be approximate. As the checkpointing of
+        [`diffrax.RecursiveCheckpointAdjoint`][] also gives low memory usage, then in
+        practice that is essentially always preferred.
 
     This will compute gradients with respect to the `terms`, `y0` and `args` arguments
     passed to [`diffrax.diffeqsolve`][]. If you attempt to compute gradients with
     respect to anything else (for example `t0`, or arguments passed via closure), then
-    a `CustomVJPException` will be raised. See also
+    a `CustomVJPException` will be raised by JAX. See also
     [this FAQ](../../further_details/faq/#im-getting-a-customvjpexception)
     entry.
 
-    !!! note
-
-        This was popularised by [this paper](https://arxiv.org/abs/1806.07366). For
-        this reason it is sometimes erroneously believed to be a better method for
-        backpropagation than the other choices available.
-
-    !!! warning
+    !!! info
 
         Using this method prevents computing forward-mode autoderivatives of
         [`diffrax.diffeqsolve`][]. (That is to say, `jax.jvp` will not work.)
@@ -859,16 +862,17 @@ class BacksolveAdjoint(AbstractAdjoint):
 
 
 class ForwardMode(AbstractAdjoint):
-    """Supports forward-mode automatic differentiation through a differential equation
-    solve. This works by propagating the derivatives during the forward-pass - that is,
-    during the ODE solve, instead of solving the adjoint equations afterwards.
-    (So this is really a different way of quantifying the sensitivity of the output to
-    the input, even if its interface is that of an adjoint for convenience.)
+    """Enables support for forward-mode automatic differentiation (like `jax.jvp` or
+    `jax.jacfwd`) through [`diffrax.diffeqsolve`][]. (As such this shouldn't really be
+    called an 'adjoint' method -- which is a word that refers to any kind of
+    reverse-mode autodifferentiation. Ah well.)
 
     This is useful when we have many more outputs than inputs to a function - for
     instance during parameter inference for ODE models with least-squares solvers such
-    as `optimistix.Levenberg-Marquardt`, that operate on the residuals.
-    """
+    as
+    [`optimistix.LevenbergMarquardt`](https://docs.kidger.site/optimistix/api/least_squares/#optimistix.LevenbergMarquardt),
+    that operate on the residuals.
+    """  # noqa: E501
 
     def loop(
         self,
