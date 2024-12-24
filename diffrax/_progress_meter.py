@@ -291,11 +291,14 @@ class _ProgressMeterManager:
                 except KeyError:
                     pass  # E.g. the backward pass after a forward pass.
                 else:
-                    step_bar(bar, _progress)
+                    # As above, `_idx` may have a spurious batch tracer. Correspondingly
+                    # `_progress` may pick up spurious length-1 batch dimensions from
+                    # `vmap_method="expand_dims"` below. Remove them now.
+                    step_bar(bar, np.array(_progress).reshape(()))
                 # Return the idx to thread the callbacks in the correct order.
                 return _idx
 
-        return jax.pure_callback(_step, idx, progress, idx, vectorized=True)
+        return jax.pure_callback(_step, idx, progress, idx, vmap_method="expand_dims")
 
     def close(self, close_bar: Callable[[Any], None], idx: IntScalarLike):
         def _close(_idx):
