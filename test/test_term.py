@@ -163,7 +163,6 @@ def test_underdamped_langevin_drift_term_args():
     """
     Test that the UnderdampedLangevinDriftTerm handles `args` in grad_f correctly.
     """    
-    from diffrax._term import UnderdampedLangevinDriftTerm
 
     # Mock gradient function that uses args
     def mock_grad_f(x, args):
