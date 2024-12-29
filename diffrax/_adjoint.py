@@ -32,7 +32,7 @@ def _is_subsaveat(x: Any) -> bool:
 
 
 def _nondiff_solver_controller_state(
-    adjoint, init_state, passed_solver_state, passed_controller_state
+    adjoint, init_state, passed_solver_state, passed_controller_state, passed_path_state
 ):
     if passed_solver_state:
         name = (
@@ -55,6 +55,16 @@ def _nondiff_solver_controller_state(
         )
     else:
         controller_fn = lax.stop_gradient
+    if passed_path_state:
+        name = (
+            f"When using `adjoint={adjoint.__class__.__name__}()`, then `path_state`"
+        )
+        path_fn = ft.partial(
+            eqxi.nondifferentiable,
+            name=name,
+        )
+    else:
+        path_fn = lax.stop_gradient
     init_state = eqx.tree_at(
         lambda s: s.solver_state,
         init_state,
@@ -65,6 +75,12 @@ def _nondiff_solver_controller_state(
         lambda s: s.controller_state,
         init_state,
         replace_fn=controller_fn,
+        is_leaf=_is_none,
+    )
+    init_state = eqx.tree_at(
+        lambda s: s.path_state,
+        init_state,
+        replace_fn=path_fn,
         is_leaf=_is_none,
     )
     return init_state
@@ -131,6 +147,7 @@ class AbstractAdjoint(eqx.Module):
         init_state,
         passed_solver_state,
         passed_controller_state,
+        passed_path_state,
         progress_meter,
     ) -> Any:
         """Runs the main solve loop. Subclasses can override this to provide custom
@@ -264,15 +281,16 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         throw,
         passed_solver_state,
         passed_controller_state,
+        passed_path_state,
         **kwargs,
     ):
-        del throw, passed_solver_state, passed_controller_state
-        if is_unsafe_sde(terms):
-            raise ValueError(
-                "`adjoint=RecursiveCheckpointAdjoint()` does not support "
-                "`UnsafeBrownianPath`. Consider using `adjoint=DirectAdjoint()` "
-                "instead."
-            )
+        del throw, passed_solver_state, passed_controller_state, passed_path_state
+        # if is_unsafe_sde(terms):
+        #     raise ValueError(
+        #         "`adjoint=RecursiveCheckpointAdjoint()` does not support "
+        #         "`UnsafeBrownianPath`. Consider using `adjoint=DirectAdjoint()` "
+        #         "instead."
+        #     )
         if self.checkpoints is None and max_steps is None:
             inner_while_loop = ft.partial(_inner_loop, kind="lax")
             outer_while_loop = ft.partial(_outer_loop, kind="lax")
@@ -344,18 +362,19 @@ class DirectAdjoint(AbstractAdjoint):
         throw,
         passed_solver_state,
         passed_controller_state,
+        passed_path_state,
         **kwargs,
     ):
-        del throw, passed_solver_state, passed_controller_state
+        del throw, passed_solver_state, passed_controller_state, passed_path_state
         # TODO: remove the `is_unsafe_sde` guard.
         # We need JAX to release bloops, so that we can deprecate `kind="bounded"`.
-        if is_unsafe_sde(terms):
-            kind = "lax"
-            msg = (
-                "Cannot reverse-mode autodifferentiate when using "
-                "`UnsafeBrownianPath`."
-            )
-        elif max_steps is None:
+        # if is_unsafe_sde(terms):
+        #     kind = "lax"
+        #     msg = (
+        #         "Cannot reverse-mode autodifferentiate when using "
+        #         "`UnsafeBrownianPath`."
+        #     )
+        if max_steps is None:
             kind = "lax"
             msg = (
                 "Cannot reverse-mode autodifferentiate when using "
@@ -478,6 +497,7 @@ class ImplicitAdjoint(AbstractAdjoint):
         init_state,
         passed_solver_state,
         passed_controller_state,
+        passed_path_state,
         **kwargs,
     ):
         del throw
@@ -489,7 +509,7 @@ class ImplicitAdjoint(AbstractAdjoint):
                 "`saveat=SaveAt(t1=True)`."
             )
         init_state = _nondiff_solver_controller_state(
-            self, init_state, passed_solver_state, passed_controller_state
+            self, init_state, passed_solver_state, passed_controller_state, passed_path_state
         )
         inputs = (args, terms, self, kwargs, solver, saveat, init_state)
         ys, residual = optxi.implicit_jvp(
@@ -788,6 +808,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         init_state,
         passed_solver_state,
         passed_controller_state,
+        passed_path_state,
         event,
         **kwargs,
     ):
@@ -806,6 +827,7 @@ class BacksolveAdjoint(AbstractAdjoint):
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with `saveat=SaveAt(fn=...)`."
             )
+        # is this still true with DirectAdjoint?
         if is_unsafe_sde(terms):
             raise ValueError(
                 "`adjoint=BacksolveAdjoint()` does not support `UnsafeBrownianPath`. "
@@ -838,7 +860,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         y = init_state.y
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
         init_state = _nondiff_solver_controller_state(
-            self, init_state, passed_solver_state, passed_controller_state
+            self, init_state, passed_solver_state, passed_controller_state, passed_path_state
         )
 
         final_state, aux_stats = _loop_backsolve(

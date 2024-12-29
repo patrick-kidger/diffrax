@@ -34,6 +34,7 @@ from .._term import AbstractTerm, MultiTerm
 
 
 _SolverState = TypeVar("_SolverState")
+_PathState = TypeVar("_PathState")
 
 
 def vector_tree_dot(a, b):
@@ -71,7 +72,7 @@ def _term_compatible_contr_kwargs(term_structure):
     return jtu.tree_map(_term_compatible_contr_kwargs, term_structure)
 
 
-class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
+class AbstractSolver(eqx.Module, Generic[_SolverState, _PathState], **_set_metaclass):
     """Abstract base class for all differential equation solvers.
 
     Subclasses should have a class-level attribute `terms`, specifying the PyTree
@@ -149,7 +150,8 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, _PathState, RESULTS]:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -166,6 +168,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
             Some solvers (notably FSAL Runge--Kutta solvers) usually assume that there
             are no jumps and for efficiency re-use information between steps; this
             indicates that a jump has just occurred and this assumption is not true.
+        - `path_state`: Any evolving state for any path being used.
 
         **Returns:**
 
@@ -179,6 +182,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
             routine to calculate dense output. (Used with `SaveAt(ts=...)` or
             `SaveAt(dense=...)`.)
         - The value of the solver state at `t1`.
+        - The value of the path state at `t1`.
         - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
             happened successfully, or if (unusually) it failed for some reason.
         """
@@ -206,7 +210,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         """
 
 
-class AbstractImplicitSolver(AbstractSolver[_SolverState]):
+class AbstractImplicitSolver(AbstractSolver[_SolverState, _PathState]):
     """Indicates that this is an implicit differential equation solver, and as such
     that it should take a root finder as an argument.
     """
@@ -215,25 +219,25 @@ class AbstractImplicitSolver(AbstractSolver[_SolverState]):
     root_find_max_steps: AbstractVar[int]
 
 
-class AbstractItoSolver(AbstractSolver[_SolverState]):
+class AbstractItoSolver(AbstractSolver[_SolverState, _PathState]):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Itô solution.
     """
 
 
-class AbstractStratonovichSolver(AbstractSolver[_SolverState]):
+class AbstractStratonovichSolver(AbstractSolver[_SolverState, _PathState]):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Stratonovich solution.
     """
 
 
-class AbstractAdaptiveSolver(AbstractSolver[_SolverState]):
+class AbstractAdaptiveSolver(AbstractSolver[_SolverState, _PathState]):
     """Indicates that this solver provides error estimates, and that as such it may be
     used with an adaptive step size controller.
     """
 
 
-class AbstractWrappedSolver(AbstractSolver[_SolverState]):
+class AbstractWrappedSolver(AbstractSolver[_SolverState, _PathState]):
     """Wraps another solver "transparently", in the sense that all `isinstance` checks
     will be forwarded on to the wrapped solver, e.g. when testing whether the solver is
     implicit/adaptive/SDE-compatible/etc.
@@ -246,7 +250,8 @@ class AbstractWrappedSolver(AbstractSolver[_SolverState]):
 
 
 class HalfSolver(
-    AbstractAdaptiveSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+    AbstractAdaptiveSolver[_SolverState, _PathState],
+    AbstractWrappedSolver[_SolverState, _PathState],
 ):
     """Wraps another solver, trading cost in order to provide error estimates. (That
     is, it means the solver can be used with an adaptive step size controller,
@@ -317,26 +322,43 @@ class HalfSolver(
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, _PathState, RESULTS]:
         original_solver_state = solver_state
+        original_path_state = path_state
         thalf = t0 + 0.5 * (t1 - t0)
 
-        yhalf, _, _, solver_state, result1 = self.solver.step(
-            terms, t0, thalf, y0, args, solver_state, made_jump
+        yhalf, _, _, solver_state, path_state, result1 = self.solver.step(
+            terms, t0, thalf, y0, args, solver_state, made_jump, path_state
         )
-        y1, _, _, solver_state, result2 = self.solver.step(
-            terms, thalf, t1, yhalf, args, solver_state, made_jump=False
+        y1, _, _, solver_state, path_state, result2 = self.solver.step(
+            terms,
+            thalf,
+            t1,
+            yhalf,
+            args,
+            solver_state,
+            made_jump=False,
+            path_state=path_state,
         )
 
         # TODO: use dense_info from the pair of half-steps instead
-        y1_alt, _, dense_info, _, result3 = self.solver.step(
-            terms, t0, t1, y0, args, original_solver_state, made_jump
+        # this potentially reuses the same brownian increment, is this right?
+        y1_alt, _, dense_info, _, _, result3 = self.solver.step(
+            terms,
+            t0,
+            t1,
+            y0,
+            args,
+            original_solver_state,
+            made_jump,
+            original_path_state,
         )
 
         y_error = (y1**ω - y1_alt**ω).call(jnp.abs).ω
         result = update_result(result1, update_result(result2, result3))
 
-        return y1, y_error, dense_info, solver_state, result
+        return y1, y_error, dense_info, solver_state, path_state, result
 
     def func(
         self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args

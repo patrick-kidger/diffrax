@@ -4,6 +4,7 @@ from typing import Generic, Optional, TYPE_CHECKING, TypeVar
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import PyTree
 
 
 if TYPE_CHECKING:
@@ -11,13 +12,14 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractVar
 
-from ._custom_types import Control, RealScalarLike
+from ._custom_types import Args, Control, RealScalarLike, Y
 
 
 _Control = TypeVar("_Control", bound=Control)
+_PathState = TypeVar("_PathState")
 
 
-class AbstractPath(eqx.Module, Generic[_Control]):
+class AbstractPath(eqx.Module, Generic[_Control, _PathState]):
     """Abstract base class for all paths.
 
     Every path has a start point `t0` and an end point `t1`. In between these values
@@ -46,6 +48,65 @@ class AbstractPath(eqx.Module, Generic[_Control]):
 
     t0: AbstractVar[RealScalarLike]
     t1: AbstractVar[RealScalarLike]
+
+    @abc.abstractmethod
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        max_steps: Optional[int],
+    ) -> _PathState:
+        """Initialises any hidden state for the path.
+
+        **Arguments** as [`diffrax.diffeqsolve`][].
+
+        **Returns:**
+
+        The initial path state.
+        """
+
+    @abc.abstractmethod
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: _PathState,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+    ) -> tuple[_Control, _PathState]:
+        r"""Evaluate the path at any point in the interval $[t_0, t_1]$.
+
+        This is equivalent to `evaluate` but enables stateful evaluation.
+
+        **Arguments:**
+
+        - `t0`: Any point in $[t_0, t_1]$ to evaluate the path at.
+        - `path_state`: The current state for the path.
+        - `t1`: If passed, then the increment from `t1` to `t0` is evaluated instead.
+        - `left`: Across jump points: whether to treat the path as left-continuous
+            or right-continuous.
+
+        !!! faq "FAQ"
+
+            Note that we use $t_0$ and $t_1$ to refer to the overall interval, as
+            obtained via `instance.t0` and `instance.t1`. We use `t0` and `t1` to refer
+            to some subinterval of $[t_0, t_1]$. This is an API that is used for
+            consistency with the rest of the package, and just happens to be a little
+            confusing here.
+
+        **Returns:**
+
+        If `t1` is not passed:
+
+        The value of the path at `t0`.
+
+        If `t1` is passed:
+
+        The increment of the path between `t0` and `t1`.
+
+        In both cases, the updated state is also returned.
+        """
 
     @abc.abstractmethod
     def evaluate(

@@ -1,5 +1,5 @@
 import math
-from typing import cast, Optional, Union
+from typing import cast, Optional, TypeAlias, Union
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -8,16 +8,18 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
     AbstractBrownianIncrement,
+    Args,
     BrownianIncrement,
     levy_tree_transpose,
     RealScalarLike,
     SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea,
+    Y,
 )
 from .._misc import (
     force_bitcast_convert_type,
@@ -27,13 +29,22 @@ from .._misc import (
 from .base import AbstractBrownianPath
 
 
-class UnsafeBrownianPath(AbstractBrownianPath):
+_Control = Union[PyTree[Array], AbstractBrownianIncrement]
+_BrownianState: TypeAlias = Union[
+    tuple[None, PyTree[Array], int], tuple[PRNGKeyArray, None, None]
+]
+
+
+class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     """Brownian simulation that is only suitable for certain cases.
 
-    This is a very quick way to simulate Brownian motion, but can only be used when all
-    of the following are true:
+    This is a very quick way to simulate Brownian motion (faster than VBT), but can only be
+    used if you are not using an adaptive scheme that rejects steps (pre-visible adaptive
+    methods are valid).
 
-    1. You are using a fixed step size controller. (Not an adaptive one.)
+    If using the stateless `evaluate` method, stricter requirements are imposed, namely:
+
+    1. You are not using an adaptive solver that rejects steps.
 
     2. You do not need to backpropagate through the differential equation.
 
@@ -66,6 +77,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
     ] = eqx.field(static=True)
     key: PRNGKeyArray
+    precompute: bool = eqx.field(static=True)
 
     def __init__(
         self,
@@ -74,6 +86,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         levy_area: type[
             Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
         ] = BrownianIncrement,
+        precompute: bool = True,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -82,12 +95,13 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         )
         self.key = key
         self.levy_area = levy_area
+        self.precompute = precompute
 
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
             for x in jtu.tree_leaves(self.shape)
         ):
-            raise ValueError("UnsafeBrownianPath dtypes all have to be floating-point.")
+            raise ValueError("DirectBrownianPath dtypes all have to be floating-point.")
 
     @property
     def t0(self):
@@ -96,6 +110,106 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     @property
     def t1(self):
         return jnp.inf
+
+    def _generate_noise(
+        self,
+        key: PRNGKeyArray,
+        shape: jax.ShapeDtypeStruct,
+    ) -> Float[Array, "levy_dims shape"]:
+        if self.levy_area is SpaceTimeTimeLevyArea:
+            key_w, key_hh, key_kk = jr.split(key, 3)
+            w = jr.normal(key_w, shape.shape, shape.dtype)
+            hh = jr.normal(key_hh, shape.shape, shape.dtype)
+            kk = jr.normal(key_kk, shape.shape, shape.dtype)
+            noise = jnp.stack([w, hh, kk])
+        elif self.levy_area is SpaceTimeLevyArea:
+            key_w, key_hh = jr.split(key, 2)
+            w = jr.normal(key_w, shape.shape, shape.dtype)
+            hh = jr.normal(key_hh, shape.shape, shape.dtype)
+            noise = jnp.stack([w, hh])
+        elif self.levy_area is BrownianIncrement:
+            noise = jr.normal(key, shape.shape, shape.dtype)
+        else:
+            assert False
+
+        return noise
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        max_steps: Optional[int],
+    ) -> _BrownianState:
+        if max_steps is not None:
+            subkey = split_by_tree(self.key, self.shape)
+            noise = jtu.tree_map(
+                lambda subkey, shape: self._generate_noise(subkey, shape),
+                subkey,
+                self.shape,
+            )
+            counter = 0
+            key = None
+        else:
+            noise = None
+            counter = None
+            key = self.key
+
+        return key, noise, counter
+
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        brownian_state: _BrownianState,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+        use_levy: bool = False,
+    ) -> tuple[_Control, _BrownianState]:
+        del left
+        if t1 is None:
+            dtype = jnp.result_type(t0)
+            t1 = t0
+            t0 = jnp.array(0, dtype)
+        else:
+            with jax.numpy_dtype_promotion("standard"):
+                dtype = jnp.result_type(t0, t1)
+            t0 = jnp.astype(t0, dtype)
+            t1 = jnp.astype(t1, dtype)
+        t0 = eqxi.nondifferentiable(t0, name="t0")
+        t1 = eqxi.nondifferentiable(t1, name="t1")
+        t1 = cast(RealScalarLike, t1)
+
+        key, noises, counter = brownian_state
+        if key is None:  # precomputed noise
+            out = jtu.tree_map(
+                lambda shape, noise: self._evaluate_leaf_precomputed(
+                    t0, t1, shape, self.levy_area, use_levy, noise
+                ),
+                self.shape,
+                jax.tree.map(lambda x: x[counter], noises),
+            )
+            if use_levy:
+                out = levy_tree_transpose(self.shape, out)
+                assert isinstance(out, self.levy_area)
+            # if a solver needs to call .evaluate twice, but wants access to the same
+            # brownian motion, the solver could just decrease the counter
+            return out, (None, noises, counter + 1)
+        else:
+            assert noises is None and counter is None
+            new_key, key = jr.split(key)
+            key = split_by_tree(key, self.shape)
+            out = jtu.tree_map(
+                lambda key, shape: self._evaluate_leaf(
+                    t0, t1, key, shape, self.levy_area, use_levy
+                ),
+                key,
+                self.shape,
+            )
+            if use_levy:
+                out = levy_tree_transpose(self.shape, out)
+                assert isinstance(out, self.levy_area)
+            return out, (new_key, None, None)
 
     @eqx.filter_jit
     def evaluate(
@@ -136,10 +250,47 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         return out
 
     @staticmethod
+    def _evaluate_leaf_precomputed(
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        shape: jax.ShapeDtypeStruct,
+        levy_area: type[
+            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+        ],
+        use_levy: bool,
+        noises: Float[Array, "levy_dims shape"],
+    ):
+        w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
+        dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
+
+        if levy_area is SpaceTimeTimeLevyArea:
+            w = noises[0] * w_std
+            hh_std = w_std / math.sqrt(12)
+            hh = noises[1] * hh_std
+            kk_std = w_std / math.sqrt(720)
+            kk = noises[2] * kk_std
+            levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
+
+        elif levy_area is SpaceTimeLevyArea:
+            w = noises[0] * w_std
+            hh_std = w_std / math.sqrt(12)
+            hh = noises[1] * hh_std
+            levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
+        elif levy_area is BrownianIncrement:
+            w = noises * w_std
+            levy_val = BrownianIncrement(dt=dt, W=w)
+        else:
+            assert False
+
+        if use_levy:
+            return levy_val
+        return w
+
+    @staticmethod
     def _evaluate_leaf(
         t0: RealScalarLike,
         t1: RealScalarLike,
-        key,
+        key: PRNGKeyArray,
         shape: jax.ShapeDtypeStruct,
         levy_area: type[
             Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
@@ -175,7 +326,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         return w
 
 
-UnsafeBrownianPath.__init__.__doc__ = """
+DirectBrownianPath.__init__.__doc__ = """
 **Arguments:**
 
 - `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the shape, 
@@ -185,4 +336,8 @@ UnsafeBrownianPath.__init__.__doc__ = """
 - `key`: A random key.
 - `levy_area`: Whether to additionally generate Lévy area. This is required by some SDE
     solvers.
+- `precompute`: Whether or not to precompute the brownian motion (if possible). Precomputing
+    requires additional memory at initialization time, but can result in faster integrations.
 """
+
+UnsafeBrownianPath = DirectBrownianPath

@@ -15,6 +15,7 @@ from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
     AbstractBrownianIncrement,
+    Args,
     BoolScalarLike,
     BrownianIncrement,
     IntScalarLike,
@@ -22,6 +23,7 @@ from .._custom_types import (
     RealScalarLike,
     SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea,
+    Y,
 )
 from .._misc import (
     is_tuple_of_ints,
@@ -62,6 +64,8 @@ FloatTriple: TypeAlias = tuple[
 ]
 _Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
 _BrownianReturn = TypeVar("_BrownianReturn", bound=AbstractBrownianIncrement)
+_Control = Union[PyTree[Array], AbstractBrownianIncrement]
+_BrownianState: TypeAlias = None
 
 
 # An internal dataclass that holds the rescaled Lévy areas
@@ -175,7 +179,7 @@ def _split_interval(
     return x_s, x_u, x_su
 
 
-class VirtualBrownianTree(AbstractBrownianPath):
+class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
     """Brownian simulation that discretises the interval `[t0, t1]` to tolerance `tol`.
 
     !!! info "Lévy Area"
@@ -299,6 +303,26 @@ class VirtualBrownianTree(AbstractBrownianPath):
         other_normalized = jtu.tree_map(sqrt_mult, other)
         return eqx.combine(dt_normalized, other_normalized)
 
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        max_steps: Optional[int],
+    ) -> _BrownianState:
+        return None
+
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        brownian_state: _BrownianState,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+        use_levy: bool = False,
+    ) -> tuple[_Control, _BrownianState]:
+        return self.evaluate(t0, t1, left, use_levy), brownian_state
+
     @eqx.filter_jit
     def evaluate(
         self,
@@ -306,7 +330,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t1: Optional[RealScalarLike] = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], AbstractBrownianIncrement]:
+    ) -> _Control:
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)
@@ -326,7 +350,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         # now map [0,1] back onto [self.t0, self.t1]
         levy_out = self._denormalise_bm_inc(levy_out)
         assert isinstance(levy_out, self.levy_area)
-        return levy_out if use_levy else levy_out.W
+        return (levy_out if use_levy else levy_out.W, None)
 
     def _evaluate(self, r: RealScalarLike) -> PyTree:
         """Maps the _evaluate_leaf function at time r using self.key onto self.shape"""

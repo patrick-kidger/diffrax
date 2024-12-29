@@ -64,6 +64,7 @@ class SaveAt(eqx.Module):
     dense: bool = False
     solver_state: bool = False
     controller_state: bool = False
+    path_state: bool = False
     made_jump: bool = False
 
     def __init__(
@@ -78,6 +79,7 @@ class SaveAt(eqx.Module):
         dense: bool = False,
         solver_state: bool = False,
         controller_state: bool = False,
+        path_state: bool = False,
         made_jump: bool = False,
     ):
         if subs is None:
@@ -93,6 +95,7 @@ class SaveAt(eqx.Module):
         self.dense = dense
         self.solver_state = solver_state
         self.controller_state = controller_state
+        self.path_state = path_state
         self.made_jump = made_jump
 
 
@@ -130,6 +133,9 @@ These arguments are used less frequently.
 
 - `controller_state`: If `True`, save the internal state of the step size
     controller at `t1`; accessible as `sol.controller_state`.
+
+- `path_state`: If `True`, save the internal state of the path at `t1`; accessible as
+    `sol.path_state`.
 
 - `made_jump`: If `True`, save the internal state of the jump tracker at `t1`;
     accessible as `sol.made_jump`.

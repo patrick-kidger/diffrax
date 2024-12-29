@@ -89,6 +89,7 @@ class Solution(AbstractPath):
     - `solver_state`: If saved, the final internal state of the numerical solver.
     - `controller_state`: If saved, the final internal state for the step size
         controller.
+    - `path_state`: If saved, the final internal state for the path.
     - `made_jump`: If saved, the final internal state for the jump tracker.
     - `event_mask`: If using [events](../events), a boolean mask indicating which event
         triggered. This is a PyTree of bools, with the same PyTree stucture as the event
@@ -119,6 +120,7 @@ class Solution(AbstractPath):
     result: RESULTS
     solver_state: Optional[PyTree]
     controller_state: Optional[PyTree]
+    path_state: Optional[PyTree]
     made_jump: Optional[BoolScalarLike]
     event_mask: Optional[PyTree[BoolScalarLike]]
 
