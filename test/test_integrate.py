@@ -611,7 +611,7 @@ def test_term_compatibility():
 
     class TestSolver(diffrax.Euler):
         term_structure = diffrax.AbstractTerm[
-            tuple[Float[Array, "n 3"]], tuple[TestControl]
+            tuple[Float[Array, "n 3"]], tuple[TestControl], None
         ]
 
     solver = TestSolver()
@@ -643,20 +643,24 @@ def test_term_compatibility_pytree():
             "a": diffrax.ODETerm,
             "b": diffrax.ODETerm[Any],
             "c": diffrax.ODETerm[Float[Array, " 3"]],
-            "d": diffrax.AbstractTerm[Float[Array, " 4"], Any],
+            "d": diffrax.AbstractTerm[Float[Array, " 4"], Any, Any],
             "e": diffrax.MultiTerm[
-                tuple[diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"]]]
+                tuple[
+                    diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"], Any]
+                ]
             ],
             "f": diffrax.MultiTerm[
-                tuple[diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"]]]
+                tuple[
+                    diffrax.ODETerm, diffrax.AbstractTerm[Any, Float[Array, " 5"], Any]
+                ]
             ],
         }
         interpolation_cls = diffrax.LocalLinearInterpolation
 
-        def init(self, terms, t0, t1, y0, args):
+        def init(self, terms, t0, t1, y0, args, path_state):
             return None
 
-        def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
+        def step(self, terms, t0, t1, y0, args, solver_state, made_jump, path_state):
             def _step(_term, _y):
                 control = _term.contr(t0, t1)
                 return _y + _term.vf_prod(t0, _y, args, control)
@@ -664,7 +668,7 @@ def test_term_compatibility_pytree():
             _is_term = lambda x: isinstance(x, diffrax.AbstractTerm)
             y1 = jtu.tree_map(_step, terms, y0, is_leaf=_is_term)
             dense_info = dict(y0=y0, y1=y1)
-            return y1, None, dense_info, None, diffrax.RESULTS.successful
+            return y1, None, dense_info, None, None, diffrax.RESULTS.successful
 
         def func(self, terms, t0, y0, args):
             assert False

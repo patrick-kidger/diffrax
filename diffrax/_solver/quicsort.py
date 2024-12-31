@@ -14,7 +14,6 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._term import UnderdampedLangevinLeaf, UnderdampedLangevinX
-from .base import _PathState
 from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
@@ -45,7 +44,7 @@ class _QUICSORTCoeffs(AbstractCoeffs):
         self.dtype = jnp.result_type(*all_leaves)
 
 
-class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None, _PathState]):
+class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
     r"""The QUadrature Inspired and Contractive Shifted ODE with Runge-Kutta Three
     method by James Foster and Daire O'Kane. This is a third order solver for the
     Underdamped Langevin Diffusion, and accepts terms of the form

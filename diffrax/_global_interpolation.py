@@ -19,10 +19,10 @@ else:
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Real, Shaped
 
-from ._custom_types import DenseInfos, IntScalarLike, RealScalarLike, Y, Args
+from ._custom_types import Args, DenseInfos, IntScalarLike, RealScalarLike, Y
 from ._local_interpolation import AbstractLocalInterpolation
 from ._misc import fill_forward, left_broadcast_to
-from ._path import AbstractPath, _Control
+from ._path import _Control, AbstractPath
 
 
 ω = cast(Callable, ω)

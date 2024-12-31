@@ -41,6 +41,7 @@ from ._event import (
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import linear_rescale, static_select
+from ._path import AbstractPath
 from ._progress_meter import (
     AbstractProgressMeter,
     NoProgressMeter,
@@ -1105,18 +1106,26 @@ def diffeqsolve(
             )
             terms = MultiTerm(*terms)
 
-    def _path_init(term):
+    def _path_init(term, end):
         if isinstance(term, _AbstractControlTerm) or isinstance(
             term, UnderdampedLangevinDiffusionTerm
         ):
-            return term.control.init(t0, t1, y0, args, max_steps)
+            if isinstance(term.control, AbstractPath):
+                return term.control.init(t0, end, y0, args, max_steps)
+            return None
         elif isinstance(term, MultiTerm):
-            return jax.tree.map(_path_init, term.terms, is_leaf=lambda x: isinstance(x, AbstractTerm))
+            return jax.tree.map(
+                lambda x: _path_init(x, end),
+                term.terms,
+                is_leaf=lambda x: isinstance(x, AbstractTerm),
+            )
         return None
 
     if path_state is None:
         path_state = jtu.tree_map(
-            _path_init, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
+            lambda x: _path_init(x, t1),
+            terms,
+            is_leaf=lambda x: isinstance(x, AbstractTerm),
         )
 
     # Error checking for term compatibility
@@ -1125,7 +1134,12 @@ def diffeqsolve(
         args,
         terms,
         solver.term_structure,
-        jtu.tree_map(lambda x, y: x | {"control_state": y}, solver.term_compatible_contr_kwargs, path_state, is_leaf=lambda x: isinstance(x, dict)),
+        jtu.tree_map(
+            lambda x, y: x | {"control_state": y},
+            solver.term_compatible_contr_kwargs,
+            path_state,
+            is_leaf=lambda x: isinstance(x, dict),
+        ),
     )
 
     if is_sde(terms):
@@ -1145,7 +1159,8 @@ def diffeqsolve(
     if is_unsafe_sde(terms):
         if isinstance(stepsize_controller, PIDController):
             raise ValueError(
-                "`DirecBrownianPath` cannot be used with PIDController as it may reject steps."
+                "`DirecBrownianPath` cannot be used with PIDController as it "
+                "may reject steps."
             )
 
     # Normalises time: if t0 > t1 then flip things around.
@@ -1169,7 +1184,7 @@ def diffeqsolve(
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
-    # print("diff terms", terms)
+
     if isinstance(solver, AbstractImplicitSolver):
 
         def _get_tols(x):
@@ -1256,20 +1271,12 @@ def diffeqsolve(
             tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
 
-    # reinit for tnext
-    def _path_init(term):
-        if isinstance(term, _AbstractControlTerm) or isinstance(
-            term, UnderdampedLangevinDiffusionTerm
-        ):
-            return term.control.init(t0, tnext, y0, args, max_steps)
-        elif isinstance(term, MultiTerm):
-            return jax.tree.map(_path_init, term.terms, is_leaf=lambda x: isinstance(x, AbstractTerm))
-        return None
-
     if path_state is None:
         passed_path_state = False
         path_state = jtu.tree_map(
-            _path_init, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
+            lambda x: _path_init(x, tnext),
+            terms,
+            is_leaf=lambda x: isinstance(x, AbstractTerm),
         )
     else:
         passed_path_state = True
@@ -1316,7 +1323,7 @@ def diffeqsolve(
     made_jump = False if made_jump is None else made_jump
     result = RESULTS.successful
     if saveat.dense or event is not None:
-        _, _, dense_info_struct, _, _ = eqx.filter_eval_shape(
+        _, _, dense_info_struct, _, _, _ = eqx.filter_eval_shape(
             solver.step,
             terms,
             tprev,

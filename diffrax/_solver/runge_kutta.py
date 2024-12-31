@@ -347,7 +347,7 @@ def _assert_same_structure(x, y):
     return eqx.tree_equal(x, y) is True
 
 
-class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState, _PathState]):
+class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
     """Abstract base class for all Runge--Kutta solvers. (Other than fully-implicit
     Runge--Kutta methods, which have a different computational structure.)
 

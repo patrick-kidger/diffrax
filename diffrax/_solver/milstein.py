@@ -1,11 +1,12 @@
 from collections.abc import Callable
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar
 from typing_extensions import TypeAlias
 
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
+from jaxtyping import PyTree
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
@@ -16,7 +17,7 @@ from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = None
-_PathState = TypeVar("_PathState")
+_PathState: TypeAlias = PyTree
 
 #
 # The best online reference I've found for commutative-noise Milstein is

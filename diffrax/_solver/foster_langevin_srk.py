@@ -100,8 +100,8 @@ class SolverState(eqx.Module, Generic[_Coeffs]):
 
 
 class AbstractFosterLangevinSRK(
-    AbstractStratonovichSolver[SolverState, _PathState],
-    Generic[_Coeffs, _ErrorEstimate, _PathState],
+    AbstractStratonovichSolver[SolverState],
+    Generic[_Coeffs, _ErrorEstimate],
 ):
     r"""Abstract class for Stochastic Runge Kutta methods specifically designed
     for Underdamped Langevin Diffusion of the form
@@ -453,7 +453,14 @@ class AbstractFosterLangevinSRK(
             rho=st.rho,
             prev_f=f_fsal,
         )
-        return y1, error, dense_info, st, (drift_path, diffusion_path), RESULTS.successful
+        return (
+            y1,
+            error,
+            dense_info,
+            st,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,

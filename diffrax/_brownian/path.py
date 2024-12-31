@@ -38,9 +38,9 @@ _BrownianState: TypeAlias = Union[
 class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     """Brownian simulation that is only suitable for certain cases.
 
-    This is a very quick way to simulate Brownian motion (faster than VBT), but can only be
-    used if you are not using an adaptive scheme that rejects steps (pre-visible adaptive
-    methods are valid).
+    This is a very quick way to simulate Brownian motion (faster than VBT), but can
+    only beused if you are not using an adaptive scheme that rejects steps
+    (pre-visible adaptive methods are valid).
 
     If using the stateless `evaluate` method, stricter requirements are imposed, namely:
 
@@ -117,6 +117,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         shape: jax.ShapeDtypeStruct,
         max_steps: int,
     ) -> Float[Array, "levy_dims shape"]:
+        # TODO: merge into a single jr.normal call
         if self.levy_area is SpaceTimeTimeLevyArea:
             key_w, key_hh, key_kk = jr.split(key, 3)
             w = jr.normal(key_w, (max_steps, *shape.shape), shape.dtype)
@@ -152,12 +153,12 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
             )
             counter = 0
             key = None
+            return key, noise, counter
         else:
             noise = None
             counter = None
             key = self.key
-
-        return key, noise, counter
+            return key, noise, counter
 
     def __call__(
         self,
@@ -183,6 +184,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
 
         key, noises, counter = brownian_state
         if self.precompute:  # precomputed noise
+            assert noises is not None and counter is not None
             out = jtu.tree_map(
                 lambda shape, noise: self._evaluate_leaf_precomputed(
                     t0, t1, shape, self.levy_area, use_levy, noise
@@ -197,7 +199,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
             # brownian motion, the solver could just decrease the counter
             return out, (None, noises, counter + 1)
         else:
-            assert noises is None and counter is None
+            assert noises is None and counter is None and key is not None
             new_key, key = jr.split(key)
             key = split_by_tree(key, self.shape)
             out = jtu.tree_map(
@@ -337,11 +339,12 @@ DirectBrownianPath.__init__.__doc__ = """
 - `key`: A random key.
 - `levy_area`: Whether to additionally generate Lévy area. This is required by some SDE
     solvers.
-- `precompute`: Whether or not to precompute the brownian motion (if possible). Precomputing
-    requires additional memory at initialization time, but can result in faster integrations.
-    Some thought may be required before enabling this, as solvers which require multiple
-    brownian increments may result in index out of bounds causing silent errors as the size
-    of the precomputed brownian motion is derived from the maximum steps.
+- `precompute`: Whether or not to precompute the brownian motion (if possible). 
+    Precomputing requires additional memory at initialization time, but can result in 
+    faster integrations. Some thought may be required before enabling this, as solvers 
+    which require multiple brownian increments may result in index out of bounds 
+    causing silent errors as the size of the precomputed brownian motion is derived 
+    from the maximum steps.
 """
 
 UnsafeBrownianPath = DirectBrownianPath

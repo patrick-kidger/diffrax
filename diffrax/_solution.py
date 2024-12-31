@@ -5,7 +5,7 @@ import jax
 import optimistix as optx
 from jaxtyping import Array, Bool, PyTree, Real, Shaped
 
-from ._custom_types import BoolScalarLike, RealScalarLike, Args, Y
+from ._custom_types import Args, BoolScalarLike, RealScalarLike, Y
 from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 

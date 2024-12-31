@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from typing import ClassVar
-from typing_extensions import TypeAlias, TypeVar
+from typing_extensions import TypeAlias
 
 import jax.lax as lax
 from equinox.internal import ω
@@ -14,7 +14,7 @@ from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 
 
 _SolverState: TypeAlias = tuple[PyTree, PyTree]
-_PathState = TypeVar("_PathState")
+_PathState: TypeAlias = PyTree
 
 
 class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):

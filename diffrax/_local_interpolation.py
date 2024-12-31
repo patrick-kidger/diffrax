@@ -15,9 +15,9 @@ else:
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
-from ._custom_types import RealScalarLike, Y, Args
+from ._custom_types import Args, RealScalarLike, Y
 from ._misc import linear_rescale
-from ._path import AbstractPath, _Control
+from ._path import _Control, AbstractPath
 
 
 _PathState: TypeAlias = None
@@ -26,7 +26,6 @@ _PathState: TypeAlias = None
 
 
 class AbstractLocalInterpolation(AbstractPath[_Control, _PathState]):
-    
     def init(
         self,
         t0: RealScalarLike,
@@ -45,6 +44,7 @@ class AbstractLocalInterpolation(AbstractPath[_Control, _PathState]):
         left: bool = True,
     ) -> tuple[_Control, _PathState]:
         return self.evaluate(t0, t1, left), path_state
+
 
 class LocalLinearInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike

@@ -1,7 +1,7 @@
-
 import math
 from typing import cast, Union
 
+import diffrax
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
@@ -11,12 +11,16 @@ import jax.tree_util as jtu
 import lineax.internal as lxi
 from jaxtyping import PRNGKeyArray, PyTree
 from lineax.internal import complex_to_real_dtype
-import diffrax
+
 
 class OldBrownianPath(diffrax.AbstractBrownianPath):
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     levy_area: type[
-        Union[diffrax.BrownianIncrement, diffrax.SpaceTimeLevyArea, diffrax.SpaceTimeTimeLevyArea]
+        Union[
+            diffrax.BrownianIncrement,
+            diffrax.SpaceTimeLevyArea,
+            diffrax.SpaceTimeTimeLevyArea,
+        ]
     ] = eqx.field(static=True)
     key: PRNGKeyArray
     precompute: bool = eqx.field(static=True)
@@ -25,8 +29,8 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
         self,
         shape,
         key,
-        levy_area = diffrax.BrownianIncrement,
-        precompute = False,
+        levy_area=diffrax.BrownianIncrement,
+        precompute=False,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -65,9 +69,9 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
         self,
         t0,
         brownian_state,
-        t1 = None,
-        left = True,
-        use_levy = False,
+        t1=None,
+        left=True,
+        use_levy=False,
     ):
         return self.evaluate(t0, t1, left, use_levy), brownian_state
 
@@ -75,9 +79,9 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
     def evaluate(
         self,
         t0,
-        t1 = None,
-        left = True,
-        use_levy = False,
+        t1=None,
+        left=True,
+        use_levy=False,
     ):
         del left
         if t1 is None:
@@ -162,27 +166,46 @@ ubp = OldBrownianPath(shape=(), key=key)
 new_ubp = diffrax.UnsafeBrownianPath(shape=(), key=key)
 new_ubp_pre = diffrax.UnsafeBrownianPath(shape=(), key=key, precompute=True)
 solver = diffrax.Euler()
-terms = diffrax.MultiTerm(diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, brownian_motion))
-terms_old = diffrax.MultiTerm(diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, ubp))
-terms_new = diffrax.MultiTerm(diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, new_ubp))
-terms_new_precompute = diffrax.MultiTerm(diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, new_ubp_pre))
+terms = diffrax.MultiTerm(
+    diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, brownian_motion)
+)
+terms_old = diffrax.MultiTerm(
+    diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, ubp)
+)
+terms_new = diffrax.MultiTerm(
+    diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, new_ubp)
+)
+terms_new_precompute = diffrax.MultiTerm(
+    diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, new_ubp_pre)
+)
 saveat = diffrax.SaveAt(ts=jnp.linspace(t0, t1, ndt))
+
 
 @jax.jit
 def diffrax_vbt():
     return diffrax.diffeqsolve(terms, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat).ys
 
+
 @jax.jit
 def diffrax_old():
-    return diffrax.diffeqsolve(terms_old, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat).ys
+    return diffrax.diffeqsolve(
+        terms_old, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat
+    ).ys
+
 
 @jax.jit
 def diffrax_new():
-    return diffrax.diffeqsolve(terms_new, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat).ys
+    return diffrax.diffeqsolve(
+        terms_new, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat
+    ).ys
+
 
 @jax.jit
 def diffrax_new_pre():
-    return diffrax.diffeqsolve(terms_new_precompute, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat).ys
+    return diffrax.diffeqsolve(
+        terms_new_precompute, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat
+    ).ys
+
 
 _ = diffrax_vbt().block_until_ready()
 _ = diffrax_old().block_until_ready()
@@ -190,6 +213,8 @@ _ = diffrax_new().block_until_ready()
 _ = diffrax_new_pre().block_until_ready()
 
 from timeit import Timer
+
+
 num_runs = 10
 
 timer = Timer(stmt="_ = diffrax_vbt().block_until_ready()", globals=globals())

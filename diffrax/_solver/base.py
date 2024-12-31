@@ -34,7 +34,12 @@ from .._term import AbstractTerm, MultiTerm
 
 
 _SolverState = TypeVar("_SolverState")
-_PathState = TypeVar("_PathState")
+# Should pathstate be a TypeVar? Originally I had it as one, but it doesn't seem
+# to matter since no solver actually provides a specific type for the typevar
+# (thus it was totally general for all solvers, which was like, why is it a type
+# var then?) In Term it makes sense because control/ode terms are specific
+# parameterizations of the type var
+_PathState = PyTree
 
 
 def vector_tree_dot(a, b):
@@ -72,7 +77,7 @@ def _term_compatible_contr_kwargs(term_structure):
     return jtu.tree_map(_term_compatible_contr_kwargs, term_structure)
 
 
-class AbstractSolver(eqx.Module, Generic[_SolverState, _PathState], **_set_metaclass):
+class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     """Abstract base class for all differential equation solvers.
 
     Subclasses should have a class-level attribute `terms`, specifying the PyTree
@@ -214,7 +219,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState, _PathState], **_set_metac
         """
 
 
-class AbstractImplicitSolver(AbstractSolver[_SolverState, _PathState]):
+class AbstractImplicitSolver(AbstractSolver[_SolverState]):
     """Indicates that this is an implicit differential equation solver, and as such
     that it should take a root finder as an argument.
     """
@@ -223,25 +228,25 @@ class AbstractImplicitSolver(AbstractSolver[_SolverState, _PathState]):
     root_find_max_steps: AbstractVar[int]
 
 
-class AbstractItoSolver(AbstractSolver[_SolverState, _PathState]):
+class AbstractItoSolver(AbstractSolver[_SolverState]):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Itô solution.
     """
 
 
-class AbstractStratonovichSolver(AbstractSolver[_SolverState, _PathState]):
+class AbstractStratonovichSolver(AbstractSolver[_SolverState]):
     """Indicates that when used as an SDE solver that this solver will converge to the
     Stratonovich solution.
     """
 
 
-class AbstractAdaptiveSolver(AbstractSolver[_SolverState, _PathState]):
+class AbstractAdaptiveSolver(AbstractSolver[_SolverState]):
     """Indicates that this solver provides error estimates, and that as such it may be
     used with an adaptive step size controller.
     """
 
 
-class AbstractWrappedSolver(AbstractSolver[_SolverState, _PathState]):
+class AbstractWrappedSolver(AbstractSolver[_SolverState]):
     """Wraps another solver "transparently", in the sense that all `isinstance` checks
     will be forwarded on to the wrapped solver, e.g. when testing whether the solver is
     implicit/adaptive/SDE-compatible/etc.
@@ -254,8 +259,8 @@ class AbstractWrappedSolver(AbstractSolver[_SolverState, _PathState]):
 
 
 class HalfSolver(
-    AbstractAdaptiveSolver[_SolverState, _PathState],
-    AbstractWrappedSolver[_SolverState, _PathState],
+    AbstractAdaptiveSolver[_SolverState],
+    AbstractWrappedSolver[_SolverState],
 ):
     """Wraps another solver, trading cost in order to provide error estimates. (That
     is, it means the solver can be used with an adaptive step size controller,
@@ -276,7 +281,7 @@ class HalfSolver(
         [`diffrax.Euler`][]. Such solvers are most common when solving SDEs.
     """
 
-    solver: AbstractSolver[_SolverState, _PathState]
+    solver: AbstractSolver[_SolverState]
 
     @property
     def term_structure(self):

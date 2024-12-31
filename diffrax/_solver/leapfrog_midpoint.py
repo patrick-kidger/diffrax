@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar, TypeVar
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 from equinox.internal import ω
@@ -14,7 +14,7 @@ from .base import AbstractSolver
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = tuple[RealScalarLike, PyTree]
-_PathState = TypeVar("_PathState")
+_PathState: TypeAlias = PyTree
 
 
 # TODO: support arbitrary linear multistep methods

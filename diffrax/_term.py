@@ -247,8 +247,8 @@ ODETerm.__init__.__doc__ = """**Arguments:**
     [`diffrax.diffeqsolve`][].
 """
 
-
-class _CallableToPath(AbstractPath[_Control, _ControlState]):
+# question over stateful custom functions comes up here too
+class _CallableToPath(AbstractPath[_Control, None]):
     fn: Callable
 
     @property
@@ -258,6 +258,25 @@ class _CallableToPath(AbstractPath[_Control, _ControlState]):
     @property
     def t1(self):
         return jnp.inf
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        max_steps: Optional[int],
+    ) -> None:
+        return None
+
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: None,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+    ) -> tuple[_Control, None]:
+        return self.evaluate(t0, t1, left), path_state
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
@@ -290,6 +309,10 @@ class _AbstractControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
     control: Union[
         AbstractPath[_Control, _ControlState],
+        # can we allow stateful functions? This would have no way to "init" and thus
+        # the user would have to provide a custom init path state which sounds
+        # not ideal, probably just be easier to have them make an abstract path?
+        # Callable[[RealScalarLike, PyTree, RealScalarLike], tuple[_Control, PyTree]],
         Callable[[RealScalarLike, RealScalarLike], _Control],
     ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
 
@@ -303,8 +326,12 @@ class _AbstractControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
         control_state: _ControlState,
         **kwargs,
     ) -> tuple[_Control, _ControlState]:
-        return self.control(t0, control_state, t1, **kwargs)  # pyright: ignore
+        if isinstance(self.control, AbstractPath):
+            return self.control(t0, control_state, t1, **kwargs)
+        return self.control(t0, t1, **kwargs), control_state
 
+    # TODO: support stateful conversion here
+    # more broadly, add derivative function to path for __call__?
     def to_ode(self) -> ODETerm:
         r"""If the control is differentiable then $f(t, y(t), args) \mathrm{d}x(t)$
         may be thought of as an ODE as
@@ -332,8 +359,8 @@ _AbstractControlTerm.__init__.__doc__ = """**Arguments:**
 
 - `control`: The control. Should either be
 
-    1. a [`diffrax.AbstractPath`][], in which case its `.__call__(t0, path_state, t1)` method
-        will be used to give the increment of the control over a time interval
+    1. a [`diffrax.AbstractPath`][], in which case its `.__call__(t0, path_state, t1)`
+        method will be used to give the increment of the control over a time interval
         `[t0, t1]`, or
     2. a callable `(t0, t1) -> increment`, which returns the increment directly.
 """
@@ -560,7 +587,6 @@ def _sum(*x):
 
 
 _Terms = TypeVar("_Terms", bound=tuple[AbstractTerm, ...])
-_MultiControlState = TypeVar("_MultiControlState", bound=tuple)
 
 
 class MultiTerm(AbstractTerm, Generic[_Terms]):
@@ -598,10 +624,9 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        control_state: _MultiControlState,
+        control_state: PyTree,
         **kwargs,
-    ) -> tuple[tuple[PyTree[ArrayLike], ...], _MultiControlState]:
-        # print(self.terms, control_state)
+    ) -> tuple[tuple[PyTree[ArrayLike], ...], tuple[PyTree]]:
         contrs = [
             term.contr(t0, t1, state, **kwargs)
             for term, state in zip(self.terms, control_state)
@@ -680,8 +705,11 @@ class WrapTerm(AbstractTerm[_VF, _Control, _ControlState]):
         return self.term.is_vf_expensive(_t0, _t1, y, args)
 
 
-class AdjointTerm(AbstractTerm[_VF, _Control, _ControlState]):
-    term: AbstractTerm[_VF, _Control, _ControlState]
+_AdjoingControlState: TypeAlias = Union[None, PyTree]
+
+
+class AdjointTerm(AbstractTerm[_VF, _Control, _AdjoingControlState]):
+    term: AbstractTerm[_VF, _Control, _AdjoingControlState]
 
     def is_vf_expensive(
         self,
@@ -725,7 +753,16 @@ class AdjointTerm(AbstractTerm[_VF, _Control, _ControlState]):
 
         # The value of `control` is never actually used -- just its shape, dtype, and
         # PyTree structure. (This is because `self.vf_prod` is linear in `control`.)
-        control = self.contr(t, t)
+        contr_state_struct = None
+        if isinstance(self.term, _AbstractControlTerm) or isinstance(
+            self.term, UnderdampedLangevinDiffusionTerm
+        ):
+            if isinstance(self.term.control, AbstractPath):
+                # contr_state_struct = eqx.filter_eval_shape(
+                #     self.term.control.init, t, t, y, args, None
+                # )
+                contr_state_struct = self.term.control.init(t, t, y, args, None)
+        control, _ = self.contr(t, t, contr_state_struct)
 
         y_size = sum(np.size(yi) for yi in jtu.tree_leaves(y))
         control_size = sum(np.size(ci) for ci in jtu.tree_leaves(control))
@@ -763,9 +800,9 @@ class AdjointTerm(AbstractTerm[_VF, _Control, _ControlState]):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        control_state: _ControlState,
+        control_state: _AdjoingControlState,
         **kwargs,
-    ) -> tuple[_Control, _ControlState]:
+    ) -> tuple[_Control, _AdjoingControlState]:
         return self.term.contr(t0, t1, control_state, **kwargs)
 
     def prod(
@@ -943,6 +980,7 @@ class UnderdampedLangevinDiffusionTerm(
         control_state: _ControlState,
         **kwargs,
     ) -> tuple[Union[UnderdampedLangevinX, AbstractBrownianIncrement], _ControlState]:
+        # same stateless function as above
         return self.control(t0, control_state, t1, **kwargs)
 
     def prod(

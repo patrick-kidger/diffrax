@@ -1,9 +1,10 @@
 from collections.abc import Callable
-from typing import ClassVar, TypeVar
+from typing import ClassVar
 from typing_extensions import TypeAlias
 
 import optimistix as optx
 from equinox.internal import ω
+from jaxtyping import PyTree
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
@@ -15,7 +16,7 @@ from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
 
 
 _SolverState: TypeAlias = None
-_PathState = TypeVar("_PathState")
+_PathState: TypeAlias = PyTree
 
 
 def _implicit_relation(z1, nonlinear_solve_args):

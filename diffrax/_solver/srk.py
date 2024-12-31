@@ -39,7 +39,7 @@ else:
 
 _ErrorEstimate: TypeAlias = Optional[Y]
 _SolverState: TypeAlias = None
-_PathState = TypeVar("_PathState")
+_PathState: TypeAlias = PyTree
 _CarryType: TypeAlias = tuple[PyTree[Array], PyTree[Array], PyTree[Array]]
 
 
@@ -200,7 +200,7 @@ Let `s` denote the number of stages of the solver.
 """
 
 
-class AbstractSRK(AbstractSolver[_SolverState, _PathState]):
+class AbstractSRK(AbstractSolver[_SolverState]):
     r"""A general Stochastic Runge-Kutta method.
 
     This accepts `terms` of the form
@@ -279,8 +279,8 @@ class AbstractSRK(AbstractSolver[_SolverState, _PathState]):
     def term_structure(self):
         return MultiTerm[
             tuple[
-                AbstractTerm[Any, RealScalarLike],
-                AbstractTerm[Any, self.minimal_levy_area],
+                AbstractTerm[Any, RealScalarLike, None],
+                AbstractTerm[Any, self.minimal_levy_area, _PathState],
             ]
         ]
 

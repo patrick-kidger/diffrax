@@ -90,13 +90,27 @@ def test_multiple_tableau_single_step(vf_expensive):
         solver_state1 = None
         solver_state2 = None
     else:
-        solver_state1 = solver1.init(terms, t0, t1, y0, None)
-        solver_state2 = solver2.init(terms, t0, t1, y0, None)
+        solver_state1 = solver1.init(terms, t0, t1, y0, None, None)
+        solver_state2 = solver2.init(terms, t0, t1, y0, None, None)
     out1 = solver1.step(
-        terms, t0, t1, y0, None, solver_state=solver_state1, made_jump=False
+        terms,
+        t0,
+        t1,
+        y0,
+        None,
+        solver_state=solver_state1,
+        made_jump=False,
+        path_state=None,
     )
     out2 = solver2.step(
-        terms, t0, t1, y0, None, solver_state=solver_state2, made_jump=False
+        terms,
+        t0,
+        t1,
+        y0,
+        None,
+        solver_state=solver_state2,
+        made_jump=False,
+        path_state=None,
     )
     out2[2]["k"] = out2[2]["k"][0] + out2[2]["k"][1]
     assert tree_allclose(out1, out2)
@@ -194,8 +208,8 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
         def vf(self, t, y, args):
             return {"f": -self.coeff * y["y"]}
 
-        def contr(self, t0, t1, **kwargs):
-            return {"t": t1 - t0}
+        def contr(self, t0, t1, control_state, **kwargs):
+            return {"t": t1 - t0}, control_state
 
         def prod(self, vf, control):
             return {"y": vf["f"] * control["t"]}
@@ -288,13 +302,13 @@ def test_sil3(dtype):
         def order(self, terms):
             return 2
 
-        def init(self, terms, t0, t1, y0, args):
+        def init(self, terms, t0, t1, y0, args, path_state):
             return None
 
         def func(self, terms, t0, y0, args):
             assert False
 
-        def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
+        def step(self, terms, t0, t1, y0, args, solver_state, made_jump, path_state):
             del solver_state, made_jump
             explicit, implicit = terms.terms
             dt = t1 - t0
@@ -369,7 +383,7 @@ def test_sil3(dtype):
             dense_info = dict(y0=y0, y1=y1, k=ks)
             state = (False, (f3 / dt, g3 / dt))
             result = jtu.tree_map(jnp.asarray, diffrax.RESULTS.successful)
-            return y1, y_error, dense_info, state, result
+            return y1, y_error, dense_info, state, path_state, result
 
     reference_solver = ReferenceSil3(root_finder=optx.Newton(rtol=1e-8, atol=1e-8))
     solver = diffrax.Sil3(root_finder=diffrax.VeryChord(rtol=1e-8, atol=1e-8))
@@ -396,10 +410,12 @@ def test_sil3(dtype):
     y0 = jr.normal(ykey, (2,), dtype=dtype)
     args = None
 
-    state = solver.init(terms, t0, t1, y0, args)
-    out = solver.step(terms, t0, t1, y0, args, solver_state=state, made_jump=False)
+    state = solver.init(terms, t0, t1, y0, args, None)
+    out = solver.step(
+        terms, t0, t1, y0, args, solver_state=state, made_jump=False, path_state=None
+    )
     reference_out = reference_solver.step(
-        terms, t0, t1, y0, args, solver_state=None, made_jump=False
+        terms, t0, t1, y0, args, solver_state=None, made_jump=False, path_state=None
     )
     assert tree_allclose(out, reference_out)
 
