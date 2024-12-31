@@ -350,7 +350,7 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
         # now map [0,1] back onto [self.t0, self.t1]
         levy_out = self._denormalise_bm_inc(levy_out)
         assert isinstance(levy_out, self.levy_area)
-        return (levy_out if use_levy else levy_out.W, None)
+        return levy_out if use_levy else levy_out.W
 
     def _evaluate(self, r: RealScalarLike) -> PyTree:
         """Maps the _evaluate_leaf function at time r using self.key onto self.shape"""

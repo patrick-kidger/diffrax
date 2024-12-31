@@ -115,20 +115,21 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         self,
         key: PRNGKeyArray,
         shape: jax.ShapeDtypeStruct,
+        max_steps: int,
     ) -> Float[Array, "levy_dims shape"]:
         if self.levy_area is SpaceTimeTimeLevyArea:
             key_w, key_hh, key_kk = jr.split(key, 3)
-            w = jr.normal(key_w, shape.shape, shape.dtype)
-            hh = jr.normal(key_hh, shape.shape, shape.dtype)
-            kk = jr.normal(key_kk, shape.shape, shape.dtype)
-            noise = jnp.stack([w, hh, kk])
+            w = jr.normal(key_w, (max_steps, *shape.shape), shape.dtype)
+            hh = jr.normal(key_hh, (max_steps, *shape.shape), shape.dtype)
+            kk = jr.normal(key_kk, (max_steps, *shape.shape), shape.dtype)
+            noise = jnp.stack([w, hh, kk], axis=1)
         elif self.levy_area is SpaceTimeLevyArea:
             key_w, key_hh = jr.split(key, 2)
-            w = jr.normal(key_w, shape.shape, shape.dtype)
-            hh = jr.normal(key_hh, shape.shape, shape.dtype)
-            noise = jnp.stack([w, hh])
+            w = jr.normal(key_w, (max_steps, *shape.shape), shape.dtype)
+            hh = jr.normal(key_hh, (max_steps, *shape.shape), shape.dtype)
+            noise = jnp.stack([w, hh], axis=1)
         elif self.levy_area is BrownianIncrement:
-            noise = jr.normal(key, shape.shape, shape.dtype)
+            noise = jr.normal(key, (max_steps, *shape.shape), shape.dtype)
         else:
             assert False
 
@@ -145,7 +146,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         if max_steps is not None and self.precompute:
             subkey = split_by_tree(self.key, self.shape)
             noise = jtu.tree_map(
-                lambda subkey, shape: self._generate_noise(subkey, shape),
+                lambda subkey, shape: self._generate_noise(subkey, shape, max_steps),
                 subkey,
                 self.shape,
             )

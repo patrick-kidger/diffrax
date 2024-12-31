@@ -347,7 +347,6 @@ def loop(
         # Actually do some differential equation solving! Make numerical steps, adapt
         # step sizes, all that jazz.
         #
-
         (y, y_error, dense_info, solver_state, path_state, solver_result) = solver.step(
             terms,
             state.tprev,
@@ -1170,7 +1169,7 @@ def diffeqsolve(
         terms,
         is_leaf=lambda x: isinstance(x, AbstractTerm) and not isinstance(x, MultiTerm),
     )
-
+    # print("diff terms", terms)
     if isinstance(solver, AbstractImplicitSolver):
 
         def _get_tols(x):
