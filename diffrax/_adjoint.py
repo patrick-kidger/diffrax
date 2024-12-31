@@ -56,9 +56,7 @@ def _nondiff_solver_controller_state(
     else:
         controller_fn = lax.stop_gradient
     if passed_path_state:
-        name = (
-            f"When using `adjoint={adjoint.__class__.__name__}()`, then `path_state`"
-        )
+        name = f"When using `adjoint={adjoint.__class__.__name__}()`, then `path_state`"
         path_fn = ft.partial(
             eqxi.nondifferentiable,
             name=name,
@@ -509,7 +507,11 @@ class ImplicitAdjoint(AbstractAdjoint):
                 "`saveat=SaveAt(t1=True)`."
             )
         init_state = _nondiff_solver_controller_state(
-            self, init_state, passed_solver_state, passed_controller_state, passed_path_state
+            self,
+            init_state,
+            passed_solver_state,
+            passed_controller_state,
+            passed_path_state,
         )
         inputs = (args, terms, self, kwargs, solver, saveat, init_state)
         ys, residual = optxi.implicit_jvp(
@@ -860,7 +862,11 @@ class BacksolveAdjoint(AbstractAdjoint):
         y = init_state.y
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
         init_state = _nondiff_solver_controller_state(
-            self, init_state, passed_solver_state, passed_controller_state, passed_path_state
+            self,
+            init_state,
+            passed_solver_state,
+            passed_controller_state,
+            passed_path_state,
         )
 
         final_state, aux_stats = _loop_backsolve(

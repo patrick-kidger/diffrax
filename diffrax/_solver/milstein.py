@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 from typing_extensions import TypeAlias
 
 import jax
@@ -16,7 +16,7 @@ from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = None
-
+_PathState = TypeVar("_PathState")
 
 #
 # The best online reference I've found for commutative-noise Milstein is
@@ -43,7 +43,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     """  # noqa: E501
 
     term_structure: ClassVar = MultiTerm[
-        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+        tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
     ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
@@ -57,28 +57,35 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         return None
 
     def step(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
-        dt = drift.contr(t0, t1)
-        dw = diffusion.contr(t0, t1)
+        # should these be same path state?
+        dt, _ = drift.contr(t0, t1, path_state)
+        dw, path_state = diffusion.contr(t0, t1, path_state)
 
         f0_prod = drift.vf_prod(t0, y0, args, dt)
         g0_prod = diffusion.vf_prod(t0, y0, args, dw)
@@ -90,7 +97,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         y1 = (y0**ω + f0_prod**ω + g0_prod**ω + 0.5 * v0_prod**ω).ω
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, RESULTS.successful
+        return y1, None, dense_info, None, path_state, RESULTS.successful
 
     def func(
         self,
@@ -119,7 +126,7 @@ class ItoMilstein(AbstractItoSolver):
     """  # noqa: E501
 
     term_structure: ClassVar = MultiTerm[
-        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+        tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
     ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
@@ -133,28 +140,34 @@ class ItoMilstein(AbstractItoSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         return None
 
     def step(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
-        Δt = drift.contr(t0, t1)
-        Δw = diffusion.contr(t0, t1)
+        Δt, path_state = drift.contr(t0, t1, path_state)
+        Δw, path_state = diffusion.contr(t0, t1, path_state)
 
         #
         # So this is a bit involved, largely because of the generality that the rest of
@@ -365,11 +378,13 @@ class ItoMilstein(AbstractItoSolver):
         #
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, RESULTS.successful
+        return y1, None, dense_info, None, path_state, RESULTS.successful
 
     def func(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         y0: Y,
         args: Args,

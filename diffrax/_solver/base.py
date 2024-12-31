@@ -130,7 +130,11 @@ class AbstractSolver(eqx.Module, Generic[_SolverState, _PathState], **_set_metac
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
+        # does this need to return a path state as well?, or it is fine just to
+        # have it consume it? AbstractFosterLangevinSRK is the only one that
+        # uses rn I think, so can this brownian increment be reused?
         """Initialises any hidden state for the solver.
 
         **Arguments** as [`diffrax.diffeqsolve`][].
@@ -272,7 +276,7 @@ class HalfSolver(
         [`diffrax.Euler`][]. Such solvers are most common when solving SDEs.
     """
 
-    solver: AbstractSolver[_SolverState]
+    solver: AbstractSolver[_SolverState, _PathState]
 
     @property
     def term_structure(self):
@@ -310,8 +314,9 @@ class HalfSolver(
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
-        return self.solver.init(terms, t0, t1, y0, args)
+        return self.solver.init(terms, t0, t1, y0, args, path_state)
 
     def step(
         self,

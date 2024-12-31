@@ -267,7 +267,8 @@ class _CallableToPath(AbstractPath[_Control, _ControlState]):
 
 def _callable_to_path(
     x: Union[
-        AbstractPath[_Control, _ControlState], Callable[[RealScalarLike, RealScalarLike], _Control]
+        AbstractPath[_Control, _ControlState],
+        Callable[[RealScalarLike, RealScalarLike], _Control],
     ],
 ) -> AbstractPath[_Control, _ControlState]:
     if isinstance(x, AbstractPath):
@@ -288,7 +289,8 @@ def _prod(vf, control):
 class _AbstractControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
     control: Union[
-        AbstractPath[_Control, _ControlState], Callable[[RealScalarLike, RealScalarLike], _Control]
+        AbstractPath[_Control, _ControlState],
+        Callable[[RealScalarLike, RealScalarLike], _Control],
     ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
@@ -599,6 +601,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         control_state: _MultiControlState,
         **kwargs,
     ) -> tuple[tuple[PyTree[ArrayLike], ...], _MultiControlState]:
+        # print(self.terms, control_state)
         contrs = [
             term.contr(t0, t1, state, **kwargs)
             for term, state in zip(self.terms, control_state)
@@ -645,11 +648,17 @@ class WrapTerm(AbstractTerm[_VF, _Control, _ControlState]):
         t = t * self.direction
         return self.term.vf(t, y, args)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, control_state: _ControlState, **kwargs) -> tuple[_Control, _ControlState]:
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        control_state: _ControlState,
+        **kwargs,
+    ) -> tuple[_Control, _ControlState]:
         _t0 = jnp.where(self.direction == 1, t0, -t1)
         _t1 = jnp.where(self.direction == 1, t1, -t0)
         contrs = self.term.contr(_t0, _t1, control_state, **kwargs)
-        return (self.direction * contrs[0]** ω).ω, contrs[1]
+        return (self.direction * contrs[0] ** ω).ω, contrs[1]
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):
@@ -867,7 +876,9 @@ def broadcast_underdamped_langevin_arg(
 
 class UnderdampedLangevinDiffusionTerm(
     AbstractTerm[
-        UnderdampedLangevinX, Union[UnderdampedLangevinX, AbstractBrownianIncrement], _ControlState
+        UnderdampedLangevinX,
+        Union[UnderdampedLangevinX, AbstractBrownianIncrement],
+        _ControlState,
     ]
 ):
     r"""Represents the diffusion term in the Underdamped Langevin Diffusion (ULD).
@@ -1013,8 +1024,14 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
         vf_y = (vf_x, vf_v)
         return vf_y
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
-        return t1 - t0
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        control_state: None = None,
+        **kwargs,
+    ) -> tuple[RealScalarLike, None]:
+        return t1 - t0, None
 
     def prod(
         self, vf: UnderdampedLangevinTuple, control: RealScalarLike

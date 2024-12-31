@@ -42,6 +42,7 @@ class Euler(AbstractItoSolver):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         return None
 

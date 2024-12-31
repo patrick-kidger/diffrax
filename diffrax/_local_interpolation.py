@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from typing import cast, Optional, TYPE_CHECKING
+from typing_extensions import TypeAlias
 
 import jax
 import jax.numpy as jnp
@@ -14,17 +15,36 @@ else:
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
-from ._custom_types import RealScalarLike, Y
+from ._custom_types import RealScalarLike, Y, Args
 from ._misc import linear_rescale
-from ._path import AbstractPath
+from ._path import AbstractPath, _Control
 
+
+_PathState: TypeAlias = None
 
 ω = cast(Callable, ω)
 
 
-class AbstractLocalInterpolation(AbstractPath):
-    pass
+class AbstractLocalInterpolation(AbstractPath[_Control, _PathState]):
+    
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        max_steps: Optional[int],
+    ) -> _PathState:
+        return None
 
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: _PathState,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+    ) -> tuple[_Control, _PathState]:
+        return self.evaluate(t0, t1, left), path_state
 
 class LocalLinearInterpolation(AbstractLocalInterpolation):
     t0: RealScalarLike

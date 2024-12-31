@@ -8,7 +8,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm, MultiTerm
-from .base import AbstractStratonovichSolver
+from .base import _PathState, AbstractStratonovichSolver
 
 
 _ErrorEstimate: TypeAlias = None
@@ -27,7 +27,7 @@ class EulerHeun(AbstractStratonovichSolver):
     """
 
     term_structure: ClassVar = MultiTerm[
-        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+        tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
     ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
@@ -41,29 +41,35 @@ class EulerHeun(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         return None
 
     def step(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
 
         drift, diffusion = terms.terms
-        dt = drift.contr(t0, t1)
-        dW = diffusion.contr(t0, t1)
+        dt, path_state = drift.contr(t0, t1, path_state)
+        dW, path_state = diffusion.contr(t0, t1, path_state)
 
         f0 = drift.vf_prod(t0, y0, args, dt)
         g0 = diffusion.vf_prod(t0, y0, args, dW)
@@ -74,7 +80,7 @@ class EulerHeun(AbstractStratonovichSolver):
         y1 = (y0**ω + f0**ω + 0.5 * (g0**ω + g_prime**ω)).ω
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, RESULTS.successful
+        return y1, None, dense_info, None, path_state, RESULTS.successful
 
     def func(
         self,

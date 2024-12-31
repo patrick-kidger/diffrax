@@ -5,7 +5,7 @@ import jax
 import optimistix as optx
 from jaxtyping import Array, Bool, PyTree, Real, Shaped
 
-from ._custom_types import BoolScalarLike, RealScalarLike
+from ._custom_types import BoolScalarLike, RealScalarLike, Args, Y
 from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 
@@ -123,6 +123,25 @@ class Solution(AbstractPath):
     path_state: Optional[PyTree]
     made_jump: Optional[BoolScalarLike]
     event_mask: Optional[PyTree[BoolScalarLike]]
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        max_steps: Optional[int],
+    ) -> None:
+        return None
+
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: None,
+        t1: Optional[RealScalarLike] = None,
+        left: bool = True,
+    ) -> tuple[PyTree[Shaped[Array, "?*shape"], " Y"], None]:
+        return self.evaluate(t0, t1, left), path_state
 
     def evaluate(
         self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True

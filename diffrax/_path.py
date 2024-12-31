@@ -4,7 +4,6 @@ from typing import Generic, Optional, TYPE_CHECKING, TypeVar
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxtyping import PyTree
 
 
 if TYPE_CHECKING:

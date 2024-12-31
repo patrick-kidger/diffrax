@@ -10,6 +10,7 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._term import UnderdampedLangevinLeaf, UnderdampedLangevinX
+from .base import _PathState
 from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
@@ -56,7 +57,7 @@ class _ShOULDCoeffs(AbstractCoeffs):
         self.dtype = jnp.result_type(*all_leaves)
 
 
-class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
+class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None, _PathState]):
     r"""The Shifted-ODE Runge-Kutta Three method
     designed by James Foster. This is a third order solver for the
     Underdamped Langevin Diffusion, the terms of the form

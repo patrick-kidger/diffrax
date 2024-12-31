@@ -86,7 +86,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         levy_area: type[
             Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
         ] = BrownianIncrement,
-        precompute: bool = True,
+        precompute: bool = False,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -142,7 +142,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         args: Args,
         max_steps: Optional[int],
     ) -> _BrownianState:
-        if max_steps is not None:
+        if max_steps is not None and self.precompute:
             subkey = split_by_tree(self.key, self.shape)
             noise = jtu.tree_map(
                 lambda subkey, shape: self._generate_noise(subkey, shape),
@@ -181,7 +181,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         t1 = cast(RealScalarLike, t1)
 
         key, noises, counter = brownian_state
-        if key is None:  # precomputed noise
+        if self.precompute:  # precomputed noise
             out = jtu.tree_map(
                 lambda shape, noise: self._evaluate_leaf_precomputed(
                     t0, t1, shape, self.levy_area, use_levy, noise
@@ -338,6 +338,9 @@ DirectBrownianPath.__init__.__doc__ = """
     solvers.
 - `precompute`: Whether or not to precompute the brownian motion (if possible). Precomputing
     requires additional memory at initialization time, but can result in faster integrations.
+    Some thought may be required before enabling this, as solvers which require multiple
+    brownian increments may result in index out of bounds causing silent errors as the size
+    of the precomputed brownian motion is derived from the maximum steps.
 """
 
 UnsafeBrownianPath = DirectBrownianPath

@@ -65,7 +65,14 @@ from ._step_size_controller import (
     PIDController,
     StepTo,
 )
-from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm, _AbstractControlTerm
+from ._term import (
+    _AbstractControlTerm,
+    AbstractTerm,
+    MultiTerm,
+    ODETerm,
+    UnderdampedLangevinDiffusionTerm,
+    WrapTerm,
+)
 from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
@@ -158,14 +165,14 @@ def _assert_term_compatible(
             # `term_cls`                | `term_args`
             # --------------------------|--------------
             # AbstractTerm              | ()
-            # AbstractTerm[VF, Control] | (VF, Control)
+            # AbstractTerm[VF, Control] | (VF, Control, Path)
             # -----------------------------------------
             term_args = get_args_of(AbstractTerm, term_cls, error_msg)
             n_term_args = len(term_args)
             if n_term_args == 0:
                 pass
-            elif n_term_args == 2:
-                vf_type_expected, control_type_expected = term_args
+            elif n_term_args == 3:
+                vf_type_expected, control_type_expected, path_type_expected = term_args
                 try:
                     vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
                 except Exception as e:
@@ -179,7 +186,7 @@ def _assert_term_compatible(
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
                 try:
-                    control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
+                    control_type, path_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
                 except Exception as e:
                     raise ValueError(f"Error while tracing {term}.contr: " + str(e))
                 control_type_compatible = eqx.filter_eval_shape(
@@ -187,6 +194,11 @@ def _assert_term_compatible(
                 )
                 if not control_type_compatible:
                     raise ValueError(f"Control term {term} is incompatible.")
+                path_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, path_type, path_type_expected
+                )
+                if not path_type_compatible:
+                    raise ValueError(f"Control term {term} path state is incompatible.")
             else:
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
@@ -343,8 +355,8 @@ def loop(
             state.y,
             args,
             state.solver_state,
-            state.path_state,
             state.made_jump,
+            state.path_state,
         )
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
@@ -853,7 +865,7 @@ if not TYPE_CHECKING:
             t1: bool
 
 
-@eqx.filter_jit
+# @eqx.filter_jit
 @eqxi.doc_remove_args("discrete_terminating_event")
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
@@ -957,8 +969,8 @@ def diffeqsolve(
 
     - `controller_state`: Some initial state for the step size controller. Generally
         obtained by `SaveAt(controller_state=True)` from a previous solve.
-    
-    - `path_state`: Some initial state for the path. Generally obtained by 
+
+    - `path_state`: Some initial state for the path. Generally obtained by
         `SaveAt(path_state=True)` from a previous solve.
 
     - `made_jump`: Whether a jump has just been made at `t0`. Used to update
@@ -1094,13 +1106,27 @@ def diffeqsolve(
             )
             terms = MultiTerm(*terms)
 
+    def _path_init(term):
+        if isinstance(term, _AbstractControlTerm) or isinstance(
+            term, UnderdampedLangevinDiffusionTerm
+        ):
+            return term.control.init(t0, t1, y0, args, max_steps)
+        elif isinstance(term, MultiTerm):
+            return jax.tree.map(_path_init, term.terms, is_leaf=lambda x: isinstance(x, AbstractTerm))
+        return None
+
+    if path_state is None:
+        path_state = jtu.tree_map(
+            _path_init, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
+        )
+
     # Error checking for term compatibility
     _assert_term_compatible(
         y0,
         args,
         terms,
         solver.term_structure,
-        solver.term_compatible_contr_kwargs,
+        jtu.tree_map(lambda x, y: x | {"control_state": y}, solver.term_compatible_contr_kwargs, path_state, is_leaf=lambda x: isinstance(x, dict)),
     )
 
     if is_sde(terms):
@@ -1231,20 +1257,27 @@ def diffeqsolve(
             tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
 
+    # reinit for tnext
     def _path_init(term):
-        if isinstance(term, _AbstractControlTerm):
+        if isinstance(term, _AbstractControlTerm) or isinstance(
+            term, UnderdampedLangevinDiffusionTerm
+        ):
             return term.control.init(t0, tnext, y0, args, max_steps)
+        elif isinstance(term, MultiTerm):
+            return jax.tree.map(_path_init, term.terms, is_leaf=lambda x: isinstance(x, AbstractTerm))
         return None
-    
+
     if path_state is None:
         passed_path_state = False
-        path_state = jtu.tree_map(_path_init, terms)
+        path_state = jtu.tree_map(
+            _path_init, terms, is_leaf=lambda x: isinstance(x, AbstractTerm)
+        )
     else:
         passed_path_state = True
 
     if solver_state is None:
         passed_solver_state = False
-        solver_state = solver.init(terms, t0, tnext, y0, args)
+        solver_state = solver.init(terms, t0, tnext, y0, args, path_state)
     else:
         passed_solver_state = True
 
@@ -1285,7 +1318,15 @@ def diffeqsolve(
     result = RESULTS.successful
     if saveat.dense or event is not None:
         _, _, dense_info_struct, _, _ = eqx.filter_eval_shape(
-            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump, path_state
+            solver.step,
+            terms,
+            tprev,
+            tnext,
+            y0,
+            args,
+            solver_state,
+            made_jump,
+            path_state,
         )
     if saveat.dense:
         if max_steps is None:
