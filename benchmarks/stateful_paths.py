@@ -216,5 +216,12 @@ New UBP: 0.013105
 New UBP + Precompute: 0.002506
 
 Results on A100 GPU:
+VBT: 3.881952
+Old UBP: 0.337173
+New UBP: 0.364158
+New UBP + Precompute: 0.325521
 
+GPU being much slower isn't unsurprising and is a common trend for
+small-medium sized SDEs with VFs that are relatively cheap to evaluate
+(i.e. not neural networks).
 """
