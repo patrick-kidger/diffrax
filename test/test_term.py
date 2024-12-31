@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import pytest
+from diffrax._term import UnderdampedLangevinDriftTerm
 from jaxtyping import Array, PyTree, Shaped
 
 from .helpers import tree_allclose
