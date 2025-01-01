@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import pytest
-from diffrax._term import UnderdampedLangevinDriftTerm
+
 from jaxtyping import Array, PyTree, Shaped
 
 from .helpers import tree_allclose
@@ -178,7 +178,7 @@ def test_underdamped_langevin_drift_term_args():
     y = (x, v)
 
     # Create instance of the drift term
-    term = UnderdampedLangevinDriftTerm(gamma=gamma, u=u, grad_f=mock_grad_f)
+    term = diffrax.UnderdampedLangevinDriftTerm(gamma=gamma, u=u, grad_f=mock_grad_f)
 
     # Compute the vector field
     vf_y = term.vf(0.0, y, args)
