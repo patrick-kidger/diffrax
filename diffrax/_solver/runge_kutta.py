@@ -611,13 +611,13 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             return jtu.tree_map(_fn, tableaus, *trees)
 
         def t_map_contr(fn, *trees, control, implicit_val=sentinel):
-            def _fn(tableau, *_trees):
+            def _fn(tableau, _control, *_trees):
                 if tableau.implicit and implicit_val is not sentinel:
                     return implicit_val
                 else:
-                    return fn(*_trees, control)
+                    return fn(*_trees, _control)
 
-            return jtu.tree_map(_fn, tableaus, *trees)
+            return jtu.tree_map(_fn, tableaus, control, *trees)
 
         # Structure of `y` and `k`.
         def y_map(fn, *trees):
@@ -655,11 +655,17 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             return value
 
         dt = t1 - t0
-        control, new_path_state = t_map_contr(
+        tableau_mapped = t_map_contr(
             lambda term_i, path_i: term_i.contr(t0, t1, path_i),
             terms,
             control=path_state,
         )
+        # control, new_path_state = jtu.tree_map(lambda x)
+        if isinstance(tableaus, ButcherTableau):
+            control, new_path_state = tableau_mapped
+        else: # tuple of butchers
+            control, new_path_state = tuple(i[0] for i in tableau_mapped), tuple(i[1] for i in tableau_mapped)
+
         if implicit_tableau is None:
             implicit_control = _unused
         else:

@@ -100,7 +100,7 @@ def test_multiple_tableau_single_step(vf_expensive):
         None,
         solver_state=solver_state1,
         made_jump=False,
-        path_state=None,
+        path_state=(None, None),
     )
     out2 = solver2.step(
         terms,
@@ -110,7 +110,7 @@ def test_multiple_tableau_single_step(vf_expensive):
         None,
         solver_state=solver_state2,
         made_jump=False,
-        path_state=None,
+        path_state=(None, None),
     )
     out2[2]["k"] = out2[2]["k"][0] + out2[2]["k"][1]
     assert tree_allclose(out1, out2)
@@ -412,10 +412,10 @@ def test_sil3(dtype):
 
     state = solver.init(terms, t0, t1, y0, args, None)
     out = solver.step(
-        terms, t0, t1, y0, args, solver_state=state, made_jump=False, path_state=None
+        terms, t0, t1, y0, args, solver_state=state, made_jump=False, path_state=(None, None)
     )
     reference_out = reference_solver.step(
-        terms, t0, t1, y0, args, solver_state=None, made_jump=False, path_state=None
+        terms, t0, t1, y0, args, solver_state=None, made_jump=False, path_state=(None, None)
     )
     assert tree_allclose(out, reference_out)
 
