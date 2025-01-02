@@ -74,6 +74,7 @@ def test_against():
         return _run(eqx.combine(inexact, static), saveat, adjoint)
 
     _run_grad = eqx.filter_jit(jax.grad(_run_inexact))
+    _run_fwd_grad = eqx.filter_jit(jax.jacfwd(_run_inexact))
     _run_grad_int = eqx.filter_jit(jax.grad(_run, allow_int=True))
 
     twice_inexact = jtu.tree_map(lambda *x: jnp.stack(x), inexact, inexact)
@@ -81,6 +82,11 @@ def test_against():
     @eqx.filter_jit
     def _run_vmap_grad(twice_inexact, saveat, adjoint):
         f = jax.vmap(jax.grad(_run_inexact), in_axes=(0, None, None))
+        return f(twice_inexact, saveat, adjoint)
+
+    @eqx.filter_jit
+    def _run_vmap_fwd_grad(twice_inexact, saveat, adjoint):
+        f = jax.vmap(jax.jacfwd(_run_inexact), in_axes=(0, None, None))
         return f(twice_inexact, saveat, adjoint)
 
     # @eqx.filter_jit
@@ -94,6 +100,17 @@ def test_against():
     @eqx.filter_jit
     def _run_grad_vmap(twice_inexact, saveat, adjoint):
         @jax.grad
+        def _run_impl(twice_inexact):
+            f = jax.vmap(_run_inexact, in_axes=(0, None, None))
+            out = f(twice_inexact, saveat, adjoint)
+            assert out.shape == (2,)
+            return jnp.sum(out)
+
+        return _run_impl(twice_inexact)
+
+    @eqx.filter_jit
+    def _run_fwd_grad_vmap(twice_inexact, saveat, adjoint):
+        @jax.jacfwd
         def _run_impl(twice_inexact):
             f = jax.vmap(_run_inexact, in_axes=(0, None, None))
             out = f(twice_inexact, saveat, adjoint)
@@ -136,10 +153,16 @@ def test_against():
                     inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad(inexact, saveat, diffrax.BacksolveAdjoint())
+                forward_grads = _run_fwd_grad(inexact, saveat, diffrax.ForwardMode())
                 assert tree_allclose(fd_grads, direct_grads[0])
                 assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
+                # Test support for integer inputs (jax.grad(..., allow_int=True)). There
+                # is no corresponding option for jax.jacfwd or jax.linearize, and a
+                # workaround (jvp with custom "unit pytrees" for mixed array and
+                # non-array inputs?) is not implemented and tested here.
                 direct_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.DirectAdjoint()
                 )
@@ -166,9 +189,13 @@ def test_against():
                 backsolve_grads = _run_vmap_grad(
                     twice_inexact, saveat, diffrax.BacksolveAdjoint()
                 )
+                forward_grads = _run_vmap_fwd_grad(
+                    twice_inexact, saveat, diffrax.ForwardMode()
+                )
                 assert tree_allclose(fd_grads, direct_grads[0])
                 assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
                 direct_grads = _run_grad_vmap(
                     twice_inexact, saveat, diffrax.DirectAdjoint()
@@ -179,9 +206,13 @@ def test_against():
                 backsolve_grads = _run_grad_vmap(
                     twice_inexact, saveat, diffrax.BacksolveAdjoint()
                 )
+                forward_grads = _run_fwd_grad_vmap(
+                    twice_inexact, saveat, diffrax.ForwardMode()
+                )
                 assert tree_allclose(fd_grads, direct_grads[0])
                 assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
 
 def test_adjoint_seminorm():
