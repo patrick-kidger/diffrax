@@ -163,7 +163,7 @@ diffusion = lambda t, y, args: 0.2
 brownian_motion = diffrax.VirtualBrownianTree(t0, t1, tol=1e-3, shape=(), key=key)
 ubp = OldBrownianPath(shape=(), key=key)
 new_ubp = diffrax.UnsafeBrownianPath(shape=(), key=key)
-new_ubp_pre = diffrax.UnsafeBrownianPath(shape=(), key=key, precompute=True)
+new_ubp_pre = diffrax.UnsafeBrownianPath(shape=(), key=key, precompute=ndt + 10)
 solver = diffrax.Euler()
 terms = diffrax.MultiTerm(
     diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, brownian_motion)
@@ -177,7 +177,7 @@ terms_new = diffrax.MultiTerm(
 terms_new_precompute = diffrax.MultiTerm(
     diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, new_ubp_pre)
 )
-saveat = diffrax.SaveAt(ts=jnp.linspace(t0, t1, ndt))
+saveat = diffrax.SaveAt(ts=jnp.linspace(t0, t1, 1000))
 
 
 @jax.jit

@@ -387,7 +387,7 @@ def loop(
 
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
-
+        
         progress_meter_state = progress_meter.step(
             state.progress_meter_state, linear_rescale(t0, tprev, t1)
         )
@@ -862,7 +862,7 @@ if not TYPE_CHECKING:
             t1: bool
 
 
-# @eqx.filter_jit
+@eqx.filter_jit
 @eqxi.doc_remove_args("discrete_terminating_event")
 def diffeqsolve(
     terms: PyTree[AbstractTerm],
