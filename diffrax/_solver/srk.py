@@ -663,7 +663,14 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         y1 = (y0**ω + drift_result**ω + diffusion_result**ω).ω
         dense_info = dict(y0=y0, y1=y1)
-        return y1, error, dense_info, None, (drift_path, diffusion_path), RESULTS.successful
+        return (
+            y1,
+            error,
+            dense_info,
+            None,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,

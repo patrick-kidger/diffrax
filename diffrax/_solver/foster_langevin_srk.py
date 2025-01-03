@@ -260,6 +260,7 @@ class AbstractFosterLangevinSRK(
         evaluation of grad_f.
         """
         drift, diffusion = terms.terms
+        drift_path, diffusion_path = path_state
         (
             gamma_drift,
             u_drift,
@@ -271,7 +272,7 @@ class AbstractFosterLangevinSRK(
         # is this the only solver class that has `init` depend on the path state?
         # feels irksome to change everything for one class, but I'm going to make
         # `init` now depend on path state for the sake of generality
-        h, _ = drift.contr(t0, t1, path_state)
+        h, _ = drift.contr(t0, t1, drift_path)
         x0, v0 = y0
 
         gamma = broadcast_underdamped_langevin_arg(gamma_drift, x0, "gamma")
@@ -389,7 +390,6 @@ class AbstractFosterLangevinSRK(
         st = solver_state
         drift, diffusion = terms.terms
         drift_path, diffusion_path = path_state
-
 
         h, drift_path = drift.contr(t0, t1, drift_path)
         h_prev = st.h

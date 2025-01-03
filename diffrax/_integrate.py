@@ -340,7 +340,6 @@ def loop(
 
     def body_fun_aux(state):
         state = _handle_static(state)
-
         #
         # Actually do some differential equation solving! Make numerical steps, adapt
         # step sizes, all that jazz.
@@ -1105,7 +1104,11 @@ def diffeqsolve(
             terms = MultiTerm(*terms)
 
     if path_state is None:
-        path_state = terms.init(t0, t1, y0, args)
+        path_state = jax.tree.map(
+            lambda term: term.init(t0, t1, y0, args),
+            terms,
+            is_leaf=lambda x: isinstance(x, AbstractTerm),
+        )
 
     # Error checking for term compatibility
     _assert_term_compatible(
@@ -1252,7 +1255,11 @@ def diffeqsolve(
 
     if path_state is None:
         passed_path_state = False
-        path_state = terms.init(t0, tnext, y0, args)
+        path_state = jax.tree.map(
+            lambda term: term.init(t0, tnext, y0, args),
+            terms,
+            is_leaf=lambda x: isinstance(x, AbstractTerm),
+        )
     else:
         passed_path_state = True
 

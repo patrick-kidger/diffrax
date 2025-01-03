@@ -205,6 +205,9 @@ def test_everything_pytree(implicit, vf_expensive, adaptive):
     class Term(diffrax.AbstractTerm):
         coeff: float
 
+        def init(self, t0, t1, y0, args):
+            return None
+
         def vf(self, t, y, args):
             return {"f": -self.coeff * y["y"]}
 

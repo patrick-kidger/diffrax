@@ -69,6 +69,8 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     ) -> _SolverState:
         return None
 
+    # TODO, a bunch of these solvers have tuple requirements, we can type the
+    # _PathState to be the same pytree.
     def step(
         self,
         terms: MultiTerm[
@@ -84,9 +86,10 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
-        # should these be same path state?
-        dt, _ = drift.contr(t0, t1, path_state)
-        dw, path_state = diffusion.contr(t0, t1, path_state)
+        drift_path, diffusion_path = path_state
+
+        dt, drift_path = drift.contr(t0, t1, drift_path)
+        dw, diffusion_path = diffusion.contr(t0, t1, diffusion_path)
 
         f0_prod = drift.vf_prod(t0, y0, args, dt)
         g0_prod = diffusion.vf_prod(t0, y0, args, dw)
@@ -98,7 +101,14 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         y1 = (y0**ω + f0_prod**ω + g0_prod**ω + 0.5 * v0_prod**ω).ω
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, path_state, RESULTS.successful
+        return (
+            y1,
+            None,
+            dense_info,
+            None,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,
@@ -167,8 +177,9 @@ class ItoMilstein(AbstractItoSolver):
     ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
         drift, diffusion = terms.terms
-        Δt, path_state = drift.contr(t0, t1, path_state)
-        Δw, path_state = diffusion.contr(t0, t1, path_state)
+        drift_path, diffusion_path = path_state
+        Δt, drift_path = drift.contr(t0, t1, drift_path)
+        Δw, diffusion_path = diffusion.contr(t0, t1, diffusion_path)
 
         #
         # So this is a bit involved, largely because of the generality that the rest of
@@ -379,7 +390,14 @@ class ItoMilstein(AbstractItoSolver):
         #
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, path_state, RESULTS.successful
+        return (
+            y1,
+            None,
+            dense_info,
+            None,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,

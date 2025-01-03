@@ -62,16 +62,24 @@ class SemiImplicitEuler(AbstractSolver):
         del solver_state, made_jump
 
         term_1, term_2 = terms
+        path_state1, path_state2 = path_state
         y0_1, y0_2 = y0
 
-        control1, path_state = term_1.contr(t0, t1, path_state)
-        control2, path_state = term_2.contr(t0, t1, path_state)
+        control1, path_state1 = term_1.contr(t0, t1, path_state1)
+        control2, path_state2 = term_2.contr(t0, t1, path_state2)
         y1_1 = (y0_1**ω + term_1.vf_prod(t0, y0_2, args, control1) ** ω).ω
         y1_2 = (y0_2**ω + term_2.vf_prod(t0, y1_1, args, control2) ** ω).ω
 
         y1 = (y1_1, y1_2)
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, path_state, RESULTS.successful
+        return (
+            y1,
+            None,
+            dense_info,
+            None,
+            (path_state1, path_state2),
+            RESULTS.successful,
+        )
 
     def func(
         self,

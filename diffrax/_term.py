@@ -675,7 +675,6 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         control_state: PyTree,
         **kwargs,
     ) -> tuple[tuple[PyTree[ArrayLike], ...], tuple[PyTree, ...]]:
-
         contrs = [
             term.contr(t0, t1, state, **kwargs)
             for term, state in zip(self.terms, control_state)
