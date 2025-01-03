@@ -390,6 +390,7 @@ class AbstractFosterLangevinSRK(
         drift, diffusion = terms.terms
         drift_path, diffusion_path = path_state
 
+
         h, drift_path = drift.contr(t0, t1, drift_path)
         h_prev = st.h
         tay: PyTree[_Coeffs] = st.taylor_coeffs

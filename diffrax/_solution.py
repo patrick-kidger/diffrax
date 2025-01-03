@@ -130,7 +130,6 @@ class Solution(AbstractPath):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
-        max_steps: Optional[int],
     ) -> None:
         return None
 

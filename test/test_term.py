@@ -34,7 +34,7 @@ def test_control_term(getkey):
         t0 = 0
         t1 = 1
 
-        def init(self, t0, t1, y0, args, max_steps):
+        def init(self, t0, t1, y0, args):
             return None
 
         def __call__(self, t0, path_state: None, t1=None, left=True):
@@ -83,7 +83,7 @@ def test_weakly_diagional_control_term(getkey):
         t0 = 0
         t1 = 1
 
-        def init(self, t0, t1, y0, args, max_steps):
+        def init(self, t0, t1, y0, args):
             return None
 
         def __call__(self, t0, path_state, t1=None, left=True):

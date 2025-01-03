@@ -55,7 +55,6 @@ class AbstractPath(eqx.Module, Generic[_Control, _PathState]):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
-        max_steps: Optional[int],
     ) -> _PathState:
         """Initialises any hidden state for the path.
 
@@ -139,6 +138,8 @@ class AbstractPath(eqx.Module, Generic[_Control, _PathState]):
         The increment of the path between `t0` and `t1`.
         """
 
+    # make a stateful derivative or just make user do this with jvp?
+    # idk where this is used, hard for me to say
     def derivative(self, t: RealScalarLike, left: bool = True) -> _Control:
         r"""Evaluate the derivative of the path. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))` (and indeed this is its

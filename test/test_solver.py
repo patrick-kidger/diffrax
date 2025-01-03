@@ -412,10 +412,24 @@ def test_sil3(dtype):
 
     state = solver.init(terms, t0, t1, y0, args, None)
     out = solver.step(
-        terms, t0, t1, y0, args, solver_state=state, made_jump=False, path_state=(None, None)
+        terms,
+        t0,
+        t1,
+        y0,
+        args,
+        solver_state=state,
+        made_jump=False,
+        path_state=(None, None),
     )
     reference_out = reference_solver.step(
-        terms, t0, t1, y0, args, solver_state=None, made_jump=False, path_state=(None, None)
+        terms,
+        t0,
+        t1,
+        y0,
+        args,
+        solver_state=None,
+        made_jump=False,
+        path_state=(None, None),
     )
     assert tree_allclose(out, reference_out)
 

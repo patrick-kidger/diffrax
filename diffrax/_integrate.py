@@ -41,7 +41,6 @@ from ._event import (
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import linear_rescale, static_select
-from ._path import AbstractPath
 from ._progress_meter import (
     AbstractProgressMeter,
     NoProgressMeter,
@@ -67,11 +66,9 @@ from ._step_size_controller import (
     StepTo,
 )
 from ._term import (
-    _AbstractControlTerm,
     AbstractTerm,
     MultiTerm,
     ODETerm,
-    UnderdampedLangevinDiffusionTerm,
     WrapTerm,
 )
 from ._typing import better_isinstance, get_args_of, get_origin_no_specials
@@ -348,6 +345,7 @@ def loop(
         # Actually do some differential equation solving! Make numerical steps, adapt
         # step sizes, all that jazz.
         #
+
         (y, y_error, dense_info, solver_state, path_state, solver_result) = solver.step(
             terms,
             state.tprev,
@@ -1106,27 +1104,8 @@ def diffeqsolve(
             )
             terms = MultiTerm(*terms)
 
-    def _path_init(term, end):
-        if isinstance(term, _AbstractControlTerm) or isinstance(
-            term, UnderdampedLangevinDiffusionTerm
-        ):
-            if isinstance(term.control, AbstractPath):
-                return term.control.init(t0, end, y0, args, max_steps)
-            return None
-        elif isinstance(term, MultiTerm):
-            return jax.tree.map(
-                lambda x: _path_init(x, end),
-                term.terms,
-                is_leaf=lambda x: isinstance(x, AbstractTerm),
-            )
-        return None
-
     if path_state is None:
-        path_state = jtu.tree_map(
-            lambda x: _path_init(x, t1),
-            terms,
-            is_leaf=lambda x: isinstance(x, AbstractTerm),
-        )
+        path_state = terms.init(t0, t1, y0, args)
 
     # Error checking for term compatibility
     _assert_term_compatible(
@@ -1273,11 +1252,7 @@ def diffeqsolve(
 
     if path_state is None:
         passed_path_state = False
-        path_state = jtu.tree_map(
-            lambda x: _path_init(x, tnext),
-            terms,
-            is_leaf=lambda x: isinstance(x, AbstractTerm),
-        )
+        path_state = terms.init(t0, tnext, y0, args)
     else:
         passed_path_state = True
 

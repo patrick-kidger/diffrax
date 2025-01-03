@@ -77,7 +77,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
     ] = eqx.field(static=True)
     key: PRNGKeyArray
-    precompute: bool = eqx.field(static=True)
+    precompute: Optional[int] = eqx.field(static=True)
 
     def __init__(
         self,
@@ -86,7 +86,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         levy_area: type[
             Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
         ] = BrownianIncrement,
-        precompute: bool = False,
+        precompute: Optional[int] = None,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -119,16 +119,9 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     ) -> Float[Array, "levy_dims shape"]:
         # TODO: merge into a single jr.normal call
         if self.levy_area is SpaceTimeTimeLevyArea:
-            key_w, key_hh, key_kk = jr.split(key, 3)
-            w = jr.normal(key_w, (max_steps, *shape.shape), shape.dtype)
-            hh = jr.normal(key_hh, (max_steps, *shape.shape), shape.dtype)
-            kk = jr.normal(key_kk, (max_steps, *shape.shape), shape.dtype)
-            noise = jnp.stack([w, hh, kk], axis=1)
+            noise = jr.normal(key, (3, max_steps, *shape.shape), shape.dtype)
         elif self.levy_area is SpaceTimeLevyArea:
-            key_w, key_hh = jr.split(key, 2)
-            w = jr.normal(key_w, (max_steps, *shape.shape), shape.dtype)
-            hh = jr.normal(key_hh, (max_steps, *shape.shape), shape.dtype)
-            noise = jnp.stack([w, hh], axis=1)
+            noise = jr.normal(key, (2, max_steps, *shape.shape), shape.dtype)
         elif self.levy_area is BrownianIncrement:
             noise = jr.normal(key, (max_steps, *shape.shape), shape.dtype)
         else:
@@ -142,9 +135,9 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
-        max_steps: Optional[int],
     ) -> _BrownianState:
-        if max_steps is not None and self.precompute:
+        if self.precompute is not None:
+            max_steps = self.precompute
             subkey = split_by_tree(self.key, self.shape)
             noise = jtu.tree_map(
                 lambda subkey, shape: self._generate_noise(subkey, shape, max_steps),
@@ -196,7 +189,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
                 out = levy_tree_transpose(self.shape, out)
                 assert isinstance(out, self.levy_area)
             # if a solver needs to call .evaluate twice, but wants access to the same
-            # brownian motion, the solver could just decrease the counter
+            # brownian motion, the solver could just use the same original state
             return out, (None, noises, counter + 1)
         else:
             assert noises is None and counter is None and key is not None
@@ -339,7 +332,7 @@ DirectBrownianPath.__init__.__doc__ = """
 - `key`: A random key.
 - `levy_area`: Whether to additionally generate Lévy area. This is required by some SDE
     solvers.
-- `precompute`: Whether or not to precompute the brownian motion (if possible). 
+- `precompute`: Size of array to precompute the brownian motion (if possible). 
     Precomputing requires additional memory at initialization time, but can result in 
     faster integrations. Some thought may be required before enabling this, as solvers 
     which require multiple brownian increments may result in index out of bounds 

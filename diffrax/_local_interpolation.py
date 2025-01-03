@@ -32,7 +32,6 @@ class AbstractLocalInterpolation(AbstractPath[_Control, _PathState]):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
-        max_steps: Optional[int],
     ) -> _PathState:
         return None
 

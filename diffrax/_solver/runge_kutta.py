@@ -663,8 +663,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         # control, new_path_state = jtu.tree_map(lambda x)
         if isinstance(tableaus, ButcherTableau):
             control, new_path_state = tableau_mapped
-        else: # tuple of butchers
-            control, new_path_state = tuple(i[0] for i in tableau_mapped), tuple(i[1] for i in tableau_mapped)
+        else:  # tuple of butchers
+            control, new_path_state = (
+                tuple(i[0] for i in tableau_mapped),
+                tuple(i[1] for i in tableau_mapped),
+            )
 
         if implicit_tableau is None:
             implicit_control = _unused

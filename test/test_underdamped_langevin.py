@@ -91,6 +91,7 @@ def test_shape(solver, dtype):
     sde = get_pytree_uld(t0, t1, dtype)
     bm = sde.get_bm(jr.key(5678), diffrax.SpaceTimeTimeLevyArea, tol=0.2)
     terms = sde.get_terms(bm)
+    print(terms)
 
     sol = diffeqsolve(
         terms, solver, t0, t1, dt0=dt0, y0=sde.y0, args=None, saveat=saveat

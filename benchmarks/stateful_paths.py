@@ -1,5 +1,5 @@
 import math
-from typing import cast, Union
+from typing import cast, Optional, Union
 
 import diffrax
 import equinox as eqx
@@ -23,14 +23,14 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
         ]
     ] = eqx.field(static=True)
     key: PRNGKeyArray
-    precompute: bool = eqx.field(static=True)
+    precompute: Optional[int] = eqx.field(static=True)
 
     def __init__(
         self,
         shape,
         key,
         levy_area=diffrax.BrownianIncrement,
-        precompute=False,
+        precompute=None,
     ):
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
@@ -61,7 +61,6 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
         t1,
         y0,
         args,
-        max_steps,
     ):
         return None
 

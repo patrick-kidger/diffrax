@@ -31,6 +31,8 @@ from ._path import AbstractPath
 _VF = TypeVar("_VF", bound=VF)
 _Control = TypeVar("_Control", bound=Control)
 _ControlState = TypeVar("_ControlState")
+_PathState: TypeAlias = PyTree
+# should probably make the typing of this better/more consistent
 
 
 class AbstractTerm(eqx.Module, Generic[_VF, _Control, _ControlState]):
@@ -61,6 +63,23 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control, _ControlState]):
         A PyTree of structure $S$.
         """
         pass
+
+    @abc.abstractmethod
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        """Initialises any hidden state for the path.
+
+        **Arguments** as [`diffrax.diffeqsolve`][].
+
+        **Returns:**
+
+        The initial path state.
+        """
 
     @abc.abstractmethod
     def contr(
@@ -197,6 +216,15 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike, None]):
 
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
 
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> None:
+        return None
+
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
         out = self.vector_field(t, y, args)
         if jtu.tree_structure(out) != jtu.tree_structure(y):
@@ -247,6 +275,7 @@ ODETerm.__init__.__doc__ = """**Arguments:**
     [`diffrax.diffeqsolve`][].
 """
 
+
 # question over stateful custom functions comes up here too
 class _CallableToPath(AbstractPath[_Control, None]):
     fn: Callable
@@ -265,7 +294,6 @@ class _CallableToPath(AbstractPath[_Control, None]):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
-        max_steps: Optional[int],
     ) -> None:
         return None
 
@@ -284,12 +312,16 @@ class _CallableToPath(AbstractPath[_Control, None]):
         return self.fn(t0, t1)
 
 
+# probably be consistent with path/control naming
+_MaybePathState: TypeAlias = Union[PyTree, None]
+
+
 def _callable_to_path(
     x: Union[
         AbstractPath[_Control, _ControlState],
         Callable[[RealScalarLike, RealScalarLike], _Control],
     ],
-) -> AbstractPath[_Control, _ControlState]:
+) -> AbstractPath[_Control, _MaybePathState]:
     if isinstance(x, AbstractPath):
         return x
     else:
@@ -315,6 +347,17 @@ class _AbstractControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
         # Callable[[RealScalarLike, PyTree, RealScalarLike], tuple[_Control, PyTree]],
         Callable[[RealScalarLike, RealScalarLike], _Control],
     ] = eqx.field(converter=_callable_to_path)  # pyright: ignore
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        if isinstance(self.control, AbstractPath):
+            return self.control.init(t0, t1, y0, args)
+        return None
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
@@ -620,6 +663,11 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> tuple[PyTree[ArrayLike], ...]:
         return tuple(term.vf(t, y, args) for term in self.terms)
 
+    def init(
+        self, t0: RealScalarLike, t1: RealScalarLike, y0: Y, args: Args
+    ) -> tuple[PyTree, ...]:
+        return tuple(term.init(t0, t1, y0, args) for term in self.terms)
+
     def contr(
         self,
         t0: RealScalarLike,
@@ -627,6 +675,7 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         control_state: PyTree,
         **kwargs,
     ) -> tuple[tuple[PyTree[ArrayLike], ...], tuple[PyTree, ...]]:
+
         contrs = [
             term.contr(t0, t1, state, **kwargs)
             for term, state in zip(self.terms, control_state)
@@ -672,6 +721,15 @@ class WrapTerm(AbstractTerm[_VF, _Control, _ControlState]):
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
         t = t * self.direction
         return self.term.vf(t, y, args)
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        return self.term.init(t0, t1, y0, args)
 
     def contr(
         self,
@@ -726,6 +784,15 @@ class AdjointTerm(AbstractTerm[_VF, _Control, _AdjoingControlState]):
         else:
             return True
 
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        return self.term.init(t0, t1, y0, args)
+
     def vf(
         self,
         t: RealScalarLike,
@@ -753,15 +820,7 @@ class AdjointTerm(AbstractTerm[_VF, _Control, _AdjoingControlState]):
 
         # The value of `control` is never actually used -- just its shape, dtype, and
         # PyTree structure. (This is because `self.vf_prod` is linear in `control`.)
-        contr_state_struct = None
-        if isinstance(self.term, _AbstractControlTerm) or isinstance(
-            self.term, UnderdampedLangevinDiffusionTerm
-        ):
-            if isinstance(self.term.control, AbstractPath):
-                # contr_state_struct = eqx.filter_eval_shape(
-                #     self.term.control.init, t, t, y, args, None
-                # )
-                contr_state_struct = self.term.control.init(t, t, y, args, None)
+        contr_state_struct = self.init(t, t, y, args)
         control, _ = self.contr(t, t, contr_state_struct)
 
         y_size = sum(np.size(yi) for yi in jtu.tree_leaves(y))
@@ -957,6 +1016,15 @@ class UnderdampedLangevinDiffusionTerm(
         self.u = u
         self.control = bm
 
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        return self.control.init(t0, t1, y0, args)
+
     def vf(
         self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args
     ) -> UnderdampedLangevinX:
@@ -1035,6 +1103,15 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
         self.gamma = gamma
         self.u = u
         self.grad_f = grad_f
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> None:
+        return None
 
     def vf(
         self, t: RealScalarLike, y: UnderdampedLangevinTuple, args: Args

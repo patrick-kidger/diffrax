@@ -344,6 +344,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         dtype = jnp.result_type(*jtu.tree_leaves(y0))
         drift, diffusion = terms.terms
+        drift_path, diffusion_path = path_state
+
         if self.tableau.ignore_stage_f is None:
             ignore_stage_f = None
         else:
@@ -380,7 +382,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         # Now the diffusion related stuff
         # Brownian increment (and space-time Lévy area)
-        bm_inc, path_state = diffusion.contr(t0, t1, path_state, use_levy=True)
+        bm_inc, diffusion_path = diffusion.contr(t0, t1, diffusion_path, use_levy=True)
         if not isinstance(bm_inc, self.minimal_levy_area):
             raise ValueError(
                 f"The Brownian increment {bm_inc} does not have the "
@@ -661,7 +663,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         y1 = (y0**ω + drift_result**ω + diffusion_result**ω).ω
         dense_info = dict(y0=y0, y1=y1)
-        return y1, error, dense_info, None, path_state, RESULTS.successful
+        return y1, error, dense_info, None, (drift_path, diffusion_path), RESULTS.successful
 
     def func(
         self,
