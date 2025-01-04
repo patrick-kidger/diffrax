@@ -94,8 +94,9 @@ def sir_model():
     N = 10000
     scale = u.day
     β, γ = 0.3 / scale, 0.1 / scale
-    β, γ = 0.1 / scale, 0.2 / scale
-    β, γ = 1.5 / scale, 0.1 / scale
+    β, γ = 0.2 / scale, 0.1 / scale
+    # β, γ = 0.1 / scale, 0.2 / scale
+    # β, γ = 1.5 / scale, 0.1 / scale
 
     def vf(t, y, args):
         S, I, R = y

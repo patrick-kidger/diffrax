@@ -25,7 +25,7 @@ classifiers = [
 urls = {repository = "https://github.com/patrick-kidger/diffrax" }
 dependencies = [
     "jax>=0.4.28", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0",
-    "typeguard==2.13.3", "brainunit>=0.0.3.post20241211"
+    "typeguard==2.13.3", "brainunit>=0.0.3.post20241211", "lineax>=0.0.5", "optimistix>=0.0.7"
 ]
 
 [build-system]
