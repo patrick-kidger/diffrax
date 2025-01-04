@@ -152,19 +152,30 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
 
 # https://github.com/patrick-kidger/diffrax/issues/517
 key = jax.random.key(42)
+# t0 = 0
+# t1 = 100
+# y0 = 1.0
+# ndt = 4000
+# dt = (t1 - t0) / (ndt - 1)
+# drift = lambda t, y, args: -y
+# diffusion = lambda t, y, args: 0.2
 t0 = 0
-t1 = 100
+t1 = 1
 y0 = 1.0
-ndt = 4000
+ndt = 40010
 dt = (t1 - t0) / (ndt - 1)
 drift = lambda t, y, args: -y
 diffusion = lambda t, y, args: 0.2
+# saveat = diffrax.SaveAt(ts=jnp.linspace(t0, t1, ndt))
+saveat = diffrax.SaveAt(steps=True)
 
 brownian_motion = diffrax.VirtualBrownianTree(t0, t1, tol=1e-3, shape=(), key=key)
 ubp = OldBrownianPath(shape=(), key=key)
 new_ubp = diffrax.UnsafeBrownianPath(shape=(), key=key)
 new_ubp_pre = diffrax.UnsafeBrownianPath(shape=(), key=key, precompute=ndt + 10)
+
 solver = diffrax.Euler()
+
 terms = diffrax.MultiTerm(
     diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, brownian_motion)
 )
@@ -177,39 +188,52 @@ terms_new = diffrax.MultiTerm(
 terms_new_precompute = diffrax.MultiTerm(
     diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, new_ubp_pre)
 )
-saveat = diffrax.SaveAt(ts=jnp.linspace(t0, t1, 1000))
 
 
 @jax.jit
 def diffrax_vbt():
-    return diffrax.diffeqsolve(terms, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat).ys
+    return diffrax.diffeqsolve(
+        terms, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat, throw=False
+    ).ys
 
 
 @jax.jit
 def diffrax_old():
     return diffrax.diffeqsolve(
-        terms_old, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat
+        terms_old, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat, throw=False
     ).ys
 
 
 @jax.jit
 def diffrax_new():
     return diffrax.diffeqsolve(
-        terms_new, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat
+        terms_new, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat, throw=False
     ).ys
 
 
 @jax.jit
 def diffrax_new_pre():
     return diffrax.diffeqsolve(
-        terms_new_precompute, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat
+        terms_new_precompute, solver, t0, t1, dt0=dt, y0=y0, saveat=saveat, throw=False
     ).ys
+
+
+@jax.jit
+def homemade_simu():
+    dWs = jnp.sqrt(dt) * jax.random.normal(key, (ndt,))
+
+    def step(y, dW):
+        dy = drift(None, y, None) * dt + diffusion(None, y, None) * dW
+        return y + dy, y
+
+    return jax.lax.scan(step, y0, dWs)[-1]
 
 
 _ = diffrax_vbt().block_until_ready()
 _ = diffrax_old().block_until_ready()
 _ = diffrax_new().block_until_ready()
 _ = diffrax_new_pre().block_until_ready()
+_ = homemade_simu().block_until_ready()
 
 from timeit import Timer
 
@@ -232,18 +256,26 @@ timer = Timer(stmt="_ = diffrax_new_pre().block_until_ready()", globals=globals(
 total_time = timer.timeit(number=num_runs)
 print(f"New UBP + Precompute: {total_time / num_runs:.6f}")
 
+timer = Timer(stmt="_ = homemade_simu().block_until_ready()", globals=globals())
+total_time = timer.timeit(number=num_runs)
+print(f"Pure Jax: {total_time / num_runs:.6f}")
+
 """
 Results on Mac M1 CPU:
-VBT: 0.282765
-Old UBP: 0.015823
-New UBP: 0.013105
-New UBP + Precompute: 0.002506
+VBT: 0.184882
+Old UBP: 0.016347
+New UBP: 0.013731
+New UBP + Precompute: 0.002430
+Pure Jax: 0.002799
 
 Results on A100 GPU:
 VBT: 3.881952
 Old UBP: 0.337173
 New UBP: 0.364158
 New UBP + Precompute: 0.325521
+
+For small ndt (e.g. 100) the pure jax is faster, but the diffrax overhead
+becomes less important as the time increases.
 
 GPU being much slower isn't unsurprising and is a common trend for
 small-medium sized SDEs with VFs that are relatively cheap to evaluate

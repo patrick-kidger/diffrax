@@ -214,6 +214,133 @@ def test_against():
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
+@pytest.mark.slow
+def test_direct_brownian():
+    key = jax.random.key(42)
+    key, subkey = jax.random.split(key)
+    driftkey, diffusionkey, ykey = jr.split(subkey, 3)
+    drift_mlp = eqx.nn.MLP(
+        in_size=3,
+        out_size=3,
+        width_size=8,
+        depth=2,
+        activation=jax.nn.swish,
+        final_activation=jnp.tanh,
+        key=driftkey,
+    )
+    diffusion_mlp = eqx.nn.MLP(
+        in_size=3,
+        out_size=3,
+        width_size=8,
+        depth=2,
+        activation=jax.nn.swish,
+        final_activation=jnp.tanh,
+        key=diffusionkey,
+    )
+    y0 = jr.normal(ykey, (3,))
+
+    k1, k2, k3 = jax.random.split(key, 3)
+
+    vbt = diffrax.VirtualBrownianTree(
+        0.3, 9.5, 1e-4, (3,), k1, levy_area=diffrax.SpaceTimeLevyArea
+    )
+    dbp = diffrax.UnsafeBrownianPath((3,), k2, levy_area=diffrax.SpaceTimeLevyArea)
+    dbp_pre = diffrax.UnsafeBrownianPath(
+        (3,), k3, levy_area=diffrax.SpaceTimeLevyArea, precompute=int(9.5 / 0.1)
+    )
+
+    vbt_terms = diffrax.MultiTerm(
+        diffrax.ODETerm(lambda t, y, args: drift_mlp(y)),
+        diffrax.ControlTerm(
+            lambda t, y, args: lx.DiagonalLinearOperator(diffusion_mlp(y)), vbt
+        ),
+    )
+    dbp_terms = diffrax.MultiTerm(
+        diffrax.ODETerm(lambda t, y, args: drift_mlp(y)),
+        diffrax.ControlTerm(
+            lambda t, y, args: lx.DiagonalLinearOperator(diffusion_mlp(y)), dbp
+        ),
+    )
+    dbp_pre_terms = diffrax.MultiTerm(
+        diffrax.ODETerm(lambda t, y, args: drift_mlp(y)),
+        diffrax.ControlTerm(
+            lambda t, y, args: lx.DiagonalLinearOperator(diffusion_mlp(y)), dbp_pre
+        ),
+    )
+
+    solver = diffrax.GeneralShARK()
+
+    y0_args_term0 = (y0, None, vbt_terms)
+    y0_args_term1 = (y0, None, dbp_terms)
+    y0_args_term2 = (y0, None, dbp_pre_terms)
+
+    def _run(y0__args__term, saveat, adjoint):
+        y0, args, term = y0__args__term
+        ys = diffrax.diffeqsolve(
+            term,
+            solver,
+            0.3,
+            9.5,
+            0.1,
+            y0,
+            args,
+            saveat=saveat,
+            adjoint=adjoint,
+        ).ys
+        return jnp.sum(cast(Array, ys))
+
+    # Only does gradients with respect to y0
+    def _run_finite_diff(y0__args__term, saveat, adjoint):
+        y0, args, term = y0__args__term
+        y0_a = y0 + jnp.array([1e-5, 0, 0])
+        y0_b = y0 + jnp.array([0, 1e-5, 0])
+        y0_c = y0 + jnp.array([0, 0, 1e-5])
+        val = _run((y0, args, term), saveat, adjoint)
+        val_a = _run((y0_a, args, term), saveat, adjoint)
+        val_b = _run((y0_b, args, term), saveat, adjoint)
+        val_c = _run((y0_c, args, term), saveat, adjoint)
+        out_a = (val_a - val) / 1e-5
+        out_b = (val_b - val) / 1e-5
+        out_c = (val_c - val) / 1e-5
+        return jnp.stack([out_a, out_b, out_c])
+
+    for t0 in (True, False):
+        for t1 in (True, False):
+            for ts in (None, [0.3], [2.0], [9.5], [1.0, 7.0], [0.3, 7.0, 9.5]):
+                for y0__args__term in (y0_args_term0,):#, y0_args_term1, y0_args_term2):
+                    if t0 is False and t1 is False and ts is None:
+                        continue
+
+                    saveat = diffrax.SaveAt(t0=t0, t1=t1, ts=ts)
+
+                    inexact, static = eqx.partition(
+                        y0__args__term, eqx.is_inexact_array
+                    )
+
+                    def _run_inexact(inexact, saveat, adjoint):
+                        return _run(eqx.combine(inexact, static), saveat, adjoint)
+
+                    _run_grad = eqx.filter_jit(jax.grad(_run_inexact))
+                    _run_fwd_grad = eqx.filter_jit(jax.jacfwd(_run_inexact))
+
+                    fd_grads = _run_finite_diff(
+                        y0__args__term, saveat, diffrax.RecursiveCheckpointAdjoint()
+                    )
+                    recursive_grads = _run_grad(
+                        inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
+                    )
+                    # backsolve_grads = _run_grad(
+                    #     inexact, saveat, diffrax.BacksolveAdjoint()
+                    # )
+                    forward_grads = _run_fwd_grad(
+                        inexact, saveat, diffrax.ForwardMode()
+                    )
+                    # direct_grads = _run_grad(inexact, saveat, diffrax.DirectAdjoint())
+                    # assert tree_allclose(fd_grads, direct_grads[0])
+                    assert tree_allclose(fd_grads, recursive_grads, atol=1e-5)
+                    # assert tree_allclose(fd_grads, backsolve_grads, atol=1e-5)
+                    assert tree_allclose(fd_grads, forward_grads, atol=1e-5)
+
 
 def test_adjoint_seminorm():
     vector_field = lambda t, y, args: -y
