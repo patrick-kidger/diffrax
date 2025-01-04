@@ -14,7 +14,7 @@ import pytest
 import scipy.stats
 from diffrax import ControlTerm, MultiTerm, ODETerm
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, Float
+from jaxtyping import Array, ArrayLike, Float, PyTree
 
 from .helpers import (
     all_ode_solvers,
@@ -638,6 +638,10 @@ def test_term_compatibility():
 
 
 def test_term_compatibility_pytree():
+    class _TestState(eqx.Module):
+        y: PyTree
+        state: PyTree
+
     class TestSolver(diffrax.AbstractSolver):
         term_structure = {
             "a": diffrax.ODETerm,
@@ -661,14 +665,20 @@ def test_term_compatibility_pytree():
             return None
 
         def step(self, terms, t0, t1, y0, args, solver_state, made_jump, path_state):
-            def _step(_term, _y):
-                control = _term.contr(t0, t1)
-                return _y + _term.vf_prod(t0, _y, args, control)
+            def _step(_term, _y, state):
+                control, new_state = _term.contr(t0, t1, state)
+                return _TestState(_y + _term.vf_prod(t0, _y, args, control), new_state)
 
             _is_term = lambda x: isinstance(x, diffrax.AbstractTerm)
-            y1 = jtu.tree_map(_step, terms, y0, is_leaf=_is_term)
+            output = jtu.tree_map(_step, terms, y0, path_state, is_leaf=_is_term)
+            y1 = jtu.tree_map(
+                lambda x: x.y, output, is_leaf=lambda x: isinstance(x, _TestState)
+            )
+            path_state = jtu.tree_map(
+                lambda x: x.state, output, is_leaf=lambda x: isinstance(x, _TestState)
+            )
             dense_info = dict(y0=y0, y1=y1)
-            return y1, None, dense_info, None, None, diffrax.RESULTS.successful
+            return y1, None, dense_info, None, path_state, diffrax.RESULTS.successful
 
         def func(self, terms, t0, y0, args):
             assert False

@@ -909,9 +909,10 @@ class ForwardMode(AbstractAdjoint):
         throw,
         passed_solver_state,
         passed_controller_state,
+        passed_path_state,
         **kwargs,
     ):
-        del throw, passed_solver_state, passed_controller_state
+        del throw, passed_solver_state, passed_controller_state, passed_path_state
         inner_while_loop = eqx.Partial(_inner_loop, kind="lax")
         outer_while_loop = eqx.Partial(_outer_loop, kind="lax")
         # Support forward-mode autodiff.

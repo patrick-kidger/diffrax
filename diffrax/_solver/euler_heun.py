@@ -68,8 +68,9 @@ class EulerHeun(AbstractStratonovichSolver):
         del solver_state, made_jump
 
         drift, diffusion = terms.terms
-        dt, path_state = drift.contr(t0, t1, path_state)
-        dW, path_state = diffusion.contr(t0, t1, path_state)
+        drift_path, diffusion_path = path_state
+        dt, drift_path = drift.contr(t0, t1, drift_path)
+        dW, diffusion_path = diffusion.contr(t0, t1, diffusion_path)
 
         f0 = drift.vf_prod(t0, y0, args, dt)
         g0 = diffusion.vf_prod(t0, y0, args, dW)
@@ -80,7 +81,14 @@ class EulerHeun(AbstractStratonovichSolver):
         y1 = (y0**ω + f0**ω + 0.5 * (g0**ω + g_prime**ω)).ω
 
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, path_state, RESULTS.successful
+        return (
+            y1,
+            None,
+            dense_info,
+            None,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,

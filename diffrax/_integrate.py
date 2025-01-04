@@ -181,6 +181,7 @@ def _assert_term_compatible(
                 if not vf_type_compatible:
                     raise ValueError(f"Vector field term {term} is incompatible.")
 
+                term_contr_kwargs["control_state"] = term.init(0.0, 0.0, y, args)
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
                 try:
@@ -387,7 +388,7 @@ def loop(
 
         tprev = jnp.minimum(tprev, t1)
         tnext = _clip_to_end(tprev, tnext, t1, keep_step)
-        
+
         progress_meter_state = progress_meter.step(
             state.progress_meter_state, linear_rescale(t0, tprev, t1)
         )
@@ -1111,17 +1112,26 @@ def diffeqsolve(
         )
 
     # Error checking for term compatibility
+
+    # try:
+    #     contr_kwargs = jtu.tree_map(
+    #         lambda _, x, y: jtu.tree_map(
+    #             lambda a, b: a | {"control_state": b},
+    #             x,
+    #             y,
+    #             is_leaf=lambda v: isinstance(v, dict),
+    #         ),
+    #         solver.term_structure,
+    #         solver.term_compatible_contr_kwargs,
+    #         path_state,
+    #         is_leaf=lambda z: isinstance(z, AbstractTerm)
+    #         and not isinstance(z, MultiTerm),
+    #     )
+    # except Exception as e:
+    #     raise ValueError("Terms are not compatible with solver!") from e
+
     _assert_term_compatible(
-        y0,
-        args,
-        terms,
-        solver.term_structure,
-        jtu.tree_map(
-            lambda x, y: x | {"control_state": y},
-            solver.term_compatible_contr_kwargs,
-            path_state,
-            is_leaf=lambda x: isinstance(x, dict),
-        ),
+        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
     )
 
     if is_sde(terms):

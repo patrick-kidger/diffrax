@@ -777,7 +777,9 @@ class AdjointTerm(AbstractTerm[_VF, _Control, _AdjoingControlState]):
         ],
         args: Args,
     ) -> bool:
-        control_struct = eqx.filter_eval_shape(self.contr, t0, t1)
+        control_struct = eqx.filter_eval_shape(
+            self.contr, t0, t1, self.term.init(t0, t1, y, args)
+        )
         if sum(c.size for c in jtu.tree_leaves(control_struct)) in (0, 1):
             return False
         else:
