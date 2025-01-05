@@ -506,10 +506,7 @@ def test_backprop_ts():
     run(mlp)
 
 
-@pytest.mark.parametrize(
-    "diffusion_fn",
-    ["weak", "lineax"],
-)
+@pytest.mark.parametrize("diffusion_fn", ["weak", "lineax"])
 def test_sde_against(diffusion_fn, getkey):
     def f(t, y, args):
         del t
@@ -567,3 +564,31 @@ def test_implicit_runge_kutta_direct_adjoint():
         adjoint=diffrax.DirectAdjoint(),
         stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
     )
+
+
+@pytest.mark.parametrize("solver", (diffrax.Tsit5(), diffrax.GeneralShARK()))
+def test_forward_mode_runge_kutta(solver, getkey):
+    # Totally fine that we're using Tsit5 with an SDE, it should converge to the
+    # Stratonovich solution.
+    bm = diffrax.UnsafeBrownianPath((), getkey(), levy_area=diffrax.SpaceTimeLevyArea)
+    drift = diffrax.ODETerm(lambda t, y, args: -y)
+    diffusion = diffrax.ControlTerm(lambda t, y, args: 0.1 * y, bm)
+    terms = diffrax.MultiTerm(drift, diffusion)
+
+    def run(y0):
+        sol = diffrax.diffeqsolve(
+            terms,
+            solver,
+            0,
+            1,
+            0.01,
+            y0,
+            adjoint=diffrax.ForwardMode(),
+        )
+        return sol.ys
+
+    @jax.jit
+    def run_jvp(y0):
+        return jax.jvp(run, (y0,), (jnp.ones_like(y0),))
+
+    run_jvp(jnp.array(1.0))

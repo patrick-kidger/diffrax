@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from typing import Any, Generic, Optional, TYPE_CHECKING, TypeVar, Union
+from typing import Any, Generic, Literal, Optional, TYPE_CHECKING, TypeVar, Union
 from typing_extensions import TypeAlias
 
 import equinox as eqx
@@ -255,6 +255,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     In particular the coefficients $b^W$, and $a^W$ are provided in `tableau.cfs_bm`,
     as well as $b^H$, $a^H$, $b^K$, and $a^K$ if needed.
     """
+
+    scan_kind: Union[None, Literal["lax", "checkpointed"]] = None
 
     interpolation_cls = LocalLinearInterpolation
     term_compatible_contr_kwargs = (dict(), dict(use_levy=True))
@@ -588,7 +590,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             scan_inputs,
             len(b_sol),
             buffers=lambda x: x,
-            kind="checkpointed",
+            kind="checkpointed" if self.scan_kind is None else self.scan_kind,
             checkpoints="all",
         )
 
