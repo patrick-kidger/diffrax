@@ -112,6 +112,14 @@ class SpaceTimeTimeLevyArea(AbstractSpaceTimeTimeLevyArea):
     K: BM
 
 
+AbstractBrownianIncrement.__module__ = "diffrax"
+AbstractSpaceTimeLevyArea.__module__ = "diffrax"
+AbstractSpaceTimeTimeLevyArea.__module__ = "diffrax"
+BrownianIncrement.__module__ = "diffrax"
+SpaceTimeLevyArea.__module__ = "diffrax"
+SpaceTimeTimeLevyArea.__module__ = "diffrax"
+
+
 def levy_tree_transpose(
     tree_shape, tree: PyTree[AbstractBrownianIncrement]
 ) -> AbstractBrownianIncrement:

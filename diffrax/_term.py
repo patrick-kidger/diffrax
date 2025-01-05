@@ -981,3 +981,12 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
         self, vf: UnderdampedLangevinTuple, control: RealScalarLike
     ) -> UnderdampedLangevinTuple:
         return jtu.tree_map(lambda _vf: control * _vf, vf)
+
+
+AbstractTerm.__module__ = "diffrax"
+ODETerm.__module__ = "diffrax"
+ControlTerm.__module__ = "diffrax"
+WeaklyDiagonalControlTerm.__module__ = "diffrax"
+MultiTerm.__module__ = "diffrax"
+UnderdampedLangevinDriftTerm.__module__ = "diffrax"
+UnderdampedLangevinDiffusionTerm.__module__ = "diffrax"
