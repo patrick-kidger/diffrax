@@ -214,6 +214,7 @@ def test_against():
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
+
 @pytest.mark.slow
 def test_direct_brownian():
     key = jax.random.key(42)
@@ -237,6 +238,7 @@ def test_direct_brownian():
         final_activation=jnp.tanh,
         key=diffusionkey,
     )
+
     class Field(eqx.Module):
         force: eqx.nn.MLP
 
@@ -263,21 +265,15 @@ def test_direct_brownian():
 
     vbt_terms = diffrax.MultiTerm(
         diffrax.ODETerm(Field(drift_mlp)),
-        diffrax.ControlTerm(
-            DiffusionField(diffusion_mlp), vbt
-        ),
+        diffrax.ControlTerm(DiffusionField(diffusion_mlp), vbt),
     )
     dbp_terms = diffrax.MultiTerm(
         diffrax.ODETerm(Field(drift_mlp)),
-        diffrax.ControlTerm(
-            DiffusionField(diffusion_mlp), dbp
-        ),
+        diffrax.ControlTerm(DiffusionField(diffusion_mlp), dbp),
     )
     dbp_pre_terms = diffrax.MultiTerm(
         diffrax.ODETerm(Field(drift_mlp)),
-        diffrax.ControlTerm(
-            DiffusionField(diffusion_mlp), dbp_pre
-        ),
+        diffrax.ControlTerm(DiffusionField(diffusion_mlp), dbp_pre),
     )
 
     solver = diffrax.Heun()
@@ -319,7 +315,9 @@ def test_direct_brownian():
     for t0 in (True, False):
         for t1 in (True, False):
             for ts in (None, [0.3], [2.0], [9.5], [1.0, 7.0], [0.3, 7.0, 9.5]):
-                for i, y0__args__term in enumerate((y0_args_term0, y0_args_term1, y0_args_term2)):
+                for i, y0__args__term in enumerate(
+                    (y0_args_term0, y0_args_term1, y0_args_term2)
+                ):
                     if t0 is False and t1 is False and ts is None:
                         continue
 
@@ -346,7 +344,7 @@ def test_direct_brownian():
                             inexact, saveat, diffrax.BacksolveAdjoint()
                         )
                         assert tree_allclose(fd_grads, backsolve_grads[0], atol=1e-3)
-                        
+
                     forward_grads = _run_fwd_grad(
                         inexact, saveat, diffrax.ForwardMode()
                     )
