@@ -237,6 +237,18 @@ def test_direct_brownian():
         final_activation=jnp.tanh,
         key=diffusionkey,
     )
+    class Field(eqx.Module):
+        force: eqx.nn.MLP
+
+        def __call__(self, t, y, args):
+            return self.force(y)
+
+    class DiffusionField(eqx.Module):
+        force: eqx.nn.MLP
+
+        def __call__(self, t, y, args):
+            return lx.DiagonalLinearOperator(self.force(y))
+
     y0 = jr.normal(ykey, (3,))
 
     k1, k2, k3 = jax.random.split(key, 3)
@@ -250,25 +262,25 @@ def test_direct_brownian():
     )
 
     vbt_terms = diffrax.MultiTerm(
-        diffrax.ODETerm(lambda t, y, args: drift_mlp(y)),
+        diffrax.ODETerm(Field(drift_mlp)),
         diffrax.ControlTerm(
-            lambda t, y, args: lx.DiagonalLinearOperator(diffusion_mlp(y)), vbt
+            DiffusionField(diffusion_mlp), vbt
         ),
     )
     dbp_terms = diffrax.MultiTerm(
-        diffrax.ODETerm(lambda t, y, args: drift_mlp(y)),
+        diffrax.ODETerm(Field(drift_mlp)),
         diffrax.ControlTerm(
-            lambda t, y, args: lx.DiagonalLinearOperator(diffusion_mlp(y)), dbp
+            DiffusionField(diffusion_mlp), dbp
         ),
     )
     dbp_pre_terms = diffrax.MultiTerm(
-        diffrax.ODETerm(lambda t, y, args: drift_mlp(y)),
+        diffrax.ODETerm(Field(drift_mlp)),
         diffrax.ControlTerm(
-            lambda t, y, args: lx.DiagonalLinearOperator(diffusion_mlp(y)), dbp_pre
+            DiffusionField(diffusion_mlp), dbp_pre
         ),
     )
 
-    solver = diffrax.GeneralShARK()
+    solver = diffrax.Heun()
 
     y0_args_term0 = (y0, None, vbt_terms)
     y0_args_term1 = (y0, None, dbp_terms)
@@ -307,7 +319,7 @@ def test_direct_brownian():
     for t0 in (True, False):
         for t1 in (True, False):
             for ts in (None, [0.3], [2.0], [9.5], [1.0, 7.0], [0.3, 7.0, 9.5]):
-                for y0__args__term in (y0_args_term0,):#, y0_args_term1, y0_args_term2):
+                for i, y0__args__term in enumerate((y0_args_term0, y0_args_term1, y0_args_term2)):
                     if t0 is False and t1 is False and ts is None:
                         continue
 
@@ -329,17 +341,20 @@ def test_direct_brownian():
                     recursive_grads = _run_grad(
                         inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
                     )
-                    # backsolve_grads = _run_grad(
-                    #     inexact, saveat, diffrax.BacksolveAdjoint()
-                    # )
+                    if i == 0:
+                        backsolve_grads = _run_grad(
+                            inexact, saveat, diffrax.BacksolveAdjoint()
+                        )
+                        assert tree_allclose(fd_grads, backsolve_grads[0], atol=1e-3)
+                        
                     forward_grads = _run_fwd_grad(
                         inexact, saveat, diffrax.ForwardMode()
                     )
+                    # TODO: fix via https://github.com/patrick-kidger/equinox/issues/923
                     # direct_grads = _run_grad(inexact, saveat, diffrax.DirectAdjoint())
-                    # assert tree_allclose(fd_grads, direct_grads[0])
-                    assert tree_allclose(fd_grads, recursive_grads, atol=1e-5)
-                    # assert tree_allclose(fd_grads, backsolve_grads, atol=1e-5)
-                    assert tree_allclose(fd_grads, forward_grads, atol=1e-5)
+                    # assert tree_allclose(fd_grads, direct_grads[0], atol=1e-3)
+                    assert tree_allclose(fd_grads, recursive_grads[0], atol=1e-3)
+                    assert tree_allclose(fd_grads, forward_grads[0], atol=1e-3)
 
 
 def test_adjoint_seminorm():

@@ -268,6 +268,7 @@ New UBP: 0.013731
 New UBP + Precompute: 0.002430
 Pure Jax: 0.002799
 
+(these are out of date)
 Results on A100 GPU:
 VBT: 3.881952
 Old UBP: 0.337173

@@ -9,6 +9,7 @@ from .._custom_types import (
     BrownianIncrement,
     RealScalarLike,
     SpaceTimeLevyArea,
+    SpaceTimeTimeLevyArea
 )
 from .._path import AbstractPath
 
@@ -20,7 +21,7 @@ _BrownianState = TypeVar("_BrownianState")
 class AbstractBrownianPath(AbstractPath[_Control, _BrownianState]):
     """Abstract base class for all Brownian paths."""
 
-    levy_area: AbstractVar[type[Union[BrownianIncrement, SpaceTimeLevyArea]]]
+    levy_area: AbstractVar[type[Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]]]
 
     @abc.abstractmethod
     def __call__(

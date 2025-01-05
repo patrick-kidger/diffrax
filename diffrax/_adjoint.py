@@ -377,6 +377,9 @@ class DirectAdjoint(AbstractAdjoint):
         #         "Cannot reverse-mode autodifferentiate when using "
         #         "`UnsafeBrownianPath`."
         #     )
+        # if is_unsafe_sde(terms):
+        #     kind = "lax"
+        #     msg = None
         if max_steps is None:
             kind = "lax"
             msg = (
@@ -836,7 +839,10 @@ class BacksolveAdjoint(AbstractAdjoint):
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with `saveat=SaveAt(fn=...)`."
             )
-        # is this still true with DirectAdjoint?
+        # is this still true with DirectBP?
+        # it seems to give inaccurate results, so not currently, but seems doable
+        # might just require more careful thinking about path state management
+        # and more knowledge about continuous adjoints than I have currently
         if is_unsafe_sde(terms):
             raise ValueError(
                 "`adjoint=BacksolveAdjoint()` does not support `UnsafeBrownianPath`. "

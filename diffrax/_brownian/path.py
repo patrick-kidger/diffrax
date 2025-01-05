@@ -17,6 +17,7 @@ from .._custom_types import (
     BrownianIncrement,
     levy_tree_transpose,
     RealScalarLike,
+    IntScalarLike,
     SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea,
     Y,
@@ -31,7 +32,7 @@ from .base import AbstractBrownianPath
 
 _Control = Union[PyTree[Array], AbstractBrownianIncrement]
 _BrownianState: TypeAlias = Union[
-    tuple[None, PyTree[Array], int], tuple[PRNGKeyArray, None, None]
+    tuple[None, PyTree[Array], IntScalarLike], tuple[PRNGKeyArray, None, None]
 ]
 
 
@@ -73,10 +74,10 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
+    key: PRNGKeyArray
     levy_area: type[
         Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
     ] = eqx.field(static=True)
-    key: PRNGKeyArray
     precompute: Optional[int] = eqx.field(static=True)
 
     def __init__(
@@ -116,7 +117,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         key: PRNGKeyArray,
         shape: jax.ShapeDtypeStruct,
         max_steps: int,
-    ) -> Float[Array, "levy_dims shape"]:
+    ) -> Float[Array, "..."]:
         # TODO: merge into a single jr.normal call
         if self.levy_area is SpaceTimeTimeLevyArea:
             noise = jr.normal(key, (3, max_steps, *shape.shape), shape.dtype)
@@ -254,7 +255,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
             Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
         ],
         use_levy: bool,
-        noises: Float[Array, "levy_dims shape"],
+        noises: Float[Array, "..."],
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
         dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
