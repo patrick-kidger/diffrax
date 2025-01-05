@@ -22,6 +22,7 @@ import jax.tree_util as jtu
 import lineax.internal as lxi
 import numpy as np
 import optimistix as optx
+import wadler_lindig as wl
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
@@ -184,7 +185,11 @@ def _assert_term_compatible(
                     better_isinstance, control_type, control_type_expected
                 )
                 if not control_type_compatible:
-                    raise ValueError(f"Control term {term} is incompatible.")
+                    raise ValueError(
+                        "Control term is incompatible: the returned control (e.g. "
+                        f"Brownian motion for an SDE) was {control_type}, but this "
+                        f"solver expected {control_type_expected}."
+                    )
             else:
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
@@ -194,7 +199,13 @@ def _assert_term_compatible(
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except Exception as e:
         # ValueError may also arise from mismatched tree structures
-        raise ValueError("Terms are not compatible with solver!") from e
+        pretty_term = wl.pformat(terms)
+        pretty_expected = wl.pformat(term_structure)
+        raise ValueError(
+            f"Terms are not compatible with solver! Got:\n{pretty_term}\nbut expected:"
+            f"\n{pretty_expected}\nNote that terms are checked recursively: if you "
+            "scroll up you may find a root-cause error that is more specific."
+        ) from e
 
 
 def _is_subsaveat(x: Any) -> bool:
