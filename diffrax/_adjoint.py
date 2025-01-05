@@ -16,7 +16,12 @@ from equinox.internal import ω
 
 from ._heuristics import is_sde, is_unsafe_sde
 from ._saveat import save_y, SaveAt, SubSaveAt
-from ._solver import AbstractItoSolver, AbstractRungeKutta, AbstractStratonovichSolver
+from ._solver import (
+    AbstractItoSolver,
+    AbstractRungeKutta,
+    AbstractSRK,
+    AbstractStratonovichSolver,
+)
 from ._term import AbstractTerm, AdjointTerm
 
 
@@ -272,7 +277,7 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         if is_unsafe_sde(terms):
             raise ValueError(
                 "`adjoint=RecursiveCheckpointAdjoint()` does not support "
-                "`UnsafeBrownianPath`. Consider using `adjoint=DirectAdjoint()` "
+                "`UnsafeBrownianPath`. Consider using `adjoint=ForwardMode()` "
                 "instead."
             )
         if self.checkpoints is None and max_steps is None:
@@ -376,7 +381,10 @@ class DirectAdjoint(AbstractAdjoint):
             msg = None
         # Support forward-mode autodiff.
         # TODO: remove this hack once we can JVP through custom_vjps.
-        if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
+        if (
+            isinstance(solver, (AbstractRungeKutta, AbstractSRK))
+            and solver.scan_kind is None
+        ):
             solver = eqx.tree_at(
                 lambda s: s.scan_kind, solver, "bounded", is_leaf=_is_none
             )
@@ -888,7 +896,10 @@ class ForwardMode(AbstractAdjoint):
         outer_while_loop = eqx.Partial(_outer_loop, kind="lax")
         # Support forward-mode autodiff.
         # TODO: remove this hack once we can JVP through custom_vjps.
-        if isinstance(solver, AbstractRungeKutta) and solver.scan_kind is None:
+        if (
+            isinstance(solver, (AbstractRungeKutta, AbstractSRK))
+            and solver.scan_kind is None
+        ):
             solver = eqx.tree_at(lambda s: s.scan_kind, solver, "lax", is_leaf=_is_none)
         final_state = self._loop(
             solver=solver,
