@@ -118,7 +118,6 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         shape: jax.ShapeDtypeStruct,
         max_steps: int,
     ) -> Float[Array, "..."]:
-        # TODO: merge into a single jr.normal call
         if self.levy_area is SpaceTimeTimeLevyArea:
             noise = jr.normal(key, (3, max_steps, *shape.shape), shape.dtype)
         elif self.levy_area is SpaceTimeLevyArea:
