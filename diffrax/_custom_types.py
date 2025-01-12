@@ -1,4 +1,3 @@
-import typing
 from typing import Any, TYPE_CHECKING, Union
 
 import equinox as eqx
@@ -13,6 +12,7 @@ from jaxtyping import (
     Float,
     Int,
     PyTree,
+    Real,
     Shaped,
 )
 
@@ -21,26 +21,13 @@ if TYPE_CHECKING:
     BoolScalarLike = Union[bool, Array, np.ndarray]
     FloatScalarLike = Union[float, Array, np.ndarray]
     IntScalarLike = Union[int, Array, np.ndarray]
-elif getattr(typing, "GENERATING_DOCUMENTATION", False):
-    # Skip the union with Array in docs.
-    BoolScalarLike = bool
-    FloatScalarLike = float
-    IntScalarLike = int
-
-    #
-    # Because they appear in our docstrings, we also monkey-patch some non-Diffrax
-    # types that have similar defined-in-one-place, exported-in-another behaviour.
-    #
-
-    jtu.Partial.__module__ = "jax.tree_util"
-
+    RealScalarLike = Union[bool, int, float, Array, np.ndarray]
 else:
     BoolScalarLike = Bool[ArrayLike, ""]
     FloatScalarLike = Float[ArrayLike, ""]
     IntScalarLike = Int[ArrayLike, ""]
+    RealScalarLike = Real[ArrayLike, ""]
 
-
-RealScalarLike = Union[FloatScalarLike, IntScalarLike]
 
 Y = PyTree[Shaped[ArrayLike, "?*y"], "Y"]
 VF = PyTree[Shaped[ArrayLike, "?*vf"], "VF"]
