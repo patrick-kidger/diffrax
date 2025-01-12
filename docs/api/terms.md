@@ -71,7 +71,7 @@ Some example term structures include:
 
 ??? note "Defining your own term types"
 
-    For advanced users: you can create your own terms if appropriate. For example if your diffusion is matrix, itself computed as a matrix-matrix product, then you may wish to define a custom term and specify its [`diffrax.AbstractTerm.vf_prod`][] method. By overriding this method you could express the contraction of the vector field - control as a matrix-(matix-vector) product, which is more efficient than the default (matrix-matrix)-vector product.
+    For advanced users, you can create your own terms if appropriate. See for example the [underdamped Langevin terms](#underdamped-langevin-terms), which have their own special set of solvers.
 
 
 ---
@@ -113,7 +113,7 @@ $\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
 the friction and the damping of the system.
 
 These terms enable the use of ULD-specific solvers which can be found 
-[here](./solvers/sde_solvers.md#underdamped-langevin-solvers). Note that these ULD solvers will only work if given
+[here](./solvers/sde_solvers.md#underdamped-langevin-solvers). These ULD solvers expect
 terms with structure `MultiTerm(UnderdampedLangevinDriftTerm(gamma, u, grad_f), UnderdampedLangevinDiffusionTerm(gamma, u, bm))`,
 where `bm` is an [`diffrax.AbstractBrownianPath`][] and the same values of `gammma` and `u` are passed to both terms.
 
