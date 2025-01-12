@@ -83,7 +83,9 @@ def _weakly_diagonal_noise_helper(solver, dtype):
         0.0, 1.0, 0.05, w_shape, jr.key(0), diffrax.SpaceTimeLevyArea
     )
 
-    terms = MultiTerm(ODETerm(_drift), WeaklyDiagonalControlTerm(_diffusion, bm))
+    with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
+        diffusion = WeaklyDiagonalControlTerm(_diffusion, bm)
+    terms = MultiTerm(ODETerm(_drift), diffusion)
     saveat = diffrax.SaveAt(t1=True)
     solution = diffrax.diffeqsolve(
         terms, solver, 0.0, 1.0, 0.1, y0, args, saveat=saveat

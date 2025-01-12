@@ -391,7 +391,8 @@ def test_sde_against(diffusion_fn, getkey):
     bm = diffrax.VirtualBrownianTree(t0, t1, tol, shape, key=getkey())
     drift = diffrax.ODETerm(f)
     if diffusion_fn == "weak":
-        diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+        with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
+            diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
     else:
         diffusion = diffrax.ControlTerm(g_lx, bm)
     terms = diffrax.MultiTerm(drift, diffusion)
