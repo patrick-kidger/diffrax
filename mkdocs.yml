@@ -75,6 +75,8 @@ plugins:
                 setup_commands:
                     - import pytkdocs_tweaks
                     - pytkdocs_tweaks.main()
+                    - import jax.tree_util
+                    - jax.tree_util.Partial.__module__ = "jax.tree_util"
 
                 selection:
                     inherited_members: true  # Allow looking up inherited methods
