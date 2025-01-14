@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax as lx
+import optimistix as optx
 import pytest
 import scipy.stats
 from diffrax import ControlTerm, MultiTerm, ODETerm
