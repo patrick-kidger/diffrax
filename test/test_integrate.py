@@ -840,5 +840,5 @@ def test_vmap_backprop():
     except Exception as e:
         pytest.fail(f"An unexpected exception was raised: {e}")
 
-    assert not jnp.isnan(grad), "Gradient should not be NaN."
-    assert not jnp.isinf(grad), "Gradient should not be infinite."
+    assert not jnp.isnan(grad).any(), "Gradient should not be NaN."
+    assert not jnp.isinf(grad).any(), "Gradient should not be infinite."
