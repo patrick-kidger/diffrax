@@ -1115,31 +1115,7 @@ def diffeqsolve(
             )
             terms = MultiTerm(*terms)
 
-    if path_state is None:
-        path_state = jax.tree.map(
-            lambda term: term.init(t0, t1, y0, args),
-            terms,
-            is_leaf=lambda x: isinstance(x, AbstractTerm),
-        )
-
     # Error checking for term compatibility
-
-    # try:
-    #     contr_kwargs = jtu.tree_map(
-    #         lambda _, x, y: jtu.tree_map(
-    #             lambda a, b: a | {"control_state": b},
-    #             x,
-    #             y,
-    #             is_leaf=lambda v: isinstance(v, dict),
-    #         ),
-    #         solver.term_structure,
-    #         solver.term_compatible_contr_kwargs,
-    #         path_state,
-    #         is_leaf=lambda z: isinstance(z, AbstractTerm)
-    #         and not isinstance(z, MultiTerm),
-    #     )
-    # except Exception as e:
-    #     raise ValueError("Terms are not compatible with solver!") from e
 
     _assert_term_compatible(
         y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
@@ -1286,7 +1262,8 @@ def diffeqsolve(
 
     if solver_state is None:
         passed_solver_state = False
-        solver_state = solver.init(terms, t0, tnext, y0, args, path_state)
+        # pyright says it can't be PyTree | None, but None is a PyTree, so it can?
+        solver_state = solver.init(terms, t0, tnext, y0, args, path_state)  # pyright: ignore[reportArgumentType]
     else:
         passed_solver_state = True
 

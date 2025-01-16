@@ -294,6 +294,7 @@ def test_direct_brownian():
             args,
             saveat=saveat,
             adjoint=adjoint,
+            max_steps=250,
         ).ys
         return jnp.sum(cast(Array, ys))
 
@@ -349,8 +350,16 @@ def test_direct_brownian():
                         inexact, saveat, diffrax.ForwardMode()
                     )
                     # TODO: fix via https://github.com/patrick-kidger/equinox/issues/923
-                    # direct_grads = _run_grad(inexact, saveat, diffrax.DirectAdjoint())
-                    # assert tree_allclose(fd_grads, direct_grads[0], atol=1e-3)
+                    # turns out this actually only fails for steps >256. Which is weird,
+                    # because thats means 3 vs 2 calls in the base 16. But idk why that
+                    # matter and yields some opaque assertion error. Maybe something to
+                    # do with shapes? AssertionError
+                    #    ...
+                    #    assert all(all(map(core.typematch,
+                    # j.out_avals, branches_known[0].out_avals))
+                    #    for j in branches_known[1:])
+                    direct_grads = _run_grad(inexact, saveat, diffrax.DirectAdjoint())
+                    assert tree_allclose(fd_grads, direct_grads[0], atol=1e-3)
                     assert tree_allclose(fd_grads, recursive_grads[0], atol=1e-3)
                     assert tree_allclose(fd_grads, forward_grads[0], atol=1e-3)
 

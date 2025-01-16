@@ -17,7 +17,7 @@ from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = None
-_PathState: TypeAlias = PyTree
+_PathState: TypeAlias = tuple[None, PyTree]
 
 #
 # The best online reference I've found for commutative-noise Milstein is
@@ -44,7 +44,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     """  # noqa: E501
 
     term_structure: ClassVar = MultiTerm[
-        tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]
     ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
@@ -58,9 +58,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[
-            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
-        ],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -69,13 +67,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     ) -> _SolverState:
         return None
 
-    # TODO, a bunch of these solvers have tuple requirements, we can type the
-    # _PathState to be the same pytree.
     def step(
         self,
-        terms: MultiTerm[
-            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
-        ],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -137,7 +131,7 @@ class ItoMilstein(AbstractItoSolver):
     """  # noqa: E501
 
     term_structure: ClassVar = MultiTerm[
-        tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]
     ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
@@ -151,9 +145,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def init(
         self,
-        terms: MultiTerm[
-            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
-        ],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -164,9 +156,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def step(
         self,
-        terms: MultiTerm[
-            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
-        ],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -401,9 +391,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: MultiTerm[
-            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
-        ],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike, None], AbstractTerm]],
         t0: RealScalarLike,
         y0: Y,
         args: Args,

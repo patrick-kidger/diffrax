@@ -9,6 +9,7 @@ from typing import (
     Optional,
     Type,
     TYPE_CHECKING,
+    TypeAlias,
     TypeVar,
 )
 
@@ -39,7 +40,7 @@ _SolverState = TypeVar("_SolverState")
 # (thus it was totally general for all solvers, which was like, why is it a type
 # var then?) In Term it makes sense because control/ode terms are specific
 # parameterizations of the type var
-_PathState = PyTree
+_PathState: TypeAlias = PyTree
 
 
 def vector_tree_dot(a, b):
