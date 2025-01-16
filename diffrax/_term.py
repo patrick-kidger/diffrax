@@ -1082,13 +1082,13 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
 
     gamma: PyTree[ArrayLike]
     u: PyTree[ArrayLike]
-    grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX]
+    grad_f: Callable[[UnderdampedLangevinX, Args], UnderdampedLangevinX]
 
     def __init__(
         self,
         gamma: PyTree[ArrayLike],
         u: PyTree[ArrayLike],
-        grad_f: Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+        grad_f: Callable[[UnderdampedLangevinX, Args], UnderdampedLangevinX],
     ):
         r"""
         **Arguments:**
@@ -1099,7 +1099,7 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
             a scalar or a PyTree of the same shape as the position vector $x$.
         - `grad_f`: A callable representing the gradient of the potential function $f$.
             This callable should take a PyTree of the same shape as $x$ and
-            return a PyTree of the same shape.
+            an optional `args` argument, returning a PyTree of the same shape.
         """
         self.gamma = gamma
         self.u = u
@@ -1129,7 +1129,7 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
 
         vf_x = v
         try:
-            f_x = self.grad_f(x)
+            f_x = self.grad_f(x, args)  # Pass args to grad_f
             vf_v = jtu.tree_map(fun, gamma, u, v, f_x)
         except ValueError:
             raise RuntimeError(
