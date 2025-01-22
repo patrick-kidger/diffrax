@@ -13,6 +13,7 @@ from jaxtyping import PyTree
 
 from .._custom_types import (
     AbstractBrownianIncrement,
+    Args,
     BoolScalarLike,
     DenseInfo,
     RealScalarLike,
@@ -50,7 +51,7 @@ def _get_args_from_terms(
     PyTree,
     PyTree,
     PyTree,
-    Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+    Callable[[UnderdampedLangevinX, Args], UnderdampedLangevinX],
 ]:
     drift, diffusion = terms.terms
     if isinstance(drift, WrapTerm):
@@ -320,7 +321,7 @@ class AbstractFosterLangevinSRK(
 
         coeffs = self._recompute_coeffs(h, gamma, tay_coeffs)
         rho = jtu.tree_map(lambda c, _u: jnp.sqrt(2 * c * _u), gamma, u)
-        prev_f = grad_f(x0) if self._is_fsal else None
+        prev_f = grad_f(x0, args) if self._is_fsal else None
 
         state_out = SolverState(
             gamma=gamma,
@@ -386,7 +387,6 @@ class AbstractFosterLangevinSRK(
         _PathState,
         RESULTS,
     ]:
-        del args
         st = solver_state
         drift, diffusion = terms.terms
         drift_path, diffusion_path = path_state
@@ -422,12 +422,19 @@ class AbstractFosterLangevinSRK(
             prev_f = st.prev_f
         else:
             prev_f = lax.cond(
-                eqxi.unvmap_any(made_jump), lambda: grad_f(x0), lambda: st.prev_f
+                eqxi.unvmap_any(made_jump), lambda: grad_f(x0, args), lambda: st.prev_f
             )
 
         # The actual step computation, handled by the subclass
         x_out, v_out, f_fsal, error = self._compute_step(
-            h, levy, x0, v0, (gamma, u, grad_f), coeffs, rho, prev_f
+            h,
+            levy,
+            x0,
+            v0,
+            (gamma, u, lambda inp: grad_f(inp, args)),
+            coeffs,
+            rho,
+            prev_f,
         )
 
         def check_shapes_dtypes(arg, *args):
