@@ -297,7 +297,7 @@ class AbstractFosterLangevinSRK(
         u = jtu.tree_map(compare_args_fun, u, u_diffusion)
 
         try:
-            grad_f_shape = jax.eval_shape(grad_f, x0)
+            grad_f_shape = jax.eval_shape(grad_f, x0, args)
         except ValueError:
             raise RuntimeError(
                 "The function `grad_f` in the Underdamped Langevin term must be"

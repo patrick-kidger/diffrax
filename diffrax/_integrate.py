@@ -190,7 +190,7 @@ def _assert_term_compatible(
                     control_type, path_type = eqx.filter_eval_shape(contr, t, t)
                 except Exception as e:
                     raise ValueError(f"Error while tracing {term}.contr: " + str(e))
-                control_type_compatible, path_type_expected = eqx.filter_eval_shape(
+                control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
                 )
                 if not control_type_compatible:
