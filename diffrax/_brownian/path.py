@@ -119,9 +119,9 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         max_steps: int,
     ) -> Float[Array, "..."]:
         if self.levy_area is SpaceTimeTimeLevyArea:
-            noise = jr.normal(key, (3, max_steps, *shape.shape), shape.dtype)
+            noise = jr.normal(key, (max_steps, 3, *shape.shape), shape.dtype)
         elif self.levy_area is SpaceTimeLevyArea:
-            noise = jr.normal(key, (2, max_steps, *shape.shape), shape.dtype)
+            noise = jr.normal(key, (max_steps, 2, *shape.shape), shape.dtype)
         elif self.levy_area is BrownianIncrement:
             noise = jr.normal(key, (max_steps, *shape.shape), shape.dtype)
         else:
