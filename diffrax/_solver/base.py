@@ -9,6 +9,7 @@ from typing import (
     Optional,
     Type,
     TYPE_CHECKING,
+    TypeAlias,
     TypeVar,
 )
 
@@ -34,6 +35,12 @@ from .._term import AbstractTerm, MultiTerm
 
 
 _SolverState = TypeVar("_SolverState")
+# Should pathstate be a TypeVar? Originally I had it as one, but it doesn't seem
+# to matter since no solver actually provides a specific type for the typevar
+# (thus it was totally general for all solvers, which was like, why is it a type
+# var then?) In Term it makes sense because control/ode terms are specific
+# parameterizations of the type var
+_PathState: TypeAlias = PyTree
 
 
 def vector_tree_dot(a, b):
@@ -129,7 +136,11 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
+        # does this need to return a path state as well?, or it is fine just to
+        # have it consume it? AbstractFosterLangevinSRK is the only one that
+        # uses rn I think, so can this brownian increment be reused?
         """Initialises any hidden state for the solver.
 
         **Arguments** as [`diffrax.diffeqsolve`][].
@@ -149,7 +160,8 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, _PathState, RESULTS]:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -166,6 +178,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
             Some solvers (notably FSAL Runge--Kutta solvers) usually assume that there
             are no jumps and for efficiency re-use information between steps; this
             indicates that a jump has just occurred and this assumption is not true.
+        - `path_state`: Any evolving state for any path being used.
 
         **Returns:**
 
@@ -179,6 +192,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
             routine to calculate dense output. (Used with `SaveAt(ts=...)` or
             `SaveAt(dense=...)`.)
         - The value of the solver state at `t1`.
+        - The value of the path state at `t1`.
         - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
             happened successfully, or if (unusually) it failed for some reason.
         """
@@ -246,7 +260,8 @@ class AbstractWrappedSolver(AbstractSolver[_SolverState]):
 
 
 class HalfSolver(
-    AbstractAdaptiveSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+    AbstractAdaptiveSolver[_SolverState],
+    AbstractWrappedSolver[_SolverState],
 ):
     """Wraps another solver, trading cost in order to provide error estimates. (That
     is, it means the solver can be used with an adaptive step size controller,
@@ -305,8 +320,9 @@ class HalfSolver(
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
-        return self.solver.init(terms, t0, t1, y0, args)
+        return self.solver.init(terms, t0, t1, y0, args, path_state)
 
     def step(
         self,
@@ -317,26 +333,43 @@ class HalfSolver(
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, _PathState, RESULTS]:
         original_solver_state = solver_state
+        original_path_state = path_state
         thalf = t0 + 0.5 * (t1 - t0)
 
-        yhalf, _, _, solver_state, result1 = self.solver.step(
-            terms, t0, thalf, y0, args, solver_state, made_jump
+        yhalf, _, _, solver_state, path_state, result1 = self.solver.step(
+            terms, t0, thalf, y0, args, solver_state, made_jump, path_state
         )
-        y1, _, _, solver_state, result2 = self.solver.step(
-            terms, thalf, t1, yhalf, args, solver_state, made_jump=False
+        y1, _, _, solver_state, path_state, result2 = self.solver.step(
+            terms,
+            thalf,
+            t1,
+            yhalf,
+            args,
+            solver_state,
+            made_jump=False,
+            path_state=path_state,
         )
 
         # TODO: use dense_info from the pair of half-steps instead
-        y1_alt, _, dense_info, _, result3 = self.solver.step(
-            terms, t0, t1, y0, args, original_solver_state, made_jump
+        # this potentially reuses the same brownian increment, is this right?
+        y1_alt, _, dense_info, _, _, result3 = self.solver.step(
+            terms,
+            t0,
+            t1,
+            y0,
+            args,
+            original_solver_state,
+            made_jump,
+            original_path_state,
         )
 
         y_error = (y1**ω - y1_alt**ω).call(jnp.abs).ω
         result = update_result(result1, update_result(result2, result3))
 
-        return y1, y_error, dense_info, solver_state, result
+        return y1, y_error, dense_info, solver_state, path_state, result
 
     def func(
         self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args

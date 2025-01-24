@@ -39,6 +39,7 @@ else:
 
 _ErrorEstimate: TypeAlias = Optional[Y]
 _SolverState: TypeAlias = None
+_PathState: TypeAlias = PyTree
 _CarryType: TypeAlias = tuple[PyTree[Array], PyTree[Array], PyTree[Array]]
 
 
@@ -280,8 +281,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     def term_structure(self):
         return MultiTerm[
             tuple[
-                AbstractTerm[Any, RealScalarLike],
-                AbstractTerm[Any, self.minimal_levy_area],
+                AbstractTerm[Any, RealScalarLike, None],
+                AbstractTerm[Any, self.minimal_levy_area, _PathState],
             ]
         ]
 
@@ -289,14 +290,15 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         self,
         terms: MultiTerm[
             tuple[
-                AbstractTerm[Any, RealScalarLike],
-                AbstractTerm[Any, AbstractBrownianIncrement],
+                AbstractTerm[Any, RealScalarLike, None],  # ODE Term
+                AbstractTerm[Any, AbstractBrownianIncrement, _PathState],
             ]
         ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
         args: PyTree,
+        path_state: _PathState,
     ) -> _SolverState:
         del t1
         # Check that the diffusion has the correct Lévy area
@@ -328,8 +330,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         self,
         terms: MultiTerm[
             tuple[
-                AbstractTerm[Any, RealScalarLike],
-                AbstractTerm[Any, AbstractBrownianIncrement],
+                AbstractTerm[Any, RealScalarLike, None],
+                AbstractTerm[Any, AbstractBrownianIncrement, _PathState],
             ]
         ],
         t0: RealScalarLike,
@@ -338,11 +340,14 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         args: PyTree,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
 
         dtype = jnp.result_type(*jtu.tree_leaves(y0))
         drift, diffusion = terms.terms
+        drift_path, diffusion_path = path_state
+
         if self.tableau.ignore_stage_f is None:
             ignore_stage_f = None
         else:
@@ -379,7 +384,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         # Now the diffusion related stuff
         # Brownian increment (and space-time Lévy area)
-        bm_inc = diffusion.contr(t0, t1, use_levy=True)
+        bm_inc, diffusion_path = diffusion.contr(t0, t1, diffusion_path, use_levy=True)
         if not isinstance(bm_inc, self.minimal_levy_area):
             raise ValueError(
                 f"The Brownian increment {bm_inc} does not have the "
@@ -660,14 +665,21 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
         y1 = (y0**ω + drift_result**ω + diffusion_result**ω).ω
         dense_info = dict(y0=y0, y1=y1)
-        return y1, error, dense_info, None, RESULTS.successful
+        return (
+            y1,
+            error,
+            dense_info,
+            None,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,
         terms: MultiTerm[
             tuple[
-                AbstractTerm[Any, RealScalarLike],
-                AbstractTerm[Any, AbstractBrownianIncrement],
+                AbstractTerm[Any, RealScalarLike, None],
+                AbstractTerm[Any, AbstractBrownianIncrement, _PathState],
             ]
         ],
         t0: RealScalarLike,

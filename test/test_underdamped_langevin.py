@@ -59,7 +59,7 @@ def get_pytree_uld(t0=0.3, t1=1.0, dtype=jnp.float32):
         "qq": jnp.ones((), dtype),
     }
 
-    def grad_f(x):
+    def grad_f(x, _):
         xa = x["rr"]
         xb = x["qq"]
         return {"rr": jtu.tree_map(lambda _x: 0.2 * _x, xa), "qq": xb}
@@ -242,7 +242,7 @@ def test_different_args():
     u1 = (jnp.array([1, 2]), 1)
     g2 = (jnp.array([1, 2]), jnp.array([1, 3]))
     u2 = (jnp.array([1, 2]), jnp.ones((2,)))
-    grad_f = lambda x: x
+    grad_f = lambda x, _: x
 
     w_shape = (
         jax.ShapeDtypeStruct((2,), jnp.float64),
