@@ -6,6 +6,7 @@ from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeLevyArea,
+    Args,
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
@@ -156,6 +157,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         coeffs: _ALIGNCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: UnderdampedLangevinX,
+        args: Args,
     ) -> tuple[
         UnderdampedLangevinX,
         UnderdampedLangevinX,
@@ -176,7 +178,7 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
             - coeffs.b1**ω * uh**ω * f0**ω
             + rho**ω * (coeffs.b1**ω * w**ω + coeffs.chh**ω * hh**ω)
         ).ω
-        f1 = f(x1)
+        f1 = f(x1, args)
         v1 = (
             coeffs.beta**ω * v0**ω
             - u**ω * ((coeffs.a1**ω - coeffs.b1**ω) * f0**ω + coeffs.b1**ω * f1**ω)

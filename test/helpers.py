@@ -500,7 +500,7 @@ def make_underdamped_langevin_term(gamma, u, grad_f, bm):
 
 
 def get_bqp(t0=0.3, t1=15.0, dtype=jnp.float32):
-    grad_f_bqp = lambda x: 4 * x * (jnp.square(x) - 1)
+    grad_f_bqp = lambda x, _: 4 * x * (jnp.square(x) - 1)
     gamma, u = dtype(0.8), dtype(0.2)
     y0_bqp = (dtype(0), dtype(0))
     w_shape_bqp = ()
@@ -520,7 +520,9 @@ def get_harmonic_oscillator(t0=0.3, t1=15.0, dtype=jnp.float32):
     w_shape_hosc = (2,)
 
     def get_terms_hosc(bm):
-        return make_underdamped_langevin_term(gamma_hosc, u_hosc, lambda x: 2 * x, bm)
+        return make_underdamped_langevin_term(
+            gamma_hosc, u_hosc, lambda x, _: 2 * x, bm
+        )
 
     return SDE(get_terms_hosc, None, y0_hosc, t0, t1, w_shape_hosc)
 
