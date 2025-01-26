@@ -13,6 +13,7 @@ from jaxtyping import PyTree
 
 from .._custom_types import (
     AbstractBrownianIncrement,
+    Args,
     BoolScalarLike,
     DenseInfo,
     RealScalarLike,
@@ -37,7 +38,7 @@ _ErrorEstimate = TypeVar("_ErrorEstimate", None, UnderdampedLangevinTuple)
 UnderdampedLangevinArgs = tuple[
     UnderdampedLangevinX,
     UnderdampedLangevinX,
-    Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+    Callable[[UnderdampedLangevinX, Args], UnderdampedLangevinX],
 ]
 
 
@@ -48,7 +49,7 @@ def _get_args_from_terms(
     PyTree,
     PyTree,
     PyTree,
-    Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+    Callable[[UnderdampedLangevinX, Args], UnderdampedLangevinX],
 ]:
     drift, diffusion = terms.terms
     if isinstance(drift, WrapTerm):
@@ -255,6 +256,7 @@ class AbstractFosterLangevinSRK(
         evaluation of grad_f.
         """
         drift, diffusion = terms.terms
+        del diffusion
         (
             gamma_drift,
             u_drift,
@@ -265,6 +267,7 @@ class AbstractFosterLangevinSRK(
 
         h = drift.contr(t0, t1)
         x0, v0 = y0
+        del v0
 
         gamma = broadcast_underdamped_langevin_arg(gamma_drift, x0, "gamma")
         u = broadcast_underdamped_langevin_arg(u_drift, x0, "u")
@@ -287,7 +290,7 @@ class AbstractFosterLangevinSRK(
         u = jtu.tree_map(compare_args_fun, u, u_diffusion)
 
         try:
-            grad_f_shape = jax.eval_shape(grad_f, x0)
+            grad_f_shape = jax.eval_shape(grad_f, x0, args)
         except ValueError:
             raise RuntimeError(
                 "The function `grad_f` in the Underdamped Langevin term must be"
@@ -300,7 +303,7 @@ class AbstractFosterLangevinSRK(
 
         if not jtu.tree_all(jtu.tree_map(shape_check_fun, x0, gamma, u, grad_f_shape)):
             raise RuntimeError(
-                "The shapes and PyTree structures of x0, gamma, u, and grad_f(x0)"
+                "The shapes and PyTree structures of x0, gamma, u, and grad_f(x0, args)"
                 " must match."
             )
 
@@ -311,7 +314,7 @@ class AbstractFosterLangevinSRK(
 
         coeffs = self._recompute_coeffs(h, gamma, tay_coeffs)
         rho = jtu.tree_map(lambda c, _u: jnp.sqrt(2 * c * _u), gamma, u)
-        prev_f = grad_f(x0) if self._is_fsal else None
+        prev_f = grad_f(x0, args) if self._is_fsal else None
 
         state_out = SolverState(
             gamma=gamma,
@@ -336,6 +339,7 @@ class AbstractFosterLangevinSRK(
         coeffs: _Coeffs,
         rho: UnderdampedLangevinX,
         prev_f: Optional[UnderdampedLangevinX],
+        args: Args,
     ) -> tuple[
         UnderdampedLangevinX,
         UnderdampedLangevinX,
@@ -369,7 +373,6 @@ class AbstractFosterLangevinSRK(
     ) -> tuple[
         UnderdampedLangevinTuple, _ErrorEstimate, DenseInfo, SolverState, RESULTS
     ]:
-        del args
         st = solver_state
         drift, diffusion = terms.terms
 
@@ -404,12 +407,12 @@ class AbstractFosterLangevinSRK(
             prev_f = st.prev_f
         else:
             prev_f = lax.cond(
-                eqxi.unvmap_any(made_jump), lambda: grad_f(x0), lambda: st.prev_f
+                eqxi.unvmap_any(made_jump), lambda: grad_f(x0, args), lambda: st.prev_f
             )
 
         # The actual step computation, handled by the subclass
         x_out, v_out, f_fsal, error = self._compute_step(
-            h, levy, x0, v0, (gamma, u, grad_f), coeffs, rho, prev_f
+            h, levy, x0, v0, (gamma, u, grad_f), coeffs, rho, prev_f, args
         )
 
         def check_shapes_dtypes(arg, *args):
