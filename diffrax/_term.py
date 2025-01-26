@@ -788,6 +788,16 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
         return dy, da_y, da_diff_args, da_diff_term
 
 
+class LinearODETerm(ODETerm):
+    operator: lx.MatrixLinearOperator | lx.DiagonalLinearOperator
+
+    def __init__(self, operator: lx.MatrixLinearOperator | lx.DiagonalLinearOperator):
+        self.operator = operator
+        vf = lambda t, y, args: self.operator.mv(y)
+        super().__init__(vector_field=vf)
+
+
+
 # The Underdamped Langevin SDE trajectory consists of two components: the position
 # `x` and the velocity `v`. Both of these have the same shape.
 # So, by UnderdampedLangevinX we denote the shape of the x component, and by
