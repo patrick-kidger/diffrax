@@ -59,7 +59,7 @@ def get_pytree_uld(t0=0.3, t1=1.0, dtype=jnp.float32):
         "qq": jnp.ones((), dtype),
     }
 
-    def grad_f(x):
+    def grad_f(x, _):
         xa = x["rr"]
         xb = x["qq"]
         return {"rr": jtu.tree_map(lambda _x: 0.2 * _x, xa), "qq": xb}
@@ -218,7 +218,7 @@ def test_reverse_solve(solver_cls):
         key=jr.key(0),
         levy_area=diffrax.SpaceTimeTimeLevyArea,
     )
-    terms = make_underdamped_langevin_term(gamma, u, lambda x: 2 * x, bm)
+    terms = make_underdamped_langevin_term(gamma, u, lambda x, _: 2 * x, bm)
 
     solver = solver_cls(0.01)
     sol = diffeqsolve(terms, solver, t0, t1, dt0=dt0, y0=y0, args=None, saveat=saveat)
@@ -234,7 +234,8 @@ def test_reverse_solve(solver_cls):
 
 # Here we check that if the drift and diffusion term have different arguments,
 # an error is thrown.
-def test_different_args():
+@pytest.mark.parametrize("solver_cls", _only_uld_solvers_cls())
+def test_different_args(solver_cls):
     x0 = (jnp.ones(2), jnp.zeros(2))
     v0 = (jnp.zeros(2), jnp.zeros(2))
     y0 = (x0, v0)
@@ -242,7 +243,7 @@ def test_different_args():
     u1 = (jnp.array([1, 2]), 1)
     g2 = (jnp.array([1, 2]), jnp.array([1, 3]))
     u2 = (jnp.array([1, 2]), jnp.ones((2,)))
-    grad_f = lambda x: x
+    grad_f = lambda x, args: x
 
     w_shape = (
         jax.ShapeDtypeStruct((2,), jnp.float64),
@@ -267,7 +268,7 @@ def test_different_args():
     diffusion_term_b = diffrax.UnderdampedLangevinDiffusionTerm(g1, u2, bm)
     terms_b = diffrax.MultiTerm(drift_term, diffusion_term_b)
 
-    solver = diffrax.ShOULD(0.01)
+    solver = solver_cls(0.01)
     with pytest.raises(Exception):
         diffeqsolve(terms_a, solver, 0, 1, 0.1, y0, args=None)
     diffeqsolve(terms_b, solver, 0, 1, 0.1, y0, args=None)

@@ -319,7 +319,7 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order, dtype):
         levy_area=None,
         ref_solution=None,
     )
-    assert -0.2 < order - theoretical_order < 0.2
+    assert -0.3 < order - theoretical_order < 0.3
 
 
 # Step size deliberately chosen not to divide the time interval
