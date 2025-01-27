@@ -94,8 +94,8 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-# _PidState = (at_dtmin, prev_inv_scaled_error, prev_prev_inv_scaled_error)
-_PidState = tuple[BoolScalarLike, RealScalarLike, RealScalarLike]
+# _PidState = (prev_inv_scaled_error, prev_prev_inv_scaled_error)
+_PidState = tuple[RealScalarLike, RealScalarLike]
 
 
 if TYPE_CHECKING:
@@ -387,10 +387,7 @@ class PIDController(
             dt0 = lax.stop_gradient(dt0)
         if self.dtmax is not None:
             dt0 = jnp.minimum(dt0, self.dtmax)
-        if self.dtmin is None:
-            at_dtmin = jnp.array(False)
-        else:
-            at_dtmin = dt0 <= self.dtmin
+        if self.dtmin is not None:
             dt0 = jnp.maximum(dt0, self.dtmin)
 
         t1 = t0 + dt0
@@ -402,7 +399,6 @@ class PIDController(
             y_dtype = jnp.result_type(*y_leaves)
         real_dtype = complex_to_real_dtype(y_dtype)
         return t1, (
-            at_dtmin,
             jnp.array(1.0, dtype=real_dtype),
             jnp.array(1.0, dtype=real_dtype),
         )
@@ -484,7 +480,6 @@ class PIDController(
                 "error estimates."
             )
         (
-            at_dtmin,
             prev_inv_scaled_error,
             prev_prev_inv_scaled_error,
         ) = controller_state
@@ -509,8 +504,7 @@ class PIDController(
         keep_step = scaled_error < 1
         # Automatically keep the step if we're at dtmin.
         if self.dtmin is not None:
-            at_dtmin = at_dtmin | (prev_dt <= self.dtmin)
-            keep_step = keep_step | at_dtmin
+            keep_step = keep_step | (prev_dt <= self.dtmin)
         # Make sure it's not a Python scalar and thus getting a ZeroDivisionError.
         inv_scaled_error = 1 / jnp.asarray(scaled_error)
         inv_scaled_error = lax.stop_gradient(
@@ -561,12 +555,9 @@ class PIDController(
         result = RESULTS.successful
         if self.dtmax is not None:
             dt = jnp.minimum(dt, self.dtmax)
-        if self.dtmin is None:
-            at_dtmin = jnp.array(False)
-        else:
+        if self.dtmin is not None:
             if not self.force_dtmin:
                 result = RESULTS.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
-            at_dtmin = dt <= self.dtmin
             dt = jnp.maximum(dt, self.dtmin)
 
         next_t0 = jnp.where(keep_step, t1, t0)
@@ -576,11 +567,7 @@ class PIDController(
         prev_inv_scaled_error = jnp.where(
             keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
         )
-        controller_state = (
-            at_dtmin,
-            inv_scaled_error,
-            prev_inv_scaled_error,
-        )
+        controller_state = inv_scaled_error, prev_inv_scaled_error
         # made_jump is handled by JumpStepWrapper, so we automatically set it to False
         return keep_step, next_t0, next_t1, False, controller_state, result
 
