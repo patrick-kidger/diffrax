@@ -24,15 +24,15 @@ The list of step size controllers is as follows. The most common cases are fixed
     For more details about the convergence of adaptive solutions to SDEs, please refer to
     
     ```bibtex
-        @misc{foster2024convergenceadaptiveapproximationsstochastic,
-            title={On the convergence of adaptive approximations for stochastic differential equations}, 
-            author={James Foster and Andraž Jelinčič},
-            year={2024},
-            eprint={2311.14201},
-            archivePrefix={arXiv},
-            primaryClass={math.NA},
-            url={https://arxiv.org/abs/2311.14201}, 
-        }
+    @misc{foster2024convergenceadaptiveapproximationsstochastic,
+        title={On the convergence of adaptive approximations for stochastic differential equations}, 
+        author={James Foster and Andraž Jelinčič},
+        year={2024},
+        eprint={2311.14201},
+        archivePrefix={arXiv},
+        primaryClass={math.NA},
+        url={https://arxiv.org/abs/2311.14201}, 
+    }
     ```
 
 

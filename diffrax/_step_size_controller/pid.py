@@ -34,10 +34,7 @@ from .jump_step_wrapper import JumpStepWrapper
 # We use a metaclass for backwards compatibility. When a user calls
 # PIDController(... step_ts=s, jump_ts=j) this should return a
 # JumpStepWrapper(PIDController(...), s, j).
-module_meta = type(eqx.Module)
-
-
-class PIDMeta(module_meta):
+class _PIDMeta(type(eqx.Module)):
     def __call__(cls, *args, **kwargs):
         step_ts = kwargs.pop("step_ts", None)
         jump_ts = kwargs.pop("jump_ts", None)
@@ -124,7 +121,7 @@ else:
 #       in Soderlind and Wang 2006.
 class PIDController(
     AbstractAdaptiveStepSizeController[_PidState, Optional[RealScalarLike]],
-    metaclass=PIDMeta,
+    metaclass=_PIDMeta,
 ):
     r"""Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.

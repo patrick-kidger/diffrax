@@ -113,6 +113,7 @@ def test_revisit_steps(backwards):
     def callback_fun(keep_step, t1):
         if not keep_step:
             rejected_ts_list.append(t1)
+        return None
 
     stepsize_controller = diffrax.JumpStepWrapper(
         pid_controller,
@@ -246,3 +247,45 @@ def test_pid_meta():
     assert all(pid2.step_ts == ts)
     assert all(pid3.step_ts == ts)
     assert all(pid3.jump_ts == ts)
+
+
+def test_nested_jump_step_wrappers():
+    pid = diffrax.PIDController(rtol=0, atol=1.0)
+    wrap1 = diffrax.JumpStepWrapper(pid, jump_ts=[3.0, 13.0], step_ts=[23.0])
+    wrap2 = diffrax.JumpStepWrapper(wrap1, step_ts=[2.0, 13.0], jump_ts=[23.0])
+    func = lambda terms, t, y, args: -y
+    terms = diffrax.ODETerm(lambda t, y, args: -y)
+    _, state = wrap2.init(terms, -1.0, 0.0, 0.0, 4.0, None, func, 5)
+
+    # test 1
+    _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
+        0.0, 1.0, 0.0, 0.0, None, 0.0, 5, state
+    )
+    assert next_t1 == 2
+    _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
+        next_t0, next_t1, 0.0, 0.0, None, 0.0, 5, state
+    )
+    assert jnp.isclose(next_t0, 2)
+    assert not made_jump
+
+    # test 2
+    _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
+        10.0, 11.0, 0.0, 0.0, None, 0.0, 5, state
+    )
+    assert next_t1 == 13
+    _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
+        next_t0, next_t1, 0.0, 0.0, None, 0.0, 5, state
+    )
+    assert jnp.isclose(next_t0, 13)
+    assert made_jump
+
+    # test 3
+    _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
+        20.0, 21.0, 0.0, 0.0, None, 0.0, 5, state
+    )
+    assert next_t1 == 23
+    _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
+        next_t0, next_t1, 0.0, 0.0, None, 0.0, 5, state
+    )
+    assert jnp.isclose(next_t0, 23)
+    assert made_jump

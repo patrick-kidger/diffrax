@@ -12,7 +12,7 @@ from .._term import AbstractTerm
 
 
 _ControllerState = TypeVar("_ControllerState")
-_Dt0 = TypeVar("_Dt0", None, RealScalarLike, Optional[RealScalarLike])
+_Dt0 = TypeVar("_Dt0", bound=Optional[RealScalarLike])
 
 
 class AbstractStepSizeController(eqx.Module, Generic[_ControllerState, _Dt0]):

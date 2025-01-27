@@ -18,7 +18,7 @@ from .._custom_types import (
 from .._misc import static_select, upcast_or_raise
 from .._solution import RESULTS
 from .._term import AbstractTerm
-from .base import AbstractAdaptiveStepSizeController, AbstractStepSizeController
+from .base import AbstractStepSizeController
 
 
 _ControllerState = TypeVar("_ControllerState")
@@ -77,7 +77,7 @@ def _clip_ts(
     return _t1, jump_at_t1
 
 
-def find_idx_with_hint(t: RealScalarLike, ts: Optional[Array], hint: IntScalarLike):
+def _find_idx_with_hint(t: RealScalarLike, ts: Optional[Array], hint: IntScalarLike):
     # Find index of first element of ts greater than t
     # using linear search starting from hint.
     if ts is None:
@@ -186,7 +186,7 @@ class JumpStepWrapper(
     #     }
     # ```
 
-    controller: AbstractAdaptiveStepSizeController[_ControllerState, _Dt0]
+    controller: AbstractStepSizeController[_ControllerState, _Dt0]
     step_ts: Optional[Real[Array, " steps"]]
     jump_ts: Optional[Real[Array, " jumps"]]
     rejected_step_buffer_len: Optional[int] = eqx.field(static=True)
@@ -358,12 +358,13 @@ class JumpStepWrapper(
 
         # This is just a logging utility for testing purposes
         if self.callback_on_reject is not None:
-            jax.debug.callback(self.callback_on_reject, keep_step, t1)
+            # jax.debug.callback(self.callback_on_reject, keep_step, t1)
+            jax.experimental.io_callback(self.callback_on_reject, None, keep_step, t1)  # pyright: ignore
 
         # For step ts and jump ts find the index of the first element in jump_ts/step_ts
         # greater than next_t0. We use the hint i_step/i_jump to speed up the search.
-        i_step = find_idx_with_hint(next_t0, st.step_ts, i_step)
-        i_jump = find_idx_with_hint(next_t0, st.jump_ts, i_jump)
+        i_step = _find_idx_with_hint(next_t0, st.step_ts, i_step)
+        i_jump = _find_idx_with_hint(next_t0, st.jump_ts, i_jump)
 
         if self.rejected_step_buffer_len is not None:
             rejected_buffer = st.rejected_buffer
@@ -374,12 +375,6 @@ class JumpStepWrapper(
             # re-add the rejected time to the buffer immediately.
             rejected_t = _get_t(i_reject, rejected_buffer)
             rjct_inc_cond = t1 == rejected_t
-            # Throw an error if t1 is greater than rejected_t
-            i_reject = eqx.error_if(
-                i_reject,
-                t1 > rejected_t,
-                "Jumped over a rejected time. Please report this as a bug.",
-            )
             i_reject = jnp.where(rjct_inc_cond, i_reject + 1, i_reject)
 
             # If the step was rejected, then we need to store the rejected time in the
@@ -414,11 +409,11 @@ class JumpStepWrapper(
             )
 
         if TYPE_CHECKING:  # if i don't seperate this out pyright complains
-            assert isinstance(
-                next_t0, RealScalarLike
-            ), f"type(next_t0) = {type(next_t0)}"
+            assert isinstance(next_t0, RealScalarLike)
         else:
-            isinstance(next_t0, get_args(RealScalarLike))
+            assert isinstance(
+                next_t0, get_args(RealScalarLike)
+            ), f"type(next_t0) = {type(next_t0)}"
 
         # Clip the step to the next element of jump_ts or step_ts or
         # rejected_buffer. Important to do jump_ts last because otherwise
@@ -439,8 +434,8 @@ class JumpStepWrapper(
         # OR of the two.
         jump_at_next_t1 = jnp.where(
             next_t1 == original_next_t1,
-            jump_at_original_next_t1,
             jump_at_next_t1 | jump_at_original_next_t1,
+            jump_at_next_t1,
         )
 
         # Here made_jump signifies whether there is a jump at t1. What the solver
