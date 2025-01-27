@@ -216,8 +216,8 @@ def test_against():
 
 
 @pytest.mark.slow
-def test_direct_brownian():
-    key = jax.random.key(42)
+def test_direct_brownian(getkey):
+    key = getkey()
     key, subkey = jax.random.split(key)
     driftkey, diffusionkey, ykey = jr.split(subkey, 3)
     drift_mlp = eqx.nn.MLP(
@@ -289,12 +289,12 @@ def test_direct_brownian():
             solver,
             0.3,
             9.5,
-            0.1,
+            1.0,
             y0,
             args,
             saveat=saveat,
             adjoint=adjoint,
-            max_steps=250,
+            max_steps=250,  # see note below
         ).ys
         return jnp.sum(cast(Array, ys))
 
