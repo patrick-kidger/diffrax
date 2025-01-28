@@ -794,7 +794,8 @@ def test_term_compatibility_pytree():
                 diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, y0)
 
 
-def test_vmap_backprop():
+# Test that we don't hit a JAX bug: https://github.com/patrick-kidger/diffrax/issues/568
+def test_vmap_backprop_with_event():
     def dynamics(t, y, args):
         param = args
         return param - y
