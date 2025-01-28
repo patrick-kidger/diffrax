@@ -38,7 +38,7 @@ _ErrorEstimate = TypeVar("_ErrorEstimate", None, UnderdampedLangevinTuple)
 UnderdampedLangevinArgs = tuple[
     UnderdampedLangevinX,
     UnderdampedLangevinX,
-    Callable[[UnderdampedLangevinX], UnderdampedLangevinX],
+    Callable[[UnderdampedLangevinX, Args], UnderdampedLangevinX],
 ]
 
 
@@ -262,6 +262,7 @@ class AbstractFosterLangevinSRK(
         """
         drift, diffusion = terms.terms
         drift_path, diffusion_path = path_state
+        del diffusion
         (
             gamma_drift,
             u_drift,
@@ -275,6 +276,7 @@ class AbstractFosterLangevinSRK(
         # `init` now depend on path state for the sake of generality
         h, _ = drift.contr(t0, t1, drift_path)
         x0, v0 = y0
+        del v0
 
         gamma = broadcast_underdamped_langevin_arg(gamma_drift, x0, "gamma")
         u = broadcast_underdamped_langevin_arg(u_drift, x0, "u")
@@ -310,7 +312,7 @@ class AbstractFosterLangevinSRK(
 
         if not jtu.tree_all(jtu.tree_map(shape_check_fun, x0, gamma, u, grad_f_shape)):
             raise RuntimeError(
-                "The shapes and PyTree structures of x0, gamma, u, and grad_f(x0)"
+                "The shapes and PyTree structures of x0, gamma, u, and grad_f(x0, args)"
                 " must match."
             )
 
@@ -346,6 +348,7 @@ class AbstractFosterLangevinSRK(
         coeffs: _Coeffs,
         rho: UnderdampedLangevinX,
         prev_f: Optional[UnderdampedLangevinX],
+        args: Args,
     ) -> tuple[
         UnderdampedLangevinX,
         UnderdampedLangevinX,
@@ -427,14 +430,7 @@ class AbstractFosterLangevinSRK(
 
         # The actual step computation, handled by the subclass
         x_out, v_out, f_fsal, error = self._compute_step(
-            h,
-            levy,
-            x0,
-            v0,
-            (gamma, u, lambda inp: grad_f(inp, args)),
-            coeffs,
-            rho,
-            prev_f,
+            h, levy, x0, v0, (gamma, u, grad_f), coeffs, rho, prev_f, args
         )
 
         def check_shapes_dtypes(arg, *args):

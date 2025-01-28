@@ -10,6 +10,7 @@ from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeTimeLevyArea,
+    Args,
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
@@ -199,6 +200,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         coeffs: _QUICSORTCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: Optional[UnderdampedLangevinX],
+        args: Args,
     ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, None, None]:
         del prev_f
         dtypes = jtu.tree_map(jnp.result_type, x0)
@@ -235,7 +237,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
 
         def fn(carry):
             x, _f, _ = carry
-            fx_uh = (f(x) ** ω * uh**ω).ω
+            fx_uh = (f(x, args) ** ω * uh**ω).ω
             return x, _f, fx_uh
 
         def compute_x2(carry):
