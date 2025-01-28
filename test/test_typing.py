@@ -277,20 +277,24 @@ _abstract_args = lambda cls: get_args_of(dfx.AbstractTerm, cls, "")
 
 
 def test_abstract_term():
-    assert _abstract_args(dfx.AbstractTerm) == (Any, Any)
-    assert _abstract_args(dfx.AbstractTerm[int, str]) == (int, str)
+    assert _abstract_args(dfx.AbstractTerm) == (Any, Any, Any)
+    assert _abstract_args(dfx.AbstractTerm[int, str, int]) == (int, str, int)
 
 
 def test_ode_term():
-    assert _abstract_args(dfx.ODETerm) == (Any, RealScalarLike)
-    assert _abstract_args(dfx.ODETerm[int]) == (int, RealScalarLike)
+    assert _abstract_args(dfx.ODETerm) == (Any, RealScalarLike, type(None))
+    assert _abstract_args(dfx.ODETerm[int]) == (int, RealScalarLike, type(None))
 
 
 def test_control_term():
-    assert _abstract_args(dfx.ControlTerm) == (Any, Any)
-    assert _abstract_args(dfx.ControlTerm[int, str]) == (int, str)
+    assert _abstract_args(dfx.ControlTerm) == (Any, Any, Any)
+    assert _abstract_args(dfx.ControlTerm[int, str, int]) == (int, str, int)
 
 
 def test_weakly_diagonal_control_term():
-    assert _abstract_args(dfx.WeaklyDiagonalControlTerm) == (Any, Any)
-    assert _abstract_args(dfx.WeaklyDiagonalControlTerm[int, str]) == (int, str)
+    assert _abstract_args(dfx.WeaklyDiagonalControlTerm) == (Any, Any, Any)
+    assert _abstract_args(dfx.WeaklyDiagonalControlTerm[int, str, int]) == (
+        int,
+        str,
+        int,
+    )

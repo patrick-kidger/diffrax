@@ -131,11 +131,13 @@ def test_statistics(ctr, levy_area, use_levy):
     def _eval(key):
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape=(), key=key, levy_area=levy_area)
+            state = path.init(t0, t1, None, None)
         elif ctr is diffrax.VirtualBrownianTree:
             path = ctr(t0=0, t1=5, tol=2**-5, shape=(), key=key, levy_area=levy_area)
+            state = path.init(t0, t1, None, None)
         else:
             assert False
-        return path.evaluate(t0, t1, use_levy=use_levy)
+        return path(t0, state, t1, use_levy=use_levy)[0]
 
     values = jax.vmap(_eval)(keys)
     if use_levy:
