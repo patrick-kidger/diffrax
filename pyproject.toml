@@ -3,7 +3,7 @@ name = "diffrax"
 version = "0.6.2"
 description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 readme = "README.md"
-requires-python ="~=3.9"
+requires-python =">=3.9,<4.0"
 license = {file = "LICENSE"}
 authors = [
   {name = "Patrick Kidger", email = "contact@kidger.site"},
