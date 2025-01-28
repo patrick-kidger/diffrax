@@ -649,7 +649,8 @@ def loop(
         event_mask = final_state.event_mask
         flat_mask = jtu.tree_leaves(event_mask)
         assert all(jnp.shape(x) == () for x in flat_mask)
-        event_happened = jnp.any(jnp.stack(flat_mask))
+        float_mask = jnp.array(flat_mask).astype(jnp.float32)
+        event_happened = jnp.max(float_mask) > 0.0
 
         def _root_find():
             _interpolator = solver.interpolation_cls(
