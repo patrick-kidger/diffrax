@@ -198,7 +198,7 @@ def _assert_term_compatible(
     try:
         with jax.numpy_dtype_promotion("standard"):
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
-    except Exception as e:
+    except ValueError as e:
         # ValueError may also arise from mismatched tree structures
         pretty_term = wl.pformat(terms)
         pretty_expected = wl.pformat(term_structure)
