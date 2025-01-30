@@ -35,11 +35,6 @@ from .._term import AbstractTerm, MultiTerm
 
 
 _SolverState = TypeVar("_SolverState")
-# Should pathstate be a TypeVar? Originally I had it as one, but it doesn't seem
-# to matter since no solver actually provides a specific type for the typevar
-# (thus it was totally general for all solvers, which was like, why is it a type
-# var then?) In Term it makes sense because control/ode terms are specific
-# parameterizations of the type var
 _PathState: TypeAlias = PyTree
 
 

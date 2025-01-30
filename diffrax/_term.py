@@ -30,12 +30,10 @@ from ._path import AbstractPath
 
 _VF = TypeVar("_VF", bound=VF)
 _Control = TypeVar("_Control", bound=Control)
-_ControlState = TypeVar("_ControlState")
-_PathState: TypeAlias = PyTree
-# should probably make the typing of this better/more consistent
+_PathState = TypeVar("_PathState")
 
 
-class AbstractTerm(eqx.Module, Generic[_VF, _Control, _ControlState]):
+class AbstractTerm(eqx.Module, Generic[_VF, _Control, _PathState]):
     r"""Abstract base class for all terms.
 
     Let $y$ solve some differential equation with vector field $f$ and control $x$.
@@ -86,9 +84,9 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control, _ControlState]):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        control_state: _ControlState,
+        control_state: _PathState,
         **kwargs,
-    ) -> tuple[_Control, _ControlState]:
+    ) -> tuple[_Control, _PathState]:
         r"""The control.
 
         Represents the $\mathrm{d}t$ in an ODE, or the $\mathrm{d}w(t)$ in an SDE, etc.
@@ -312,22 +310,6 @@ class _CallableToPath(AbstractPath[_Control, None]):
         return self.fn(t0, t1)
 
 
-# probably be consistent with path/control naming
-_MaybePathState: TypeAlias = Union[PyTree, None]
-
-
-def _callable_to_path(
-    x: Union[
-        AbstractPath[_Control, _ControlState],
-        Callable[[RealScalarLike, RealScalarLike], _Control],
-    ],
-) -> AbstractPath[_Control, _MaybePathState]:
-    if isinstance(x, AbstractPath):
-        return x
-    else:
-        return _CallableToPath(x)
-
-
 # vf: Shaped[Array, "*state *control"]
 # control: Shaped[Array, "*control"]
 # return: Shaped[Array, "*state"]
@@ -335,8 +317,7 @@ def _prod(vf, control):
     return jnp.tensordot(jnp.conj(vf), control, axes=jnp.ndim(control))
 
 
-
-class ControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
+class ControlTerm(AbstractTerm[_VF, _Control, _PathState]):
     r"""A term representing the general case of $f(t, y(t), args) \mathrm{d}x(t)$, in
     which the vector field ($f$) - control ($\mathrm{d}x$) interaction is a
     matrix-vector product.
@@ -471,7 +452,7 @@ class ControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
     """  # noqa: E501
 
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
-    control: AbstractPath[_Control]
+    control: AbstractPath[_Control, _PathState]
 
     def __init__(
         self,
@@ -481,17 +462,38 @@ class ControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
         # not ideal, probably just be easier to have them make an abstract path?
         # Callable[[RealScalarLike, PyTree, RealScalarLike], tuple[_Control, PyTree]],
         control: Union[
-            AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
+            AbstractPath[_Control, _PathState],
+            Callable[[RealScalarLike, RealScalarLike], _Control],
         ],
     ):
         self.vector_field = vector_field
-        self.control = _callable_to_path(control)
+        if isinstance(control, AbstractPath):
+            new_control = control
+        else:
+            new_control = _CallableToPath(control)
+        self.control = new_control
+        self.vector_field = vector_field
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        return self.control.init(t0, t1, y0, args)
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
-        return self.control.evaluate(t0, t1, **kwargs)
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        control_state: _PathState,
+        **kwargs,
+    ) -> tuple[_Control, _PathState]:
+        return self.control(t0, control_state, t1, **kwargs)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         if isinstance(vf, lx.AbstractLinearOperator):
@@ -615,6 +617,8 @@ class ControlTerm(AbstractTerm[_VF, _Control, _ControlState]):
         jtu.tree_map(_check_shape, y, out)
         return out
 
+    # TODO: support stateful conversion here
+    # more broadly, add derivative function to path for __call__?
     def to_ode(self) -> ODETerm:
         r"""If the control is differentiable then $f(t, y(t), args) \mathrm{d}x(t)$
         may be thought of as an ODE as
@@ -647,6 +651,7 @@ ControlTerm.__init__.__doc__ = """**Arguments:**
         `[t0, t1]`, or
     2. a callable `(t0, t1) -> increment`, which returns the increment directly.
 """
+
 
 def WeaklyDiagonalControlTerm(vector_field, control):
     r"""
@@ -816,8 +821,8 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         return any(term.is_vf_expensive(t0, t1, y, args) for term in self.terms)
 
 
-class WrapTerm(AbstractTerm[_VF, _Control, _ControlState]):
-    term: AbstractTerm[_VF, _Control, _ControlState]
+class WrapTerm(AbstractTerm[_VF, _Control, _PathState]):
+    term: AbstractTerm[_VF, _Control, _PathState]
     direction: IntScalarLike
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
@@ -837,9 +842,9 @@ class WrapTerm(AbstractTerm[_VF, _Control, _ControlState]):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        control_state: _ControlState,
+        control_state: _PathState,
         **kwargs,
-    ) -> tuple[_Control, _ControlState]:
+    ) -> tuple[_Control, _PathState]:
         _t0 = jnp.where(self.direction == 1, t0, -t1)
         _t1 = jnp.where(self.direction == 1, t1, -t0)
         contrs = self.term.contr(_t0, _t1, control_state, **kwargs)
@@ -865,11 +870,8 @@ class WrapTerm(AbstractTerm[_VF, _Control, _ControlState]):
         return self.term.is_vf_expensive(_t0, _t1, y, args)
 
 
-_AdjoingControlState: TypeAlias = Union[None, PyTree]
-
-
-class AdjointTerm(AbstractTerm[_VF, _Control, _AdjoingControlState]):
-    term: AbstractTerm[_VF, _Control, _AdjoingControlState]
+class AdjointTerm(AbstractTerm[_VF, _Control, _PathState]):
+    term: AbstractTerm[_VF, _Control, _PathState]
 
     def is_vf_expensive(
         self,
@@ -963,9 +965,9 @@ class AdjointTerm(AbstractTerm[_VF, _Control, _AdjoingControlState]):
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        control_state: _AdjoingControlState,
+        control_state: _PathState,
         **kwargs,
-    ) -> tuple[_Control, _AdjoingControlState]:
+    ) -> tuple[_Control, _PathState]:
         return self.term.contr(t0, t1, control_state, **kwargs)
 
     def prod(
@@ -1078,7 +1080,7 @@ class UnderdampedLangevinDiffusionTerm(
     AbstractTerm[
         UnderdampedLangevinX,
         Union[UnderdampedLangevinX, AbstractBrownianIncrement],
-        _ControlState,
+        _PathState,
     ]
 ):
     r"""Represents the diffusion term in the Underdamped Langevin Diffusion (ULD).
@@ -1149,9 +1151,9 @@ class UnderdampedLangevinDiffusionTerm(
         self,
         t0: RealScalarLike,
         t1: RealScalarLike,
-        control_state: _ControlState,
+        control_state: _PathState,
         **kwargs,
-    ) -> tuple[Union[UnderdampedLangevinX, AbstractBrownianIncrement], _ControlState]:
+    ) -> tuple[Union[UnderdampedLangevinX, AbstractBrownianIncrement], _PathState]:
         # same stateless function as above
         return self.control(t0, control_state, t1, **kwargs)
 
