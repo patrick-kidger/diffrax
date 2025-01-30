@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import pytest
 from jaxtyping import Array, PyTree, Shaped
 
@@ -96,15 +97,16 @@ def test_weakly_diagional_control_term(getkey):
             return jr.normal(derivkey, (3,))
 
     control = Control()
-    term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
+    with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
+        term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
     args = getkey()
     dx, state = term.contr(0, 1, None)
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
-    if isinstance(dx, jax.Array) and isinstance(vf, jax.Array):
+    if isinstance(dx, jax.Array) and isinstance(vf, lx.DiagonalLinearOperator):
         assert dx.shape == (3,)
-        assert vf.shape == (3,)
+        assert vf.diagonal.shape == (3,)
     else:
         raise TypeError("dx/vf is not an array")
     assert vf_prod.shape == (3,)
