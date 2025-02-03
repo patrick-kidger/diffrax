@@ -150,7 +150,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         else:
             noise = None
             counter = None
-            key = self.key
+            _, key = jr.split(self.key)
             return key, noise, counter
 
     def __call__(
@@ -193,13 +193,13 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
             return out, (None, noises, counter + 1)
         else:
             assert noises is None and counter is None and key is not None
-            new_key, key = jr.split(key)
-            key = split_by_tree(key, self.shape)
+            new_key, subkey = jr.split(key)
+            subkeys = split_by_tree(subkey, self.shape)
             out = jtu.tree_map(
-                lambda key, shape: self._evaluate_leaf(
-                    t0, t1, key, shape, self.levy_area, use_levy
+                lambda k, shape: self._evaluate_leaf(
+                    t0, t1, k, shape, self.levy_area, use_levy
                 ),
-                key,
+                subkeys,
                 self.shape,
             )
             if use_levy:

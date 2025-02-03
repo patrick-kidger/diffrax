@@ -132,6 +132,7 @@ def test_statistics(ctr, levy_area, use_levy):
         if ctr is diffrax.UnsafeBrownianPath:
             path = ctr(shape=(), key=key, levy_area=levy_area)
             state = path.init(t0, t1, None, None)
+            # return path.evaluate(t0, t1, use_levy=use_levy)
         elif ctr is diffrax.VirtualBrownianTree:
             path = ctr(t0=0, t1=5, tol=2**-5, shape=(), key=key, levy_area=levy_area)
             state = path.init(t0, t1, None, None)
