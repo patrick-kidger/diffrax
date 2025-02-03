@@ -150,7 +150,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         else:
             noise = None
             counter = None
-            _, key = jr.split(self.key)
+            key = self.key
             return key, noise, counter
 
     def __call__(
@@ -312,7 +312,8 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
             hh = jr.normal(key_hh, shape.shape, shape.dtype) * hh_std
             levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
         elif levy_area is BrownianIncrement:
-            w = jr.normal(key, shape.shape, shape.dtype) * w_std
+            key_w, key_hh = jr.split(key, 2)
+            w = jr.normal(key_w, shape.shape, shape.dtype) * w_std
             levy_val = BrownianIncrement(dt=dt, W=w)
         else:
             assert False
