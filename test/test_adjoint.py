@@ -289,7 +289,7 @@ def test_direct_brownian(getkey):
             solver,
             0.3,
             9.5,
-            0.1,
+            0.5,
             y0,
             args,
             saveat=saveat,
