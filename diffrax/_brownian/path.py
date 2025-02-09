@@ -153,6 +153,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
             key = self.key
             return key, noise, counter
 
+    @eqx.filter_jit
     def __call__(
         self,
         t0: RealScalarLike,

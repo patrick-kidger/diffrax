@@ -74,7 +74,6 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
     ):
         return self.evaluate(t0, t1, left, use_levy), brownian_state
 
-    @eqx.filter_jit
     def evaluate(
         self,
         t0,
@@ -270,9 +269,9 @@ Pure Jax: 0.002908
 
 Results on A100 GPU:
 VBT: 2.275057
-Old UBP: 0.092015
-New UBP: 0.125904
-New UBP + Precompute: 0.108587
+Old UBP: 0.112461
+New UBP: 0.126370
+New UBP + Precompute: 0.111837
 Pure Jax: 0.261937
 
 For small ndt (e.g. 100) the pure jax is faster, but the diffrax overhead
