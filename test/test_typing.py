@@ -289,8 +289,3 @@ def test_ode_term():
 def test_control_term():
     assert _abstract_args(dfx.ControlTerm) == (Any, Any)
     assert _abstract_args(dfx.ControlTerm[int, str]) == (int, str)
-
-
-def test_weakly_diagonal_control_term():
-    assert _abstract_args(dfx.WeaklyDiagonalControlTerm) == (Any, Any)
-    assert _abstract_args(dfx.WeaklyDiagonalControlTerm[int, str]) == (int, str)

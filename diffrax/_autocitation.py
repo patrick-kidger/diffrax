@@ -36,7 +36,7 @@ from ._solver import (
     SRA1,
     Tsit5,
 )
-from ._step_size_controller import PIDController
+from ._step_size_controller import ClipStepSizeController, PIDController
 
 
 def citation(*args, **kwargs):
@@ -134,7 +134,7 @@ citation_rules: list[Callable[..., Optional[str]]] = []
 
 
 _thesis_cite = r"""
-phdthesis{kidger2021on,
+@phdthesis{kidger2021on,
     title={{O}n {N}eural {D}ifferential {E}quations},
     author={Patrick Kidger},
     year={2021},
@@ -352,10 +352,10 @@ def _virtual_brownian_tree(terms):
         return (
             r"""
 % You are simulating Brownian motion using a virtual Brownian tree, which was introduced
-% in:
+% in the following two papers:
 """
             + vbt_ref
-            + "\n\n"
+            + "\n"
             + single_seed_ref
         )
 
@@ -568,6 +568,17 @@ def _auto_dt0(dt0):
   year={2008}
 }
 """
+
+
+@citation_rules.append
+def _clip_controller(terms, stepsize_controller):
+    if type(stepsize_controller) is ClipStepSizeController:
+        if stepsize_controller.store_rejected_steps is not None and is_sde(terms):
+            return r"""
+% You are adaptively solving an SDE whilst revisiting rejected time points. This is a
+% subtle point required for the correctness of adaptive noncommutative SDE solves, as
+% found in:
+""" + _parse_reference(ClipStepSizeController)
 
 
 @citation_rules.append

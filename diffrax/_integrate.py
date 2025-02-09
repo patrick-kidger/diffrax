@@ -198,7 +198,7 @@ def _assert_term_compatible(
     try:
         with jax.numpy_dtype_promotion("standard"):
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
-    except Exception as e:
+    except ValueError as e:
         # ValueError may also arise from mismatched tree structures
         pretty_term = wl.pformat(terms)
         pretty_expected = wl.pformat(term_structure)
@@ -649,7 +649,8 @@ def loop(
         event_mask = final_state.event_mask
         flat_mask = jtu.tree_leaves(event_mask)
         assert all(jnp.shape(x) == () for x in flat_mask)
-        event_happened = jnp.any(jnp.stack(flat_mask))
+        float_mask = jnp.array(flat_mask).astype(jnp.float32)
+        event_happened = jnp.max(float_mask) > 0.0
 
         def _root_find():
             _interpolator = solver.interpolation_cls(

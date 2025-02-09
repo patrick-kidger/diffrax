@@ -6,6 +6,7 @@ from jaxtyping import ArrayLike, PyTree
 
 from .._custom_types import (
     AbstractSpaceTimeTimeLevyArea,
+    Args,
     RealScalarLike,
 )
 from .._local_interpolation import LocalLinearInterpolation
@@ -198,6 +199,7 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
         coeffs: _ShOULDCoeffs,
         rho: UnderdampedLangevinX,
         prev_f: UnderdampedLangevinX,
+        args: Args,
     ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, UnderdampedLangevinX, None]:
         dtypes = jtu.tree_map(jnp.result_type, x0)
         w: UnderdampedLangevinX = jtu.tree_map(jnp.asarray, levy.W, dtypes)
@@ -225,7 +227,7 @@ class ShOULD(AbstractFosterLangevinSRK[_ShOULDCoeffs, None]):
 
         def fn(carry):
             x, _f, _ = carry
-            fx = f(x)
+            fx = f(x, args)
             return x, _f, fx
 
         def compute_x2(carry):

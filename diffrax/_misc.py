@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, cast, Optional
+from typing import Any, cast, Optional, Union
 
 import jax
 import jax.core
@@ -160,7 +160,10 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
 
 
 def upcast_or_raise(
-    x: ArrayLike, array_for_dtype: ArrayLike, x_name: str, dtype_name: str
+    x: ArrayLike,
+    array_for_dtype: Union[ArrayLike, jnp.dtype],
+    x_name: str,
+    dtype_name: str,
 ):
     """If `JAX_NUMPY_DTYPE_PROMOTION=strict`, then this will raise an error if
     `jnp.result_type(x, array_for_dtype)` is not the same as `array_for_dtype.dtype`.

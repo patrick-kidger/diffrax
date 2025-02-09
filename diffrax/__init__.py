@@ -121,6 +121,7 @@ from ._solver import (
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,
     AbstractStepSizeController as AbstractStepSizeController,
+    ClipStepSizeController as ClipStepSizeController,
     ConstantStepSize as ConstantStepSize,
     PIDController as PIDController,
     StepTo as StepTo,

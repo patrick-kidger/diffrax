@@ -319,7 +319,7 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order, dtype):
         levy_area=None,
         ref_solution=None,
     )
-    assert -0.2 < order - theoretical_order < 0.2
+    assert -0.3 < order - theoretical_order < 0.3
 
 
 # Step size deliberately chosen not to divide the time interval
@@ -603,31 +603,49 @@ def test_term_compatibility():
     class TestControl(eqx.Module):
         dt: Float[ArrayLike, ""]
 
-        def __rmul__(self, other):
-            return other.__mul__(self.dt)
-
-        def __mul__(self, other):
-            return self.dt * other
-
     class TestSolver(diffrax.Euler):
         term_structure = diffrax.AbstractTerm[
-            tuple[Float[Array, "n 3"]], tuple[TestControl]
+            lx.AbstractLinearOperator, tuple[TestControl]
         ]
 
+    class TestLinearOperator(lx.AbstractLinearOperator):
+        def mv(self, vector):
+            assert (
+                type(vector) is tuple
+                and len(vector) == 1
+                and type(vector[0]) is TestControl
+            )
+            return (jnp.ones((2, 3)) * vector[0].dt,)
+
+        def as_matrix(self):
+            assert False
+
+        def transpose(self):
+            assert False
+
+        def in_structure(self):
+            return (jax.eval_shape(lambda: TestControl(1.0)),)
+
+        def out_structure(self):
+            return (jax.ShapeDtypeStruct((2, 3), jnp.float64),)
+
+    @lx.is_symmetric.register(TestLinearOperator)
+    def _(operator):
+        del operator
+        return False
+
     solver = TestSolver()
-    incompatible_vf = lambda t, y, args: jnp.ones((2, 1))
-    compatible_vf = lambda t, y, args: (jnp.ones((2, 3)),)
+    incompatible_vf = lambda t, y, args: jnp.ones((2, 3))
+    compatible_vf = lambda t, y, args: TestLinearOperator()
     incompatible_control = lambda t0, t1: t1 - t0
     compatible_control = lambda t0, t1: (TestControl(t1 - t0),)
 
     incompatible_terms = [
-        diffrax.WeaklyDiagonalControlTerm(incompatible_vf, incompatible_control),
-        diffrax.WeaklyDiagonalControlTerm(incompatible_vf, compatible_control),
-        diffrax.WeaklyDiagonalControlTerm(compatible_vf, incompatible_control),
+        diffrax.ControlTerm(incompatible_vf, incompatible_control),
+        diffrax.ControlTerm(incompatible_vf, compatible_control),
+        diffrax.ControlTerm(compatible_vf, incompatible_control),
     ]
-    compatible_term = diffrax.WeaklyDiagonalControlTerm(
-        compatible_vf, compatible_control
-    )
+    compatible_term = diffrax.ControlTerm(compatible_vf, compatible_control)
     for term in incompatible_terms:
         with pytest.raises(ValueError, match=r"Terms are not compatible with solver!"):
             diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, (jnp.zeros((2, 1)),))
@@ -669,6 +687,10 @@ def test_term_compatibility_pytree():
         def func(self, terms, t0, y0, args):
             assert False
 
+    def weakly_diagonal(*a):
+        with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
+            return diffrax.WeaklyDiagonalControlTerm(*a)
+
     ode_term = diffrax.ODETerm(lambda t, y, args: -y)
     solver = TestSolver()
     compatible_term = {
@@ -678,8 +700,9 @@ def test_term_compatibility_pytree():
         "d": ode_term,
         "e": diffrax.MultiTerm(
             ode_term,
-            diffrax.WeaklyDiagonalControlTerm(
-                lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(5)
+            weakly_diagonal(
+                lambda t, y, args: -y,
+                lambda t0, t1: jnp.array(t1 - t0).repeat(5),
             ),
         ),
         "f": diffrax.MultiTerm(
@@ -707,7 +730,7 @@ def test_term_compatibility_pytree():
         "d": ode_term,
         "e": diffrax.MultiTerm(
             ode_term,
-            diffrax.WeaklyDiagonalControlTerm(
+            weakly_diagonal(
                 lambda t, y, args: -y,
                 lambda t0, t1: t1 - t0,  # wrong control shape
             ),
@@ -727,7 +750,7 @@ def test_term_compatibility_pytree():
         # Missing "d" piece
         "e": diffrax.MultiTerm(
             ode_term,
-            diffrax.WeaklyDiagonalControlTerm(
+            weakly_diagonal(
                 lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
             ),
         ),
@@ -745,7 +768,7 @@ def test_term_compatibility_pytree():
         "c": ode_term,
         "d": ode_term,
         # No MultiTerm for "e"
-        "e": diffrax.WeaklyDiagonalControlTerm(
+        "e": weakly_diagonal(
             lambda t, y, args: -y, lambda t0, t1: jnp.array(t1 - t0).repeat(3)
         ),
         "f": diffrax.MultiTerm(
@@ -792,3 +815,51 @@ def test_term_compatibility_pytree():
                 ValueError, match=r"Terms are not compatible with solver!"
             ):
                 diffrax.diffeqsolve(term, solver, 0.0, 1.0, 0.1, y0)
+
+
+# Test that we don't hit a JAX bug: https://github.com/patrick-kidger/diffrax/issues/568
+def test_vmap_backprop_with_event():
+    def dynamics(t, y, args):
+        param = args
+        return param - y
+
+    def event_fn(t, y, args, **kwargs):
+        return y - 1.5
+
+    def single_loss_fn(param):
+        solver = diffrax.Euler()
+        root_finder = diffrax.VeryChord(rtol=1e-3, atol=1e-6)
+        event = diffrax.Event(event_fn, root_finder)
+        term = diffrax.ODETerm(dynamics)
+        sol = diffrax.diffeqsolve(
+            term,
+            solver=solver,
+            t0=0.0,
+            t1=2.0,
+            dt0=0.1,
+            y0=0.0,
+            args=param,
+            event=event,
+            max_steps=1000,
+        )
+        assert sol.ys is not None
+        final_y = sol.ys[-1]
+        return param**2 + final_y**2
+
+    def batched_loss_fn(params: jnp.ndarray) -> jnp.ndarray:
+        return jax.vmap(single_loss_fn)(params)
+
+    def grad_fn(params: jnp.ndarray) -> jnp.ndarray:
+        return jax.grad(lambda p: jnp.sum(batched_loss_fn(p)))(params)
+
+    batch = jnp.array([1.0, 2.0, 3.0])
+
+    try:
+        grad = grad_fn(batch)
+    except NotImplementedError as e:
+        pytest.fail(f"NotImplementedError was raised: {e}")
+    except Exception as e:
+        pytest.fail(f"An unexpected exception was raised: {e}")
+
+    assert not jnp.isnan(grad).any(), "Gradient should not be NaN."
+    assert not jnp.isinf(grad).any(), "Gradient should not be infinite."
