@@ -262,18 +262,18 @@ print(f"Pure Jax: {total_time / num_runs:.6f}")
 
 """
 Results on Mac M1 CPU:
-VBT: 0.184882
-Old UBP: 0.016347
-New UBP: 0.013731
-New UBP + Precompute: 0.002430
-Pure Jax: 0.002799
+VBT: 0.204524
+Old UBP: 0.017464
+New UBP: 0.018535
+New UBP + Precompute: 0.002440
+Pure Jax: 0.002908
 
-(these are out of date)
 Results on A100 GPU:
-VBT: 3.881952
-Old UBP: 0.337173
-New UBP: 0.364158
-New UBP + Precompute: 0.325521
+VBT: 2.275057
+Old UBP: 0.092015
+New UBP: 0.125904
+New UBP + Precompute: 0.108587
+Pure Jax: 0.261937
 
 For small ndt (e.g. 100) the pure jax is faster, but the diffrax overhead
 becomes less important as the time increases.
