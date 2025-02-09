@@ -57,6 +57,7 @@ Have a look at the [Getting Started](./usage/getting-started.md) page.
 [Optax](https://github.com/deepmind/optax): first-order gradient (SGD, Adam, ...) optimisers.  
 [Orbax](https://github.com/google/orbax): checkpointing (async/multi-host/multi-device).  
 [Levanter](https://github.com/stanford-crfm/levanter): scalable+reliable training of foundation models (e.g. LLMs).  
+[paramax](https://github.com/danielward27/paramax): parameterizations and constraints for PyTrees.  
 
 **Scientific computing**  
 [Optimistix](https://github.com/patrick-kidger/optimistix): root finding, minimisation, fixed points, and least squares.  
