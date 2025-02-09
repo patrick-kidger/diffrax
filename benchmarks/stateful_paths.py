@@ -74,6 +74,7 @@ class OldBrownianPath(diffrax.AbstractBrownianPath):
     ):
         return self.evaluate(t0, t1, left, use_levy), brownian_state
 
+    @eqx.filter_jit
     def evaluate(
         self,
         t0,
