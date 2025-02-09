@@ -2,24 +2,15 @@
 
 The list of step size controllers is as follows. The most common cases are fixed step sizes with [`diffrax.ConstantStepSize`][] and adaptive step sizes with [`diffrax.PIDController`][].
 
-!!! warning
+?? warning "Adaptive SDEs"
         
-    When solving SDEs with an adaptive step controller, then three requirements
-    have to be fulfilled in order for the solution to be guaranteed to converge to
-    the correct result:
+    When solving SDEs with an adaptive step controller, then three requirements must be met for the solution to converge to the correct result:
     
-    - the Brownian motion has to be generated using [`diffrax.VirtualBrownianTree`][],
-    - the solver must satisfy certain conditions (in practice all SDE solvers except
-    [`diffrax.Euler`][] satisfy these),
-    - either
-    a) the SDE must have [commutative noise](../usage/how-to-choose-a-solver.md#stochastic-differential-equations)
-    OR
-    b) the SDE is evaluated at all times at which the Brownian motion (BM) is
-    evaluated; since the BM is also evaluated at steps that are rejected by the step
-    controller, we must later evaluate the SDE at these times as well 
-    (i.e. revisit rejected steps). This can be done using [`diffrax.JumpStepWrapper`].
+    1. the Brownian motion must be generated with [`diffrax.VirtualBrownianTree`][];
+    2. the solver must satisfy certain technical conditions (in practice all SDE solvers except [`diffrax.Euler`][] satisfy these),
+    3. the SDE must either have [commutative noise](../usage/how-to-choose-a-solver.md#stochastic-differential-equations), or `ClipStepSizeController(..., store_rejected_steps=...)` must be used.
     
-    Note that these conditions are not checked by Diffrax.
+    Conditions 1 and 2 are checked by Diffrax. Condition 3 is not (as there is no easy way to verify commutativity of the noise).
 
     For more details about the convergence of adaptive solutions to SDEs, please refer to
     
@@ -34,7 +25,6 @@ The list of step size controllers is as follows. The most common cases are fixed
         url={https://arxiv.org/abs/2311.14201}, 
     }
     ```
-
 
 ??? abstract "Abtract base classes"
 
@@ -54,6 +44,7 @@ The list of step size controllers is as follows. The most common cases are fixed
             members:
                 - rtol
                 - atol
+                - norm
 
 ---
 
@@ -71,7 +62,7 @@ The list of step size controllers is as follows. The most common cases are fixed
         members:
             - __init__
 
-::: diffrax.JumpStepWrapper
+::: diffrax.ClipStepSizeController
     selection:
         members:
             - __init__

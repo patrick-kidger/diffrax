@@ -25,22 +25,10 @@ from .._custom_types import (
 from .._solution import RESULTS
 from .._term import AbstractTerm, ODETerm
 from .base import AbstractAdaptiveStepSizeController
-from .jump_step_wrapper import JumpStepWrapper
+from .clip import ClipStepSizeController
 
 
 ω = cast(Callable, ω)
-
-
-# We use a metaclass for backwards compatibility. When a user calls
-# PIDController(... step_ts=s, jump_ts=j) this should return a
-# JumpStepWrapper(PIDController(...), s, j).
-class _PIDMeta(type(eqx.Module)):
-    def __call__(cls, *args, **kwargs):
-        step_ts = kwargs.pop("step_ts", None)
-        jump_ts = kwargs.pop("jump_ts", None)
-        if step_ts is not None or jump_ts is not None:
-            return JumpStepWrapper(cls(*args, **kwargs), step_ts, jump_ts)
-        return super().__call__(*args, **kwargs)
 
 
 def _select_initial_step(
@@ -98,6 +86,23 @@ def _select_initial_step(
 _PidState = tuple[RealScalarLike, RealScalarLike]
 
 
+# We use a metaclass for backwards compatibility. When a user calls
+# PIDController(... step_ts=s, jump_ts=j) this should return a
+# ClipStepSizeController(PIDController(...), s, j).
+class _MetaPID(type(eqx.Module)):
+    def __call__(cls, *args, **kwargs):
+        step_ts = kwargs.pop("step_ts", None)
+        jump_ts = kwargs.pop("jump_ts", None)
+        if step_ts is not None or jump_ts is not None:
+            return ClipStepSizeController(cls(*args, **kwargs), step_ts, jump_ts)
+        return super().__call__(*args, **kwargs)
+
+
+# Sneak the metaclass past pyright, as otherwise it disables the dataclass-ness of
+# `eqx.Module`.
+_set_metaclass = dict(metaclass=_MetaPID)
+
+
 if TYPE_CHECKING:
     rms_norm = optx.rms_norm
 else:
@@ -121,7 +126,7 @@ else:
 #       in Soderlind and Wang 2006.
 class PIDController(
     AbstractAdaptiveStepSizeController[_PidState, Optional[RealScalarLike]],
-    metaclass=_PIDMeta,
+    **_set_metaclass,
 ):
     r"""Adapts the step size to produce a solution accurate to a given tolerance.
     The tolerance is calculated as `atol + rtol * y` for the evolving solution `y`.
@@ -311,6 +316,7 @@ class PIDController(
 
     rtol: RealScalarLike
     atol: RealScalarLike
+    norm: Callable[[PyTree], RealScalarLike] = rms_norm
     pcoeff: RealScalarLike = 0
     icoeff: RealScalarLike = 1
     dcoeff: RealScalarLike = 0
@@ -319,7 +325,6 @@ class PIDController(
     force_dtmin: bool = True
     factormin: RealScalarLike = 0.2
     factormax: RealScalarLike = 10.0
-    norm: Callable[[PyTree], RealScalarLike] = rms_norm
     safety: RealScalarLike = 0.9
     error_order: Optional[RealScalarLike] = None
 
@@ -568,7 +573,8 @@ class PIDController(
             keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
         )
         controller_state = inv_scaled_error, prev_inv_scaled_error
-        # made_jump is handled by JumpStepWrapper, so we automatically set it to False
+        # made_jump is handled by ClipStepSizeController, so we automatically set it to
+        # False
         return keep_step, next_t0, next_t1, False, controller_state, result
 
     def _get_error_order(self, error_order: Optional[RealScalarLike]) -> RealScalarLike:
