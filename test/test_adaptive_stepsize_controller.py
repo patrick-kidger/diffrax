@@ -2,11 +2,13 @@ from typing import cast
 
 import diffrax
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import pytest
+from diffrax._step_size_controller.clip import _find_idx_with_hint
 from jaxtyping import Array
 
 from .helpers import tree_allclose
@@ -23,7 +25,7 @@ def test_step_ts(backwards):
     dt0 = None
     y0 = 1.0
     pid_controller = diffrax.PIDController(rtol=1e-4, atol=1e-6)
-    stepsize_controller = diffrax.JumpStepWrapper(pid_controller, step_ts=[3, 4])
+    stepsize_controller = diffrax.ClipStepSizeController(pid_controller, step_ts=[3, 4])
     saveat = diffrax.SaveAt(steps=True)
     sol = diffrax.diffeqsolve(
         term,
@@ -60,7 +62,7 @@ def test_jump_ts(backwards):
 
     def run(**kwargs):
         pid_controller = diffrax.PIDController(rtol=1e-4, atol=1e-6)
-        stepsize_controller = diffrax.JumpStepWrapper(pid_controller, **kwargs)
+        stepsize_controller = diffrax.ClipStepSizeController(pid_controller, **kwargs)
         return diffrax.diffeqsolve(
             term,
             solver,
@@ -75,7 +77,6 @@ def test_jump_ts(backwards):
     sol_no_jump_ts = run()
     sol_with_jump_ts = run(jump_ts=[7.5])
     assert sol_no_jump_ts.stats["num_steps"] > sol_with_jump_ts.stats["num_steps"]
-    print(sol_no_jump_ts.stats["num_steps"], sol_with_jump_ts.stats["num_steps"])
     assert sol_with_jump_ts.result == diffrax.RESULTS.successful
 
     sol = run(jump_ts=[7.5], step_ts=[7.5])
@@ -112,13 +113,14 @@ def test_revisit_steps(backwards):
 
     def callback_fun(keep_step, t1):
         if not keep_step:
-            rejected_ts_list.append(t1)
+            rejected_ts_list.append(t1.item())
         return None
 
-    stepsize_controller = diffrax.JumpStepWrapper(
+    store_rejected_steps = 10
+    stepsize_controller = diffrax.ClipStepSizeController(
         pid_controller,
         step_ts=[3, 4],
-        rejected_step_buffer_len=10,
+        store_rejected_steps=store_rejected_steps,
         _callback_on_reject=callback_fun,
     )
     saveat = diffrax.SaveAt(steps=True, controller_state=True)
@@ -134,8 +136,6 @@ def test_revisit_steps(backwards):
     )
 
     assert sol.ts is not None
-    ts = sol.ts[sol.ts != jnp.inf]
-    ts = jnp.sort(ts)
     rejected_ts = jnp.array(rejected_ts_list)
     if backwards:
         rejected_ts = -rejected_ts
@@ -143,6 +143,9 @@ def test_revisit_steps(backwards):
     # there should be many rejected steps, otherwise something went wrong
     assert len(rejected_ts) > 10
     # check if all rejected ts are in the array sol.ts
+    ts = sol.ts[sol.ts != jnp.inf]
+    if backwards:
+        ts = ts[::-1]
     for t in rejected_ts:
         i = jnp.searchsorted(ts, t)
         assert ts[i] == t
@@ -151,16 +154,14 @@ def test_revisit_steps(backwards):
     assert 4 in cast(Array, sol.ts)
 
     # Check that at the end of the run, the rejected stack is empty,
-    # i.e. rejected_index == rejected_step_buffer_len
+    # i.e. rejected_index == store_rejected_steps
     assert sol.controller_state is not None
-    assert (
-        sol.controller_state.rejected_index
-        == stepsize_controller.rejected_step_buffer_len
-    )
+    reject_index, _ = sol.controller_state.reject_info
+    assert reject_index == store_rejected_steps
 
 
-@pytest.mark.parametrize("use_jump_step", [True, False])
-def test_backprop(use_jump_step):
+@pytest.mark.parametrize("use_clip", [True, False])
+def test_backprop(use_clip):
     t0 = jnp.asarray(0, dtype=jnp.float64)
     t1 = jnp.asarray(1, dtype=jnp.float64)
 
@@ -179,9 +180,9 @@ def test_backprop(use_jump_step):
     term = diffrax.ODETerm(lambda t, y, args: -y)
     solver = diffrax.Tsit5()
     controller = diffrax.PIDController(rtol=1e-4, atol=1e-4)
-    if use_jump_step:
-        controller = diffrax.JumpStepWrapper(
-            controller, step_ts=[0.5], rejected_step_buffer_len=20
+    if use_clip:
+        controller = diffrax.ClipStepSizeController(
+            controller, step_ts=[0.5], store_rejected_steps=20
         )
     _, state = controller.init(term, t0, t1, y0, 0.1, None, solver.func, 5)
 
@@ -209,7 +210,9 @@ def test_grad_of_discontinuous_forcing():
             rtol=1e-8,
             atol=1e-8,
         )
-        stepsize_controller = diffrax.JumpStepWrapper(pid_controller, step_ts=t[None])
+        stepsize_controller = diffrax.ClipStepSizeController(
+            pid_controller, step_ts=t[None]
+        )
 
         def forcing(s):
             return jnp.where(s < t, 0, 1)
@@ -238,21 +241,21 @@ def test_grad_of_discontinuous_forcing():
 def test_pid_meta():
     ts = jnp.array([3, 4], dtype=jnp.float64)
     pid1 = diffrax.PIDController(rtol=1e-4, atol=1e-6)
-    pid2 = diffrax.PIDController(rtol=1e-4, atol=1e-6, step_ts=ts)
-    pid3 = diffrax.PIDController(rtol=1e-4, atol=1e-6, step_ts=ts, jump_ts=ts)
-    assert not isinstance(pid1, diffrax.JumpStepWrapper)
+    pid2 = diffrax.PIDController(rtol=1e-4, atol=1e-6, step_ts=ts)  # pyright: ignore
+    pid3 = diffrax.PIDController(rtol=1e-4, atol=1e-6, step_ts=ts, jump_ts=ts)  # pyright: ignore
+    assert not isinstance(pid1, diffrax.ClipStepSizeController)
     assert isinstance(pid1, diffrax.PIDController)
-    assert isinstance(pid2, diffrax.JumpStepWrapper)
-    assert isinstance(pid3, diffrax.JumpStepWrapper)
+    assert isinstance(pid2, diffrax.ClipStepSizeController)
+    assert isinstance(pid3, diffrax.ClipStepSizeController)
     assert all(pid2.step_ts == ts)
     assert all(pid3.step_ts == ts)
     assert all(pid3.jump_ts == ts)
 
 
-def test_nested_jump_step_wrappers():
+def test_nested_clip_wrappers():
     pid = diffrax.PIDController(rtol=0, atol=1.0)
-    wrap1 = diffrax.JumpStepWrapper(pid, jump_ts=[3.0, 13.0], step_ts=[23.0])
-    wrap2 = diffrax.JumpStepWrapper(wrap1, step_ts=[2.0, 13.0], jump_ts=[23.0])
+    wrap1 = diffrax.ClipStepSizeController(pid, jump_ts=[3.0, 13.0], step_ts=[23.0])
+    wrap2 = diffrax.ClipStepSizeController(wrap1, step_ts=[2.0, 13.0], jump_ts=[23.0])
     func = lambda terms, t, y, args: -y
     terms = diffrax.ODETerm(lambda t, y, args: -y)
     _, state = wrap2.init(terms, -1.0, 0.0, 0.0, 4.0, None, func, 5)
@@ -261,31 +264,51 @@ def test_nested_jump_step_wrappers():
     _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
         0.0, 1.0, 0.0, 0.0, None, 0.0, 5, state
     )
+    assert next_t0 == 1
     assert next_t1 == 2
+    assert not made_jump
     _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
         next_t0, next_t1, 0.0, 0.0, None, 0.0, 5, state
     )
-    assert jnp.isclose(next_t0, 2)
+    assert next_t0 == 2
+    assert next_t1 == eqxi.prevbefore(jnp.asarray(3.0))
     assert not made_jump
 
     # test 2
     _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
         10.0, 11.0, 0.0, 0.0, None, 0.0, 5, state
     )
-    assert next_t1 == 13
+    assert next_t0 == 11
+    assert next_t1 == eqxi.prevbefore(jnp.asarray(13.0))
+    assert not made_jump
     _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
         next_t0, next_t1, 0.0, 0.0, None, 0.0, 5, state
     )
-    assert jnp.isclose(next_t0, 13)
+    assert next_t0 == eqxi.nextafter(jnp.asarray(13.0))
+    assert next_t1 == eqxi.prevbefore(jnp.asarray(23.0))
     assert made_jump
 
     # test 3
     _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
         20.0, 21.0, 0.0, 0.0, None, 0.0, 5, state
     )
-    assert next_t1 == 23
+    assert next_t0 == 21
+    assert next_t1 == eqxi.prevbefore(jnp.asarray(23.0))
+    assert not made_jump
     _, next_t0, next_t1, made_jump, state, _ = wrap2.adapt_step_size(
         next_t0, next_t1, 0.0, 0.0, None, 0.0, 5, state
     )
-    assert jnp.isclose(next_t0, 23)
+    assert next_t0 == eqxi.nextafter(jnp.asarray(23.0))
+    assert next_t1 > next_t0
     assert made_jump
+
+
+def test_find_idx_with_hint():
+    ts = jnp.arange(5.0)
+    for hint in (0, 2, 3, 5):
+        idx = _find_idx_with_hint(2.5, ts, hint)
+        assert idx == 3
+        idx = _find_idx_with_hint(2, ts, hint)
+        assert idx == 3  # not 2; we want the first value *strictly* greater.
+        idx = _find_idx_with_hint(1.9, ts, hint)
+        assert idx == 2

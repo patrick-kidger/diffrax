@@ -36,10 +36,10 @@ step_ts = jnp.linspace(t0, t1, 129, endpoint=True)
 pid_controller = diffrax.PIDController(
     rtol=0, atol=1e-3, dtmin=2**-9, dtmax=1.0, pcoeff=0.3, icoeff=0.7
 )
-new_controller = diffrax.JumpStepWrapper(
+new_controller = diffrax.ClipStepSizeController(
     pid_controller,
     step_ts=step_ts,
-    rejected_step_buffer_len=None,
+    store_rejected_steps=None,
 )
 old_controller = OldPIDController(
     rtol=0, atol=1e-3, dtmin=2**-9, dtmax=1.0, pcoeff=0.3, icoeff=0.7, step_ts=step_ts
@@ -88,16 +88,16 @@ time_old = do_timing(old_controller)
 print(f"New controller: {time_new:.5} s, Old controller: {time_old:.5} s")
 
 # How expensive is revisiting rejected steps?
-revisiting_controller_short = diffrax.JumpStepWrapper(
+revisiting_controller_short = diffrax.ClipStepSizeController(
     pid_controller,
     step_ts=step_ts,
-    rejected_step_buffer_len=10,
+    store_rejected_steps=10,
 )
 
-revisiting_controller_long = diffrax.JumpStepWrapper(
+revisiting_controller_long = diffrax.ClipStepSizeController(
     pid_controller,
     step_ts=step_ts,
-    rejected_step_buffer_len=4096,
+    store_rejected_steps=4096,
 )
 
 time_revisiting_short = do_timing(revisiting_controller_short)
