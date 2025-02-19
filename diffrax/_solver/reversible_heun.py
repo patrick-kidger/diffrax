@@ -10,19 +10,31 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
-from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
+from .base import (
+    AbstractAdaptiveSolver,
+    AbstractReversibleSolver,
+    AbstractStratonovichSolver,
+)
 
 
 _SolverState: TypeAlias = tuple[PyTree, PyTree]
 
 
-class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
+class ReversibleHeun(
+    AbstractReversibleSolver, AbstractAdaptiveSolver, AbstractStratonovichSolver
+):
     """Reversible Heun method.
 
     Algebraically reversible 2nd order method. Has an embedded 1st order method for
     adaptive step sizing. Uses 1st order local linear interpolation for dense/ts output.
 
     When used to solve SDEs, converges to the Stratonovich solution.
+
+    !!! note
+        This solver is algebraically reversible, meaning that the state at `t0` can be
+        reconstructed (in closed form) from the state at `t1`. This allows exact
+        gradient backpropagation in $O(n)$ time and $O(1)$ memory when using
+        [`diffrax.ReversibleAdjoint`][].
 
     ??? cite "Reference"
 
@@ -82,6 +94,27 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
         dense_info = dict(y0=y0, y1=y1)
         solver_state = (yhat1, vf1)
         return y1, y1_error, dense_info, solver_state, RESULTS.successful
+
+    def backward_step(
+        self,
+        terms: AbstractTerm,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y1: Y,
+        args: Args,
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
+        yhat1, vf1 = solver_state
+
+        control = terms.contr(t0, t1)
+        yhat0 = (2 * y1**ω - yhat1**ω - terms.prod(vf1, control) ** ω).ω
+        vf0 = terms.vf(t0, yhat0, args)
+        y0 = (y1**ω - 0.5 * terms.prod((vf0**ω + vf1**ω).ω, control) ** ω).ω
+
+        dense_info = dict(y0=y0, y1=y1)
+        solver_state = (yhat0, vf0)
+        return y0, None, dense_info, solver_state, RESULTS.successful
 
     def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
         return terms.vf(t0, y0, args)
