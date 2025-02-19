@@ -994,10 +994,10 @@ def _loop_reversible_bwd(
 
     def grad_step(state):
         def forward_step(y0, solver_state, args, terms):
-            y1, _, _, new_solver_state, _ = solver.step(
+            y1, _, dense_info, new_solver_state, _ = solver.step(
                 terms, t0, t1, y0, args, solver_state, False
             )
-            return y1, new_solver_state
+            return y1, dense_info, new_solver_state
 
         (
             saveat_ts_index,
@@ -1024,31 +1024,30 @@ def _loop_reversible_bwd(
             return interpolator.evaluate(t)
 
         def _cond_fun(inner_state):
-            saveat_ts_index, _, _ = inner_state
+            saveat_ts_index, _ = inner_state
             return (saveat_ts[saveat_ts_index] >= t0) & (saveat_ts_index >= 0)
 
         def _body_fun(inner_state):
-            saveat_ts_index, grad_y0, grad_y1 = inner_state
+            saveat_ts_index, grad_dense_info = inner_state
             t = saveat_ts[saveat_ts_index]
             grad_y = (ω(grad_ys)[saveat_ts_index]).ω
             _, interp_vjp = eqx.filter_vjp(interpolate, t, t0, t1, dense_info)
             interp_grads = interp_vjp(grad_y)
-            grad_y0 = eqx.apply_updates(grad_y0, interp_grads[3]["y0"])
-            grad_y1 = eqx.apply_updates(grad_y1, interp_grads[3]["y1"])
+            grad_dense_info = eqx.apply_updates(grad_dense_info, interp_grads[3])
             saveat_ts_index = saveat_ts_index - 1
-            return saveat_ts_index, grad_y0, grad_y1
+            return saveat_ts_index, grad_dense_info
 
-        grad_y0 = jtu.tree_map(jnp.zeros_like, grad_y1)
-        inner_state = (saveat_ts_index, grad_y0, grad_y1)
+        grad_dense_info = jtu.tree_map(jnp.zeros_like, dense_info)
+        inner_state = (saveat_ts_index, grad_dense_info)
         inner_state = eqxi.while_loop(_cond_fun, _body_fun, inner_state, kind="lax")
-        saveat_ts_index, grad_y0, grad_y1 = inner_state
+        saveat_ts_index, grad_dense_info = inner_state
 
         # Pull gradients back through forward step
 
         _, vjp_fn = eqx.filter_vjp(forward_step, y0, solver_state, args, terms)
-        dgrad_y1 = vjp_fn((grad_y1, grad_state))
+        dgrad_y1 = vjp_fn((grad_y1, grad_dense_info, grad_state))
 
-        grad_y0 = eqx.apply_updates(grad_y0, dgrad_y1[0])
+        grad_y0 = dgrad_y1[0]
         grad_state = dgrad_y1[1]
         grad_args = eqx.apply_updates(grad_args, dgrad_y1[2])
         grad_terms = eqx.apply_updates(grad_terms, dgrad_y1[3])
