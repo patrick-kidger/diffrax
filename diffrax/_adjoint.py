@@ -1080,7 +1080,7 @@ def _loop_reversible_bwd(
         grad_terms,
     )
 
-    state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
+    state = jax.lax.while_loop(cond_fun, grad_step, state)
     _, _, y0, _, grad_y0, grad_state, grad_args, grad_terms = state
 
     # Pull solver_state gradients back onto y0, args, terms.
