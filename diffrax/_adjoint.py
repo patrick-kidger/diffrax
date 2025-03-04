@@ -1013,7 +1013,7 @@ def _loop_reversible_bwd(
         t1 = ts[ts_index]
         t0 = ts[ts_index - 1]
 
-        y0, _, dense_info, solver_state, _ = solver.backward_step(
+        y0, dense_info, solver_state = solver.backward_step(
             terms, t0, t1, y1, args, solver_state, False
         )
 

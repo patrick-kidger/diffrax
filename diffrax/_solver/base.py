@@ -371,7 +371,7 @@ class AbstractReversibleSolver(AbstractSolver[_SolverState]):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, DenseInfo, _SolverState]:
         """
         Make a single backward step with the reversible solver.
 
@@ -392,16 +392,11 @@ class AbstractReversibleSolver(AbstractSolver[_SolverState]):
 
         **Returns:**
 
-        A tuple of several objects:
+        A tuple of three objects:
 
         - The value of the solution at `t0`.
-        - A local error estimate made during the step. (Used by adaptive step size
-            controllers to change the step size.) May be `None` if no estimate was
-            made.
         - Some dictionary of information that is passed to the solver's interpolation
             routine to calculate dense output. Note that this is assumed to be the same
             information returned on the forward step.
         - The value of the solver state at `t1`.
-        - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
-            happened successfully, or if (unusually) it failed for some reason.
         """

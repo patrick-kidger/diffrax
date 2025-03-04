@@ -83,7 +83,7 @@ class SemiImplicitEuler(AbstractReversibleSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[tuple[Ya, Yb], _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[tuple[Ya, Yb], DenseInfo, _SolverState]:
         del solver_state, made_jump
 
         term_1, term_2 = terms
@@ -96,7 +96,7 @@ class SemiImplicitEuler(AbstractReversibleSolver):
 
         y0 = (y0_1, y0_2)
         dense_info = dict(y0=y0, y1=y1)
-        return y0, None, dense_info, None, RESULTS.successful
+        return y0, dense_info, None
 
     def func(
         self,
