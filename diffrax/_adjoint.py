@@ -1121,22 +1121,17 @@ class ReversibleAdjoint(AbstractAdjoint):
                 "`max_steps=None` is incompatible with `ReversibleAdjoint`."
             )
 
-        if jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat) != jtu.tree_structure(
-            0
+        if (
+            jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat)
+            != jtu.tree_structure(0)
+            or saveat.dense
+            or saveat.subs.steps
+            or (saveat.subs.fn is not save_y)
         ):
-            raise NotImplementedError(
-                "Cannot use `adjoint=ReversibleAdjoint()` with `SaveAt(subs=...)`."
-            )
-
-        if saveat.dense or saveat.subs.steps:
-            raise NotImplementedError(
-                "Cannot use `adjoint=ReversibleAdjoint()` with "
-                "`saveat=SaveAt(steps=True)` or saveat=SaveAt(dense=True)`."
-            )
-
-        if saveat.subs.fn is not save_y:
-            raise NotImplementedError(
-                "Cannot use `adjoint=ReversibleAdjoint()` with `saveat=SaveAt(fn=...)`."
+            raise ValueError(
+                """`ReversibleAdjoint` is only compatible with the following `SaveAt` 
+                properties: `t0`, `t1`, `ts`, `fn=save_y` (default).
+                """
             )
 
         if event is not None:
