@@ -1032,8 +1032,8 @@ def _loop_reversible_bwd(
             t = saveat_ts[saveat_ts_index]
             grad_y = (ω(grad_ys)[saveat_ts_index]).ω
             _, interp_vjp = eqx.filter_vjp(interpolate, t, t0, t1, dense_info)
-            interp_grads = interp_vjp(grad_y)
-            grad_dense_info = eqx.apply_updates(grad_dense_info, interp_grads[3])
+            _, _, _, dgrad_dense_info = interp_vjp(grad_y)
+            grad_dense_info = eqx.apply_updates(grad_dense_info, dgrad_dense_info)
             saveat_ts_index = saveat_ts_index - 1
             return saveat_ts_index, grad_dense_info
 
@@ -1045,12 +1045,12 @@ def _loop_reversible_bwd(
         # Pull gradients back through forward step
 
         _, vjp_fn = eqx.filter_vjp(forward_step, y0, solver_state, args, terms)
-        dgrad_y1 = vjp_fn((grad_y1, grad_dense_info, grad_state))
+        grad_y0, grad_state, dgrad_args, dgrad_terms = vjp_fn(
+            (grad_y1, grad_dense_info, grad_state)
+        )
 
-        grad_y0 = dgrad_y1[0]
-        grad_state = dgrad_y1[1]
-        grad_args = eqx.apply_updates(grad_args, dgrad_y1[2])
-        grad_terms = eqx.apply_updates(grad_terms, dgrad_y1[3])
+        grad_args = eqx.apply_updates(grad_args, dgrad_args)
+        grad_terms = eqx.apply_updates(grad_terms, dgrad_terms)
 
         ts_index = ts_index - 1
 
