@@ -52,6 +52,7 @@ Have a look at the [Getting Started](./usage/getting-started.md) page.
 **Always useful**  
 [Equinox](https://github.com/patrick-kidger/equinox): neural networks and everything not already in core JAX!  
 [jaxtyping](https://github.com/patrick-kidger/jaxtyping): type annotations for shape/dtype of arrays.  
+[diffraxtra](https://github.com/GalacticDynamics/diffraxtra): extras for `diffrax`; OOP and vectorization.
 
 **Deep learning**  
 [Optax](https://github.com/deepmind/optax): first-order gradient (SGD, Adam, ...) optimisers.  
