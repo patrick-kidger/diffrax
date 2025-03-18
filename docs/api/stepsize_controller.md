@@ -2,7 +2,7 @@
 
 The list of step size controllers is as follows. The most common cases are fixed step sizes with [`diffrax.ConstantStepSize`][] and adaptive step sizes with [`diffrax.PIDController`][].
 
-?? warning "Adaptive SDEs"
+??? warning "Adaptive SDEs"
         
     When solving SDEs with an adaptive step controller, then three requirements must be met for the solution to converge to the correct result:
     
