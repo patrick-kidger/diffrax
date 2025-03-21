@@ -312,3 +312,27 @@ def test_find_idx_with_hint():
         assert idx == 3  # not 2; we want the first value *strictly* greater.
         idx = _find_idx_with_hint(1.9, ts, hint)
         assert idx == 2
+
+
+# https://github.com/patrick-kidger/diffrax/issues/607
+@pytest.mark.parametrize("new", (False, True))
+def test_implicit_solver_with_clip_controller(new: bool):
+    term = diffrax.ODETerm(lambda t, y, args: -y)
+    solver = diffrax.Kvaerno3()
+    if new:
+        ssc = diffrax.PIDController(rtol=1e-3, atol=1e-3)
+        ssc = diffrax.ClipStepSizeController(ssc, jump_ts=[0.5])
+    else:
+        ssc = diffrax.PIDController(jump_ts=[0.5], rtol=1e-3, atol=1e-3)  # pyright: ignore[reportCallIssue]
+    diffrax.diffeqsolve(
+        term,
+        solver,
+        t0=0,
+        t1=1,
+        dt0=0.01,
+        args=None,
+        y0=1.0,
+        stepsize_controller=ssc,
+        max_steps=16384,
+        saveat=diffrax.SaveAt(t1=True),
+    )
