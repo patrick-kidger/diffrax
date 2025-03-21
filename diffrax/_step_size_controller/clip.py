@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import cast, Generic, Optional, TypeVar
 
 import equinox as eqx
@@ -19,7 +19,7 @@ from .._custom_types import (
 from .._misc import upcast_or_raise
 from .._solution import is_okay, RESULTS
 from .._term import AbstractTerm
-from .base import AbstractStepSizeController
+from .base import AbstractAdaptiveStepSizeController
 
 
 _ControllerState = TypeVar("_ControllerState")
@@ -118,7 +118,7 @@ def _find_idx_with_hint(t: RealScalarLike, ts: Optional[Array], hint: IntScalarL
 
 
 class ClipStepSizeController(
-    AbstractStepSizeController[_ClipState[_ControllerState], _Dt0]
+    AbstractAdaptiveStepSizeController[_ClipState[_ControllerState], _Dt0]
 ):
     """Wraps an existing step controller with three pieces of functionality:
 
@@ -166,20 +166,32 @@ class ClipStepSizeController(
         ```
     """
 
-    controller: AbstractStepSizeController[_ControllerState, _Dt0]
+    controller: AbstractAdaptiveStepSizeController[_ControllerState, _Dt0]
     step_ts: Optional[Real[Array, " steps"]]
     jump_ts: Optional[Real[Array, " jumps"]]
     store_rejected_steps: Optional[int] = eqx.field(static=True)
     callback_on_reject: Optional[Callable] = eqx.field(static=True)
 
+    @property
+    def atol(self):
+        return self.controller.atol
+
+    @property
+    def rtol(self):
+        return self.controller.rtol
+
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
+        return self.controller.norm
+
     @eqxi.doc_remove_args("_callback_on_reject")
     def __init__(
         self,
-        controller,
-        step_ts=None,
-        jump_ts=None,
-        store_rejected_steps=None,
-        _callback_on_reject=None,
+        controller: AbstractAdaptiveStepSizeController[_ControllerState, _Dt0],
+        step_ts: None | Sequence[RealScalarLike] | Real[Array, " steps"] = None,
+        jump_ts: None | Sequence[RealScalarLike] | Real[Array, " jumps"] = None,
+        store_rejected_steps: Optional[int] = None,
+        _callback_on_reject: Optional[Callable] = None,
     ):
         """**Arguments**:
 
@@ -198,6 +210,11 @@ class ClipStepSizeController(
             that this is not the total number of rejected steps in a solve, but just the
             maximum number of *consecutive* rejected steps.)
         """
+        if not isinstance(controller, AbstractAdaptiveStepSizeController):
+            raise ValueError(
+                "Can only apply `ClipStepSizeController` to adaptive step size "
+                f"controllers, but got {controller}."
+            )
         self.controller = controller
         self.step_ts = _none_or_sorted_array(step_ts)
         self.jump_ts = _none_or_sorted_array(jump_ts)
