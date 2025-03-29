@@ -880,6 +880,11 @@ class ForwardMode(AbstractAdjoint):
     as
     [`optimistix.LevenbergMarquardt`](https://docs.kidger.site/optimistix/api/least_squares/#optimistix.LevenbergMarquardt),
     that operate on the residuals.
+
+    For the autodifferentiation geeks: this is 'discretise then optimise' forward-mode,
+    that is to say it operates through the internal numerics of the solver. (As compared
+    to 'optimise then discretise' forward mode, which would set up another ODE to solve
+    in parallel.)
     """  # noqa: E501
 
     def loop(
