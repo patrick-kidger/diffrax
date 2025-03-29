@@ -35,6 +35,7 @@ Control = PyTree[Shaped[ArrayLike, "?*control"], "C"]
 Args = PyTree[Any]
 
 BM = PyTree[Shaped[ArrayLike, "?*bm"], "BM"]
+Area = PyTree[Shaped[ArrayLike, "?*area"], "Area"]
 
 DenseInfo = dict[str, PyTree[Array]]
 DenseInfos = dict[str, PyTree[Shaped[Array, "times-1 ..."]]]
@@ -57,6 +58,39 @@ class AbstractSpaceTimeLevyArea(AbstractBrownianIncrement):
     """
 
     H: eqx.AbstractVar[BM]
+
+
+class AbstractWeakSpaceSpaceLevyArea(AbstractBrownianIncrement):
+    """
+    Abstract base class for all weak Space Space Levy Areas.
+    """
+
+    H: eqx.AbstractVar[BM]
+    A: eqx.AbstractVar[BM]
+
+
+class DavieWeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea):
+    """
+    Davie's approximation to weak Space Space Levy Areas.
+    See (7.4.1) of Foster's thesis.
+    """
+
+    dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
+    H: BM
+    A: Area
+
+
+class DavieFosterWeakSpaceSpaceLevyArea(AbstractWeakSpaceSpaceLevyArea):
+    """
+    Davie's approximation to weak Space Space Levy Areas.
+    See (7.4.2) of Foster's thesis.
+    """
+
+    dt: PyTree[FloatScalarLike, "BM"]
+    W: BM
+    H: BM
+    A: Area
 
 
 class AbstractSpaceTimeTimeLevyArea(AbstractSpaceTimeLevyArea):
