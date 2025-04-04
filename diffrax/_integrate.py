@@ -1215,7 +1215,7 @@ def diffeqsolve(
         ts, ys = ts_ys_inf_subsave(out_size)
         if out_size != 0:
             y0_subsave = jtu.tree_map(
-                lambda y: jnp.stack([subsaveat.fn(t0, y, args)] * out_size), y0
+                lambda y: jnp.stack([y] * out_size), subsaveat.fn(t0, y0, args)
             )
             ys = jtu.tree_map(
                 lambda _y0, _ys: jnp.where(t0 == t1, _y0, _ys), y0_subsave, ys
