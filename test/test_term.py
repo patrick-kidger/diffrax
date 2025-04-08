@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import pytest
 from jaxtyping import Array, PyTree, Shaped
 
@@ -84,15 +85,16 @@ def test_weakly_diagional_control_term(getkey):
             return jr.normal(derivkey, (3,))
 
     control = Control()
-    term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
+    with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
+        term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
     args = getkey()
     dx = term.contr(0, 1)
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
-    if isinstance(dx, jax.Array) and isinstance(vf, jax.Array):
+    if isinstance(dx, jax.Array) and isinstance(vf, lx.DiagonalLinearOperator):
         assert dx.shape == (3,)
-        assert vf.shape == (3,)
+        assert vf.diagonal.shape == (3,)
     else:
         raise TypeError("dx/vf is not an array")
     assert vf_prod.shape == (3,)
@@ -158,3 +160,39 @@ def test_weaklydiagonal_deprecate():
         _ = diffrax.WeaklyDiagonalControlTerm(
             lambda t, y, args: 0.0, lambda t0, t1: jnp.array(t1 - t0)
         )
+
+
+def test_underdamped_langevin_drift_term_args():
+    """
+    Test that the UnderdampedLangevinDriftTerm handles `args` in grad_f correctly.
+    """
+
+    # Mock gradient function that uses args
+    def mock_grad_f(x, args):
+        return jtu.tree_map(lambda xi, ai: xi + ai, x, args)
+
+    # Mock data
+    gamma = jnp.array([0.1, 0.2, 0.3])
+    u = jnp.array([0.4, 0.5, 0.6])
+    x = jnp.array([1.0, 2.0, 3.0])
+    v = jnp.array([0.1, 0.2, 0.3])
+    args = jnp.array([0.7, 0.8, 0.9])
+    y = (x, v)
+
+    # Create instance of the drift term
+    term = diffrax.UnderdampedLangevinDriftTerm(gamma=gamma, u=u, grad_f=mock_grad_f)
+
+    # Compute the vector field
+    vf_y = term.vf(0.0, y, args)
+
+    # Extract results
+    vf_x, vf_v = vf_y
+
+    # Expected results
+    expected_vf_x = v  # By definition, vf_x = v
+    f_x = x + args  # Output of mock_grad_f
+    expected_vf_v = -gamma * v - u * f_x  # Drift term calculation
+
+    # Assertions
+    assert jnp.allclose(vf_x, expected_vf_x), "vf_x does not match expected results"
+    assert jnp.allclose(vf_v, expected_vf_v), "vf_v does not match expected results"

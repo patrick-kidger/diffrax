@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 from typing_extensions import TypeAlias
 
 import jax
@@ -10,7 +10,7 @@ from equinox.internal import ω
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractTerm, MultiTerm
 from .base import AbstractItoSolver, AbstractStratonovichSolver
 
 
@@ -42,7 +42,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    term_structure: ClassVar = MultiTerm[
+        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+    ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
@@ -55,7 +57,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -65,7 +67,7 @@ class StratonovichMilstein(AbstractStratonovichSolver):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -116,7 +118,9 @@ class ItoMilstein(AbstractItoSolver):
         Note that this commutativity condition is not checked.
     """  # noqa: E501
 
-    term_structure: ClassVar = MultiTerm[tuple[ODETerm, AbstractTerm]]
+    term_structure: ClassVar = MultiTerm[
+        tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
+    ]
     interpolation_cls: ClassVar[
         Callable[..., LocalLinearInterpolation]
     ] = LocalLinearInterpolation
@@ -129,7 +133,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -139,7 +143,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -169,7 +173,7 @@ class ItoMilstein(AbstractItoSolver):
         # ΔwΔw_{j1 j2} = Δw_{j1} Δw_{j2} if j1 != j2;
         # ΔwΔw_{j j} = Δw_{j} Δw_{j} - Δt.
         #
-        # In particular note that that "-Δt" means ΔwΔw is not rank-1. This is what
+        # In particular note that "-Δt" means ΔwΔw is not rank-1. This is what
         # makes the Stratonovich case so much simpler: the only mathematical difference
         # there is that the "-Δt" isn't present, but then dwdw decomposes, which
         # simplifies the computation immensely.
@@ -211,7 +215,7 @@ class ItoMilstein(AbstractItoSolver):
         leaves_ΔwΔw = []
         for i1, l1 in enumerate(leaves_Δw):
             for i2, l2 in enumerate(leaves_Δw):
-                leaf = jnp.tensordot(l1[..., None], l2[None, ...], axes=1)
+                leaf = jnp.tensordot(jnp.conj(l1[..., None]), l2[None, ...], axes=1)
                 if i1 == i2:
                     eye = jnp.eye(l1.size).reshape(l1.shape + l1.shape)
                     with jax.numpy_dtype_promotion("standard"):
@@ -305,7 +309,7 @@ class ItoMilstein(AbstractItoSolver):
         def __dot(_v0, _ΔwΔw):
             # _v0 has structure (leaf(y0), leaf(Δw), leaf(Δw))
             # _ΔwΔw has structure (leaf(Δw), leaf(Δw))
-            _out = jnp.tensordot(_v0, _ΔwΔw, axes=jnp.ndim(_ΔwΔw))
+            _out = jnp.tensordot(jnp.conj(_v0), _ΔwΔw, axes=jnp.ndim(_ΔwΔw))
             # _out has structure (leaf(y0),)
             return _out
 
@@ -365,7 +369,7 @@ class ItoMilstein(AbstractItoSolver):
 
     def func(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm]],
+        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
         t0: RealScalarLike,
         y0: Y,
         args: Args,

@@ -21,7 +21,7 @@ _From a technical point of view, the internal structure of the library is pretty
 pip install diffrax
 ```
 
-Requires Python 3.9+, JAX 0.4.13+, and [Equinox](https://github.com/patrick-kidger/equinox) 0.10.11+.
+Requires Python 3.10+.
 
 ## Documentation
 
@@ -69,6 +69,7 @@ If you found this library useful in academic research, please cite: [(arXiv link
 [Optax](https://github.com/deepmind/optax): first-order gradient (SGD, Adam, ...) optimisers.  
 [Orbax](https://github.com/google/orbax): checkpointing (async/multi-host/multi-device).  
 [Levanter](https://github.com/stanford-crfm/levanter): scalable+reliable training of foundation models (e.g. LLMs).  
+[paramax](https://github.com/danielward27/paramax): parameterizations and constraints for PyTrees.  
 
 **Scientific computing**  
 [Optimistix](https://github.com/patrick-kidger/optimistix): root finding, minimisation, fixed points, and least squares.  

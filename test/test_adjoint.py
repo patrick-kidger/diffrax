@@ -4,7 +4,7 @@ from typing import Any, cast
 import diffrax
 import equinox as eqx
 import jax
-import jax.interpreters.ad
+import jax._src.interpreters.ad
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
@@ -21,6 +21,7 @@ class _VectorField(eqx.Module):
     diff_arg: float
 
     def __call__(self, t, y, args):
+        del t
         assert y.shape == (2,)
         diff_arg, nondiff_arg = args
         dya = diff_arg * y[0] + nondiff_arg * y[1]
@@ -29,7 +30,7 @@ class _VectorField(eqx.Module):
 
 
 @pytest.mark.slow
-def test_against(getkey):
+def test_against():
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
     term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
@@ -73,6 +74,7 @@ def test_against(getkey):
         return _run(eqx.combine(inexact, static), saveat, adjoint)
 
     _run_grad = eqx.filter_jit(jax.grad(_run_inexact))
+    _run_fwd_grad = eqx.filter_jit(jax.jacfwd(_run_inexact))
     _run_grad_int = eqx.filter_jit(jax.grad(_run, allow_int=True))
 
     twice_inexact = jtu.tree_map(lambda *x: jnp.stack(x), inexact, inexact)
@@ -80,6 +82,11 @@ def test_against(getkey):
     @eqx.filter_jit
     def _run_vmap_grad(twice_inexact, saveat, adjoint):
         f = jax.vmap(jax.grad(_run_inexact), in_axes=(0, None, None))
+        return f(twice_inexact, saveat, adjoint)
+
+    @eqx.filter_jit
+    def _run_vmap_fwd_grad(twice_inexact, saveat, adjoint):
+        f = jax.vmap(jax.jacfwd(_run_inexact), in_axes=(0, None, None))
         return f(twice_inexact, saveat, adjoint)
 
     # @eqx.filter_jit
@@ -93,6 +100,17 @@ def test_against(getkey):
     @eqx.filter_jit
     def _run_grad_vmap(twice_inexact, saveat, adjoint):
         @jax.grad
+        def _run_impl(twice_inexact):
+            f = jax.vmap(_run_inexact, in_axes=(0, None, None))
+            out = f(twice_inexact, saveat, adjoint)
+            assert out.shape == (2,)
+            return jnp.sum(out)
+
+        return _run_impl(twice_inexact)
+
+    @eqx.filter_jit
+    def _run_fwd_grad_vmap(twice_inexact, saveat, adjoint):
+        @jax.jacfwd
         def _run_impl(twice_inexact):
             f = jax.vmap(_run_inexact, in_axes=(0, None, None))
             out = f(twice_inexact, saveat, adjoint)
@@ -135,10 +153,16 @@ def test_against(getkey):
                     inexact, saveat, diffrax.RecursiveCheckpointAdjoint()
                 )
                 backsolve_grads = _run_grad(inexact, saveat, diffrax.BacksolveAdjoint())
+                forward_grads = _run_fwd_grad(inexact, saveat, diffrax.ForwardMode())
                 assert tree_allclose(fd_grads, direct_grads[0])
                 assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
+                # Test support for integer inputs (jax.grad(..., allow_int=True)). There
+                # is no corresponding option for jax.jacfwd or jax.linearize, and a
+                # workaround (jvp with custom "unit pytrees" for mixed array and
+                # non-array inputs?) is not implemented and tested here.
                 direct_grads = _run_grad_int(
                     y0__args__term, saveat, diffrax.DirectAdjoint()
                 )
@@ -165,9 +189,13 @@ def test_against(getkey):
                 backsolve_grads = _run_vmap_grad(
                     twice_inexact, saveat, diffrax.BacksolveAdjoint()
                 )
+                forward_grads = _run_vmap_fwd_grad(
+                    twice_inexact, saveat, diffrax.ForwardMode()
+                )
                 assert tree_allclose(fd_grads, direct_grads[0])
                 assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
                 direct_grads = _run_grad_vmap(
                     twice_inexact, saveat, diffrax.DirectAdjoint()
@@ -178,9 +206,13 @@ def test_against(getkey):
                 backsolve_grads = _run_grad_vmap(
                     twice_inexact, saveat, diffrax.BacksolveAdjoint()
                 )
+                forward_grads = _run_fwd_grad_vmap(
+                    twice_inexact, saveat, diffrax.ForwardMode()
+                )
                 assert tree_allclose(fd_grads, direct_grads[0])
                 assert tree_allclose(direct_grads, recursive_grads, atol=1e-5)
                 assert tree_allclose(direct_grads, backsolve_grads, atol=1e-5)
+                assert tree_allclose(direct_grads, forward_grads, atol=1e-5)
 
 
 def test_adjoint_seminorm():
@@ -215,6 +247,7 @@ def test_closure_errors():
     @eqx.filter_value_and_grad
     def run(model):
         def f(t, y, args):
+            del t, args
             return model(y)
 
         sol = diffrax.diffeqsolve(
@@ -228,7 +261,7 @@ def test_closure_errors():
         )
         return jnp.sum(cast(Array, sol.ys))
 
-    with pytest.raises(jax.interpreters.ad.CustomVJPException):
+    with pytest.raises(jax._src.interpreters.ad.CustomVJPException):
         run(mlp)
 
 
@@ -239,6 +272,7 @@ def test_closure_fixed():
         model: Callable
 
         def __call__(self, t, y, args):
+            del t, args
             return self.model(y)
 
     @eqx.filter_jit
@@ -307,12 +341,12 @@ def test_implicit():
         model = eqx.apply_updates(model, updates)
         return model, opt_state
 
-    for step in range(100):
+    for _ in range(100):
         model, opt_state = make_step(model, opt_state, target_steady_state)
     assert tree_allclose(model.steady_state, target_steady_state, rtol=1e-2, atol=1e-2)
 
 
-def test_backprop_ts(getkey):
+def test_backprop_ts():
     mlp = eqx.nn.MLP(1, 1, 8, 2, key=jr.PRNGKey(0))
 
     @eqx.filter_jit
@@ -332,20 +366,20 @@ def test_backprop_ts(getkey):
     run(mlp)
 
 
-@pytest.mark.parametrize(
-    "diffusion_fn",
-    ["weak", "lineax"],
-)
+@pytest.mark.parametrize("diffusion_fn", ["weak", "lineax"])
 def test_sde_against(diffusion_fn, getkey):
     def f(t, y, args):
+        del t
         k0, _ = args
         return -k0 * y
 
     def g(t, y, args):
+        del t
         _, k1 = args
         return k1 * y
 
     def g_lx(t, y, args):
+        del t
         _, k1 = args
         return lx.DiagonalLinearOperator(k1 * y)
 
@@ -357,7 +391,8 @@ def test_sde_against(diffusion_fn, getkey):
     bm = diffrax.VirtualBrownianTree(t0, t1, tol, shape, key=getkey())
     drift = diffrax.ODETerm(f)
     if diffusion_fn == "weak":
-        diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
+        with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
+            diffusion = diffrax.WeaklyDiagonalControlTerm(g, bm)
     else:
         diffusion = diffrax.ControlTerm(g_lx, bm)
     terms = diffrax.MultiTerm(drift, diffusion)
@@ -390,3 +425,31 @@ def test_implicit_runge_kutta_direct_adjoint():
         adjoint=diffrax.DirectAdjoint(),
         stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-6),
     )
+
+
+@pytest.mark.parametrize("solver", (diffrax.Tsit5(), diffrax.GeneralShARK()))
+def test_forward_mode_runge_kutta(solver, getkey):
+    # Totally fine that we're using Tsit5 with an SDE, it should converge to the
+    # Stratonovich solution.
+    bm = diffrax.UnsafeBrownianPath((), getkey(), levy_area=diffrax.SpaceTimeLevyArea)
+    drift = diffrax.ODETerm(lambda t, y, args: -y)
+    diffusion = diffrax.ControlTerm(lambda t, y, args: 0.1 * y, bm)
+    terms = diffrax.MultiTerm(drift, diffusion)
+
+    def run(y0):
+        sol = diffrax.diffeqsolve(
+            terms,
+            solver,
+            0,
+            1,
+            0.01,
+            y0,
+            adjoint=diffrax.ForwardMode(),
+        )
+        return sol.ys
+
+    @jax.jit
+    def run_jvp(y0):
+        return jax.jvp(run, (y0,), (jnp.ones_like(y0),))
+
+    run_jvp(jnp.array(1.0))

@@ -71,7 +71,7 @@ Some example term structures include:
 
 ??? note "Defining your own term types"
 
-    For advanced users: you can create your own terms if appropriate. For example if your diffusion is matrix, itself computed as a matrix-matrix product, then you may wish to define a custom term and specify its [`diffrax.AbstractTerm.vf_prod`][] method. By overriding this method you could express the contraction of the vector field - control as a matrix-(matix-vector) product, which is more efficient than the default (matrix-matrix)-vector product.
+    For advanced users, you can create your own terms if appropriate. See for example the [underdamped Langevin terms](#underdamped-langevin-terms), which have their own special set of solvers.
 
 
 ---
@@ -88,6 +88,41 @@ Some example term structures include:
             - to_ode
 
 ::: diffrax.MultiTerm
+    selection:
+        members:
+            - __init__
+
+
+---
+
+#### Underdamped Langevin terms
+
+These are special terms which describe the Underdamped Langevin diffusion (ULD),
+which takes the form 
+
+\begin{align*}
+    \mathrm{d} x(t) &= v(t) \, \mathrm{d}t \\
+    \mathrm{d} v(t) &= - \gamma \, v(t) \, \mathrm{d}t - u \,
+    \nabla \! f( x(t) ) \, \mathrm{d}t + \sqrt{2 \gamma u} \, \mathrm{d} w(t),
+\end{align*}
+
+where $x(t), v(t) \in \mathbb{R}^d$ represent the position
+and velocity, $w$ is a Brownian motion in $\mathbb{R}^d$,
+$f: \mathbb{R}^d \rightarrow \mathbb{R}$ is a potential function, and
+$\gamma , u \in \mathbb{R}^{d \times d}$ are diagonal matrices governing
+the friction and the damping of the system.
+
+These terms enable the use of ULD-specific solvers which can be found 
+[here](./solvers/sde_solvers.md#underdamped-langevin-solvers). These ULD solvers expect
+terms with structure `MultiTerm(UnderdampedLangevinDriftTerm(gamma, u, grad_f), UnderdampedLangevinDiffusionTerm(gamma, u, bm))`,
+where `bm` is an [`diffrax.AbstractBrownianPath`][] and the same values of `gammma` and `u` are passed to both terms.
+
+::: diffrax.UnderdampedLangevinDriftTerm
+    selection:
+        members:
+            - __init__
+
+::: diffrax.UnderdampedLangevinDiffusionTerm
     selection:
         members:
             - __init__

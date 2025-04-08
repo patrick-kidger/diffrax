@@ -1,5 +1,4 @@
 import inspect
-import sys
 import types
 from typing import (
     Annotated,
@@ -14,8 +13,6 @@ from typing import (
 )
 from typing_extensions import TypeAlias
 
-import typeguard
-
 
 # We don't actually care what people have subscripted with.
 # In practice this should be thought of as TypeLike = Union[type, types.UnionType]. Plus
@@ -23,24 +20,34 @@ import typeguard
 TypeLike: TypeAlias = Any
 
 
+_T = TypeVar("_T")
+
+
+class _Foo(Generic[_T]):
+    pass
+
+
+_generic_alias_types = (types.GenericAlias, type(_Foo[int]))
+_union_origins = (Union, types.UnionType)
+del _Foo, _T
+
+
 def better_isinstance(x, annotation) -> bool:
-    """As `isinstance`, but supports general type hints."""
-
-    @typeguard.typechecked
-    def f(y: annotation):
-        pass
-
-    try:
-        f(x)
-    except TypeError:
-        return False
-    else:
+    """As `isinstance`, but supports a few other types that are useful to us."""
+    origin = get_origin(annotation)
+    if origin in _union_origins:
+        return any(better_isinstance(x, arg) for arg in get_args(annotation))
+    elif isinstance(annotation, _generic_alias_types):
+        assert origin is not None
+        return better_isinstance(x, origin)
+    elif annotation is Any:
         return True
-
-
-_union_types: list = [Union]
-if sys.version_info >= (3, 10):
-    _union_types.append(types.UnionType)
+    elif isinstance(annotation, type):
+        return isinstance(x, annotation)
+    else:
+        raise NotImplementedError(
+            f"Do not know how to check whether `{x}` is an instance of `{annotation}`."
+        )
 
 
 def get_origin_no_specials(x, error_msg: str) -> Optional[type]:
@@ -59,7 +66,7 @@ def get_origin_no_specials(x, error_msg: str) -> Optional[type]:
     As `get_origin`, specifically either `None` or a class.
     """
     origin = get_origin(x)
-    if origin in _union_types:
+    if origin in _union_origins:
         raise NotImplementedError(f"Cannot use unions in `{error_msg}`.")
     elif origin is Annotated:
         # We do allow Annotated, just because it's easy to handle.

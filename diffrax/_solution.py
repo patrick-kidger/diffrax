@@ -21,6 +21,14 @@ class RESULTS(optx.RESULTS):  # pyright: ignore
     event_occurred = (
         "Terminating differential equation solve because an event occurred."
     )
+    max_steps_rejected = (
+        "Maximum number of rejected steps was reached. Consider increasing "
+        "`diffrax.ClipStepSizeController(store_rejected_steps==...)`."
+    )
+    internal_error = (
+        "An internal error occurred in Diffrax. This is a bug! Please open a GitHub "
+        "issue with a minimum working example. (<50 lines of code is ideal)"
+    )
 
 
 # Backward compatibility

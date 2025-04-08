@@ -147,6 +147,114 @@ def test_saveat_solution():
     assert sol.result == diffrax.RESULTS.successful
 
 
+@pytest.mark.parametrize("subs", [True, False])
+def test_t0_eq_t1(subs):
+    y0 = jnp.array([2.0])
+    ts = jnp.linspace(1.0, 1.0, 3)
+    max_steps = 256
+    if subs:
+        get0 = diffrax.SubSaveAt(
+            ts=ts,
+            t1=True,
+        )
+        get1 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+        )
+        get2 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+            steps=True,
+        )
+        subs = (get0, get1, get2)
+        saveat = diffrax.SaveAt(subs=subs)
+    else:
+        saveat = diffrax.SaveAt(t0=True, t1=True, ts=ts)
+    term = diffrax.ODETerm(lambda t, y, args: y)
+    sol = diffrax.diffeqsolve(
+        term,
+        t0=ts[0],
+        t1=ts[-1],
+        y0=y0,
+        dt0=0.1,
+        solver=diffrax.Dopri5(),
+        saveat=saveat,
+        max_steps=max_steps,
+    )
+    if subs:
+        compare = jnp.full((len(ts) + 1, *y0.shape), y0)
+        compare_2 = jnp.concatenate(
+            (compare, jnp.full((max_steps, *y0.shape), jnp.inf))
+        )
+        ya, yb, yc = sol.ys  # pyright: ignore[reportGeneralTypeIssues]
+        assert tree_allclose(ya, compare)
+        assert tree_allclose(yb, compare)
+        assert tree_allclose(yc, compare_2)
+    else:
+        compare = jnp.full((len(ts) + 2, *y0.shape), y0)
+        assert tree_allclose(sol.ys, compare)
+
+
+def test_t0_eq_t1_complicated():
+    """This test case also checks:
+
+    - vmap'ing
+    - non-float32 dtypes
+    - `SubSaveAt(fn=...)`
+    """
+    ntsave = 4
+    dtype = jnp.float16
+    y0 = jnp.array([2.0], dtype=dtype)
+    term = diffrax.ODETerm(lambda t, y, args: y)
+
+    def _solve(tf):
+        ts = jnp.linspace(0.0, tf, ntsave, dtype=dtype)
+        get0 = diffrax.SubSaveAt(
+            ts=ts,
+            t1=True,
+        )
+        get1 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+        )
+        get2 = diffrax.SubSaveAt(
+            t0=True,
+            ts=ts,
+            steps=True,
+            fn=lambda t, y, args: jnp.where(jnp.isinf(y), 3.0, 4.0),
+        )
+        subs = (get0, get1, get2)
+        saveat = diffrax.SaveAt(subs=subs)
+        sol = diffrax.diffeqsolve(
+            term,
+            t0=ts[0],
+            t1=ts[-1],
+            y0=y0,
+            dt0=0.1,
+            solver=diffrax.Dopri5(),
+            saveat=saveat,
+            max_steps=15,
+        )
+        return sol.ys
+
+    compare = jnp.full((ntsave + 1, *y0.shape), y0, dtype=dtype)
+    compare_c = jnp.concatenate(
+        [
+            jnp.full((ntsave + 1, *y0.shape), 4.0, dtype=jnp.float64),
+            jnp.full((15, *y0.shape), jnp.inf, dtype=jnp.float64),
+        ]
+    )
+    true_ya, true_yb, true_yc = _solve(1.0)  # pyright: ignore[reportGeneralTypeIssues]
+    true_ya = jnp.stack([compare, true_ya])
+    true_yb = jnp.stack([compare, true_yb])
+    true_yc = jnp.stack([compare_c, true_yc])
+
+    ya, yb, yc = jax.vmap(_solve)(jnp.array([0.0, 1.0]))  # pyright: ignore[reportGeneralTypeIssues]
+    assert tree_allclose(ya, true_ya)
+    assert tree_allclose(yb, true_yb)
+    assert tree_allclose(yc, true_yc)
+
+
 def test_trivial_dense():
     term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
     y0 = jnp.array([2.1])

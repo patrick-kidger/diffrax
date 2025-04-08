@@ -17,7 +17,7 @@ from typing_extensions import TypeAlias
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.core
+import jax.extend as jex
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -315,7 +315,7 @@ def _filter_stop_gradient(x):
 
 
 def _is_jaxpr(x):
-    return isinstance(x, (jax.core.Jaxpr, jax.core.ClosedJaxpr))
+    return isinstance(x, (jex.core.Jaxpr, jex.core.ClosedJaxpr))
 
 
 def _filter_maybe_cond(pred, branch, value):
@@ -964,7 +964,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                         assert implicit_tableau.a_diagonal[0] == 0  # pyright: ignore
                         assert len(set(implicit_tableau.a_diagonal[1:])) == 1  # pyright: ignore
                         jac_stage_index = 1
-                        stage_index = eqxi.nonbatchable(stage_index)
+                    stage_index = eqxi.nonbatchable(stage_index)
                     # These `stop_gradients` are needed to work around the lack of
                     # symbolic zeros in `custom_vjp`s.
                     if eval_fs:

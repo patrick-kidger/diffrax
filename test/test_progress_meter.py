@@ -35,6 +35,7 @@ def test_tqdm_progress_meter(capfd):
     for num_lines, solve_fn in solve_fns:
         capfd.readouterr()
         solve_fn()
+        jax.effects_barrier()
         captured = capfd.readouterr()
         err = captured.err.strip()
         assert re.match("0.00%|[ ]+|", err.split("\r", 1)[0])
@@ -56,21 +57,25 @@ def test_text_progress_meter(capfd):
         )
 
     solve(2.0)
+    jax.effects_barrier()
     captured = capfd.readouterr()
     expected = "0.00%\n10.33%\n20.67%\n31.00%\n41.33%\n51.67%\n62.00%\n72.33%\n82.67%\n93.00%\n100.00%\n"  # noqa: E501
     assert captured.out == expected
 
     jax.vmap(solve)(jnp.arange(3.0))
+    jax.effects_barrier()
     captured = capfd.readouterr()
     expected = "0.00%\n10.00%\n20.00%\n30.00%\n40.00%\n50.20%\n60.40%\n70.60%\n80.80%\n91.00%\n100.00%\n"  # noqa: E501
     assert captured.out == expected
 
     jax.jit(solve)(2.0)
+    jax.effects_barrier()
     captured = capfd.readouterr()
     expected = "0.00%\n10.33%\n20.67%\n31.00%\n41.33%\n51.67%\n62.00%\n72.33%\n82.67%\n93.00%\n100.00%\n"  # noqa: E501
     assert captured.out == expected
 
     jax.jit(jax.vmap(solve))(jnp.arange(3.0))
+    jax.effects_barrier()
     captured = capfd.readouterr()
     expected = "0.00%\n10.00%\n20.00%\n30.00%\n40.00%\n50.20%\n60.40%\n70.60%\n80.80%\n91.00%\n100.00%\n"  # noqa: E501
     assert captured.out == expected
@@ -97,6 +102,7 @@ def test_grad_progress_meter(progress_meter, capfd):
 
     capfd.readouterr()
     jax.grad(solve)(jnp.array(1.0))
+    jax.effects_barrier()
     captured = capfd.readouterr()
 
     if isinstance(progress_meter, diffrax.TextProgressMeter):
@@ -107,3 +113,4 @@ def test_grad_progress_meter(progress_meter, capfd):
         assert captured.out == true_out
 
     jax.jit(jax.grad(solve))(jnp.array(1.0))
+    jax.effects_barrier()
