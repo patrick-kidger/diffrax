@@ -1252,16 +1252,6 @@ def diffeqsolve(
             )
             terms = MultiTerm(*terms)
 
-    # Error checking for term compatibility
-    _assert_term_compatible(
-        t0,
-        y0,
-        args,
-        terms,
-        solver.term_structure,
-        solver.term_compatible_contr_kwargs,
-    )
-
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
             warnings.warn(
@@ -1405,6 +1395,16 @@ def diffeqsolve(
         )
     else:
         terms_ = terms
+
+    # Error checking for term compatibility
+    _assert_term_compatible(
+        t0,
+        y0,
+        args,
+        terms_,
+        solver.term_structure,
+        solver.term_compatible_contr_kwargs,
+    )
 
     # Got to init the solver
     if solver_state is None:

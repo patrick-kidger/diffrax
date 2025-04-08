@@ -1,3 +1,4 @@
+from dataclasses import field
 from typing import Any, Callable, Optional
 
 import equinox as eqx
@@ -98,13 +99,15 @@ class Delays(eqx.Module):
     """Module that incorporates all the information needed for integrating DDEs"""
 
     delays: PyTree[Callable]
-    initial_discontinuities: Optional[Array] = jnp.array([0.0])
+    initial_discontinuities: Optional[Array] = field(
+        default_factory=lambda: jnp.array([0.0])
+    )
     max_discontinuities: IntScalarLike = 100
     recurrent_checking: bool = False
     sub_intervals: IntScalarLike = 10
     max_steps: IntScalarLike = 10
-    rtol: RealScalarLike = 10e-3
-    atol: RealScalarLike = 10e-3
+    rtol: RealScalarLike = 1e-3
+    atol: RealScalarLike = 1e-3
 
 
 class HistoryVectorField(eqx.Module):
