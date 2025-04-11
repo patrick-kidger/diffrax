@@ -240,14 +240,23 @@ def _save(
     args: PyTree,
     fn: Callable,
     save_state: SaveState,
+    repeat: int,
 ) -> SaveState:
     ts = save_state.ts
     ys = save_state.ys
     save_index = save_state.save_index
 
-    ts = ts.at[save_index].set(t)
-    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, fn(t, y, args))
-    save_index = save_index + 1
+    ts = lax.dynamic_update_slice_in_dim(
+        ts, jnp.broadcast_to(t, (repeat,)), save_index, axis=0
+    )
+    ys = jtu.tree_map(
+        lambda ys_, y_: lax.dynamic_update_slice_in_dim(
+            ys_, jnp.broadcast_to(y_, (repeat, *y_.shape)), save_index, axis=0
+        ),
+        ys,
+        fn(t, y, args),
+    )
+    save_index = save_index + repeat
 
     return eqx.tree_at(
         lambda s: [s.ts, s.ys, s.save_index], save_state, [ts, ys, save_index]
@@ -306,7 +315,9 @@ def loop(
 
     def save_t0(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
         if subsaveat.t0:
-            save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
+            save_state = _save(
+                t0, init_state.y, args, subsaveat.fn, save_state, repeat=1
+            )
         return save_state
 
     save_state = jtu.tree_map(
@@ -638,6 +649,7 @@ def loop(
     final_state = outer_while_loop(
         cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
     )
+    save_state = final_state.save_state
     result = final_state.result
 
     if event is None or event.root_finder is None:
@@ -765,65 +777,15 @@ def loop(
             )
 
         save_state = jtu.tree_map(
-            unsave, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
+            unsave, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
-
-        final_state = eqx.tree_at(
-            lambda s: s.save_state,
-            final_state,
-            save_state,
-            is_leaf=_is_none,
-        )
-
-    def _save_t1(subsaveat, save_state):
-        if event is None or event.root_finder is None:
-            if subsaveat.t1 and not subsaveat.steps:
-                # If subsaveat.steps then the final value is already saved.
-                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
-        else:
-            if subsaveat.t1 or subsaveat.steps:
-                # In this branch we need to replace the last value with tfinal
-                # and yfinal returned by the root finder also if subsaveat.steps
-                # because we deleted the last value after the event time above.
-                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
-        return save_state
 
     def _save_if_t0_equals_t1(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
         if subsaveat.ts is not None:
-            out_size = 1 if subsaveat.t0 else 0
-            out_size += 1 if subsaveat.t1 and not subsaveat.steps else 0
-            out_size += len(subsaveat.ts)
-
-            def _make_ys(out, old_outs):
-                outs = jnp.stack([out] * out_size)
-                if subsaveat.steps:
-                    outs = jnp.concatenate(
-                        [
-                            outs,
-                            jnp.full(
-                                (max_steps,) + out.shape, jnp.inf, dtype=out.dtype
-                            ),
-                        ]
-                    )
-                assert outs.shape == old_outs.shape
-                return outs
-
-            ts = jnp.full(out_size, t0)
-            if subsaveat.steps:
-                ts = jnp.concatenate((ts, jnp.full(max_steps, jnp.inf, dtype=ts.dtype)))
-            assert ts.shape == save_state.ts.shape
-            ys = jtu.tree_map(_make_ys, subsaveat.fn(t0, yfinal, args), save_state.ys)
-            save_state = SaveState(
-                saveat_ts_index=out_size,
-                ts=ts,
-                ys=ys,
-                save_index=out_size,
+            save_state = _save(
+                t0, yfinal, args, subsaveat.fn, save_state, repeat=len(subsaveat.ts)
             )
         return save_state
-
-    save_state = jtu.tree_map(
-        _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
-    )
 
     # if t0 == t1 then we don't enter the integration loop. In this case we have to
     # manually update the saved ts and ys if we want to save at "intermediate"
@@ -842,10 +804,28 @@ def loop(
         save_state,
     )
 
+    def _save_t1(subsaveat, save_state):
+        if event is None or event.root_finder is None:
+            if subsaveat.t1 and not subsaveat.steps:
+                # If subsaveat.steps then the final value is already saved.
+                save_state = _save(
+                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
+                )
+        else:
+            if subsaveat.t1 or subsaveat.steps:
+                # In this branch we need to replace the last value with tfinal
+                # and yfinal returned by the root finder also if subsaveat.steps
+                # because we deleted the last value after the event time above.
+                save_state = _save(
+                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
+                )
+        return save_state
+
+    save_state = jtu.tree_map(_save_t1, saveat.subs, save_state, is_leaf=_is_subsaveat)
+
     final_state = eqx.tree_at(
         lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
     )
-
     final_state = _handle_static(final_state)
     result = RESULTS.where(cond_fun(final_state), RESULTS.max_steps_reached, result)
     aux_stats = dict()  # TODO: put something in here?
@@ -1287,9 +1267,7 @@ def diffeqsolve(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
         dense_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
-        _make_full = lambda x: jnp.full(
-            (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
-        )
+        _make_full = lambda x: jnp.full((max_steps,) + x.shape, jnp.inf, dtype=x.dtype)
         dense_infos = jtu.tree_map(_make_full, dense_info_struct)  # pyright: ignore[reportPossiblyUnboundVariable]
         dense_save_index = 0
     else:
