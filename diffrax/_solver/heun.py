@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
+import equinox.internal as eqxi
 import numpy as np
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
@@ -42,3 +43,7 @@ class Heun(AbstractERK, AbstractStratonovichSolver):
 
     def strong_order(self, terms):
         return 0.5
+
+
+eqxi.doc_remove_args("scan_kind")(Heun.__init__)
+Heun.__init__.__doc__ = """**Arguments:** None"""

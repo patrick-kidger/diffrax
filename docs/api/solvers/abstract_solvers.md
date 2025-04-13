@@ -11,7 +11,7 @@ In addition [`diffrax.AbstractSolver`][] has several subclasses that you can use
 ---
 
 ::: diffrax.AbstractSolver
-    selection:
+    options:
         members:
             - order
             - strong_order
@@ -23,66 +23,74 @@ In addition [`diffrax.AbstractSolver`][] has several subclasses that you can use
 ---
 
 ::: diffrax.AbstractImplicitSolver
-    selection:
+    options:
         members:
-          - __init__
+            - does_not_exist
 
 ---
 
 ::: diffrax.AbstractAdaptiveSolver
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ---
 
 ::: diffrax.AbstractItoSolver
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ---
 
 ::: diffrax.AbstractStratonovichSolver
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ---
 
 ::: diffrax.AbstractWrappedSolver
-    selection:
+    options:
         members:
-            - __init__
+            - does_not_exist
 
 ---
 
 ### Abstract Runge--Kutta solvers
 
 ::: diffrax.AbstractRungeKutta
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ::: diffrax.AbstractERK
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ::: diffrax.AbstractDIRK
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ::: diffrax.AbstractSDIRK
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ::: diffrax.AbstractESDIRK
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ::: diffrax.ButcherTableau
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.CalculateJacobian
-    selection:
+    options:
         members: false
 
 ---
@@ -90,14 +98,16 @@ In addition [`diffrax.AbstractSolver`][] has several subclasses that you can use
 ### Abstract Stochastic Runge--Kutta (SRK) solvers
 
 ::: diffrax.AbstractSRK
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist
 
 ::: diffrax.StochasticButcherTableau
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.AbstractFosterLangevinSRK
-    selection:
-        members: false
+    options:
+        members:
+            - does_not_exist

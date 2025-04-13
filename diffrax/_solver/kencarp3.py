@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar, Optional, TYPE_CHECKING
 
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -170,4 +171,16 @@ class KenCarp3(AbstractRungeKutta, AbstractImplicitSolver):
     root_find_max_steps: int = 10
 
     def order(self, terms):
+        del terms
         return 3
+
+
+eqxi.doc_remove_args("scan_kind")(KenCarp3.__init__)
+KenCarp3.__init__.__doc__ = """**Arguments:**
+
+- `root_finder`: an [Optimistix](https://github.com/patrick-kidger/optimistix) root
+    finder to solve the implicit problem at each stage.
+- `root_find_max_steps`: the maximum number of steps that the root finder is allowed to
+    make before unconditionally rejecting the step. (And trying again with whatever
+    smaller step that adaptive stepsize controller proposes.)
+"""

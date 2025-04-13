@@ -1,5 +1,6 @@
 from typing import ClassVar
 
+import equinox.internal as eqxi
 import numpy as np
 
 from .base import AbstractStratonovichSolver
@@ -57,7 +58,13 @@ class ShARK(AbstractSRK, AbstractStratonovichSolver):
     tableau: ClassVar[StochasticButcherTableau] = _tab
 
     def order(self, terms):
+        del terms
         return 2
 
     def strong_order(self, terms):
+        del terms
         return 1.5
+
+
+eqxi.doc_remove_args("scan_kind")(ShARK.__init__)
+ShARK.__init__.__doc__ = """**Arguments:** None"""

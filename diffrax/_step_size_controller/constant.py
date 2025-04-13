@@ -61,6 +61,12 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
         )
 
 
+ConstantStepSize.__init__.__doc__ = """**Arguments:**
+
+None.
+"""
+
+
 class StepTo(AbstractStepSizeController[IntScalarLike, None]):
     """Make steps to just prespecified times."""
 

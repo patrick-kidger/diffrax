@@ -405,6 +405,9 @@ class DirectAdjoint(AbstractAdjoint):
         return final_state
 
 
+DirectAdjoint.__init__.__doc__ = """**Arguments:** None"""
+
+
 def _vf(ys, residual, inputs):
     state_no_y, _ = residual
     t = state_no_y.tprev
@@ -754,7 +757,7 @@ class BacksolveAdjoint(AbstractAdjoint):
     passed to [`diffrax.diffeqsolve`][]. If you attempt to compute gradients with
     respect to anything else (for example `t0`, or arguments passed via closure), then
     a `CustomVJPException` will be raised by JAX. See also
-    [this FAQ](../../further_details/faq/#im-getting-a-customvjpexception)
+    [this FAQ](../further_details/faq.md#im-getting-a-customvjpexception)
     entry.
 
     !!! info
@@ -913,3 +916,6 @@ class ForwardMode(AbstractAdjoint):
             **kwargs,
         )
         return final_state
+
+
+ForwardMode.__init__.__doc__ = """**Arguments:** None"""

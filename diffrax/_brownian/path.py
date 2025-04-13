@@ -75,6 +75,17 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
         ] = BrownianIncrement,
     ):
+        """**Arguments:**
+
+        - `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the
+            shape, dtype, and PyTree structure of the output. For simplicity, `shape`
+            can also just be a tuple of integers, describing the shape of a single JAX
+            array. In that case the dtype is chosen to be the default floating-point
+            dtype.
+        - `key`: A JAX random key, as from `jax.random.key(seed)`.
+        - `levy_area`: Whether to additionally generate Lévy area. This is required by
+            some SDE solvers.
+        """
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
             if is_tuple_of_ints(shape)
@@ -105,6 +116,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         left: bool = True,
         use_levy: bool = False,
     ) -> Union[PyTree[Array], AbstractBrownianIncrement]:
+        """Implements [`diffrax.AbstractBrownianPath.evaluate`][]."""
         del left
         if t1 is None:
             dtype = jnp.result_type(t0)
@@ -173,16 +185,3 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         if use_levy:
             return levy_val
         return w
-
-
-UnsafeBrownianPath.__init__.__doc__ = """
-**Arguments:**
-
-- `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the shape, 
-    dtype, and PyTree structure of the output. For simplicity, `shape` can also just 
-    be a tuple of integers, describing the shape of a single JAX array. In that case
-    the dtype is chosen to be the default floating-point dtype.
-- `key`: A random key.
-- `levy_area`: Whether to additionally generate Lévy area. This is required by some SDE
-    solvers.
-"""
