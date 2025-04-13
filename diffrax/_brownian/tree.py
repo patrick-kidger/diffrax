@@ -255,6 +255,30 @@ class VirtualBrownianTree(AbstractBrownianPath):
         ] = BrownianIncrement,
         _spline: _Spline = "sqrt",
     ):
+        """**Arguments:**
+
+        - `t0`: the start of the time interval. Must be less than or equal to the value
+            passed to `diffeqsolve(..., t0=...)`.
+        - `t1`: the start of the time interval. Must be greater than or equal to the
+            value passed to `diffeqsolve(..., t1=...)`.
+        - `tol`: the tolerance to discretise the `[t0, t1]` time interval in to. To get
+            the correct statistical randomness, this must be smaller than time step used
+            by the differential equation solver. If using a fixed timestep (e.g. the
+            default `diffeqsolve(..., stepsize_controller=ConstantStepSize())`, then
+            setting this to `dt0 / 2` is a common choice. If using an adaptive
+            timestep then it may be desirable to set a minimum step size in the
+            step size controller (e.g. `stepsize_controller=PIDController(dtmin=...)`).)
+        - `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the
+            shape, dtype, and PyTree structure of the output. For simplicity, `shape`
+            can also just be a tuple of integers, describing the shape of a single JAX
+            array. In that case the dtype is chosen to be the default floating-point
+            dtype.
+        - `key`: A JAX random key, as from `jax.random.key(seed)`.
+        - `levy_area`: whether to additionally generate higher-order Lévy areas (in
+            addition to just the Brownian increments). This is more computationally
+            expensive, but is required for some higher-order SDE solvers, see the
+            [documentation on Lévy areas](#levy-areas).
+        """
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
         self.t0 = t0
         self.t1 = t1
@@ -307,6 +331,8 @@ class VirtualBrownianTree(AbstractBrownianPath):
         left: bool = True,
         use_levy: bool = False,
     ) -> Union[PyTree[Array], AbstractBrownianIncrement]:
+        """Implements [`diffrax.AbstractBrownianPath.evaluate`][]."""
+        del left
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)

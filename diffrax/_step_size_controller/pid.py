@@ -103,21 +103,21 @@ class _MetaPID(type(eqx.Module)):
 _set_metaclass = dict(metaclass=_MetaPID)
 
 
-if TYPE_CHECKING:
-    rms_norm = optx.rms_norm
-else:
-    # We can't use `optx.rms_norm` itself as a default attribute value. This is because
-    # it is a callable, and then the doc stack thinks that it is a method.
-    if getattr(typing, "GENERATING_DOCUMENTATION", False):
+# if TYPE_CHECKING:
+rms_norm = optx.rms_norm
+# else:
+#     # We can't use `optx.rms_norm` itself as a default attribute value. This is because
+#     # it is a callable, and then the doc stack thinks that it is a method.
+#     if getattr(typing, "GENERATING_DOCUMENTATION", False):
 
-        class _RmsNorm:
-            def __repr__(self):
-                return "<function rms_norm>"
+#         class _RmsNorm:
+#             def __repr__(self):
+#                 return "<function rms_norm>"
 
-        old_rms_norm = optx.rms_norm
-        rms_norm = _RmsNorm()
-    else:
-        rms_norm = optx.rms_norm
+#         old_rms_norm = optx.rms_norm
+#         rms_norm = _RmsNorm()
+#     else:
+#         rms_norm = optx.rms_norm
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/

@@ -103,6 +103,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
 
 
+StratonovichMilstein.__init__.__doc__ = """**Arguments:** None"""
+
+
 class ItoMilstein(AbstractItoSolver):
     r"""Milstein's method; Itô version.
 
@@ -376,3 +379,6 @@ class ItoMilstein(AbstractItoSolver):
     ) -> VF:
         drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
+
+
+ItoMilstein.__init__.__doc__ = """**Arguments:** None"""

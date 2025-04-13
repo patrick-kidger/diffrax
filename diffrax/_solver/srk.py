@@ -202,6 +202,9 @@ Let `s` denote the number of stages of the solver.
 class AbstractSRK(AbstractSolver[_SolverState]):
     r"""A general Stochastic Runge-Kutta method.
 
+    Subclasses should include a class-level attribute `tableau`, an instance of
+    [`diffrax.StochasticButcherTableau`][].
+
     This accepts `terms` of the form
     `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))`.
     Depending on the solver, the Brownian motion might need to generate

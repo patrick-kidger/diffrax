@@ -32,7 +32,7 @@ Event.__init__.__doc__ = """**Arguments:**
     return value is a real number, then the solve will terminate on the step when `c`
     changes sign.
 
-- `root_finder`: An optional [root finder](../nonlinear_solver/) to use for finding
+- `root_finder`: An optional [root finder](./nonlinear_solver.md) to use for finding
     the exact time of the event. If the triggered condition function returns a real
     number, then the final time will be the time at which that real number equals zero.
     (If the triggered condition function returns a boolean, then the returned time will

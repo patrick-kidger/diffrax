@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import cast, ClassVar
 
+import equinox.internal as eqxi
 import numpy as np
 import optimistix as optx
 from equinox.internal import ω
@@ -96,4 +97,16 @@ class Sil3(AbstractRungeKutta, AbstractImplicitSolver):
     root_find_max_steps: int = 10
 
     def order(self, terms):
+        del terms
         return 2
+
+
+eqxi.doc_remove_args("scan_kind")(Sil3.__init__)
+Sil3.__init__.__doc__ = """**Arguments:**
+
+- `root_finder`: an [Optimistix](https://github.com/patrick-kidger/optimistix) root
+    finder to solve the implicit problem at each stage.
+- `root_find_max_steps`: the maximum number of steps that the root finder is allowed to
+    make before unconditionally rejecting the step. (And trying again with whatever
+    smaller step that adaptive stepsize controller proposes.)
+"""

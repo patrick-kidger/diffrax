@@ -1,5 +1,6 @@
 import abc
 import operator
+import typing
 import warnings
 from collections.abc import Callable
 from typing import cast, Generic, Optional, TypeVar, Union
@@ -387,7 +388,7 @@ class ControlTerm(AbstractTerm[_VF, _Control]):
 
         In this example we consider a controlled differnetial equation, for which the
         control is given by an interpolation of some data. (See also the
-        [neural controlled differential equation](../examples/neural_cde/) example.)
+        [neural controlled differential equation](../examples/neural_cde.ipynb) example.)
 
         ```python
         from diffrax import ControlTerm, diffeqsolve, LinearInterpolation, UnsafeBrownianPath
@@ -1108,10 +1109,12 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
         return jtu.tree_map(lambda _vf: control * _vf, vf)
 
 
-AbstractTerm.__module__ = "diffrax"
-ODETerm.__module__ = "diffrax"
-ControlTerm.__module__ = "diffrax"
-WeaklyDiagonalControlTerm.__module__ = "diffrax"
-MultiTerm.__module__ = "diffrax"
-UnderdampedLangevinDriftTerm.__module__ = "diffrax"
-UnderdampedLangevinDiffusionTerm.__module__ = "diffrax"
+# Docgen doesn't display methods if these are present, for some reason.
+if getattr(typing, "GENERATING_DOCUMENTATION", "") != "diffrax":
+    AbstractTerm.__module__ = "diffrax"
+    ODETerm.__module__ = "diffrax"
+    ControlTerm.__module__ = "diffrax"
+    WeaklyDiagonalControlTerm.__module__ = "diffrax"
+    MultiTerm.__module__ = "diffrax"
+    UnderdampedLangevinDriftTerm.__module__ = "diffrax"
+    UnderdampedLangevinDiffusionTerm.__module__ = "diffrax"

@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar, Optional
 
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -344,4 +345,9 @@ class Dopri8(AbstractERK):
     ] = _Dopri8Interpolation
 
     def order(self, terms):
+        del terms
         return 8
+
+
+eqxi.doc_remove_args("scan_kind")(Dopri8.__init__)
+Dopri8.__init__.__doc__ = """**Arguments:** None"""

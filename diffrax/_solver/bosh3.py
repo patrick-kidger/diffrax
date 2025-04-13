@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
+import equinox.internal as eqxi
 import numpy as np
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
@@ -35,4 +36,9 @@ class Bosh3(AbstractERK):
     ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     def order(self, terms):
+        del terms
         return 3
+
+
+eqxi.doc_remove_args("scan_kind")(Bosh3.__init__)
+Bosh3.__init__.__doc__ = """**Arguments:** None"""
