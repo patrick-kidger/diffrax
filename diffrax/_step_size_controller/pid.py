@@ -1,6 +1,5 @@
-import typing
 from collections.abc import Callable
-from typing import cast, Optional, TYPE_CHECKING
+from typing import cast, Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -101,23 +100,6 @@ class _MetaPID(type(eqx.Module)):
 # Sneak the metaclass past pyright, as otherwise it disables the dataclass-ness of
 # `eqx.Module`.
 _set_metaclass = dict(metaclass=_MetaPID)
-
-
-# if TYPE_CHECKING:
-rms_norm = optx.rms_norm
-# else:
-#     # We can't use `optx.rms_norm` itself as a default attribute value. This is because
-#     # it is a callable, and then the doc stack thinks that it is a method.
-#     if getattr(typing, "GENERATING_DOCUMENTATION", False):
-
-#         class _RmsNorm:
-#             def __repr__(self):
-#                 return "<function rms_norm>"
-
-#         old_rms_norm = optx.rms_norm
-#         rms_norm = _RmsNorm()
-#     else:
-#         rms_norm = optx.rms_norm
 
 
 # https://diffeq.sciml.ai/stable/extras/timestepping/
@@ -316,7 +298,7 @@ class PIDController(
 
     rtol: RealScalarLike
     atol: RealScalarLike
-    norm: Callable[[PyTree], RealScalarLike] = rms_norm
+    norm: Callable[[PyTree], RealScalarLike] = optx.rms_norm
     pcoeff: RealScalarLike = 0
     icoeff: RealScalarLike = 1
     dcoeff: RealScalarLike = 0

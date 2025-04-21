@@ -90,5 +90,6 @@ class SlowRK(AbstractSRK, AbstractStratonovichSolver):
         del terms
         return 1.5
 
+
 eqxi.doc_remove_args("scan_kind")(SlowRK.__init__)
 SlowRK.__init__.__doc__ = """**Arguments:** None"""
