@@ -98,10 +98,11 @@ class Solution(AbstractPath):
     - `controller_state`: If saved, the final internal state for the step size
         controller.
     - `made_jump`: If saved, the final internal state for the jump tracker.
-    - `event_mask`: If using [events](./events.md), a boolean mask indicating which event
-        triggered. This is a PyTree of bools, with the same PyTree stucture as the event
-        condition functions. It will be all `False` if no events triggered; otherwise it
-        will have precisely one `True`, corresponding to the event that triggered.
+    - `event_mask`: If using [events](./events.md), a boolean mask indicating which
+        event triggered. This is a PyTree of bools, with the same PyTree stucture as the
+        event condition functions. It will be all `False` if no events triggered;
+        otherwise it will have precisely one `True`, corresponding to the event that
+        triggered.
 
     !!! note
 
