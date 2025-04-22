@@ -20,7 +20,9 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
+import numpy as np
 import optimistix as optx
+import wadler_lindig as wl
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
@@ -116,13 +118,14 @@ def _is_none(x: Any) -> bool:
     return x is None
 
 
-def _term_compatible(
+def _assert_term_compatible(
+    t: FloatScalarLike,
     y: PyTree[ArrayLike],
     args: PyTree[Any],
     terms: PyTree[AbstractTerm],
     term_structure: PyTree,
     contr_kwargs: PyTree[dict],
-) -> bool:
+) -> None:
     error_msg = "term_structure"
 
     def _check(term_cls, term, term_contr_kwargs, yi):
@@ -136,10 +139,11 @@ def _term_compatible(
                 for term, arg, term_contr_kwarg in zip(
                     term.terms, get_args(_tmp), term_contr_kwargs
                 ):
-                    if not _term_compatible(yi, args, term, arg, term_contr_kwarg):
-                        raise ValueError
+                    _assert_term_compatible(t, yi, args, term, arg, term_contr_kwarg)
             else:
-                raise ValueError
+                raise ValueError(
+                    f"Term {term} is not a MultiTerm but is expected to be."
+                )
         else:
             # Check that `term` is an instance of `term_cls` (ignoring any generic
             # parameterization).
@@ -147,7 +151,7 @@ def _term_compatible(
             if origin_cls is None:
                 origin_cls = term_cls
             if not isinstance(term, origin_cls):
-                raise ValueError
+                raise ValueError(f"Term {term} is not an instance of {origin_cls}.")
 
             # Now check the generic parametrization of `term_cls`; can be one of:
             # -----------------------------------------
@@ -162,21 +166,31 @@ def _term_compatible(
                 pass
             elif n_term_args == 2:
                 vf_type_expected, control_type_expected = term_args
-                vf_type = eqx.filter_eval_shape(term.vf, 0.0, yi, args)
+                try:
+                    vf_type = eqx.filter_eval_shape(term.vf, t, yi, args)
+                except Exception as e:
+                    raise ValueError(f"Error while tracing {term}.vf: " + str(e))
                 vf_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, vf_type, vf_type_expected
                 )
                 if not vf_type_compatible:
-                    raise ValueError
+                    raise ValueError(f"Vector field term {term} is incompatible.")
 
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
-                control_type = eqx.filter_eval_shape(contr, 0.0, 0.0)
+                try:
+                    control_type = eqx.filter_eval_shape(contr, t, t)
+                except Exception as e:
+                    raise ValueError(f"Error while tracing {term}.contr: " + str(e))
                 control_type_compatible = eqx.filter_eval_shape(
                     better_isinstance, control_type, control_type_expected
                 )
                 if not control_type_compatible:
-                    raise ValueError
+                    raise ValueError(
+                        "Control term is incompatible: the returned control (e.g. "
+                        f"Brownian motion for an SDE) was {control_type}, but this "
+                        f"solver expected {control_type_expected}."
+                    )
             else:
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
@@ -184,10 +198,15 @@ def _term_compatible(
     try:
         with jax.numpy_dtype_promotion("standard"):
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
-    except ValueError:
+    except ValueError as e:
         # ValueError may also arise from mismatched tree structures
-        return False
-    return True
+        pretty_term = wl.pformat(terms)
+        pretty_expected = wl.pformat(term_structure)
+        raise ValueError(
+            f"Terms are not compatible with solver! Got:\n{pretty_term}\nbut expected:"
+            f"\n{pretty_expected}\nNote that terms are checked recursively: if you "
+            "scroll up you may find a root-cause error that is more specific."
+        ) from e
 
 
 def _is_subsaveat(x: Any) -> bool:
@@ -221,14 +240,23 @@ def _save(
     args: PyTree,
     fn: Callable,
     save_state: SaveState,
+    repeat: int,
 ) -> SaveState:
     ts = save_state.ts
     ys = save_state.ys
     save_index = save_state.save_index
 
-    ts = ts.at[save_index].set(t)
-    ys = jtu.tree_map(lambda ys_, y_: ys_.at[save_index].set(y_), ys, fn(t, y, args))
-    save_index = save_index + 1
+    ts = lax.dynamic_update_slice_in_dim(
+        ts, jnp.broadcast_to(t, (repeat,)), save_index, axis=0
+    )
+    ys = jtu.tree_map(
+        lambda ys_, y_: lax.dynamic_update_slice_in_dim(
+            ys_, jnp.broadcast_to(y_, (repeat, *y_.shape)), save_index, axis=0
+        ),
+        ys,
+        fn(t, y, args),
+    )
+    save_index = save_index + repeat
 
     return eqx.tree_at(
         lambda s: [s.ts, s.ys, s.save_index], save_state, [ts, ys, save_index]
@@ -252,12 +280,10 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
     # Some values (made_jump and result) are not used in many common use-cases. If we
     # detect that they're unused then we make sure they're non-Array Python values, so
     # that we can special case on them at trace time and get a performance boost.
-    if isinstance(static_x, (bool, int, float, complex)):
+    if isinstance(static_x, (bool, int, float, complex, np.ndarray)):
         return static_x
     elif static_x is None:
         return x
-    elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
-        return static_x
     else:
         return x
 
@@ -289,7 +315,9 @@ def loop(
 
     def save_t0(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
         if subsaveat.t0:
-            save_state = _save(t0, init_state.y, args, subsaveat.fn, save_state)
+            save_state = _save(
+                t0, init_state.y, args, subsaveat.fn, save_state, repeat=1
+            )
         return save_state
 
     save_state = jtu.tree_map(
@@ -621,6 +649,7 @@ def loop(
     final_state = outer_while_loop(
         cond_fun, body_fun, init_state, max_steps=max_steps, buffers=_outer_buffers
     )
+    save_state = final_state.save_state
     result = final_state.result
 
     if event is None or event.root_finder is None:
@@ -632,7 +661,8 @@ def loop(
         event_mask = final_state.event_mask
         flat_mask = jtu.tree_leaves(event_mask)
         assert all(jnp.shape(x) == () for x in flat_mask)
-        event_happened = jnp.any(jnp.stack(flat_mask))
+        float_mask = jnp.array(flat_mask).astype(jnp.float32)
+        event_happened = jnp.max(float_mask) > 0.0
 
         def _root_find():
             _interpolator = solver.interpolation_cls(
@@ -747,36 +777,55 @@ def loop(
             )
 
         save_state = jtu.tree_map(
-            unsave, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
+            unsave, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
 
-        final_state = eqx.tree_at(
-            lambda s: s.save_state,
-            final_state,
-            save_state,
-            is_leaf=_is_none,
-        )
+    def _save_if_t0_equals_t1(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+        if subsaveat.ts is not None:
+            save_state = _save(
+                t0, yfinal, args, subsaveat.fn, save_state, repeat=len(subsaveat.ts)
+            )
+        return save_state
+
+    # if t0 == t1 then we don't enter the integration loop. In this case we have to
+    # manually update the saved ts and ys if we want to save at "intermediate"
+    # times specified by saveat.subs.ts
+    save_state = jax.lax.cond(
+        eqxi.unvmap_any(t0 == t1),
+        lambda __save_state: jax.lax.cond(
+            t0 == t1,
+            lambda _save_state: jtu.tree_map(
+                _save_if_t0_equals_t1, saveat.subs, _save_state, is_leaf=_is_subsaveat
+            ),
+            lambda _save_state: _save_state,
+            __save_state,
+        ),
+        lambda __save_state: __save_state,
+        save_state,
+    )
 
     def _save_t1(subsaveat, save_state):
         if event is None or event.root_finder is None:
             if subsaveat.t1 and not subsaveat.steps:
                 # If subsaveat.steps then the final value is already saved.
-                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
+                save_state = _save(
+                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
+                )
         else:
             if subsaveat.t1 or subsaveat.steps:
                 # In this branch we need to replace the last value with tfinal
                 # and yfinal returned by the root finder also if subsaveat.steps
                 # because we deleted the last value after the event time above.
-                save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
+                save_state = _save(
+                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
+                )
         return save_state
 
-    save_state = jtu.tree_map(
-        _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
-    )
+    save_state = jtu.tree_map(_save_t1, saveat.subs, save_state, is_leaf=_is_subsaveat)
+
     final_state = eqx.tree_at(
         lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
     )
-
     final_state = _handle_static(final_state)
     result = RESULTS.where(cond_fun(final_state), RESULTS.max_steps_reached, result)
     aux_stats = dict()  # TODO: put something in here?
@@ -953,13 +1002,13 @@ def diffeqsolve(
 
     # Error checking and warning for complex dtypes
     if any(
-        eqx.is_array(xi) and jnp.iscomplexobj(xi)
+        eqx.is_array_like(xi) and jnp.iscomplexobj(xi)
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
         warnings.warn(
-            "Complex dtype support is a work in progress and may not produce correct "
-            "results. Consider splitting your computation into real and imaginary "
-            "parts instead.",
+            "Complex dtype support in Diffrax is a work in progress and may not yet "
+            "produce correct results. Consider splitting your computation into real "
+            "and imaginary parts instead.",
             stacklevel=2,
         )
 
@@ -1007,29 +1056,38 @@ def diffeqsolve(
     del timelikes
 
     # Backward compatibility
-    if isinstance(
-        solver, (EulerHeun, ItoMilstein, StratonovichMilstein)
-    ) and _term_compatible(
-        y0, args, terms, (ODETerm, AbstractTerm), solver.term_compatible_contr_kwargs
-    ):
-        warnings.warn(
-            "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
-            f"{solver.__class__.__name__} is deprecated in favour of "
-            "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
-            "the same terms can now be passed used for both general and SDE-specific "
-            "solvers!",
-            stacklevel=2,
-        )
-        terms = MultiTerm(*terms)
+    if isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein)):
+        try:
+            _assert_term_compatible(
+                t0,
+                y0,
+                args,
+                terms,
+                (ODETerm, AbstractTerm),
+                solver.term_compatible_contr_kwargs,
+            )
+        except Exception as _:
+            pass
+        else:
+            warnings.warn(
+                "Passing `terms=(ODETerm(...), SomeOtherTerm(...))` to "
+                f"{solver.__class__.__name__} is deprecated in favour of "
+                "`terms=MultiTerm(ODETerm(...), SomeOtherTerm(...))`. This means that "
+                "the same terms can now be passed used for both general "
+                "and SDE-specific solvers!",
+                stacklevel=2,
+            )
+            terms = MultiTerm(*terms)
 
-    # Error checking
-    if not _term_compatible(
-        y0, args, terms, solver.term_structure, solver.term_compatible_contr_kwargs
-    ):
-        raise ValueError(
-            "`terms` must be a PyTree of `AbstractTerms` (such as `ODETerm`), with "
-            f"structure {solver.term_structure}"
-        )
+    # Error checking for term compatibility
+    _assert_term_compatible(
+        t0,
+        y0,
+        args,
+        terms,
+        solver.term_structure,
+        solver.term_compatible_contr_kwargs,
+    )
 
     if is_sde(terms):
         if not isinstance(solver, (AbstractItoSolver, AbstractStratonovichSolver)):
@@ -1209,9 +1267,7 @@ def diffeqsolve(
                 "`max_steps=None` is incompatible with `saveat.dense=True`"
             )
         dense_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
-        _make_full = lambda x: jnp.full(
-            (max_steps,) + jnp.shape(x), jnp.inf, dtype=x.dtype
-        )
+        _make_full = lambda x: jnp.full((max_steps,) + x.shape, jnp.inf, dtype=x.dtype)
         dense_infos = jtu.tree_map(_make_full, dense_info_struct)  # pyright: ignore[reportPossiblyUnboundVariable]
         dense_save_index = 0
     else:

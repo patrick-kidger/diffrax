@@ -72,7 +72,7 @@ over the interval $[0, 3]$.
 import jax.random as jr
 from diffrax import diffeqsolve, ControlTerm, Euler, MultiTerm, ODETerm, SaveAt, VirtualBrownianTree
 
-t0, t1 = 1, 3
+t0, t1 = 0, 3
 drift = lambda t, y, args: -y
 diffusion = lambda t, y, args: 0.1 * t
 brownian_motion = VirtualBrownianTree(t0, t1, tol=1e-3, shape=(), key=jr.PRNGKey(0))

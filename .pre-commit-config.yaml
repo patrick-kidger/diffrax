@@ -11,4 +11,4 @@ repos:
     rev: v1.1.350
     hooks:
     - id: pyright
-      additional_dependencies: [equinox, jax, jaxtyping, optax, optimistix, lineax, pytest, typing_extensions]
+      additional_dependencies: [equinox, jax, jaxtyping, optax, optimistix, lineax, pytest, typeguard==2.13.3, typing_extensions, wadler_lindig]

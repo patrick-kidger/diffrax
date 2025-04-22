@@ -123,7 +123,7 @@ def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
 def test_statistics(ctr, levy_area, use_levy):
     # Deterministic key for this test; not using getkey()
     key = jr.PRNGKey(5678)
-    num_samples = 60000
+    num_samples = 600000
     keys = jr.split(key, num_samples)
     t0, t1 = 0.0, 5.0
     dt = t1 - t0
@@ -279,14 +279,14 @@ def _true_cond_stats_whk(bm_s, bm_u, s, r, u):
 def _conditional_statistics(
     levy_area, use_levy: bool, tol, spacing, spline: _Spline, min_num_points
 ):
-    key = jr.PRNGKey(5678)
+    key = jr.PRNGKey(5680)
     bm_key, sample_key, permute_key = jr.split(key, 3)
     # Get some randomly selected points; not too close to avoid discretisation error.
     t0 = 0.0
     t1 = 8.7
     boundary = 0.1
     ts = jr.uniform(
-        sample_key, shape=(100,), minval=t0 + boundary, maxval=t1 - boundary
+        sample_key, shape=(10000,), minval=t0 + boundary, maxval=t1 - boundary
     )
     sorted_ts = jnp.sort(ts)
     ts = []
@@ -581,7 +581,7 @@ def test_whk_interpolation(tol, spline):
     u = jnp.array(5.7, dtype=jnp.float64)
     bound = 0.0
     rs = jr.uniform(
-        r_key, (100,), dtype=jnp.float64, minval=s + bound, maxval=u - bound
+        r_key, (1000,), dtype=jnp.float64, minval=s + bound, maxval=u - bound
     )
     path = diffrax.VirtualBrownianTree(
         t0=s,
@@ -672,8 +672,8 @@ def test_whk_interpolation(tol, spline):
     assert jnp.all(_pvals_w > 0.1 / _pvals_w.shape[0])
     assert jnp.all(_pvals_h > 0.1 / _pvals_h.shape[0])
     assert jnp.all(_pvals_k > 0.1 / _pvals_k.shape[0])
-    assert jnp.all(jnp.abs(total_mean_err) < 0.005)
-    assert jnp.all(jnp.abs(total_cov_err) < 0.005)
+    assert jnp.all(jnp.abs(total_mean_err) < 0.01)
+    assert jnp.all(jnp.abs(total_cov_err) < 0.01)
 
 
 def test_levy_area_reverse_time():

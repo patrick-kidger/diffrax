@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from typing import Any, Generic, Optional, TYPE_CHECKING, TypeVar, Union
+from typing import Any, Generic, Literal, Optional, TYPE_CHECKING, TypeVar, Union
 from typing_extensions import TypeAlias
 
 import equinox as eqx
@@ -28,7 +28,7 @@ from .._custom_types import (
 )
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm, MultiTerm, ODETerm
+from .._term import AbstractTerm, MultiTerm
 from .base import AbstractSolver
 
 
@@ -255,6 +255,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     as well as $b^H$, $a^H$, $b^K$, and $a^K$ if needed.
     """
 
+    scan_kind: Union[None, Literal["lax", "checkpointed"]] = None
+
     interpolation_cls = LocalLinearInterpolation
     term_compatible_contr_kwargs = (dict(), dict(use_levy=True))
     tableau: AbstractClassVar[StochasticButcherTableau]
@@ -276,11 +278,21 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
     @property
     def term_structure(self):
-        return MultiTerm[tuple[ODETerm, AbstractTerm[Any, self.minimal_levy_area]]]
+        return MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, self.minimal_levy_area],
+            ]
+        ]
 
     def init(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm[Any, AbstractBrownianIncrement]]],
+        terms: MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, AbstractBrownianIncrement],
+            ]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -314,7 +326,12 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
     def step(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm[Any, AbstractBrownianIncrement]]],
+        terms: MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, AbstractBrownianIncrement],
+            ]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -363,7 +380,11 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         # Now the diffusion related stuff
         # Brownian increment (and space-time Lévy area)
         bm_inc = diffusion.contr(t0, t1, use_levy=True)
-        assert isinstance(bm_inc, self.minimal_levy_area)
+        if not isinstance(bm_inc, self.minimal_levy_area):
+            raise ValueError(
+                f"The Brownian increment {bm_inc} does not have the "
+                f"minimal Levy Area {self.minimal_levy_area}."
+            )
         w = bm_inc.W
 
         # b looks similar regardless of whether we have additive noise or not
@@ -564,7 +585,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             scan_inputs,
             len(b_sol),
             buffers=lambda x: x,
-            kind="checkpointed",
+            kind="checkpointed" if self.scan_kind is None else self.scan_kind,
             checkpoints="all",
         )
 
@@ -643,7 +664,12 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
     def func(
         self,
-        terms: MultiTerm[tuple[ODETerm, AbstractTerm[Any, AbstractBrownianIncrement]]],
+        terms: MultiTerm[
+            tuple[
+                AbstractTerm[Any, RealScalarLike],
+                AbstractTerm[Any, AbstractBrownianIncrement],
+            ]
+        ],
         t0: RealScalarLike,
         y0: Y,
         args: PyTree,

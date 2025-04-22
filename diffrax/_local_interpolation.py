@@ -110,7 +110,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
     ):
         def _calculate(_y0, _y1, _k):
             with jax.numpy_dtype_promotion("standard"):
-                _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1)
+                _ymid = _y0 + jnp.tensordot(self.c_mid, _k, axes=1).astype(_y0.dtype)
             _f0 = _k[0]
             _f1 = _k[-1]
             # TODO: rewrite as matrix-vector product?
