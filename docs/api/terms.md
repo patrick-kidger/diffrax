@@ -61,7 +61,7 @@ Some example term structures include:
 ??? abstract "`diffrax.AbstractTerm`"
 
     ::: diffrax.AbstractTerm
-        selection:
+        options:
             members:
                 - vf
                 - contr
@@ -77,18 +77,18 @@ Some example term structures include:
 ---
 
 ::: diffrax.ODETerm
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.ControlTerm
-    selection:
+    options:
         members:
             - __init__
             - to_ode
 
 ::: diffrax.MultiTerm
-    selection:
+    options:
         members:
             - __init__
 
@@ -118,11 +118,11 @@ terms with structure `MultiTerm(UnderdampedLangevinDriftTerm(gamma, u, grad_f), 
 where `bm` is an [`diffrax.AbstractBrownianPath`][] and the same values of `gammma` and `u` are passed to both terms.
 
 ::: diffrax.UnderdampedLangevinDriftTerm
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.UnderdampedLangevinDiffusionTerm
-    selection:
+    options:
         members:
             - __init__

@@ -189,7 +189,7 @@ Let `k` denote the number of stages of the solver.
 - `a_predictor`: optional. Used in a similar way to `a_lower`; specifies the linear
     combination of previous stages to use as a predictor for the solution to the
     implicit problem at that stage. See
-    [the developer documentation](../../devdocs/predictor_dirk). Used for diagonal
+    [the developer documentation](../../devdocs/predictor_dirk.md). Used for diagonal
     implicit Runge--Kutta methods only.
 
 Whether the solver exhibits either the FSAL or SSAL properties is determined

@@ -15,36 +15,44 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#ordinary
 These methods are suitable for most problems.
 
 ::: diffrax.Euler
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Heun
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Midpoint
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Ralston
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Bosh3
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Tsit5
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Dopri5
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Dopri8
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 
@@ -52,23 +60,29 @@ These methods are suitable for most problems.
 
 These methods are suitable for stiff problems.
 
+These should typically be paired with an adaptive step size controller (the `diffeqsolve(..., stepsize_controller=...)` argument) such as [`diffrax.PIDController`][]. This is because these solvers may need to reject steps which have intractable implicit subproblems (and take a smaller step that will have an easier problem).
+
 Each of these takes a `root_finder` argument at initialisation, defaulting to a Newton solver, which is used to solve the implicit problem at each step. See the page on [root finders](../nonlinear_solver.md).
 
 ::: diffrax.ImplicitEuler
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Kvaerno3
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Kvaerno4
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.Kvaerno5
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 
@@ -81,20 +95,24 @@ These "implicit-explicit" methods are suitable for problems of the form $\frac{\
     These methods should be called with `terms=MultiTerm(explicit_term, implicit_term)`.
 
 ::: diffrax.Sil3
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.KenCarp3
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.KenCarp4
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.KenCarp5
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 
@@ -117,8 +135,9 @@ In particular this includes Hamiltonian systems.
     See also this [Wikipedia page](https://en.wikipedia.org/wiki/Semi-implicit_Euler_method#Setting).
 
 ::: diffrax.SemiImplicitEuler
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 
@@ -129,13 +148,15 @@ These methods can be run "in reverse": solving from an initial condition `y0` to
 In addition all [symplectic methods](#symplectic-methods) are reversible, as are some linear multistep methods. (Below are the non-symplectic reversible solvers.)
 
 ::: diffrax.ReversibleHeun
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 
 ### Linear multistep methods
 
 ::: diffrax.LeapfrogMidpoint
-    selection:
-        members: false
+    options:
+        members:
+            - __init__

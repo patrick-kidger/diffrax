@@ -69,3 +69,6 @@ class Euler(AbstractItoSolver):
         args: Args,
     ) -> VF:
         return terms.vf(t0, y0, args)
+
+
+Euler.__init__.__doc__ = """**Arguments:** None"""

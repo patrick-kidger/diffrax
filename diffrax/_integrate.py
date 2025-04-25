@@ -1,5 +1,4 @@
 import functools as ft
-import typing
 import warnings
 from collections.abc import Callable
 from typing import (
@@ -8,7 +7,6 @@ from typing import (
     get_origin,
     Optional,
     Tuple,
-    TYPE_CHECKING,
     Union,
 )
 
@@ -830,15 +828,6 @@ def loop(
     result = RESULTS.where(cond_fun(final_state), RESULTS.max_steps_reached, result)
     aux_stats = dict()  # TODO: put something in here?
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
-
-
-if not TYPE_CHECKING:
-    if getattr(typing, "GENERATING_DOCUMENTATION", False):
-        # Nicer documentation for the default `diffeqsolve(saveat=...)` argument.
-        # Not using `eqxi.doc_repr` as some IDEs (Helix, at least) show the source code
-        # of the default argument directly.
-        class SaveAt(eqx.Module):  # noqa: F811
-            t1: bool
 
 
 @eqx.filter_jit

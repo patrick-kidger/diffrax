@@ -26,21 +26,13 @@ See also [How to choose a solver](../../usage/how-to-choose-a-solver.md#stochast
 
 These solvers can be used to solve SDEs just as well as they can be used to solve ODEs.
 
-::: diffrax.Euler
-    selection:
-        members: false
+- [`diffrax.Euler`][]
 
-::: diffrax.Heun
-    selection:
-        members: false
+- [`diffrax.Heun`][]
 
-::: diffrax.Midpoint
-    selection:
-        members: false
+- [`diffrax.Midpoint`][]
 
-::: diffrax.Ralston
-    selection:
-        members: false
+- [`diffrax.Ralston`][]
 
 !!! info
 
@@ -56,61 +48,68 @@ These solvers can be used to solve SDEs just as well as they can be used to solv
 
 
 ::: diffrax.EulerHeun
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.ItoMilstein
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.StratonovichMilstein
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ### Stochastic Runge--Kutta (SRK)
 
 These are a particularly important class of SDE-only solvers.
 
 ::: diffrax.SEA
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.SRA1
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.ShARK
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.GeneralShARK
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.SlowRK
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.SPaRK
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 
 ### Reversible methods
 
-These are reversible in the same way as when applied to ODEs. [See here.](./ode_solvers.md#reversible-methods)
+These are reversible in the same way as when applied to ODEs.
 
-::: diffrax.ReversibleHeun
-    selection:
-        members: false
+- [`diffrax.ReversibleHeun`][]
 
 ---
 
 ### Wrapper solvers
 
 ::: diffrax.HalfSolver
-    selection:
+    options:
         members:
             - __init__
 
@@ -140,16 +139,16 @@ cannot be used for any other SDEs. They only accept special terms as described i
 For an example of their usage, see the [Underdamped Langevin example](../../examples/underdamped_langevin_example.ipynb).
 
 ::: diffrax.ALIGN
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.ShOULD
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.QUICSORT
-    selection:
+    options:
         members:
             - __init__

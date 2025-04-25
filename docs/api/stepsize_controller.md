@@ -33,14 +33,14 @@ The list of step size controllers is as follows. The most common cases are fixed
     The exact details of this interface are only really useful if you're using the [Manual stepping](../usage/manual-stepping.md) interface; otherwise this is all just internal to the library.
 
     ::: diffrax.AbstractStepSizeController
-        selection:
+        options:
             members:
                 - wrap
                 - init
                 - adapt_step_size
 
     ::: diffrax.AbstractAdaptiveStepSizeController
-        selection:
+        options:
             members:
                 - rtol
                 - atol
@@ -49,20 +49,21 @@ The list of step size controllers is as follows. The most common cases are fixed
 ---
 
 ::: diffrax.ConstantStepSize
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ::: diffrax.StepTo
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.PIDController
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.ClipStepSizeController
-    selection:
+    options:
         members:
             - __init__

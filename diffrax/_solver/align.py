@@ -79,9 +79,9 @@ class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
         r"""**Arguments:**
 
         - `taylor_threshold`: If the product `h*gamma` is less than this, then
-        the Taylor expansion will be used to compute the coefficients.
-        Otherwise they will be computed directly. When using float32, the
-        empirically optimal value is 0.1, and for float64 about 0.01.
+            the Taylor expansion will be used to compute the coefficients.
+            Otherwise they will be computed directly. When using float32, the
+            empirically optimal value is 0.1, and for float64 about 0.01.
         """
         self.taylor_threshold = taylor_threshold
 

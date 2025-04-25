@@ -23,7 +23,7 @@ As such the default root-finding algorithm for most solvers in Diffrax is `with_
 ---
 
 ::: diffrax.VeryChord
-    selection:
+    options:
         members:
             - __init__
 

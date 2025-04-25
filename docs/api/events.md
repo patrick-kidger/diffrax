@@ -3,7 +3,7 @@
 Events allow for interrupting a differential equation solve, by terminating the solve before `t1` is reached.
 
 ::: diffrax.Event
-    selection:
+    options:
         members:
             - __init__
 

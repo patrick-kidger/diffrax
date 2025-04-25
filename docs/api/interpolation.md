@@ -56,7 +56,7 @@ The following interpolation routines may be used to perform this interpolation.
 The following are the main interpolation classes. Instances of these classes are suitable controls to pass to [`diffrax.ControlTerm`][].
 
 ::: diffrax.LinearInterpolation
-    selection:
+    options:
         members:
             - __init__
             - evaluate
@@ -65,7 +65,7 @@ The following are the main interpolation classes. Instances of these classes are
             - t1
         
 ::: diffrax.CubicInterpolation
-    selection:
+    options:
         members:
             - __init__
             - evaluate

@@ -1,7 +1,7 @@
 # Solution
 
 ::: diffrax.Solution
-    selection:
+    options:
         members:
             - t0
             - t1
@@ -19,5 +19,5 @@
 ---
 
 ::: diffrax.RESULTS
-    selection:
+    options:
         members: false

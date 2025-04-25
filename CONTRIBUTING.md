@@ -53,10 +53,8 @@ Finally, open a pull request on GitHub!
 Make your changes. You can then build the documentation by doing
 
 ```bash
-pip install -r docs/requirements.txt
-mkdocs build
+pip install -e '.[docs]'
 mkdocs serve
 ```
-(So you run `mkdocs` commands twice; our doc stack is a bit weird and needs this to get the correct module names in the documentation.)
 
 You can then see your local copy of the documentation by navigating to `localhost:8000` in a web browser.

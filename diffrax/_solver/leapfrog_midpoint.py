@@ -84,3 +84,6 @@ class LeapfrogMidpoint(AbstractSolver):
 
     def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
         return terms.vf(t0, y0, args)
+
+
+LeapfrogMidpoint.__init__.__doc__ = """**Arguments:** None"""

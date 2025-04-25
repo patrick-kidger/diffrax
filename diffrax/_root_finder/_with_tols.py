@@ -1,17 +1,42 @@
+import typing
+
 import equinox as eqx
 import jax.numpy as jnp
 import optimistix as optx
+import wadler_lindig as wl
 
 
 class _UseStepSizeTol:
     def __repr__(self):
-        return (
-            "<tolerance taken from `diffeqsolve(..., stepsize_controller=...)` "
-            "argument>"
-        )
+        return "<taken from `diffeqsolve(..., stepsize_controller=...)` argument>"
 
 
 use_stepsize_tol = _UseStepSizeTol()
+
+
+class _WithTolsDoc:
+    def __init__(self, cls, args, kwargs):
+        self.cls = cls
+        self.args = args
+        self.kwargs = kwargs
+
+    def __pdoc__(self, **kwargs):
+        first_call = wl.bracketed(
+            begin=wl.TextDoc("diffrax.with_stepsize_controller_tols("),
+            docs=[wl.pdoc(self.cls, **kwargs)],
+            sep=wl.comma,
+            end=wl.TextDoc(")"),
+            indent=kwargs["indent"],
+        )
+        second_call = wl.bracketed(
+            begin=first_call + wl.TextDoc("("),
+            docs=[wl.pdoc(arg, **kwargs) for arg in self.args]
+            + wl.named_objs(self.kwargs.items(), **kwargs),
+            sep=wl.comma,
+            end=wl.TextDoc(")"),
+            indent=kwargs["indent"],
+        )
+        return second_call
 
 
 def with_stepsize_controller_tols(cls: type[optx.AbstractRootFinder]):
@@ -42,6 +67,8 @@ def with_stepsize_controller_tols(cls: type[optx.AbstractRootFinder]):
     """
 
     def make(*args, **kwargs):
+        if hasattr(typing, "GENERATING_DOCUMENTATION") and not typing.TYPE_CHECKING:
+            return _WithTolsDoc(cls, args, kwargs)
         # Use `inf` as a dummy value to avoid triggering typechecking errors.
         # Pass `norm` explicitly to disallow passing it through `*args, **kwargs`.
         self = cls(*args, **kwargs, rtol=jnp.inf, atol=jnp.inf, norm=optx.max_norm)

@@ -25,6 +25,18 @@ classifiers = [
 urls = {repository = "https://github.com/patrick-kidger/diffrax" }
 dependencies = ["jax>=0.4.38", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "equinox>=0.11.10", "lineax>=0.0.5", "optimistix>=0.0.10", "wadler_lindig>=0.1.1"]
 
+[project.optional-dependencies]
+docs = [
+  "hippogriffe==0.2.2",
+  "mkdocs==1.6.1",
+  "mkdocs-include-exclude-files==0.1.0",
+  "mkdocs-ipynb==0.1.1",
+  "mkdocs-material==9.6.7",
+  "mkdocstrings==0.28.3",
+  "mkdocstrings-python==1.16.8",
+  "pymdown-extensions==10.14.3",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

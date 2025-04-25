@@ -207,8 +207,10 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
 
 
 class AbstractImplicitSolver(AbstractSolver[_SolverState]):
-    """Indicates that this is an implicit differential equation solver, and as such
-    that it should take a root finder as an argument.
+    """Indicates that this is an implicit differential equation solver.
+
+    Subclasses must define `.root_finder` and `.root_find_max_steps` as a dataclass
+    fields or as properties.
     """
 
     root_finder: AbstractVar[optx.AbstractRootFinder]
@@ -240,6 +242,8 @@ class AbstractWrappedSolver(AbstractSolver[_SolverState]):
 
     Inherit from this class if that is desired behaviour. (Do not inherit from this
     class if that is not desired behaviour.)
+
+    Subclasses must define `.solver` as a dataclass field or as a property.
     """
 
     solver: AbstractVar[AbstractSolver]

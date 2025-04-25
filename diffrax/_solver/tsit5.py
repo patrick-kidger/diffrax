@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar, Optional
 
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -186,3 +187,7 @@ class Tsit5(AbstractERK):
 
     def order(self, terms):
         return 5
+
+
+eqxi.doc_remove_args("scan_kind")(Tsit5.__init__)
+Tsit5.__init__.__doc__ = """**Arguments:** None"""
