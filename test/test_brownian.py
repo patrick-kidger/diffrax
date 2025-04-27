@@ -1,3 +1,7 @@
+import jax
+
+
+jax.config.update("jax_enable_x64", True)
 import contextlib
 import math
 from typing import Literal
@@ -36,11 +40,21 @@ def _make_struct(shape, dtype):
 @pytest.mark.parametrize(
     "ctr", [diffrax.UnsafeBrownianPath, diffrax.VirtualBrownianTree]
 )
-@pytest.mark.parametrize("levy_area", _levy_areas)
+@pytest.mark.parametrize(
+    "levy_area",
+    _levy_areas
+    + (diffrax.DavieWeakSpaceSpaceLevyArea, diffrax.DavieFosterWeakSpaceSpaceLevyArea),
+)
 @pytest.mark.parametrize("use_levy", (False, True))
 def test_shape_and_dtype(ctr, levy_area, use_levy, getkey):
     t0 = 0.0
     t1 = 2.0
+
+    if (
+        issubclass(levy_area, diffrax.AbstractWeakSpaceSpaceLevyArea)
+        and ctr is diffrax.VirtualBrownianTree
+    ):
+        return
 
     shapes_dtypes1 = (
         ((), None),

@@ -18,7 +18,10 @@ from ._custom_types import (
     AbstractBrownianIncrement as AbstractBrownianIncrement,
     AbstractSpaceTimeLevyArea as AbstractSpaceTimeLevyArea,
     AbstractSpaceTimeTimeLevyArea as AbstractSpaceTimeTimeLevyArea,
+    AbstractWeakSpaceSpaceLevyArea as AbstractWeakSpaceSpaceLevyArea,
     BrownianIncrement as BrownianIncrement,
+    DavieFosterWeakSpaceSpaceLevyArea as DavieFosterWeakSpaceSpaceLevyArea,
+    DavieWeakSpaceSpaceLevyArea as DavieWeakSpaceSpaceLevyArea,
     SpaceTimeLevyArea as SpaceTimeLevyArea,
     SpaceTimeTimeLevyArea as SpaceTimeTimeLevyArea,
 )
