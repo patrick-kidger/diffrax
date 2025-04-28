@@ -33,20 +33,28 @@ from ._event import (
 )
 from ._global_interpolation import (
     AbstractGlobalInterpolation as AbstractGlobalInterpolation,
+)
+from ._global_interpolation import CubicInterpolation as CubicInterpolation
+from ._global_interpolation import DenseInterpolation as DenseInterpolation
+from ._global_interpolation import LinearInterpolation as LinearInterpolation
+from ._global_interpolation import (
     backward_hermite_coefficients as backward_hermite_coefficients,
-    CubicInterpolation as CubicInterpolation,
-    DenseInterpolation as DenseInterpolation,
-    linear_interpolation as linear_interpolation,
-    LinearInterpolation as LinearInterpolation,
+)
+from ._global_interpolation import linear_interpolation as linear_interpolation
+from ._global_interpolation import (
     rectilinear_interpolation as rectilinear_interpolation,
 )
 from ._integrate import diffeqsolve as diffeqsolve
 from ._local_interpolation import (
     AbstractLocalInterpolation as AbstractLocalInterpolation,
-    FourthOrderPolynomialInterpolation as FourthOrderPolynomialInterpolation,
-    LocalLinearInterpolation as LocalLinearInterpolation,
-    ThirdOrderHermitePolynomialInterpolation as ThirdOrderHermitePolynomialInterpolation,  # noqa: E501
 )
+from ._local_interpolation import (
+    FourthOrderPolynomialInterpolation as FourthOrderPolynomialInterpolation,
+)
+from ._local_interpolation import LocalLinearInterpolation as LocalLinearInterpolation
+from ._local_interpolation import (
+    ThirdOrderHermitePolynomialInterpolation as ThirdOrderHermitePolynomialInterpolation,
+)  # noqa: E501
 from ._misc import adjoint_rms_seminorm as adjoint_rms_seminorm
 from ._path import AbstractPath as AbstractPath
 from ._progress_meter import (
@@ -120,6 +128,8 @@ from ._solver import (
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,
+)
+from ._step_size_controller import (
     AbstractStepSizeController as AbstractStepSizeController,
     ClipStepSizeController as ClipStepSizeController,
     ConstantStepSize as ConstantStepSize,
@@ -135,6 +145,18 @@ from ._term import (
     UnderdampedLangevinDriftTerm as UnderdampedLangevinDriftTerm,
     WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm,
 )
+from ._step_size_controller import ConstantStepSize as ConstantStepSize
+from ._step_size_controller import PIDController as PIDController
+from ._step_size_controller import StepTo as StepTo
+from ._term import AbstractTerm as AbstractTerm
+from ._term import ControlTerm as ControlTerm
+from ._term import MultiTerm as MultiTerm
+from ._term import ODETerm as ODETerm
+from ._term import WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm
 
+from ._delays import Delays as Delays
+from ._delays import bind_history as bind_history
+from ._delays import history_extrapolation_implicit as history_extrapolation_implicit
+from ._delays import maybe_find_discontinuity as maybe_find_discontinuity
 
 __version__ = importlib.metadata.version("diffrax")
