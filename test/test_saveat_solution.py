@@ -111,7 +111,7 @@ def test_saveat_solution():
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
-    saveat = diffrax.SaveAt(steps=True)
+    saveat = diffrax.SaveAt(steps=1)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
@@ -121,6 +121,49 @@ def test_saveat_solution():
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
+    assert tree_allclose(sol.ys, _ys)
+    assert sol.controller_state is None
+    assert sol.solver_state is None
+    with pytest.raises(ValueError):
+        sol.evaluate(0.2, 0.8)
+    with pytest.raises(ValueError):
+        sol.derivative(0.2)
+    assert sol.stats["num_steps"] > 0
+    assert sol.result == diffrax.RESULTS.successful
+
+    saveat = diffrax.SaveAt(steps=2)
+    sol = _integrate(saveat)
+    assert sol.t0 == _t0
+    assert sol.t1 == _t1
+    n = (4096 - 1) // 2 + 1
+    assert sol.ts.shape == (n,)  # pyright: ignore
+    assert sol.ys.shape == (n, 1)  # pyright: ignore
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    with jax.numpy_rank_promotion("allow"):
+        _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
+    _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
+    assert tree_allclose(sol.ys, _ys)
+    assert sol.controller_state is None
+    assert sol.solver_state is None
+    with pytest.raises(ValueError):
+        sol.evaluate(0.2, 0.8)
+    with pytest.raises(ValueError):
+        sol.derivative(0.2)
+    assert sol.stats["num_steps"] > 0
+    assert sol.result == diffrax.RESULTS.successful
+
+    saveat = diffrax.SaveAt(steps=2, t1=True)
+    sol = _integrate(saveat)
+    assert sol.t0 == _t0
+    assert sol.t1 == _t1
+    n = (4096 - 1) // 2 + 1
+    assert sol.ts.shape == (n,)  # pyright: ignore
+    assert sol.ys.shape == (n, 1)  # pyright: ignore
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    with jax.numpy_rank_promotion("allow"):
+        _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
+    _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
+    print(_ys)
     assert tree_allclose(sol.ys, _ys)
     assert sol.controller_state is None
     assert sol.solver_state is None
@@ -147,6 +190,70 @@ def test_saveat_solution():
     assert sol.result == diffrax.RESULTS.successful
 
 
+def test_saveat_solution_skip_steps():
+    def _step_integrate(saveat: diffrax.SaveAt):
+        term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
+        ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        sol_ts = diffrax.diffeqsolve(
+            term,
+            t0=ts[0],
+            t1=ts[-1],
+            y0=jnp.array([1.0]),
+            dt0=None,
+            solver=diffrax.Euler(),
+            saveat=saveat,
+            stepsize_controller=diffrax.StepTo(ts=ts),
+            max_steps=10,
+        ).ts
+        assert sol_ts is not None
+        return sol_ts[jnp.isfinite(sol_ts)]
+
+    saveat = diffrax.SaveAt(steps=2)
+    ts = _step_integrate(saveat)
+    assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0]))
+    saveat = diffrax.SaveAt(steps=2, t1=True)
+    ts = _step_integrate(saveat)
+    assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0, 6.0]))
+    saveat = diffrax.SaveAt(steps=2, t1=True, t0=True)
+    ts = _step_integrate(saveat)
+    assert jnp.allclose(ts, jnp.array([0.0, 1.0, 3.0, 5.0, 6.0]))
+    saveat = diffrax.SaveAt(steps=3)
+    ts = _step_integrate(saveat)
+    assert jnp.allclose(ts, jnp.array([1.0, 4.0]))
+    saveat = diffrax.SaveAt(steps=3, t1=True)
+    ts = _step_integrate(saveat)
+    assert jnp.allclose(ts, jnp.array([1.0, 4.0, 6.0]))
+    saveat = diffrax.SaveAt(steps=3, t1=True, t0=True)
+    ts = _step_integrate(saveat)
+    assert jnp.allclose(ts, jnp.array([0.0, 1.0, 4.0, 6.0]))
+
+
+def test_saveat_solution_skip_vs_saveat():
+    ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    n = 2
+    saveat_skip = diffrax.SaveAt(steps=n)
+    saveat = diffrax.SaveAt(ts=ts[::n])
+    term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
+
+    def solve(saveat):
+        return diffrax.diffeqsolve(
+            term,
+            t0=ts[0],
+            t1=ts[-1],
+            y0=jnp.array([1.0]),
+            dt0=None,
+            solver=diffrax.Euler(),
+            saveat=saveat,
+            stepsize_controller=diffrax.StepTo(ts=ts),
+            max_steps=10,
+        )
+
+    sol_skip = solve(saveat_skip)
+    sol = solve(saveat)
+    assert sol_skip.ts == sol.ts
+    assert sol_skip.ys == sol.ys
+
+
 @pytest.mark.parametrize("subs", [True, False])
 def test_t0_eq_t1(subs):
     y0 = jnp.array([2.0])
@@ -164,7 +271,7 @@ def test_t0_eq_t1(subs):
         get2 = diffrax.SubSaveAt(
             t0=True,
             ts=ts,
-            steps=True,
+            steps=1,
         )
         subs = (get0, get1, get2)
         saveat = diffrax.SaveAt(subs=subs)
@@ -220,7 +327,7 @@ def test_t0_eq_t1_complicated():
         get2 = diffrax.SubSaveAt(
             t0=True,
             ts=ts,
-            steps=True,
+            steps=1,
             fn=lambda t, y, args: jnp.where(jnp.isinf(y), 3.0, 4.0),
         )
         subs = (get0, get1, get2)
@@ -294,7 +401,7 @@ def test_subsaveat(adjoint, multi_subs, with_fn, getkey):
         subsaveat_kwargs: dict = dict()
     get2 = diffrax.SubSaveAt(t0=True, ts=jnp.linspace(0.5, 1.5, 3), **subsaveat_kwargs)
     if multi_subs:
-        get0 = diffrax.SubSaveAt(steps=True, fn=lambda _, y, __: y[0])
+        get0 = diffrax.SubSaveAt(steps=1, fn=lambda _, y, __: y[0])
         get1 = diffrax.SubSaveAt(
             ts=jnp.linspace(0, 1, 5), t1=True, fn=lambda _, y, __: y[1]
         )
