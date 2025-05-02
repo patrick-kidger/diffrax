@@ -334,6 +334,7 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order, dtype):
         diffrax.SaveAt(t1=True),
         diffrax.SaveAt(ts=[3.5, 0.7]),
         diffrax.SaveAt(steps=True),
+        diffrax.SaveAt(steps=2),
         diffrax.SaveAt(dense=True),
     ),
 )
