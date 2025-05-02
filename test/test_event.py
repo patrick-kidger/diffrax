@@ -564,7 +564,7 @@ def test_event_dtype_error():
 
 
 @pytest.mark.parametrize("steps", (1, 2, 3, 4, 5))
-def test_event_save_steps(steps):
+def test_event_save_all_steps(steps):
     term = diffrax.ODETerm(lambda t, y, args: (1.0, 1.0))
     solver = diffrax.Tsit5()
     t0 = 0
@@ -604,7 +604,7 @@ def test_event_save_steps(steps):
     num_steps = [steps, steps, steps + 1, steps]
     yevents = [(thr, 0), (thr, 0), (thr, 0), (thr, thr)]
 
-    for saveat, n, yevent in zip(saveats, num_steps, yevents):
+    for saveat, n, yevent in zip(saveats, num_steps, yevents, strict=True):
         ts, ys = run(saveat)
         xs, zs = ys
         xevent, zevent = yevent

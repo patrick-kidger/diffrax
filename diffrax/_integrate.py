@@ -236,6 +236,7 @@ def _save(
     fn: Callable,
     save_state: SaveState,
     repeat: int,
+    pred=True,
 ) -> SaveState:
     ts = save_state.ts
     ys = save_state.ys
@@ -244,12 +245,17 @@ def _save(
     ts = lax.dynamic_update_slice_in_dim(
         ts, jnp.broadcast_to(t, (repeat,)), save_index, axis=0
     )
+    y_to_save = lax.cond(
+        pred,
+        lambda: fn(t, y, args),
+        lambda: jtu.tree_map(lambda ys_: ys_[save_index], ys),
+    )
     ys = jtu.tree_map(
         lambda ys_, y_: lax.dynamic_update_slice_in_dim(
             ys_, jnp.broadcast_to(y_, (repeat, *y_.shape)), save_index, axis=0
         ),
         ys,
-        fn(t, y, args),
+        y_to_save,
     )
     save_index = save_index + repeat
 
@@ -482,14 +488,32 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps:
+            if subsaveat.steps != 0:
+                save_step = (state.num_accepted_steps % subsaveat.steps) == 0
+                should_save = keep_step & save_step
+
+                def save_fn(tprev, y, args):
+                    return subsaveat.fn(tprev, y, args)
+                    # TODO: Enable this, but I am not sure if possible? How do we know
+                    # the output shape of `.fn`? We should do a dummy call to it?
+                    if subsaveat.steps == 1:
+                        return subsaveat.fn(tprev, y, args)
+                    else:
+                        return lax.cond(
+                            should_save,
+                            lambda: subsaveat.fn(tprev, y, args),
+                            lambda: jtu.tree_map(
+                                lambda y: jnp.zeros(y.shape[1:], y.dtype), save_state.ys
+                            ),
+                        )
+
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
                 ys = jtu.tree_map(
                     ft.partial(maybe_inplace, save_state.save_index),
-                    subsaveat.fn(tprev, y, args),
+                    save_fn(tprev, y, args),
                     save_state.ys,
                 )
-                save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
+                save_index = save_state.save_index + jnp.where(should_save, 1, 0)
                 save_state = eqx.tree_at(
                     lambda s: [s.ts, s.ys, s.save_index],
                     save_state,
@@ -500,7 +524,6 @@ def loop(
         save_state = jtu.tree_map(
             save_steps, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
-
         if saveat.dense:
             dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
             dense_infos = jtu.tree_map(
@@ -800,20 +823,33 @@ def loop(
     )
 
     def _save_t1(subsaveat, save_state):
-        if event is None or event.root_finder is None:
-            if subsaveat.t1 and not subsaveat.steps:
-                # If subsaveat.steps then the final value is already saved.
-                save_state = _save(
-                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
-                )
+        if subsaveat.steps == 0:
+            # We're not saving the final value via `steps`,
+            # so we might need to save it via `t1`.
+            t1_saved_via_steps = False
+        elif subsaveat.steps == 1:
+            # We're definitely saving the final value via `steps`,
+            # so we can skip saving it via `t1`.
+            t1_saved_via_steps = True
         else:
-            if subsaveat.t1 or subsaveat.steps:
-                # In this branch we need to replace the last value with tfinal
-                # and yfinal returned by the root finder also if subsaveat.steps
-                # because we deleted the last value after the event time above.
-                save_state = _save(
-                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
-                )
+            # We might be saving the final value via `steps`,
+            # so we might need to save it via `t1`.
+            t1_saved_via_steps = final_state.num_accepted_steps % subsaveat.steps == 0
+        if event is None or event.root_finder is None:
+            if type(t1_saved_via_steps) is bool:
+                t1_not_saved_via_steps = not t1_saved_via_steps
+            else:
+                t1_not_saved_via_steps = jnp.logical_not(t1_saved_via_steps)
+            pred = subsaveat.t1 & t1_not_saved_via_steps
+        else:
+            # If we're using an event with a root finder, and are saving steps,
+            # then we need to write the final value here because we deleted the
+            # last value after the event time above.
+            pred = subsaveat.t1 | t1_saved_via_steps
+        if pred is not False:
+            save_state = _save(
+                tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1, pred=pred
+            )
         return save_state
 
     save_state = jtu.tree_map(_save_t1, saveat.subs, save_state, is_leaf=_is_subsaveat)
@@ -1215,16 +1251,20 @@ def diffeqsolve(
             out_size += 1
         if subsaveat.ts is not None:
             out_size += len(subsaveat.ts)
-        if subsaveat.steps:
+        if subsaveat.steps != 0:
             # We have no way of knowing how many steps we'll actually end up taking, and
             # XLA doesn't support dynamic shapes. So we just have to allocate the
             # maximum amount of steps we can possibly take.
             if max_steps is None:
                 raise ValueError(
-                    "`max_steps=None` is incompatible with saving at `steps=True`"
+                    "`max_steps=None` is incompatible with saving at `steps=n`"
                 )
-            out_size += max_steps
-        if subsaveat.t1 and not subsaveat.steps:
+            out_size += max_steps // subsaveat.steps
+        if subsaveat.t1 and (
+            (max_steps is None)
+            or (subsaveat.steps == 0)
+            or (max_steps % subsaveat.steps != 0)
+        ):
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
