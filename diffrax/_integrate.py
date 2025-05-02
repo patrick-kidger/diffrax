@@ -487,14 +487,25 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps:
-                ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
-                ys = jtu.tree_map(
-                    ft.partial(maybe_inplace, save_state.save_index),
-                    subsaveat.fn(tprev, y, args),
-                    save_state.ys,
+            steps = int(subsaveat.steps)
+            if steps:
+                save_step = (state.num_accepted_steps) % subsaveat.steps == 0
+                should_save = keep_step & save_step
+
+                def save_branch():
+                    fn_result = subsaveat.fn(tprev, y, args)
+                    new_ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
+                    new_ys = jtu.tree_map(
+                        lambda yi, ysi: maybe_inplace(save_state.save_index, yi, ysi),
+                        fn_result,
+                        save_state.ys,
+                    )
+                    return new_ts, new_ys
+
+                ts, ys = lax.cond(
+                    should_save, save_branch, lambda: (save_state.ts, save_state.ys)
                 )
-                save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
+                save_index = save_state.save_index + jnp.where(should_save, 1, 0)
                 save_state = eqx.tree_at(
                     lambda s: [s.ts, s.ys, s.save_index],
                     save_state,
@@ -1235,9 +1246,9 @@ def diffeqsolve(
             # maximum amount of steps we can possibly take.
             if max_steps is None:
                 raise ValueError(
-                    "`max_steps=None` is incompatible with saving at `steps=True`"
+                    "`max_steps=None` is incompatible with saving at `steps=n`"
                 )
-            out_size += max_steps
+            out_size += max_steps // subsaveat.steps
         if subsaveat.t1 and not subsaveat.steps:
             out_size += 1
         saveat_ts_index = 0
