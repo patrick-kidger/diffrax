@@ -24,7 +24,7 @@ def test_adaptive_sde(capfd, getkey):
     dfx.citation(
         terms=terms,
         stepsize_controller=dfx.ClipStepSizeController(
-            stepsize_controller, store_rejected_steps=1
+            stepsize_controller, store_rejected_steps=True
         ),
     )
     out = capfd.readouterr().out

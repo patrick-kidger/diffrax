@@ -35,6 +35,26 @@ class SubSaveAt(eqx.Module):
     steps: int = 0
     fn: Callable = save_y
 
+    def __init__(
+        self,
+        *,
+        t0: bool = False,
+        t1: bool = False,
+        ts=None,
+        steps: Union[bool, int] = 0,
+        fn=None,
+    ):
+        if fn is None:
+            fn = save_y
+        self.t0 = t0
+        self.t1 = t1
+        self.ts = ts
+        if isinstance(steps, bool):
+            self.steps = 1 if steps else 0
+        else:
+            self.steps = steps
+        self.fn = fn
+
     def __check_init__(self):
         if not self.t0 and not self.t1 and self.ts is None and not self.steps:
             raise ValueError("Empty saveat -- nothing will be saved.")
@@ -73,7 +93,7 @@ class SaveAt(eqx.Module):
         t0: bool = False,
         t1: bool = False,
         ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]] = None,
-        steps: int = 0,
+        steps: Union[bool, int] = False,
         fn: Callable = save_y,
         subs: PyTree[SubSaveAt] = None,
         dense: bool = False,

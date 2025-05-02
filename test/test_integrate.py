@@ -333,7 +333,7 @@ def test_sde_strong_order(solver_ctr, noise, theoretical_order, dtype):
         diffrax.SaveAt(t0=True),
         diffrax.SaveAt(t1=True),
         diffrax.SaveAt(ts=[3.5, 0.7]),
-        diffrax.SaveAt(steps=1),
+        diffrax.SaveAt(steps=True),
         diffrax.SaveAt(steps=2),
         diffrax.SaveAt(dense=True),
     ),
@@ -419,7 +419,7 @@ def test_reverse_time(solver_ctr, dt0, saveat, dtype, getkey):
         diffrax.SaveAt(t0=True, fn=lambda t, y, args: t),
         diffrax.SaveAt(t1=True, fn=lambda t, y, args: t),
         diffrax.SaveAt(dense=True, fn=lambda t, y, args: t),
-        diffrax.SaveAt(steps=1, fn=lambda t, y, args: t),
+        diffrax.SaveAt(steps=True, fn=lambda t, y, args: t),
         diffrax.SaveAt(ts=jnp.linspace(3.0, 1.0, 5), fn=lambda t, y, args: t),
     ),
 )

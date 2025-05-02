@@ -26,7 +26,7 @@ def test_step_ts(backwards):
     y0 = 1.0
     pid_controller = diffrax.PIDController(rtol=1e-4, atol=1e-6)
     stepsize_controller = diffrax.ClipStepSizeController(pid_controller, step_ts=[3, 4])
-    saveat = diffrax.SaveAt(steps=1)
+    saveat = diffrax.SaveAt(steps=True)
     sol = diffrax.diffeqsolve(
         term,
         solver,
@@ -58,7 +58,7 @@ def test_jump_ts(backwards):
         t0, t1 = t1, t0
     dt0 = None
     y0 = 1.5, 0
-    saveat = diffrax.SaveAt(steps=1)
+    saveat = diffrax.SaveAt(steps=True)
 
     def run(**kwargs):
         pid_controller = diffrax.PIDController(rtol=1e-4, atol=1e-6)
@@ -123,7 +123,7 @@ def test_revisit_steps(backwards):
         store_rejected_steps=store_rejected_steps,
         _callback_on_reject=callback_fun,
     )
-    saveat = diffrax.SaveAt(steps=1, controller_state=True)
+    saveat = diffrax.SaveAt(steps=True, controller_state=True)
     sol = diffrax.diffeqsolve(
         term,
         solver,

@@ -596,10 +596,10 @@ def test_event_save_all_steps(steps):
         return cast(Array, sol.ts), cast(tuple, sol.ys)
 
     saveats = [
-        diffrax.SaveAt(steps=1),
-        diffrax.SaveAt(steps=1, t1=True),
-        diffrax.SaveAt(steps=1, t1=True, t0=True),
-        diffrax.SaveAt(steps=1, fn=lambda t, y, args: (y[0], y[1] + thr)),
+        diffrax.SaveAt(steps=True),
+        diffrax.SaveAt(steps=True, t1=True),
+        diffrax.SaveAt(steps=True, t1=True, t0=True),
+        diffrax.SaveAt(steps=True, fn=lambda t, y, args: (y[0], y[1] + thr)),
     ]
     num_steps = [steps, steps, steps + 1, steps, 0]
     yevents = [(thr, 0), (thr, 0), (thr, 0), (thr, thr), (thr, 0)]
@@ -652,7 +652,7 @@ def test_event_save_ts(steps):
         diffrax.SaveAt(ts=ts),
         diffrax.SaveAt(ts=ts, t1=True),
         diffrax.SaveAt(ts=ts, t0=True),
-        diffrax.SaveAt(ts=ts, steps=1),
+        diffrax.SaveAt(ts=ts, steps=True),
         diffrax.SaveAt(ts=ts, fn=lambda t, y, args: (y[0], y[1] + thr)),
     ]
     save_finals = [False, True, False, True, False]
@@ -700,7 +700,7 @@ def test_event_save_subsaveat(steps):
 
     last_save = save_fn(None, y0 + last_t, None).y
     subsaveat_a = diffrax.SubSaveAt(ts=ts, fn=save_fn)
-    subsaveat_b = diffrax.SubSaveAt(steps=1)
+    subsaveat_b = diffrax.SubSaveAt(steps=True)
     saveat = diffrax.SaveAt(subs=[subsaveat_a, subsaveat_b])
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event, saveat=saveat)
     ts_1, ts_2 = cast(list, sol.ts)

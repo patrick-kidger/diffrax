@@ -487,7 +487,8 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps:
+            steps = int(subsaveat.steps)
+            if steps:
                 save_step = (state.num_accepted_steps) % subsaveat.steps == 0
                 should_save = keep_step & save_step
 
@@ -925,7 +926,7 @@ def diffeqsolve(
         unconditionally.
 
         Can also be set to `None` to allow an arbitrary number of steps, although this
-        is incompatible with `saveat=SaveAt(steps=1)` or `saveat=SaveAt(dense=True)`.
+        is incompatible with `saveat=SaveAt(steps=True)` or `saveat=SaveAt(dense=True)`.
 
     - `throw`: Whether to raise an exception if the integration fails for any reason.
 
