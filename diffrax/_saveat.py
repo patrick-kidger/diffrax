@@ -32,7 +32,7 @@ class SubSaveAt(eqx.Module):
     t0: bool = False
     t1: bool = False
     ts: Optional[Real[Array, " times"]] = eqx.field(default=None, converter=_convert_ts)
-    steps: bool = False
+    steps: int = 0
     fn: Callable = save_y
 
     def __check_init__(self):
@@ -45,7 +45,8 @@ SubSaveAt.__init__.__doc__ = """**Arguments:**
 - `t0`: If `True`, save the initial input `y0`.
 - `t1`: If `True`, save the output at `t1`.
 - `ts`: Some array of times at which to save the output.
-- `steps`: If `True`, save the output at every step of the numerical solver.
+- `steps`: If `n>0`, save the output at every `n`th step of the numerical solver. 
+    `0` means no saving.
 - `fn`: A function `fn(t, y, args)` which specifies what to save into `sol.ys` when
     using `t0`, `t1`, `ts` or `steps`. Defaults to `fn(t, y, args) -> y`, so that the
     evolving solution is saved. This can be useful to save only statistics of your
@@ -72,7 +73,7 @@ class SaveAt(eqx.Module):
         t0: bool = False,
         t1: bool = False,
         ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]] = None,
-        steps: bool = False,
+        steps: int = 0,
         fn: Callable = save_y,
         subs: PyTree[SubSaveAt] = None,
         dense: bool = False,
@@ -101,7 +102,8 @@ SaveAt.__init__.__doc__ = """**Main Arguments:**
 - `t0`: If `True`, save the initial input `y0`.
 - `t1`: If `True`, save the output at `t1`.
 - `ts`: Some array of times at which to save the output.
-- `steps`: If `True`, save the output at every step of the numerical solver.
+- `steps`: If `n>0`, save the output at every `n`th step of the numerical solver. 
+    `0` means no saving.
 - `dense`: If `True`, save dense output, that can later be evaluated at any part of
     the interval $[t_0, t_1]$ via `sol = diffeqsolve(...); sol.evaluate(...)`.
 

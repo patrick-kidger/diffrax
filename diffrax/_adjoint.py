@@ -815,7 +815,7 @@ class BacksolveAdjoint(AbstractAdjoint):
         if saveat.dense or saveat.subs.steps:
             raise NotImplementedError(
                 "Cannot use `adjoint=BacksolveAdjoint()` with "
-                "`saveat=SaveAt(steps=True)` or saveat=SaveAt(dense=True)`."
+                "`saveat=SaveAt(steps=1)` or saveat=SaveAt(dense=True)`."
             )
         if saveat.subs.fn is not save_y:
             raise NotImplementedError(

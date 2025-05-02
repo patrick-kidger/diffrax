@@ -67,7 +67,7 @@ def dfx_fn(fields, t):
         dt0=None,
         y0=fields,
         args=None,
-        saveat=dfx.SaveAt(steps=True, fn=sample, dense=False),
+        saveat=dfx.SaveAt(steps=1, fn=sample, dense=False),
         stepsize_controller=dfx.StepTo(ts),
         adjoint=dfx.RecursiveCheckpointAdjoint(checkpoints=N_steps),
         max_steps=N_steps,

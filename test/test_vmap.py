@@ -79,7 +79,7 @@ def test_vmap_y0(stepsize_controller, dtype):
     assert jnp.array_equal(sol.ts, jnp.broadcast_to(_t, (10, 4)))  # pyright: ignore
     assert sol.ys.shape == (10, 4, 2)  # pyright: ignore
 
-    saveat = diffrax.SaveAt(steps=True)
+    saveat = diffrax.SaveAt(steps=1)
     sol = jax.vmap(
         lambda y0i: diffrax.diffeqsolve(
             diffrax.ODETerm(f),

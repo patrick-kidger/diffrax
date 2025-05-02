@@ -111,12 +111,33 @@ def test_saveat_solution():
     assert sol.stats["num_steps"] > 0
     assert sol.result == diffrax.RESULTS.successful
 
-    saveat = diffrax.SaveAt(steps=True)
+    saveat = diffrax.SaveAt(steps=1)
     sol = _integrate(saveat)
     assert sol.t0 == _t0
     assert sol.t1 == _t1
     assert sol.ts.shape == (4096,)  # pyright: ignore
     assert sol.ys.shape == (4096, 1)  # pyright: ignore
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    with jax.numpy_rank_promotion("allow"):
+        _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
+    _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
+    assert tree_allclose(sol.ys, _ys)
+    assert sol.controller_state is None
+    assert sol.solver_state is None
+    with pytest.raises(ValueError):
+        sol.evaluate(0.2, 0.8)
+    with pytest.raises(ValueError):
+        sol.derivative(0.2)
+    assert sol.stats["num_steps"] > 0
+    assert sol.result == diffrax.RESULTS.successful
+
+    saveat = diffrax.SaveAt(steps=2)
+    sol = _integrate(saveat)
+    assert sol.t0 == _t0
+    assert sol.t1 == _t1
+    n = (4096 - 1) // 2 + 1
+    assert sol.ts.shape == (n,)  # pyright: ignore
+    assert sol.ys.shape == (n, 1)  # pyright: ignore
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
@@ -164,7 +185,7 @@ def test_t0_eq_t1(subs):
         get2 = diffrax.SubSaveAt(
             t0=True,
             ts=ts,
-            steps=True,
+            steps=1,
         )
         subs = (get0, get1, get2)
         saveat = diffrax.SaveAt(subs=subs)
@@ -220,7 +241,7 @@ def test_t0_eq_t1_complicated():
         get2 = diffrax.SubSaveAt(
             t0=True,
             ts=ts,
-            steps=True,
+            steps=1,
             fn=lambda t, y, args: jnp.where(jnp.isinf(y), 3.0, 4.0),
         )
         subs = (get0, get1, get2)
@@ -294,7 +315,7 @@ def test_subsaveat(adjoint, multi_subs, with_fn, getkey):
         subsaveat_kwargs: dict = dict()
     get2 = diffrax.SubSaveAt(t0=True, ts=jnp.linspace(0.5, 1.5, 3), **subsaveat_kwargs)
     if multi_subs:
-        get0 = diffrax.SubSaveAt(steps=True, fn=lambda _, y, __: y[0])
+        get0 = diffrax.SubSaveAt(steps=1, fn=lambda _, y, __: y[0])
         get1 = diffrax.SubSaveAt(
             ts=jnp.linspace(0, 1, 5), t1=True, fn=lambda _, y, __: y[1]
         )

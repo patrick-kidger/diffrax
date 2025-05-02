@@ -124,7 +124,7 @@ def test_against():
     # Until that day comes, it's worth checking that things don't silently break.
     with pytest.raises(NotImplementedError):
         _run_grad_int(
-            y0__args__term, diffrax.SaveAt(steps=True), diffrax.BacksolveAdjoint()
+            y0__args__term, diffrax.SaveAt(steps=1), diffrax.BacksolveAdjoint()
         )
     with pytest.raises(NotImplementedError):
         _run_grad_int(

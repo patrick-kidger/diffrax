@@ -13,7 +13,7 @@ def test_tqdm_progress_meter(capfd):
         t1 = 5
         dt0 = 0.01
         y0 = 1.0
-        saveat = diffrax.SaveAt(steps=True)
+        saveat = diffrax.SaveAt(steps=1)
         sol = diffrax.diffeqsolve(
             term,
             solver,

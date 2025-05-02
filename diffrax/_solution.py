@@ -105,7 +105,7 @@ class Solution(AbstractPath):
 
     !!! note
 
-        If `diffeqsolve(..., saveat=SaveAt(steps=True))` is set, then the `ts` and `ys`
+        If `diffeqsolve(..., saveat=SaveAt(steps=1))` is set, then the `ts` and `ys`
         in the solution object will be padded with `NaN`s, out to the value of
         `max_steps` passed to [`diffrax.diffeqsolve`][].
 
