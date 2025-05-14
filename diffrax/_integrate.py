@@ -715,7 +715,7 @@ def loop(
                     # a root.
                     #
                     # We allow this `lax.cond` to be inefficiently transformed into a
-                    # `lax.select` wshen `_event_mask_i` is batched. There isn't any way
+                    # `lax.select` when `_event_mask_i` is batched. There isn't any way
                     # to avoid this, I think.
                     _value = lax.cond(_event_mask_i, _call_real_impl, lambda: 0.0)
 
