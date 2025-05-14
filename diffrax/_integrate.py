@@ -491,18 +491,18 @@ def loop(
                 save_step = state.num_accepted_steps % subsaveat.steps == 0
                 should_save = keep_step & save_step
 
-                def save_branch():
-                    fn_result = subsaveat.fn(tprev, y, args)
-                    new_ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
-                    new_ys = jtu.tree_map(
-                        lambda yi, ysi: maybe_inplace(save_state.save_index, yi, ysi),
-                        fn_result,
-                        save_state.ys,
+                def save_fn(tprev, y, args):
+                    return lax.cond(
+                        should_save,
+                        lambda: subsaveat.fn(tprev, y, args),
+                        lambda: jnp.zeros_like(save_state.ys[0]),
                     )
-                    return new_ts, new_ys
 
-                ts, ys = lax.cond(
-                    should_save, save_branch, lambda: (save_state.ts, save_state.ys)
+                ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
+                ys = jtu.tree_map(
+                    ft.partial(maybe_inplace, save_state.save_index),
+                    save_fn(tprev, y, args),
+                    save_state.ys,
                 )
                 save_index = save_state.save_index + jnp.where(should_save, 1, 0)
                 save_state = eqx.tree_at(
@@ -1248,7 +1248,11 @@ def diffeqsolve(
                     "`max_steps=None` is incompatible with saving at `steps=n`"
                 )
             out_size += max_steps // subsaveat.steps
-        if subsaveat.t1 and (max_steps is None or (max_steps % subsaveat.steps != 0)):
+        if subsaveat.t1 and (
+            (max_steps is None)
+            or (subsaveat.steps == 0)
+            or (max_steps % subsaveat.steps != 0)
+        ):
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
