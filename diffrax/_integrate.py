@@ -488,7 +488,7 @@ def loop(
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.steps != 0:
-                save_step = state.num_accepted_steps % subsaveat.steps == 0
+                save_step = (state.num_accepted_steps % subsaveat.steps) == 0
                 should_save = keep_step & save_step
 
                 def save_fn(tprev, y, args):
@@ -515,7 +515,6 @@ def loop(
         save_state = jtu.tree_map(
             save_steps, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
-
         if saveat.dense:
             dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
             dense_infos = jtu.tree_map(
@@ -815,20 +814,25 @@ def loop(
     )
 
     def _save_t1(subsaveat, save_state):
-        if event is None or event.root_finder is None:
-            if subsaveat.t1 and subsaveat.steps == 0:
-                # If subsaveat.steps then the final value is already saved.
-                save_state = _save(
-                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
-                )
-        else:
-            if subsaveat.t1 or subsaveat.steps != 0:
-                # In this branch we need to replace the last value with tfinal
-                # and yfinal returned by the root finder also if subsaveat.steps
-                # because we deleted the last value after the event time above.
-                save_state = _save(
-                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
-                )
+        print()
+        print(save_state.save_index)
+        print(save_state.ts)
+        t1_was_saved = (
+            (save_state.save_index - int(subsaveat.t0)) % subsaveat.steps
+        ) == 0
+        print(t1_was_saved)
+        cond = (
+            jnp.logical_and(subsaveat.t1, jnp.logical_not(t1_was_saved))
+            if ((event is None) or (event.root_finder is None))
+            else jnp.logical_or(subsaveat.t1, t1_was_saved)
+        )
+        print(cond)
+        save_state = lax.cond(
+            cond,
+            lambda _: _save(tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1),
+            lambda _: save_state,
+            operand=None,
+        )
         return save_state
 
     save_state = jtu.tree_map(_save_t1, saveat.subs, save_state, is_leaf=_is_subsaveat)
