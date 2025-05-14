@@ -487,8 +487,7 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            steps = int(subsaveat.steps)
-            if steps:
+            if subsaveat.steps:
                 save_step = (state.num_accepted_steps) % subsaveat.steps == 0
                 should_save = keep_step & save_step
 

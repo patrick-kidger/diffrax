@@ -29,26 +29,24 @@ class SubSaveAt(eqx.Module):
     relatively niche feature and most users will probably not need to use `SubSaveAt`.)
     """
 
-    t0: bool = False
-    t1: bool = False
-    ts: Optional[Real[Array, " times"]] = eqx.field(default=None, converter=_convert_ts)
-    steps: int = 0
-    fn: Callable = save_y
+    t0: bool
+    t1: bool
+    ts: Optional[Real[Array, " times"]]
+    steps: int
+    fn: Callable
 
     def __init__(
         self,
         *,
         t0: bool = False,
         t1: bool = False,
-        ts=None,
+        ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]] = None,
         steps: Union[bool, int] = 0,
-        fn=None,
+        fn: Callable = save_y,
     ):
-        if fn is None:
-            fn = save_y
         self.t0 = t0
         self.t1 = t1
-        self.ts = ts
+        self.ts = _convert_ts(ts)
         if isinstance(steps, bool):
             self.steps = 1 if steps else 0
         else:
