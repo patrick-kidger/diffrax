@@ -715,7 +715,7 @@ def loop(
                     # a root.
                     #
                     # We allow this `lax.cond` to be inefficiently transformed into a
-                    # `lax.select` when `_event_mask_i` is batched. There isn't any way
+                    # `lax.select` wshen `_event_mask_i` is batched. There isn't any way
                     # to avoid this, I think.
                     _value = lax.cond(_event_mask_i, _call_real_impl, lambda: 0.0)
 
@@ -814,19 +814,14 @@ def loop(
     )
 
     def _save_t1(subsaveat, save_state):
-        print()
-        print(save_state.save_index)
-        print(save_state.ts)
-        t1_was_saved = (
-            (save_state.save_index - int(subsaveat.t0)) % subsaveat.steps
-        ) == 0
-        print(t1_was_saved)
+        # t1_was_saved = (
+        #     (save_state.save_index - int(subsaveat.t0)) % subsaveat.steps
+        # ) == 0
         cond = (
-            jnp.logical_and(subsaveat.t1, jnp.logical_not(t1_was_saved))
+            jnp.logical_and(subsaveat.t1, jnp.logical_not(subsaveat.steps == 0))
             if ((event is None) or (event.root_finder is None))
-            else jnp.logical_or(subsaveat.t1, t1_was_saved)
+            else jnp.logical_or(subsaveat.t1, subsaveat.steps != 0)
         )
-        print(cond)
         save_state = lax.cond(
             cond,
             lambda _: _save(tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1),
