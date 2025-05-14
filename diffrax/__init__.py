@@ -7,6 +7,7 @@ from ._adjoint import (
     ForwardMode as ForwardMode,
     ImplicitAdjoint as ImplicitAdjoint,
     RecursiveCheckpointAdjoint as RecursiveCheckpointAdjoint,
+    ReversibleAdjoint as ReversibleAdjoint,
 )
 from ._autocitation import citation as citation, citation_rules as citation_rules
 from ._brownian import (
@@ -75,6 +76,7 @@ from ._solver import (
     AbstractFosterLangevinSRK as AbstractFosterLangevinSRK,
     AbstractImplicitSolver as AbstractImplicitSolver,
     AbstractItoSolver as AbstractItoSolver,
+    AbstractReversibleSolver as AbstractReversibleSolver,
     AbstractRungeKutta as AbstractRungeKutta,
     AbstractSDIRK as AbstractSDIRK,
     AbstractSolver as AbstractSolver,
@@ -105,6 +107,7 @@ from ._solver import (
     MultiButcherTableau as MultiButcherTableau,
     QUICSORT as QUICSORT,
     Ralston as Ralston,
+    Reversible as Reversible,
     ReversibleHeun as ReversibleHeun,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
