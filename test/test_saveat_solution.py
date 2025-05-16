@@ -190,43 +190,43 @@ def test_saveat_solution():
     assert sol.result == diffrax.RESULTS.successful
 
 
-def test_saveat_solution_skip_steps_t1():
+def test_saveat_solution_skip_steps():
     def _step_integrate(saveat: diffrax.SaveAt):
-        term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
-        ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-        sol_ts = diffrax.diffeqsolve(
-            term,
-            t0=ts[0],
-            t1=ts[-1],
-            y0=jnp.array([1.0]),
-            dt0=None,
-            solver=diffrax.Euler(),
-            saveat=saveat,
-            stepsize_controller=diffrax.StepTo(ts=ts),
-            max_steps=10,
-        ).ts
-        assert sol_ts is not None
+        with jax.disable_jit():
+            term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
+            ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+            sol_ts = diffrax.diffeqsolve(
+                term,
+                t0=ts[0],
+                t1=ts[-1],
+                y0=jnp.array([1.0]),
+                dt0=None,
+                solver=diffrax.Euler(),
+                saveat=saveat,
+                stepsize_controller=diffrax.StepTo(ts=ts),
+                max_steps=10,
+            ).ts
+            assert sol_ts is not None
         return sol_ts[jnp.isfinite(sol_ts)]
 
     saveat = diffrax.SaveAt(steps=2)
     ts = _step_integrate(saveat)
-    # assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0]))
+    assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0]))
     saveat = diffrax.SaveAt(steps=2, t1=True)
     ts = _step_integrate(saveat)
-    # assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0, 6.0]))
+    assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0, 6.0]))
     saveat = diffrax.SaveAt(steps=2, t1=True, t0=True)
     ts = _step_integrate(saveat)
-    # assert jnp.allclose(ts, jnp.array([0.0, 1.0, 3.0, 5.0, 6.0]))
+    assert jnp.allclose(ts, jnp.array([0.0, 1.0, 3.0, 5.0, 6.0]))
     saveat = diffrax.SaveAt(steps=3)
     ts = _step_integrate(saveat)
-    # assert jnp.allclose(ts, jnp.array([1.0, 4.0]))
+    assert jnp.allclose(ts, jnp.array([1.0, 4.0]))
     saveat = diffrax.SaveAt(steps=3, t1=True)
     ts = _step_integrate(saveat)
-    # assert jnp.allclose(ts, jnp.array([1.0, 4.0, 6.0]))
+    assert jnp.allclose(ts, jnp.array([1.0, 4.0, 6.0]))
     saveat = diffrax.SaveAt(steps=3, t1=True, t0=True)
     ts = _step_integrate(saveat)
-    assert len(ts) > 0
-    # assert jnp.allclose(ts, jnp.array([0.0, 1.0, 4.0, 6.0]))
+    assert jnp.allclose(ts, jnp.array([0.0, 1.0, 4.0, 6.0]))
 
 
 @pytest.mark.parametrize("subs", [True, False])

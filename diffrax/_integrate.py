@@ -814,20 +814,20 @@ def loop(
     )
 
     def _save_t1(subsaveat, save_state):
-        # t1_was_saved = (
-        #     (save_state.save_index - int(subsaveat.t0)) % subsaveat.steps
-        # ) == 0
-        cond = (
-            jnp.logical_and(subsaveat.t1, jnp.logical_not(subsaveat.steps == 0))
-            if ((event is None) or (event.root_finder is None))
-            else jnp.logical_or(subsaveat.t1, subsaveat.steps != 0)
-        )
-        save_state = lax.cond(
-            cond,
-            lambda _: _save(tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1),
-            lambda _: save_state,
-            operand=None,
-        )
+        if event is None or event.root_finder is None:
+            if subsaveat.t1 and not subsaveat.steps:
+                # If subsaveat.steps then the final value is already saved.
+                save_state = _save(
+                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
+                )
+        else:
+            if subsaveat.t1 or subsaveat.steps:
+                # In this branch we need to replace the last value with tfinal
+                # and yfinal returned by the root finder also if subsaveat.steps
+                # because we deleted the last value after the event time above.
+                save_state = _save(
+                    tfinal, yfinal, args, subsaveat.fn, save_state, repeat=1
+                )
         return save_state
 
     save_state = jtu.tree_map(_save_t1, saveat.subs, save_state, is_leaf=_is_subsaveat)
