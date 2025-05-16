@@ -487,14 +487,24 @@ def loop(
             return eqxi.buffer_at_set(x, i, u, pred=keep_step)
 
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-            if subsaveat.steps:
+            if subsaveat.steps != 0:
+                save_step = (state.num_accepted_steps % subsaveat.steps) == 0
+                should_save = keep_step & save_step
+
+                def save_fn(tprev, y, args):
+                    return lax.cond(
+                        should_save,
+                        lambda: subsaveat.fn(tprev, y, args),
+                        lambda: jnp.zeros_like(save_state.ys[0]),
+                    )
+
                 ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
                 ys = jtu.tree_map(
                     ft.partial(maybe_inplace, save_state.save_index),
-                    subsaveat.fn(tprev, y, args),
+                    save_fn(tprev, y, args),
                     save_state.ys,
                 )
-                save_index = save_state.save_index + jnp.where(keep_step, 1, 0)
+                save_index = save_state.save_index + jnp.where(should_save, 1, 0)
                 save_state = eqx.tree_at(
                     lambda s: [s.ts, s.ys, s.save_index],
                     save_state,
@@ -505,7 +515,6 @@ def loop(
         save_state = jtu.tree_map(
             save_steps, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
-
         if saveat.dense:
             dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
             dense_infos = jtu.tree_map(
@@ -1229,16 +1238,20 @@ def diffeqsolve(
             out_size += 1
         if subsaveat.ts is not None:
             out_size += len(subsaveat.ts)
-        if subsaveat.steps:
+        if subsaveat.steps != 0:
             # We have no way of knowing how many steps we'll actually end up taking, and
             # XLA doesn't support dynamic shapes. So we just have to allocate the
             # maximum amount of steps we can possibly take.
             if max_steps is None:
                 raise ValueError(
-                    "`max_steps=None` is incompatible with saving at `steps=True`"
+                    "`max_steps=None` is incompatible with saving at `steps=n`"
                 )
-            out_size += max_steps
-        if subsaveat.t1 and not subsaveat.steps:
+            out_size += max_steps // subsaveat.steps
+        if subsaveat.t1 and (
+            (max_steps is None)
+            or (subsaveat.steps == 0)
+            or (max_steps % subsaveat.steps != 0)
+        ):
             out_size += 1
         saveat_ts_index = 0
         save_index = 0
