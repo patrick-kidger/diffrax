@@ -190,6 +190,7 @@ class AbstractFosterLangevinSRK(
         r"""When h changes, the SRK coefficients (which depend on h) are recomputed
         using this function."""
         # Inner will record the tree structure of the coefficients
+        inner: Any
         inner = sentinel = object()
 
         def recompute_coeffs_leaf(c: UnderdampedLangevinLeaf, _tay_coeffs: _Coeffs):
@@ -239,7 +240,7 @@ class AbstractFosterLangevinSRK(
         tree_with_coeffs = jtu.tree_map(recompute_coeffs_leaf, gamma, tay_coeffs)
         outer = jtu.tree_structure(gamma)
         assert inner is not sentinel, "inner tree structure not set"
-        coeffs_with_tree = jtu.tree_transpose(outer, inner, tree_with_coeffs)  # pyright: ignore
+        coeffs_with_tree = jtu.tree_transpose(outer, inner, tree_with_coeffs)
         return coeffs_with_tree
 
     def init(
