@@ -1,10 +1,11 @@
 import abc
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Optional, Union
 
 import equinox as eqx
 import optimistix as optx
 from jaxtyping import Array, PyTree
+from jax.tree import flatten, unflatten
 
 from ._custom_types import BoolScalarLike, FloatScalarLike, RealScalarLike
 from ._step_size_controller import AbstractAdaptiveStepSizeController
@@ -22,6 +23,32 @@ class Event(eqx.Module):
 
     cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
     root_finder: Optional[optx.AbstractRootFinder] = None
+    bidirect: PyTree[bool]
+
+    def __init__(
+        self,
+        cond_fn,
+        root_finder: Optional[optx.AbstractRootFinder],
+        bidirect: Union[bool, Pytree[bool]] = True,
+    ):
+
+        vals, treedef = flatten(cond_fn)
+        n = len(vals)
+
+        if isinstance(bidirect, bool):
+            bidir_list = [bidirect] * n
+        else:
+            bidir_list = list(bidirect)
+            if len(bidir_list) != n or any(not isinstance(b, bool) for b in bidir_list):
+                raise ValueError(
+                    f"`bidirect` must be a bool or a sequence of bools with the same length as cond_fn"
+                )
+
+        bidir_tree = unflatten(treedef, bidir_list)
+        self.cond_fn = cond_fn
+        self.root_finder = root_finder
+        self.bidirect = bidir_tree
+
 
 
 Event.__init__.__doc__ = """**Arguments:**
@@ -39,6 +66,10 @@ Event.__init__.__doc__ = """**Arguments:**
     just be the end of the step on which it becomes `True`.) 
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
+
+- `bidirect`: A bool or PyTree of bools of the same shape as cond_fn, that decides for each
+    cond_fn if it triggers an event by a zero_cossing in both directions (True) or only from
+    positive to negative (False)  
 
 !!! Example
 
