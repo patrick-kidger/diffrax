@@ -1,5 +1,5 @@
 import abc
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Optional, Union
 
 import equinox as eqx
