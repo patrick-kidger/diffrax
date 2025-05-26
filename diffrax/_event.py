@@ -41,7 +41,8 @@ class Event(eqx.Module):
             bidir_list = list(bidirect)
             if len(bidir_list) != n or any(not isinstance(b, bool) for b in bidir_list):
                 raise ValueError(
-                    f"`bidirect` must be a bool or a sequence of bools with the same length as cond_fn"
+                    "`bidirect` must be a bool or a sequence of bools"
+                    + " with the same length as cond_fn"
                 )
 
         bidir_tree = unflatten(treedef, bidir_list)
