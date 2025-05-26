@@ -22,14 +22,14 @@ class Event(eqx.Module):
     """
 
     cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
-    root_finder: Optional[optx.AbstractRootFinder] = None
     bidirect: PyTree[bool]
+    root_finder: Optional[optx.AbstractRootFinder]
 
     def __init__(
         self,
         cond_fn,
-        root_finder: Optional[optx.AbstractRootFinder],
-        bidirect: Union[bool, Pytree[bool]] = True,
+        root_finder: Optional[optx.AbstractRootFinder] = None,
+        bidirect: Union[bool, PyTree[bool]] = True,
     ):
 
         vals, treedef = flatten(cond_fn)
