@@ -1088,7 +1088,7 @@ def diffeqsolve(
         if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
             # Specific check to not work even if using HalfSolver(Euler())
             if isinstance(solver, Euler):
-                raise ValueError(
+                warnings.warn(
                     "An SDE should not be solved with adaptive step sizes with Euler's "
                     "method, as it may not converge to the correct solution."
                 )
