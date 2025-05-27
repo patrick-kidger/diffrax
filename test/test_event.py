@@ -729,5 +729,5 @@ def test_event_bidirect():
     event = diffrax.Event((cond_fn0, cond_fn1), root_finder, (True, False))
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
 
-    assert jnp.isclose(sol.ts[-1], 5.0)
-    assert jnp.all(jnp.isclose(sol.ys[-1], jnp.array([5.0, 6.0])))
+    assert jnp.isclose(cast(Array, sol.ts)[-1], 5.0)
+    assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
