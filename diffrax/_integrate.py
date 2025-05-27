@@ -727,7 +727,7 @@ def loop(
             _event_root_find = optx.root_find(
                 _to_root_find,
                 event.root_finder,
-                y0=final_state.event_tnext,
+                y0=final_state.event_tprev,
                 options=_options,
                 throw=False,
             )
