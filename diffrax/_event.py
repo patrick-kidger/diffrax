@@ -31,7 +31,6 @@ class Event(eqx.Module):
         root_finder: Optional[optx.AbstractRootFinder] = None,
         bidirect: Union[bool, PyTree[bool]] = True,
     ):
-
         vals, treedef = flatten(cond_fn)
         n = len(vals)
 
@@ -49,7 +48,6 @@ class Event(eqx.Module):
         self.cond_fn = cond_fn
         self.root_finder = root_finder
         self.bidirect = bidir_tree
-
 
 
 Event.__init__.__doc__ = """**Arguments:**
