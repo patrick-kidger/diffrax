@@ -711,7 +711,7 @@ def test_event_save_subsaveat(steps):
     assert jnp.all(jnp.isclose(ys_1.y[ts_event - 1], last_save, atol=1e-5))
 
 
-def test_event_bidirect(): 
+def test_event_bidirect():
     term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
     solver = diffrax.Tsit5()
     t0 = 0.0
@@ -721,13 +721,13 @@ def test_event_bidirect():
 
     def cond_fn0(t, y, args, **kwargs):
         return y[0] - 5.0
-    
+
     def cond_fn1(t, y, args, **kwargs):
         return y[1] - 5.0
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event = diffrax.Event((cond_fn0, cond_fn1), root_finder, (True, False)) 
+    event = diffrax.Event((cond_fn0, cond_fn1), root_finder, (True, False))
     sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
-    
+
     assert jnp.isclose(sol.ts[-1], 5.0)
     assert jnp.all(jnp.isclose(sol.ys[-1], jnp.array([5.0, 6.0])))
