@@ -563,8 +563,9 @@ def loop(
                             new_event_value_i
                         )
                     else:
-                        event_mask_i = ((jnp.sign(old_event_value_i) > 0) & 
-                                       (jnp.sign(new_event_value_i) <= 0))
+                        event_mask_i = (jnp.sign(old_event_value_i) > 0) & (
+                            jnp.sign(new_event_value_i) <= 0
+                        )
 
                 elif jnp.issubdtype(new_dtype, jnp.bool_):
                     event_mask_i = new_event_value_i

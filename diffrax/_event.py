@@ -4,8 +4,8 @@ from typing import Optional, Union
 
 import equinox as eqx
 import optimistix as optx
-from jaxtyping import Array, PyTree
 from jax.tree import flatten, unflatten
+from jaxtyping import Array, PyTree
 
 from ._custom_types import BoolScalarLike, FloatScalarLike, RealScalarLike
 from ._step_size_controller import AbstractAdaptiveStepSizeController
