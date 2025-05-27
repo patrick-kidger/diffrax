@@ -68,9 +68,9 @@ Event.__init__.__doc__ = """**Arguments:**
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
 
-- `bidirect`: A bool or PyTree of bools of the same shape as cond_fn, that decides for each
-    cond_fn if it triggers an event by a zero_cossing in both directions (True) or only from
-    positive to negative (False)  
+- `bidirect`: A bool or PyTree of bools of the same shape as cond_fn,
+    that decides for each cond_fn if it triggers an event by a zero_cossing in both
+    directions (True) or only from positive to negative (False)  
 
 !!! Example
 
