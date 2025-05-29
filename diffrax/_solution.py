@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Optional
+from typing import Any
 
 import jax
 import optimistix as optx
@@ -121,18 +121,18 @@ class Solution(AbstractPath):
     # the structure of `subs`.
     # SaveAt(fn=...) means that `ys` will then follow with arbitrary sub-dependent
     # PyTree structures.
-    ts: Optional[PyTree[Real[Array, " ?times"], " S"]]
-    ys: Optional[PyTree[Shaped[Array, "?times ?*shape"], "S ..."]]
-    interpolation: Optional[DenseInterpolation]
+    ts: PyTree[Real[Array, " ?times"], " S"] | None
+    ys: PyTree[Shaped[Array, "?times ?*shape"], "S ..."] | None
+    interpolation: DenseInterpolation | None
     stats: dict[str, Any]
     result: RESULTS
-    solver_state: Optional[PyTree]
-    controller_state: Optional[PyTree]
-    made_jump: Optional[BoolScalarLike]
-    event_mask: Optional[PyTree[BoolScalarLike]]
+    solver_state: PyTree | None
+    controller_state: PyTree | None
+    made_jump: BoolScalarLike | None
+    event_mask: PyTree[BoolScalarLike] | None
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:
         """If dense output was saved, then evaluate the solution at any point in the
         region of integration `self.t0` to `self.t1`.

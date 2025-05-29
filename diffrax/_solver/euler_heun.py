@@ -1,6 +1,5 @@
 from collections.abc import Callable
-from typing import Any, ClassVar
-from typing_extensions import TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
 import equinox.internal as eqxi
 from equinox.internal import ω

@@ -1,6 +1,5 @@
 import abc
 from collections.abc import Callable
-from typing import Optional, Union
 
 import equinox as eqx
 import optimistix as optx
@@ -20,8 +19,8 @@ class Event(eqx.Module):
     [`diffrax.diffeqsolve`][].
     """
 
-    cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
-    root_finder: Optional[optx.AbstractRootFinder] = None
+    cond_fn: PyTree[Callable[..., BoolScalarLike | RealScalarLike]]
+    root_finder: optx.AbstractRootFinder | None = None
 
 
 Event.__init__.__doc__ = """**Arguments:**
@@ -86,9 +85,9 @@ Event.__init__.__doc__ = """**Arguments:**
 
 
 def steady_state_event(
-    rtol: Optional[float] = None,
-    atol: Optional[float] = None,
-    norm: Optional[Callable[[PyTree[Array]], RealScalarLike]] = None,
+    rtol: float | None = None,
+    atol: float | None = None,
+    norm: Callable[[PyTree[Array]], RealScalarLike] | None = None,
 ):
     """Create a condition function that terminates the solve once a steady state is
     achieved. The returned function should be passed as the `cond_fn` argument of
@@ -165,8 +164,8 @@ class DiscreteTerminatingEvent(AbstractDiscreteTerminatingEvent):
 
 
 class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
-    rtol: Optional[float] = None
-    atol: Optional[float] = None
+    rtol: float | None = None
+    atol: float | None = None
     norm: Callable[[PyTree[Array]], RealScalarLike] = optx.rms_norm
 
     def __call__(self, state, *, args, **kwargs):

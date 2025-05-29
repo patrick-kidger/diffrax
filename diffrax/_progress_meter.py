@@ -2,7 +2,7 @@ import abc
 import importlib.util
 import threading
 from collections.abc import Callable
-from typing import Any, cast, Generic, TypeVar, Union
+from typing import Any, cast, Generic, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -122,7 +122,7 @@ class TextProgressMeter(AbstractProgressMeter):
     def _step_bar(bar: list[float], progress: FloatScalarLike) -> None:
         if eqx.is_array(progress):
             # May not be an array when called with `JAX_DISABLE_JIT=1`
-            progress = cast(Union[Array, np.ndarray], progress)
+            progress = cast(Array | np.ndarray, progress)
             progress = cast(float, progress.item())
         else:
             progress = cast(float, progress)

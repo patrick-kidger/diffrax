@@ -1,5 +1,5 @@
 from collections.abc import Callable, Sequence
-from typing import cast, Generic, Optional, TypeVar
+from typing import cast, Generic, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -23,13 +23,13 @@ from .base import AbstractAdaptiveStepSizeController
 
 
 _ControllerState = TypeVar("_ControllerState")
-_Dt0 = TypeVar("_Dt0", bound=Optional[RealScalarLike])
+_Dt0 = TypeVar("_Dt0", bound=RealScalarLike | None)
 
 
 class _ClipState(eqx.Module, Generic[_ControllerState]):
-    step_info: Optional[tuple[IntScalarLike, Array]]
-    jump_info: Optional[tuple[IntScalarLike, Array]]
-    reject_info: Optional[tuple[IntScalarLike, Array]]
+    step_info: tuple[IntScalarLike, Array] | None
+    jump_info: tuple[IntScalarLike, Array] | None
+    reject_info: tuple[IntScalarLike, Array] | None
     inner_state: _ControllerState
 
 
@@ -98,7 +98,7 @@ def _bump_next_t0(next_t0, ts):
     return next_t0, made_jump1 | made_jump2
 
 
-def _find_idx_with_hint(t: RealScalarLike, ts: Optional[Array], hint: IntScalarLike):
+def _find_idx_with_hint(t: RealScalarLike, ts: Array | None, hint: IntScalarLike):
     # Find index of first element of `ts` strictly greater than `t`.
     # Uses a linear search starting from `hint`. The value `hint` is assumed to be in
     # `{0, 1, ..., len(ts)}`
@@ -167,10 +167,10 @@ class ClipStepSizeController(
     """
 
     controller: AbstractAdaptiveStepSizeController[_ControllerState, _Dt0]
-    step_ts: Optional[Real[Array, " steps"]]
-    jump_ts: Optional[Real[Array, " jumps"]]
-    store_rejected_steps: Optional[int] = eqx.field(static=True)
-    callback_on_reject: Optional[Callable] = eqx.field(static=True)
+    step_ts: Real[Array, " steps"] | None
+    jump_ts: Real[Array, " jumps"] | None
+    store_rejected_steps: int | None = eqx.field(static=True)
+    callback_on_reject: Callable | None = eqx.field(static=True)
 
     @property
     def atol(self):
@@ -190,8 +190,8 @@ class ClipStepSizeController(
         controller: AbstractAdaptiveStepSizeController[_ControllerState, _Dt0],
         step_ts: None | Sequence[RealScalarLike] | Real[Array, " steps"] = None,
         jump_ts: None | Sequence[RealScalarLike] | Real[Array, " jumps"] = None,
-        store_rejected_steps: Optional[int] = None,
-        _callback_on_reject: Optional[Callable] = None,
+        store_rejected_steps: int | None = None,
+        _callback_on_reject: Callable | None = None,
     ):
         """**Arguments**:
 
@@ -254,7 +254,7 @@ class ClipStepSizeController(
         dt0: _Dt0,
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
-        error_order: Optional[RealScalarLike],
+        error_order: RealScalarLike | None,
     ) -> tuple[RealScalarLike, _ClipState[_ControllerState]]:
         t_dtype = jnp.result_type(t0)
         _assert_floating(t0, "t0", t_dtype)
@@ -309,7 +309,7 @@ class ClipStepSizeController(
         y0: Y,
         y1_candidate: Y,
         args: Args,
-        y_error: Optional[Y],
+        y_error: Y | None,
         error_order: RealScalarLike,
         controller_state: _ClipState[_ControllerState],
     ) -> tuple[
