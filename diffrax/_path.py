@@ -1,5 +1,5 @@
 import abc
-from typing import Generic, Optional, TYPE_CHECKING, TypeVar
+from typing import Generic, TYPE_CHECKING, TypeVar
 
 import equinox as eqx
 import jax
@@ -49,7 +49,7 @@ class AbstractPath(eqx.Module, Generic[_Control]):
 
     @abc.abstractmethod
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> _Control:
         r"""Evaluate the path at any point in the interval $[t_0, t_1]$.
 

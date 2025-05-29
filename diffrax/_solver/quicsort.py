@@ -1,5 +1,4 @@
 import math
-from typing import Optional
 
 import equinox as eqx
 import jax
@@ -199,7 +198,7 @@ class QUICSORT(AbstractFosterLangevinSRK[_QUICSORTCoeffs, None]):
         underdamped_langevin_args: UnderdampedLangevinArgs,
         coeffs: _QUICSORTCoeffs,
         rho: UnderdampedLangevinX,
-        prev_f: Optional[UnderdampedLangevinX],
+        prev_f: UnderdampedLangevinX | None,
         args: Args,
     ) -> tuple[UnderdampedLangevinX, UnderdampedLangevinX, None, None]:
         del prev_f

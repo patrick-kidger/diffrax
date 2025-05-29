@@ -6,8 +6,6 @@ from typing import (
     Generic,
     get_args,
     get_origin,
-    Optional,
-    Type,
     TYPE_CHECKING,
     TypeVar,
 )
@@ -79,7 +77,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     """
 
     # What PyTree structure `terms` should have when used with this solver.
-    term_structure: AbstractClassVar[PyTree[Type[AbstractTerm]]]
+    term_structure: AbstractClassVar[PyTree[type[AbstractTerm]]]
     # How to interpolate the solution in between steps.
     interpolation_cls: AbstractClassVar[Callable[..., AbstractLocalInterpolation]]
 
@@ -88,15 +86,15 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         lambda self: _term_compatible_contr_kwargs(self.term_structure)
     )
 
-    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+    def order(self, terms: PyTree[AbstractTerm]) -> int | None:
         """Order of the solver for solving ODEs."""
         return None
 
-    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         """Strong order of the solver for solving SDEs."""
         return None
 
-    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def error_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         """Order of the error estimate used for adaptive stepping.
 
         The default (slightly heuristic) implementation is as follows.
@@ -149,7 +147,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, Y | None, DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -285,13 +283,13 @@ class HalfSolver(
     def term_compatible_contr_kwargs(self):
         return self.solver.term_compatible_contr_kwargs
 
-    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+    def order(self, terms: PyTree[AbstractTerm]) -> int | None:
         return self.solver.order(terms)
 
-    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         return self.solver.strong_order(terms)
 
-    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def error_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         if is_sde(terms):
             order = self.strong_order(terms)
             if order is not None:
@@ -321,7 +319,7 @@ class HalfSolver(
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+    ) -> tuple[Y, Y | None, DenseInfo, _SolverState, RESULTS]:
         original_solver_state = solver_state
         thalf = t0 + 0.5 * (t1 - t0)
 

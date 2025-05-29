@@ -1,6 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar
-from typing_extensions import TypeAlias
+from typing import ClassVar, TypeAlias
 
 from equinox.internal import ω
 from jaxtyping import PyTree

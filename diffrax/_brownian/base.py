@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, TypeVar, Union
+from typing import TypeVar
 
 from equinox.internal import AbstractVar
 from jaxtyping import Array, PyTree
@@ -13,19 +13,19 @@ from .._custom_types import (
 from .._path import AbstractPath
 
 
-_Control = TypeVar("_Control", bound=Union[PyTree[Array], AbstractBrownianIncrement])
+_Control = TypeVar("_Control", bound=PyTree[Array] | AbstractBrownianIncrement)
 
 
 class AbstractBrownianPath(AbstractPath[_Control]):
     """Abstract base class for all Brownian paths."""
 
-    levy_area: AbstractVar[type[Union[BrownianIncrement, SpaceTimeLevyArea]]]
+    levy_area: AbstractVar[type[BrownianIncrement | SpaceTimeLevyArea]]
 
     @abc.abstractmethod
     def evaluate(
         self,
         t0: RealScalarLike,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
     ) -> _Control:

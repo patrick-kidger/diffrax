@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar, Optional, TYPE_CHECKING
+from typing import ClassVar, TYPE_CHECKING
 
 import equinox.internal as eqxi
 import jax
@@ -108,7 +108,7 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
         self.k = k
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree:
         del left
         if t1 is not None:

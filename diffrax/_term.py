@@ -3,8 +3,7 @@ import operator
 import typing
 import warnings
 from collections.abc import Callable
-from typing import cast, Generic, Optional, TypeVar, Union
-from typing_extensions import TypeAlias
+from typing import cast, Generic, TypeAlias, TypeVar
 
 import equinox as eqx
 import jax
@@ -248,15 +247,13 @@ class _CallableToPath(AbstractPath[_Control]):
         return jnp.inf
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> _Control:
         return self.fn(t0, t1)
 
 
 def _callable_to_path(
-    x: Union[
-        AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
-    ],
+    x: AbstractPath[_Control] | Callable[[RealScalarLike, RealScalarLike], _Control],
 ) -> AbstractPath:
     if isinstance(x, AbstractPath):
         return x
@@ -411,9 +408,8 @@ class ControlTerm(AbstractTerm[_VF, _Control]):
     def __init__(
         self,
         vector_field: Callable[[RealScalarLike, Y, Args], _VF],
-        control: Union[
-            AbstractPath[_Control], Callable[[RealScalarLike, RealScalarLike], _Control]
-        ],
+        control: AbstractPath[_Control]
+        | Callable[[RealScalarLike, RealScalarLike], _Control],
     ):
         self.vector_field = vector_field
         self.control = _callable_to_path(control)
@@ -957,9 +953,7 @@ def broadcast_underdamped_langevin_arg(
 
 
 class UnderdampedLangevinDiffusionTerm(
-    AbstractTerm[
-        UnderdampedLangevinX, Union[UnderdampedLangevinX, AbstractBrownianIncrement]
-    ]
+    AbstractTerm[UnderdampedLangevinX, UnderdampedLangevinX | AbstractBrownianIncrement]
 ):
     r"""Represents the diffusion term in the Underdamped Langevin Diffusion (ULD).
     The ULD SDE takes the form:
@@ -1018,7 +1012,7 @@ class UnderdampedLangevinDiffusionTerm(
 
     def contr(
         self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
-    ) -> Union[UnderdampedLangevinX, AbstractBrownianIncrement]:
+    ) -> UnderdampedLangevinX | AbstractBrownianIncrement:
         return self.control.evaluate(t0, t1, **kwargs)
 
     def prod(

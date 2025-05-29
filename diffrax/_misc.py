@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, cast, Optional, Union
+from typing import Any, cast
 
 import jax
 import jax.core
@@ -41,7 +41,7 @@ def _fill_forward(
 @jax.jit
 def fill_forward(
     ys: Shaped[Array, " times *channels"],
-    replace_nans_at_start: Optional[Shaped[Array, " *channels"]] = None,
+    replace_nans_at_start: Shaped[Array, " *channels"] | None = None,
 ) -> Shaped[Array, " times *channels"]:
     """Fill-forwards over missing data (represented as NaN).
 
@@ -130,7 +130,7 @@ def left_broadcast_to(arr, shape):
     return jnp.broadcast_to(arr[indices], shape)
 
 
-def split_by_tree(key, tree, is_leaf: Optional[Callable[[PyTree], bool]] = None):
+def split_by_tree(key, tree, is_leaf: Callable[[PyTree], bool] | None = None):
     """Like jax.random.split but accepts tree as a second argument and produces
     a tree of keys with the same structure.
     """
@@ -161,7 +161,7 @@ def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike
 
 def upcast_or_raise(
     x: ArrayLike,
-    array_for_dtype: Union[ArrayLike, jnp.dtype],
+    array_for_dtype: ArrayLike | jnp.dtype,
     x_name: str,
     dtype_name: str,
 ):

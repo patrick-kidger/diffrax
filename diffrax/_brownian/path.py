@@ -1,5 +1,5 @@
 import math
-from typing import cast, Optional, Union
+from typing import cast
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -63,16 +63,16 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     levy_area: type[
-        Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+        BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
     ] = eqx.field(static=True)
     key: PRNGKeyArray
 
     def __init__(
         self,
-        shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct],
         key: PRNGKeyArray,
         levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+            BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
         ] = BrownianIncrement,
     ):
         """**Arguments:**
@@ -112,10 +112,10 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     def evaluate(
         self,
         t0: RealScalarLike,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], AbstractBrownianIncrement]:
+    ) -> PyTree[Array] | AbstractBrownianIncrement:
         """Implements [`diffrax.AbstractBrownianPath.evaluate`][]."""
         del left
         if t1 is None:
@@ -153,9 +153,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: RealScalarLike,
         key,
         shape: jax.ShapeDtypeStruct,
-        levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
-        ],
+        levy_area: type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea],
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)

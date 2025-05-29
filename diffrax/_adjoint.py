@@ -2,7 +2,7 @@ import abc
 import functools as ft
 import warnings
 from collections.abc import Callable, Iterable
-from typing import Any, cast, Optional, Union
+from typing import Any, cast
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -259,7 +259,7 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         ```
     """
 
-    checkpoints: Optional[int] = None
+    checkpoints: int | None = None
 
     def loop(
         self,
@@ -453,7 +453,7 @@ if _solve.__globals__["__name__"].startswith("jaxtyping"):
     _solve = _solve.__wrapped__  # pyright: ignore[reportFunctionMemberAccess]
 
 
-def _frozenset(x: Union[object, Iterable[object]]) -> frozenset[object]:
+def _frozenset(x: object | Iterable[object]) -> frozenset[object]:
     try:
         iter_x = iter(x)  # pyright: ignore
     except TypeError:

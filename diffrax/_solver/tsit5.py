@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 import equinox.internal as eqxi
 import jax
@@ -114,7 +114,7 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         self.k = k
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> Y:
         del left
         if t1 is not None:
