@@ -711,7 +711,7 @@ def test_event_save_subsaveat(steps):
     assert jnp.all(jnp.isclose(ys_1.y[ts_event - 1], last_save, atol=1e-5))
 
 
-def test_event_bidirect():
+def test_event_trig_dir():
     term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
     solver = diffrax.Tsit5()
     t0 = 0.0
@@ -731,3 +731,33 @@ def test_event_bidirect():
 
     assert jnp.isclose(cast(Array, sol.ts)[-1], 5.0)
     assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
+
+
+def test_event_trig_dir_single_bool():
+    term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
+    solver = diffrax.Tsit5()
+    t0 = 0.0
+    t1 = 10.0
+    dt0 = 1.0
+    y0 = jnp.array([0, 1])
+
+    def cond_fn0(t, y, args, **kwargs):
+        return y[0] - 5.0
+
+    def cond_fn1(t, y, args, **kwargs):
+        return -(y[1] - 5.0)
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event((cond_fn0, cond_fn1), root_finder, True)
+    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+
+    assert jnp.isclose(cast(Array, sol.ts)[-1], 5.0)
+    assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
+
+
+def test_event_trig_dir_pytree_structure():
+    f = lambda x: x
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    diffrax.Event([f, f, [f, (f)]], root_finder, [True, None, [False, (True)]])
+    with pytest.raises(ValueError):
+        diffrax.Event([f, f, [f, f, f]], root_finder, [True, None, [False, (True)]])
