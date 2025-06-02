@@ -19,8 +19,38 @@ class Event(eqx.Module):
     [`diffrax.diffeqsolve`][].
     """
 
-    cond_fn: PyTree[Callable[..., BoolScalarLike | RealScalarLike]]
-    root_finder: optx.AbstractRootFinder | None = None
+    cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
+    trig_dir: PyTree[None | bool]
+    root_finder: Optional[optx.AbstractRootFinder]
+
+    def __init__(
+        self,
+        cond_fn,
+        root_finder: Optional[optx.AbstractRootFinder] = None,
+        trig_dir: Union[None | bool, PyTree[None | bool]] = None,
+    ):
+        vals_cond, treedef_cond = flatten(cond_fn)
+
+        if isinstance(trig_dir, bool):
+            vals_trig = [trig_dir] * len(vals_cond)
+            treedef_trig = treedef_cond
+        else:
+            vals_trig, treedef_trig = flatten(trig_dir, is_leaf=lambda x: x is None)
+            print(vals_trig, treedef_trig)
+
+        if treedef_cond != treedef_trig:
+            raise ValueError("Missmatch in the structure of cond_fn and trigger_dir")
+
+        if not all(x is None or isinstance(x, bool) for x in vals_trig):
+            raise ValueError(
+                "`trig_dir` must be a None, bool or a PyTree of None | bools"
+                + " with the same structure as cond_fn"
+            )
+
+        trig_tree = unflatten(treedef_cond, vals_trig)
+        self.cond_fn = cond_fn
+        self.root_finder = root_finder
+        self.trig_dir = trig_tree
 
 
 Event.__init__.__doc__ = """**Arguments:**
@@ -39,6 +69,13 @@ Event.__init__.__doc__ = """**Arguments:**
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
 
+<<<<<<< HEAD
+=======
+- `trig_dir`: None or bool or PyTree of None or bool of the same shape as cond_fn,
+    that decides for each cond_fn if it triggers an event from a zero-cossing in both
+    directions (None), from an upcrossing (True) or from a downcrossing (False).
+
+>>>>>>> 76c707d (added/changed suggestions)
 !!! Example
 
     Consider a bouncing ball dropped from some intial height $x_0$. We can model 
