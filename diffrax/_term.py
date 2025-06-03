@@ -461,9 +461,8 @@ class ControlTerm(AbstractTerm[_VF, _Control, _PathState]):
         # the user would have to provide a custom init path state which sounds
         # not ideal, probably just be easier to have them make an abstract path?
         # Callable[[RealScalarLike, PyTree, RealScalarLike], tuple[_Control, PyTree]],
-        control: 
-            AbstractPath[_Control, _PathState] |
-            Callable[[RealScalarLike, RealScalarLike], _Control]
+        control: AbstractPath[_Control, _PathState]
+        | Callable[[RealScalarLike, RealScalarLike], _Control],
     ):
         self.vector_field = vector_field
         if isinstance(control, AbstractPath):

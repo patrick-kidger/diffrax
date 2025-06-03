@@ -70,7 +70,7 @@ class AbstractPath(eqx.Module, Generic[_Control, _PathState]):
         self,
         t0: RealScalarLike,
         path_state: _PathState,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
     ) -> tuple[_Control, _PathState]:
         r"""Evaluate the path at any point in the interval $[t_0, t_1]$.

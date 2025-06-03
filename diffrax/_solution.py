@@ -146,7 +146,7 @@ class Solution(AbstractPath):
         self,
         t0: RealScalarLike,
         path_state: None,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
     ) -> tuple[PyTree[Shaped[Array, "?*shape"], " Y"], None]:
         return self.evaluate(t0, t1, left), path_state

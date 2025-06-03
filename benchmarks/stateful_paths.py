@@ -1,5 +1,5 @@
 import math
-from typing import cast, Optional, Union
+from typing import cast
 
 import diffrax
 import equinox as eqx
@@ -16,14 +16,12 @@ from lineax.internal import complex_to_real_dtype
 class OldBrownianPath(diffrax.AbstractBrownianPath):
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     levy_area: type[
-        Union[
-            diffrax.BrownianIncrement,
-            diffrax.SpaceTimeLevyArea,
-            diffrax.SpaceTimeTimeLevyArea,
-        ]
+        diffrax.BrownianIncrement
+        | diffrax.SpaceTimeLevyArea
+        | diffrax.SpaceTimeTimeLevyArea
     ] = eqx.field(static=True)
     key: PRNGKeyArray
-    precompute: Optional[int] = eqx.field(static=True)
+    precompute: int | None = eqx.field(static=True)
 
     def __init__(
         self,

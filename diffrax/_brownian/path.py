@@ -1,5 +1,5 @@
 import math
-from typing import cast, Optional, TypeAlias
+from typing import cast, TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -31,7 +31,9 @@ from .base import AbstractBrownianPath
 
 
 _Control = PyTree[Array] | AbstractBrownianIncrement
-_BrownianState: TypeAlias = tuple[None, PyTree[Array], IntScalarLike] | tuple[PRNGKeyArray, None, None]
+_BrownianState: TypeAlias = (
+    tuple[None, PyTree[Array], IntScalarLike] | tuple[PRNGKeyArray, None, None]
+)
 
 
 class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
@@ -76,7 +78,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     levy_area: type[
         BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
     ] = eqx.field(static=True)
-    precompute: Optional[int] = eqx.field(static=True)
+    precompute: int | None = eqx.field(static=True)
 
     def __init__(
         self,
@@ -85,7 +87,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         levy_area: type[
             BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
         ] = BrownianIncrement,
-        precompute: Optional[int] = None,
+        precompute: int | None = None,
     ):
         """**Arguments:**
 
@@ -167,7 +169,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         self,
         t0: RealScalarLike,
         brownian_state: _BrownianState,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
     ) -> tuple[_Control, _BrownianState]:
@@ -261,9 +263,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         t0: RealScalarLike,
         t1: RealScalarLike,
         shape: jax.ShapeDtypeStruct,
-        levy_area: type[
-            BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
-        ],
+        levy_area: type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea],
         use_levy: bool,
         noises: Float[Array, "..."],
     ):
