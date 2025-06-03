@@ -195,7 +195,7 @@ def test_kl_term():
     assert isinstance(sol.ys, diffrax.KLState)
     assert tree_allclose(sol.ys.kl_metric.squeeze(), jnp.array(0.0))
 
-    
+
 def test_underdamped_langevin_drift_term_args():
     """
     Test that the UnderdampedLangevinDriftTerm handles `args` in grad_f correctly.

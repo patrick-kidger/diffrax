@@ -1076,6 +1076,7 @@ def make_kl_terms(
     state = KLState(y0, jnp.array(0.0))
     return terms, state
 
+
 # The Underdamped Langevin SDE trajectory consists of two components: the position
 # `x` and the velocity `v`. Both of these have the same shape.
 # So, by UnderdampedLangevinX we denote the shape of the x component, and by
