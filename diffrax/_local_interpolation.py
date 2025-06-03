@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import cast, Optional, TYPE_CHECKING
+from typing import cast, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
@@ -33,7 +33,7 @@ class LocalLinearInterpolation(AbstractLocalInterpolation):
     y1: Y
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Array]:
         del left
         with jax.numpy_dtype_promotion("standard"):
@@ -77,7 +77,7 @@ class ThirdOrderHermitePolynomialInterpolation(AbstractLocalInterpolation):
         return cls(t0=t0, t1=t1, y0=y0, y1=y1, k0=ω(k)[0].ω, k1=ω(k)[-1].ω)
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Array]:
         del left
         if t1 is not None:
@@ -124,7 +124,7 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
         self.coeffs = jtu.tree_map(_calculate, y0, y1, k)
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Array]:
         del left
         if t1 is not None:

@@ -1,6 +1,7 @@
 from collections.abc import Callable
-from typing import ClassVar, Optional
+from typing import ClassVar
 
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -291,7 +292,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
     )
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> Y:
         del left
         if t1 is not None:
@@ -344,4 +345,9 @@ class Dopri8(AbstractERK):
     ] = _Dopri8Interpolation
 
     def order(self, terms):
+        del terms
         return 8
+
+
+eqxi.doc_remove_args("scan_kind")(Dopri8.__init__)
+Dopri8.__init__.__doc__ = """**Arguments:** None"""

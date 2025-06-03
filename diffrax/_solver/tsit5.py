@@ -1,6 +1,7 @@
 from collections.abc import Callable
-from typing import ClassVar, Optional
+from typing import ClassVar
 
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -113,7 +114,7 @@ class _Tsit5Interpolation(AbstractLocalInterpolation):
         self.k = k
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> Y:
         del left
         if t1 is not None:
@@ -186,3 +187,7 @@ class Tsit5(AbstractERK):
 
     def order(self, terms):
         return 5
+
+
+eqxi.doc_remove_args("scan_kind")(Tsit5.__init__)
+Tsit5.__init__.__doc__ = """**Arguments:** None"""

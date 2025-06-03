@@ -2,7 +2,6 @@ import functools as ft
 import inspect
 import re
 from collections.abc import Callable
-from typing import Optional
 
 import jax
 import jax.core
@@ -130,7 +129,7 @@ def citation(*args, **kwargs):
 _diffeqsignature = inspect.signature(diffeqsolve)
 
 
-citation_rules: list[Callable[..., Optional[str]]] = []
+citation_rules: list[Callable[..., str | None]] = []
 
 
 _thesis_cite = r"""
@@ -158,14 +157,14 @@ _end = r"""
 _reference_regex = re.compile(r"```bibtex([^`]*)```")
 
 
-@ft.lru_cache(maxsize=None)
+@ft.cache
 def _parse_reference(obj) -> str:
     references = _reference_regex.findall(obj.__doc__)
     [reference] = [inspect.cleandoc(ref) for ref in references]
     return reference
 
 
-@ft.lru_cache(maxsize=None)
+@ft.cache
 def _parse_reference_multi(obj) -> list[str]:
     references = _reference_regex.findall(obj.__doc__)
     return [inspect.cleandoc(ref) for ref in references]

@@ -37,7 +37,7 @@ site_author: Patrick Kidger
 
 repo_url: https://github.com/patrick-kidger/diffrax
 repo_name: patrick-kidger/diffrax
-edit_uri: ""  # No edit button, as some of our pages are in /docs and some in /examples via symlink, so it's impossible for them all to be accurate
+edit_uri: ""
 
 strict: true  # Don't allow warnings during the build process
 
@@ -62,33 +62,41 @@ markdown_extensions:
         toc_depth: 4  # Prevents h5, h6 (i.e. methods) from showing up in the TOC.
 
 plugins:
-    - search  # default search plugin; needs manually re-enabling when using any other plugins
-    - autorefs  # Cross-links to headings
+    - search:
+        separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
     - include_exclude_files:
         include:
+            - .htaccess
         exclude:
             - "_overrides"
             - "_static/README.md"
-    - mknotebooks  # Jupyter notebooks
+            - "examples/.ipynb_checkpoints"
+    - ipynb
+    - hippogriffe:
+        extra_public_objects:
+            - numpy.ndarray
+            - jax.tree_util.Partial
+            - jax.ShapeDtypeStruct
+            - lineax.AbstractLinearSolver
+            - lineax.AutoLinearSolver
+            - optimistix.AbstractRootFinder
+            - optimistix.Chord
     - mkdocstrings:
         handlers:
             python:
-                setup_commands:
-                    - import pytkdocs_tweaks
-                    - pytkdocs_tweaks.main()
-                    - import jax.tree_util
-                    - jax.tree_util.Partial.__module__ = "jax.tree_util"
-
-                selection:
-                    inherited_members: true  # Allow looking up inherited methods
-                rendering:
-                    show_root_heading: true  # actually display anything at all...
-                    show_root_full_path: true  # display "diffrax.asdf" not just "asdf"
+                options:
+                    force_inspection: true
+                    heading_level: 4
+                    inherited_members: true
+                    members_order: source
+                    show_bases: false
                     show_if_no_docstring: true
+                    show_overloads: false
+                    show_root_heading: true
                     show_signature_annotations: true
-                    show_source: false  # don't include source code
-                    members_order: source  # order methods according to their order of definition in the source code, not alphabetical order
-                    heading_level: 4  # Makes everything top-level be <h4>. Child entries will be <h5> etc., but because of toc_depth, above, (deliberately) won't appear in the TOC.
+                    show_source: false
+                    show_symbol_type_heading: true
+                    show_symbol_type_toc: true
 
 nav:
     - 'index.md'
@@ -99,7 +107,7 @@ nav:
         - 'usage/manual-stepping.md'
         - 'usage/extending.md'
     - Examples:
-        - Basic ODE/SDE/CDE examples: 'other_examples/basic-examples.md'
+        - Basic ODE/SDE/CDE examples: 'examples/basic-examples.md'
         - Coupled ODEs: 'examples/coupled_odes.ipynb'
         - Stiff ODE: 'examples/stiff_ode.ipynb'
         - Forcing terms: 'examples/forcing.ipynb'

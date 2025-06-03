@@ -1,6 +1,5 @@
 import abc
 from collections.abc import Callable
-from typing import Optional, Union
 
 import equinox as eqx
 import optimistix as optx
@@ -20,8 +19,8 @@ class Event(eqx.Module):
     [`diffrax.diffeqsolve`][].
     """
 
-    cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
-    root_finder: Optional[optx.AbstractRootFinder] = None
+    cond_fn: PyTree[Callable[..., BoolScalarLike | RealScalarLike]]
+    root_finder: optx.AbstractRootFinder | None = None
 
 
 Event.__init__.__doc__ = """**Arguments:**
@@ -32,7 +31,7 @@ Event.__init__.__doc__ = """**Arguments:**
     return value is a real number, then the solve will terminate on the step when `c`
     changes sign.
 
-- `root_finder`: An optional [root finder](../nonlinear_solver/) to use for finding
+- `root_finder`: An optional [root finder](./nonlinear_solver.md) to use for finding
     the exact time of the event. If the triggered condition function returns a real
     number, then the final time will be the time at which that real number equals zero.
     (If the triggered condition function returns a boolean, then the returned time will
@@ -86,9 +85,9 @@ Event.__init__.__doc__ = """**Arguments:**
 
 
 def steady_state_event(
-    rtol: Optional[float] = None,
-    atol: Optional[float] = None,
-    norm: Optional[Callable[[PyTree[Array]], RealScalarLike]] = None,
+    rtol: float | None = None,
+    atol: float | None = None,
+    norm: Callable[[PyTree[Array]], RealScalarLike] | None = None,
 ):
     """Create a condition function that terminates the solve once a steady state is
     achieved. The returned function should be passed as the `cond_fn` argument of
@@ -165,8 +164,8 @@ class DiscreteTerminatingEvent(AbstractDiscreteTerminatingEvent):
 
 
 class SteadyStateEvent(AbstractDiscreteTerminatingEvent):
-    rtol: Optional[float] = None
-    atol: Optional[float] = None
+    rtol: float | None = None
+    atol: float | None = None
     norm: Callable[[PyTree[Array]], RealScalarLike] = optx.rms_norm
 
     def __call__(self, state, *, args, **kwargs):

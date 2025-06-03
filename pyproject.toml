@@ -1,36 +1,54 @@
-[project]
-name = "diffrax"
-version = "0.7.0"
-description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
-readme = "README.md"
-requires-python =">=3.10,<4.0"
-license = {file = "LICENSE"}
-authors = [
-  {name = "Patrick Kidger", email = "contact@kidger.site"},
-]
-keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations", "diffrax"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Financial and Insurance Industry",
-    "Intended Audience :: Information Technology",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
-    "Natural Language :: English",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Scientific/Engineering :: Information Analysis",
-    "Topic :: Scientific/Engineering :: Mathematics",
-]
-urls = {repository = "https://github.com/patrick-kidger/diffrax" }
-dependencies = ["jax>=0.4.38", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "equinox>=0.11.10", "lineax>=0.0.5", "optimistix>=0.0.10", "wadler_lindig>=0.1.1"]
-
 [build-system]
-requires = ["hatchling"]
 build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+authors = [
+  {email = "contact@kidger.site", name = "Patrick Kidger"}
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Mathematics"
+]
+dependencies = ["jax>=0.4.38", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "equinox>=0.11.10", "lineax>=0.0.5", "optimistix>=0.0.10", "wadler_lindig>=0.1.1"]
+description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
+keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations", "diffrax"]
+license = {file = "LICENSE"}
+name = "diffrax"
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+urls = {repository = "https://github.com/patrick-kidger/diffrax"}
+version = "0.7.0"
+
+[project.optional-dependencies]
+docs = [
+  "hippogriffe==0.2.2",
+  "mkdocs==1.6.1",
+  "mkdocs-include-exclude-files==0.1.0",
+  "mkdocs-ipynb==0.1.1",
+  "mkdocs-material==9.6.7",
+  "mkdocstrings==0.28.3",
+  "mkdocstrings-python==1.16.8",
+  "pymdown-extensions==10.14.3"
+]
 
 [tool.hatch.build]
 include = ["diffrax/*"]
+
+[tool.pyright]
+include = ["diffrax", "tests"]
+reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = false # Incompatible with eqx.AbstractVar
+reportUnnecessaryTypeIgnoreComment = true
 
 [tool.pytest.ini_options]
 addopts = "--jaxtyping-packages=diffrax,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
@@ -41,19 +59,13 @@ extend-include = ["*.ipynb"]
 src = []
 
 [tool.ruff.lint]
-fixable = ["I001", "F401"]
-ignore = ["E402", "E721", "E731", "E741", "F722"]
+fixable = ["I001", "F401", "UP"]
+ignore = ["E402", "E721", "E731", "E741", "F722", "UP038"]
 ignore-init-module-imports = true
-select = ["E", "F", "I001"]
+select = ["E", "F", "I001", "UP"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
 extra-standard-library = ["typing_extensions"]
 lines-after-imports = 2
 order-by-type = false
-
-[tool.pyright]
-reportIncompatibleMethodOverride = true
-reportIncompatibleVariableOverride = false  # Incompatible with eqx.AbstractVar
-reportUnnecessaryTypeIgnoreComment = true
-include = ["diffrax", "tests"]

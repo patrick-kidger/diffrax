@@ -1,6 +1,6 @@
 import abc
 from collections.abc import Callable
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 import equinox as eqx
 from equinox import AbstractVar
@@ -12,7 +12,7 @@ from .._term import AbstractTerm
 
 
 _ControllerState = TypeVar("_ControllerState")
-_Dt0 = TypeVar("_Dt0", bound=Optional[RealScalarLike])
+_Dt0 = TypeVar("_Dt0", bound=RealScalarLike | None)
 
 
 class AbstractStepSizeController(eqx.Module, Generic[_ControllerState, _Dt0]):
@@ -46,7 +46,7 @@ class AbstractStepSizeController(eqx.Module, Generic[_ControllerState, _Dt0]):
         dt0: _Dt0,
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
-        error_order: Optional[RealScalarLike],
+        error_order: RealScalarLike | None,
     ) -> tuple[RealScalarLike, _ControllerState]:
         r"""Determines the size of the first step, and initialise any hidden state for
         the step size controller.
@@ -78,7 +78,7 @@ class AbstractStepSizeController(eqx.Module, Generic[_ControllerState, _Dt0]):
         y0: Y,
         y1_candidate: Y,
         args: Args,
-        y_error: Optional[Y],
+        y_error: Y | None,
         error_order: RealScalarLike,
         controller_state: _ControllerState,
     ) -> tuple[

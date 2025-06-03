@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
+import equinox.internal as eqxi
 import numpy as np
 
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
@@ -34,7 +35,13 @@ class Midpoint(AbstractERK, AbstractStratonovichSolver):
     ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     def order(self, terms):
+        del terms
         return 2
 
     def strong_order(self, terms):
+        del terms
         return 0.5
+
+
+eqxi.doc_remove_args("scan_kind")(Midpoint.__init__)
+Midpoint.__init__.__doc__ = """**Arguments:** None"""

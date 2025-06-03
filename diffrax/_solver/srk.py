@@ -1,7 +1,13 @@
 import abc
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, Optional, TYPE_CHECKING, TypeVar, Union
-from typing_extensions import TypeAlias
+from typing import (
+    Any,
+    Generic,
+    Literal,
+    TYPE_CHECKING,
+    TypeAlias,
+    TypeVar,
+)
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -37,15 +43,15 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractClassVar
 
-_ErrorEstimate: TypeAlias = Optional[Y]
+_ErrorEstimate: TypeAlias = Y | None
 _SolverState: TypeAlias = None
 _CarryType: TypeAlias = tuple[PyTree[Array], PyTree[Array], PyTree[Array]]
 
 
 class AbstractStochasticCoeffs(eqx.Module):
-    a: eqx.AbstractVar[Union[Float[np.ndarray, " s"], tuple[np.ndarray, ...]]]
-    b_sol: eqx.AbstractVar[Union[Float[np.ndarray, " s"], FloatScalarLike]]
-    b_error: eqx.AbstractVar[Optional[Float[np.ndarray, " s"]]]
+    a: eqx.AbstractVar[Float[np.ndarray, " s"] | tuple[np.ndarray, ...]]
+    b_sol: eqx.AbstractVar[Float[np.ndarray, " s"] | FloatScalarLike]
+    b_error: eqx.AbstractVar[Float[np.ndarray, " s"] | None]
 
     @abc.abstractmethod
     def check(self) -> int:
@@ -86,7 +92,7 @@ class GeneralCoeffs(AbstractStochasticCoeffs):
 
     a: tuple[np.ndarray, ...]
     b_sol: Float[np.ndarray, " s"]
-    b_error: Optional[Float[np.ndarray, " s"]]
+    b_error: Float[np.ndarray, " s"] | None
 
     def check(self):
         assert self.b_sol.ndim == 1
@@ -108,18 +114,18 @@ class StochasticButcherTableau(Generic[_Coeffs]):
     # Coefficinets for the drift
     a: list[np.ndarray]
     b_sol: np.ndarray
-    b_error: Optional[np.ndarray]
+    b_error: np.ndarray | None
     c: np.ndarray
 
     # Coefficients for the Brownian increment
     coeffs_w: _Coeffs
-    coeffs_hh: Optional[_Coeffs]
-    coeffs_kk: Optional[_Coeffs]
+    coeffs_hh: _Coeffs | None
+    coeffs_kk: _Coeffs | None
 
     # For some stages we may not need to evaluate the vector field for both
     # the drift and the diffusion. This avoids unnecessary computations.
-    ignore_stage_f: Optional[np.ndarray]
-    ignore_stage_g: Optional[np.ndarray]
+    ignore_stage_f: np.ndarray | None
+    ignore_stage_g: np.ndarray | None
 
     def is_additive_noise(self):
         return isinstance(self.coeffs_w, AdditiveCoeffs)
@@ -202,6 +208,9 @@ Let `s` denote the number of stages of the solver.
 class AbstractSRK(AbstractSolver[_SolverState]):
     r"""A general Stochastic Runge-Kutta method.
 
+    Subclasses should include a class-level attribute `tableau`, an instance of
+    [`diffrax.StochasticButcherTableau`][].
+
     This accepts `terms` of the form
     `MultiTerm(ODETerm(drift), ControlTerm(diffusion, brownian_motion))`.
     Depending on the solver, the Brownian motion might need to generate
@@ -255,7 +264,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
     as well as $b^H$, $a^H$, $b^K$, and $a^K$ if needed.
     """
 
-    scan_kind: Union[None, Literal["lax", "checkpointed"]] = None
+    scan_kind: None | Literal["lax", "checkpointed"] = None
 
     interpolation_cls = LocalLinearInterpolation
     term_compatible_contr_kwargs = (dict(), dict(use_levy=True))

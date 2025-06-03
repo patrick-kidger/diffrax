@@ -1,21 +1,16 @@
 import functools as ft
-import typing
 import warnings
 from collections.abc import Callable
-from typing import (
+from typing import (  # noqa: UP035
     Any,
     get_args,
     get_origin,
-    Optional,
     Tuple,
-    TYPE_CHECKING,
-    Union,
 )
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.core
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -98,20 +93,20 @@ class State(eqx.Module):
     # Output that is .at[].set() updated during the solve (and their indices)
     #
     save_state: PyTree[SaveState]
-    dense_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
-    dense_infos: Optional[BufferDenseInfos]
-    dense_save_index: Optional[IntScalarLike]
+    dense_ts: eqxi.MaybeBuffer[Float[Array, " times_plus_1"]] | None
+    dense_infos: BufferDenseInfos | None
+    dense_save_index: IntScalarLike | None
     #
     # Information about the most recent step, used for events.
     #
     # Not recorded anywhere else: this is the previous state's `tprev`.
-    event_tprev: Optional[FloatScalarLike]
+    event_tprev: FloatScalarLike | None
     # This is the previous state's `tnext`. This is not necessarily the same as our
     # `tprev`, as the two can differ a little bit when crossing jumps.
-    event_tnext: Optional[FloatScalarLike]
-    event_dense_info: Optional[DenseInfo]
-    event_values: Optional[PyTree[Union[BoolScalarLike, RealScalarLike]]]
-    event_mask: Optional[PyTree[BoolScalarLike]]
+    event_tnext: FloatScalarLike | None
+    event_dense_info: DenseInfo | None
+    event_values: PyTree[BoolScalarLike | RealScalarLike] | None
+    event_mask: PyTree[BoolScalarLike] | None
 
 
 def _is_none(x: Any) -> bool:
@@ -132,7 +127,7 @@ def _assert_term_compatible(
         if get_origin_no_specials(term_cls, error_msg) is MultiTerm:
             if isinstance(term, MultiTerm):
                 [_tmp] = get_args(term_cls)
-                assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"
+                assert get_origin(_tmp) in (tuple, Tuple), "Malformed term_structure"  # noqa: UP006
                 assert len(term.terms) == len(get_args(_tmp))
                 assert type(term_contr_kwargs) is tuple
                 assert len(term.terms) == len(term_contr_kwargs)
@@ -276,7 +271,7 @@ def _clip_to_end(tprev, tnext, t1, keep_step):
     return jnp.where(clip, tclip, tnext)
 
 
-def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
+def _maybe_static(static_x: ArrayLike | None, x: ArrayLike) -> ArrayLike:
     # Some values (made_jump and result) are not used in many common use-cases. If we
     # detect that they're unused then we make sure they're non-Array Python values, so
     # that we can special case on them at trace time and get a performance boost.
@@ -832,15 +827,6 @@ def loop(
     return eqx.tree_at(lambda s: s.result, final_state, result), aux_stats
 
 
-if not TYPE_CHECKING:
-    if getattr(typing, "GENERATING_DOCUMENTATION", False):
-        # Nicer documentation for the default `diffeqsolve(saveat=...)` argument.
-        # Not using `eqxi.doc_repr` as some IDEs (Helix, at least) show the source code
-        # of the default argument directly.
-        class SaveAt(eqx.Module):  # noqa: F811
-            t1: bool
-
-
 @eqx.filter_jit
 @eqxi.doc_remove_args("discrete_terminating_event")
 def diffeqsolve(
@@ -848,22 +834,22 @@ def diffeqsolve(
     solver: AbstractSolver,
     t0: RealScalarLike,
     t1: RealScalarLike,
-    dt0: Optional[RealScalarLike],
+    dt0: RealScalarLike | None,
     y0: PyTree[ArrayLike],
     args: PyTree[Any] = None,
     *,
     saveat: SaveAt = SaveAt(t1=True),
     stepsize_controller: AbstractStepSizeController = ConstantStepSize(),
     adjoint: AbstractAdjoint = RecursiveCheckpointAdjoint(),
-    event: Optional[Event] = None,
-    max_steps: Optional[int] = 4096,
+    event: Event | None = None,
+    max_steps: int | None = 4096,
     throw: bool = True,
     progress_meter: AbstractProgressMeter = NoProgressMeter(),
-    solver_state: Optional[PyTree[ArrayLike]] = None,
-    controller_state: Optional[PyTree[ArrayLike]] = None,
-    made_jump: Optional[BoolScalarLike] = None,
+    solver_state: PyTree[ArrayLike] | None = None,
+    controller_state: PyTree[ArrayLike] | None = None,
+    made_jump: BoolScalarLike | None = None,
     # Exists for backward compatibility
-    discrete_terminating_event: Optional[AbstractDiscreteTerminatingEvent] = None,
+    discrete_terminating_event: AbstractDiscreteTerminatingEvent | None = None,
 ) -> Solution:
     """Solves a differential equation.
 
