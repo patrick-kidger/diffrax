@@ -1,7 +1,7 @@
 from collections.abc import Callable
-from typing import Any, ClassVar
-from typing_extensions import TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
+import equinox.internal as eqxi
 from equinox.internal import ω
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
@@ -99,3 +99,7 @@ class EulerHeun(AbstractStratonovichSolver):
     ) -> VF:
         drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
+
+
+eqxi.doc_remove_args("scan_kind")(EulerHeun.__init__)
+EulerHeun.__init__.__doc__ = """**Arguments:** None"""

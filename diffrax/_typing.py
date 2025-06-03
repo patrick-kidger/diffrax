@@ -6,12 +6,11 @@ from typing import (
     Generic,
     get_args,
     get_origin,
-    Optional,
     Protocol,
+    TypeAlias,
     TypeVar,
     Union,
 )
-from typing_extensions import TypeAlias
 
 
 # We don't actually care what people have subscripted with.
@@ -50,7 +49,7 @@ def better_isinstance(x, annotation) -> bool:
         )
 
 
-def get_origin_no_specials(x, error_msg: str) -> Optional[type]:
+def get_origin_no_specials(x, error_msg: str) -> type | None:
     """As `typing.get_origin`, but ignores `Annotated` and throws a
     `NotImplementedError` if passed any other non-class: `Union`, `Literal`, etc. Serves
     as a guard against the full weirdness of the Python type system.
@@ -143,7 +142,7 @@ def get_args_of(base_cls: type, cls, error_msg: str) -> tuple[TypeLike, ...]:
 
 def _get_args_of_impl(
     base_cls: type, cls: type, params: tuple[TypeLike, ...], error_msg
-) -> Optional[tuple[TypeLike, ...]]:
+) -> tuple[TypeLike, ...] | None:
     if cls is base_cls:
         return params
     assert len(cls.__parameters__) == len(params)

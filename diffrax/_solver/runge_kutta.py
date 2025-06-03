@@ -7,12 +7,9 @@ from typing import (
     get_args,
     get_origin,
     Literal,
-    Optional,
-    Tuple,
     TYPE_CHECKING,
-    Union,
+    TypeAlias,
 )
-from typing_extensions import TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -64,8 +61,8 @@ class ButcherTableau:
     a_lower: tuple[np.ndarray, ...]
 
     # Implicit RK methods
-    a_diagonal: Optional[np.ndarray] = None
-    a_predictor: Optional[tuple[np.ndarray, ...]] = None
+    a_diagonal: np.ndarray | None = None
+    a_predictor: tuple[np.ndarray, ...] | None = None
     c1: float = 0.0
 
     # Properties implied by the above tableaus, e.g. used to define fast-paths.
@@ -194,7 +191,7 @@ Let `k` denote the number of stages of the solver.
 - `a_predictor`: optional. Used in a similar way to `a_lower`; specifies the linear
     combination of previous stages to use as a predictor for the solution to the
     implicit problem at that stage. See
-    [the developer documentation](../../devdocs/predictor_dirk). Used for diagonal
+    [the developer documentation](../../devdocs/predictor_dirk.md). Used for diagonal
     implicit Runge--Kutta methods only.
 
 Whether the solver exhibits either the FSAL or SSAL properties is determined
@@ -247,7 +244,7 @@ class CalculateJacobian(enum.IntEnum):
     second_stage = 3
 
 
-_SolverState: TypeAlias = Optional[tuple[BoolScalarLike, PyTree[Array]]]
+_SolverState: TypeAlias = tuple[BoolScalarLike, PyTree[Array]] | None
 
 
 # TODO: examine termination criterion for Newton iteration
@@ -361,9 +358,9 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
     instance of [`diffrax.CalculateJacobian`][].
     """
 
-    scan_kind: Union[None, Literal["lax", "checkpointed", "bounded"]] = None
+    scan_kind: None | Literal["lax", "checkpointed", "bounded"] = None
 
-    tableau: AbstractClassVar[Union[ButcherTableau, MultiButcherTableau]]
+    tableau: AbstractClassVar[ButcherTableau | MultiButcherTableau]
     calculate_jacobian: AbstractClassVar[CalculateJacobian]
 
     def __init_subclass__(cls, **kwargs):
@@ -382,7 +379,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 if hasattr(cls, "term_structure"):
                     assert get_origin(cls.term_structure) is MultiTerm
                     [_tmp] = get_args(cls.term_structure)
-                    assert get_origin(_tmp) in (tuple, Tuple)
+                    assert get_origin(_tmp) in (tuple, tuple)
                     assert all(issubclass(x, AbstractTerm) for x in get_args(_tmp))
                 else:
                     terms = tuple(

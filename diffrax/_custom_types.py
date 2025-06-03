@@ -1,4 +1,4 @@
-from typing import Any, TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -18,10 +18,10 @@ from jaxtyping import (
 
 
 if TYPE_CHECKING:
-    BoolScalarLike = Union[bool, Array, np.ndarray]
-    FloatScalarLike = Union[float, Array, np.ndarray]
-    IntScalarLike = Union[int, Array, np.ndarray]
-    RealScalarLike = Union[bool, int, float, Array, np.ndarray]
+    BoolScalarLike = bool | Array | np.ndarray
+    FloatScalarLike = float | Array | np.ndarray
+    IntScalarLike = int | Array | np.ndarray
+    RealScalarLike = bool | int | float | Array | np.ndarray
 else:
     BoolScalarLike = Bool[ArrayLike, ""]
     FloatScalarLike = Float[ArrayLike, ""]

@@ -1,7 +1,6 @@
 import contextlib
 import math
-from typing import Literal
-from typing_extensions import TypeAlias
+from typing import Literal, TypeAlias
 
 import diffrax
 import equinox as eqx

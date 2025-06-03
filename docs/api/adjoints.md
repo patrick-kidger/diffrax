@@ -15,36 +15,38 @@ Alternatively we may compute $\frac{\mathrm{d}y(t_1)}{\mathrm{d}y_0}$ analytical
 ??? abstract "`diffrax.AbstractAdjoint`"
 
     ::: diffrax.AbstractAdjoint
-        selection:
+        options:
             members:
                 - loop
 
 ::: diffrax.RecursiveCheckpointAdjoint
-    selection:
+    options:
         members:
             - __init__
 
 
 ::: diffrax.ForwardMode
-    selection: 
-        members: false
+    options: 
+        members:
+            - __init__
 
 
 ::: diffrax.ImplicitAdjoint
-    selection:
+    options:
         members:
             - __init__
 
 ## Not recommended methods
 
 ::: diffrax.BacksolveAdjoint
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.DirectAdjoint
-    selection:
-        members: false
+    options:
+        members:
+            - __init__
 
 ---
 

@@ -1,11 +1,11 @@
 # SaveAt
 
 ::: diffrax.SaveAt
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.SubSaveAt
-    selection:
+    options:
         members:
             - __init__

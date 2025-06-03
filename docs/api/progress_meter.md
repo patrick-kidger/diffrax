@@ -5,7 +5,7 @@ As the solve progresses, progress meters offer the ability to have some kind of 
 ??? abstract "`diffrax.AbstractProgressMeter`"
 
     ::: diffrax.AbstractProgressMeter
-        selection:
+        options:
             members:
                 - init
                 - step
@@ -14,16 +14,16 @@ As the solve progresses, progress meters offer the ability to have some kind of 
 ---
 
 ::: diffrax.NoProgressMeter
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.TextProgressMeter
-    selection:
+    options:
         members:
             - __init__
 
 ::: diffrax.TqdmProgressMeter
-    selection:
+    options:
         members:
             - __init__

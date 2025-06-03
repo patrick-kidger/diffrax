@@ -32,7 +32,9 @@ def test_get_origin_no_specials():
     assert get_origin_no_specials(Generic[T], "") is Generic  # pyright: ignore
 
     with pytest.raises(NotImplementedError, match="qwerty"):
-        get_origin_no_specials(Union[int, str], "qwerty")
+        get_origin_no_specials(Union[int, str], "qwerty")  # noqa: UP007
+    with pytest.raises(NotImplementedError, match="qwerty"):
+        get_origin_no_specials(int | str, "qwerty")
     with pytest.raises(NotImplementedError, match="qwerty"):
         get_origin_no_specials(Literal[4], "qwerty")
 

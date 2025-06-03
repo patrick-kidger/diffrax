@@ -6,8 +6,6 @@ from typing import (
     Generic,
     get_args,
     get_origin,
-    Optional,
-    Type,
     TYPE_CHECKING,
     TypeAlias,
     TypeVar,
@@ -81,7 +79,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
     """
 
     # What PyTree structure `terms` should have when used with this solver.
-    term_structure: AbstractClassVar[PyTree[Type[AbstractTerm]]]
+    term_structure: AbstractClassVar[PyTree[type[AbstractTerm]]]
     # How to interpolate the solution in between steps.
     interpolation_cls: AbstractClassVar[Callable[..., AbstractLocalInterpolation]]
 
@@ -90,15 +88,15 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         lambda self: _term_compatible_contr_kwargs(self.term_structure)
     )
 
-    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+    def order(self, terms: PyTree[AbstractTerm]) -> int | None:
         """Order of the solver for solving ODEs."""
         return None
 
-    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         """Strong order of the solver for solving SDEs."""
         return None
 
-    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def error_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         """Order of the error estimate used for adaptive stepping.
 
         The default (slightly heuristic) implementation is as follows.
@@ -156,7 +154,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
         path_state: _PathState,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, _PathState, RESULTS]:
+    ) -> tuple[Y, Y | None, DenseInfo, _SolverState, _PathState, RESULTS]:
         """Make a single step of the solver.
 
         Each step is made over the specified interval $[t_0, t_1]$.
@@ -216,8 +214,10 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
 
 
 class AbstractImplicitSolver(AbstractSolver[_SolverState]):
-    """Indicates that this is an implicit differential equation solver, and as such
-    that it should take a root finder as an argument.
+    """Indicates that this is an implicit differential equation solver.
+
+    Subclasses must define `.root_finder` and `.root_find_max_steps` as a dataclass
+    fields or as properties.
     """
 
     root_finder: AbstractVar[optx.AbstractRootFinder]
@@ -249,6 +249,8 @@ class AbstractWrappedSolver(AbstractSolver[_SolverState]):
 
     Inherit from this class if that is desired behaviour. (Do not inherit from this
     class if that is not desired behaviour.)
+
+    Subclasses must define `.solver` as a dataclass field or as a property.
     """
 
     solver: AbstractVar[AbstractSolver]
@@ -291,13 +293,13 @@ class HalfSolver(
     def term_compatible_contr_kwargs(self):
         return self.solver.term_compatible_contr_kwargs
 
-    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+    def order(self, terms: PyTree[AbstractTerm]) -> int | None:
         return self.solver.order(terms)
 
-    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         return self.solver.strong_order(terms)
 
-    def error_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+    def error_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
         if is_sde(terms):
             order = self.strong_order(terms)
             if order is not None:
@@ -329,7 +331,7 @@ class HalfSolver(
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
         path_state: _PathState,
-    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, _PathState, RESULTS]:
+    ) -> tuple[Y, Y | None, DenseInfo, _SolverState, _PathState, RESULTS]:
         original_solver_state = solver_state
         original_path_state = path_state
         thalf = t0 + 0.5 * (t1 - t0)

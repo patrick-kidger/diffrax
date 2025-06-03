@@ -1,6 +1,5 @@
 from collections.abc import Callable
-from typing import Any, ClassVar
-from typing_extensions import TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
 import jax
 import jax.numpy as jnp
@@ -113,6 +112,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     ) -> VF:
         drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
+
+
+StratonovichMilstein.__init__.__doc__ = """**Arguments:** None"""
 
 
 class ItoMilstein(AbstractItoSolver):
@@ -398,3 +400,6 @@ class ItoMilstein(AbstractItoSolver):
     ) -> VF:
         drift, diffusion = terms.terms
         return drift.vf(t0, y0, args), diffusion.vf(t0, y0, args)
+
+
+ItoMilstein.__init__.__doc__ = """**Arguments:** None"""

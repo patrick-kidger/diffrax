@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import Optional
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -26,10 +25,10 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
-        dt0: Optional[RealScalarLike],
+        dt0: RealScalarLike | None,
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
-        error_order: Optional[RealScalarLike],
+        error_order: RealScalarLike | None,
     ) -> tuple[RealScalarLike, RealScalarLike]:
         del terms, t1, y0, args, func, error_order
         if dt0 is None:
@@ -46,8 +45,8 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
         y0: Y,
         y1_candidate: Y,
         args: Args,
-        y_error: Optional[Y],
-        error_order: Optional[RealScalarLike],
+        y_error: Y | None,
+        error_order: RealScalarLike | None,
         controller_state: RealScalarLike,
     ) -> tuple[bool, RealScalarLike, RealScalarLike, bool, RealScalarLike, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, error_order
@@ -59,6 +58,12 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
             controller_state,
             RESULTS.successful,
         )
+
+
+ConstantStepSize.__init__.__doc__ = """**Arguments:**
+
+None.
+"""
 
 
 class StepTo(AbstractStepSizeController[IntScalarLike, None]):
@@ -92,7 +97,7 @@ class StepTo(AbstractStepSizeController[IntScalarLike, None]):
         dt0: None,
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], Y],
-        error_order: Optional[RealScalarLike],
+        error_order: RealScalarLike | None,
     ) -> tuple[RealScalarLike, IntScalarLike]:
         del y0, args, func, error_order
         if dt0 is not None:
@@ -114,8 +119,8 @@ class StepTo(AbstractStepSizeController[IntScalarLike, None]):
         y0: Y,
         y1_candidate: Y,
         args: Args,
-        y_error: Optional[Y],
-        error_order: Optional[RealScalarLike],
+        y_error: Y | None,
+        error_order: RealScalarLike | None,
         controller_state: IntScalarLike,
     ) -> tuple[bool, RealScalarLike, RealScalarLike, bool, IntScalarLike, RESULTS]:
         del t0, y0, y1_candidate, args, y_error, error_order

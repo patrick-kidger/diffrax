@@ -9,7 +9,7 @@ If you need to create your own path (e.g. to drive a CDE) then you can do so by 
 ??? abstract "`diffrax.AbstractPath`"
 
     ::: diffrax.AbstractPath
-        selection:
+        options:
             members:
                 - t0
                 - t1

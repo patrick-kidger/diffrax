@@ -1,5 +1,5 @@
 import math
-from typing import cast, Optional, TypeAlias, Union
+from typing import cast, Optional, TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -30,10 +30,8 @@ from .._misc import (
 from .base import AbstractBrownianPath
 
 
-_Control = Union[PyTree[Array], AbstractBrownianIncrement]
-_BrownianState: TypeAlias = Union[
-    tuple[None, PyTree[Array], IntScalarLike], tuple[PRNGKeyArray, None, None]
-]
+_Control = PyTree[Array] | AbstractBrownianIncrement
+_BrownianState: TypeAlias = tuple[None, PyTree[Array], IntScalarLike] | tuple[PRNGKeyArray, None, None]
 
 
 class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
@@ -76,19 +74,30 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     key: PRNGKeyArray
     levy_area: type[
-        Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+        BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
     ] = eqx.field(static=True)
     precompute: Optional[int] = eqx.field(static=True)
 
     def __init__(
         self,
-        shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct],
         key: PRNGKeyArray,
         levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+            BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
         ] = BrownianIncrement,
         precompute: Optional[int] = None,
     ):
+        """**Arguments:**
+
+        - `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the
+            shape, dtype, and PyTree structure of the output. For simplicity, `shape`
+            can also just be a tuple of integers, describing the shape of a single JAX
+            array. In that case the dtype is chosen to be the default floating-point
+            dtype.
+        - `key`: A JAX random key, as from `jax.random.key(seed)`.
+        - `levy_area`: Whether to additionally generate Lévy area. This is required by
+            some SDE solvers.
+        """
         self.shape = (
             jax.ShapeDtypeStruct(shape, lxi.default_floating_dtype())
             if is_tuple_of_ints(shape)
@@ -212,10 +221,11 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
     def evaluate(
         self,
         t0: RealScalarLike,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
-    ) -> Union[PyTree[Array], AbstractBrownianIncrement]:
+    ) -> PyTree[Array] | AbstractBrownianIncrement:
+        """Implements [`diffrax.AbstractBrownianPath.evaluate`][]."""
         del left
         if t1 is None:
             dtype = jnp.result_type(t0)
@@ -252,7 +262,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         t1: RealScalarLike,
         shape: jax.ShapeDtypeStruct,
         levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+            BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
         ],
         use_levy: bool,
         noises: Float[Array, "..."],
@@ -289,9 +299,7 @@ class DirectBrownianPath(AbstractBrownianPath[_Control, _BrownianState]):
         t1: RealScalarLike,
         key: PRNGKeyArray,
         shape: jax.ShapeDtypeStruct,
-        levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
-        ],
+        levy_area: type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea],
         use_levy: bool,
     ):
         w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)

@@ -1,9 +1,9 @@
 import abc
 import operator
+import typing
 import warnings
 from collections.abc import Callable
-from typing import cast, Generic, Optional, TypeVar, Union
-from typing_extensions import TypeAlias
+from typing import cast, Generic, TypeAlias, TypeVar
 
 import equinox as eqx
 import jax
@@ -299,13 +299,13 @@ class _CallableToPath(AbstractPath[_Control, None]):
         self,
         t0: RealScalarLike,
         path_state: None,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
     ) -> tuple[_Control, None]:
         return self.evaluate(t0, t1, left), path_state
 
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> _Control:
         return self.fn(t0, t1)
 
@@ -434,7 +434,7 @@ class ControlTerm(AbstractTerm[_VF, _Control, _PathState]):
 
         In this example we consider a controlled differnetial equation, for which the
         control is given by an interpolation of some data. (See also the
-        [neural controlled differential equation](../examples/neural_cde/) example.)
+        [neural controlled differential equation](../examples/neural_cde.ipynb) example.)
 
         ```python
         from diffrax import ControlTerm, diffeqsolve, LinearInterpolation, UnsafeBrownianPath
@@ -461,10 +461,9 @@ class ControlTerm(AbstractTerm[_VF, _Control, _PathState]):
         # the user would have to provide a custom init path state which sounds
         # not ideal, probably just be easier to have them make an abstract path?
         # Callable[[RealScalarLike, PyTree, RealScalarLike], tuple[_Control, PyTree]],
-        control: Union[
-            AbstractPath[_Control, _PathState],
-            Callable[[RealScalarLike, RealScalarLike], _Control],
-        ],
+        control: 
+            AbstractPath[_Control, _PathState] |
+            Callable[[RealScalarLike, RealScalarLike], _Control]
     ):
         self.vector_field = vector_field
         if isinstance(control, AbstractPath):
@@ -1079,7 +1078,7 @@ def broadcast_underdamped_langevin_arg(
 class UnderdampedLangevinDiffusionTerm(
     AbstractTerm[
         UnderdampedLangevinX,
-        Union[UnderdampedLangevinX, AbstractBrownianIncrement],
+        UnderdampedLangevinX | AbstractBrownianIncrement,
         _PathState,
     ]
 ):
@@ -1153,7 +1152,7 @@ class UnderdampedLangevinDiffusionTerm(
         t1: RealScalarLike,
         control_state: _PathState,
         **kwargs,
-    ) -> tuple[Union[UnderdampedLangevinX, AbstractBrownianIncrement], _PathState]:
+    ) -> tuple[UnderdampedLangevinX | AbstractBrownianIncrement, _PathState]:
         # same stateless function as above
         return self.control(t0, control_state, t1, **kwargs)
 
@@ -1260,10 +1259,12 @@ class UnderdampedLangevinDriftTerm(AbstractTerm):
         return jtu.tree_map(lambda _vf: control * _vf, vf)
 
 
-AbstractTerm.__module__ = "diffrax"
-ODETerm.__module__ = "diffrax"
-ControlTerm.__module__ = "diffrax"
-WeaklyDiagonalControlTerm.__module__ = "diffrax"
-MultiTerm.__module__ = "diffrax"
-UnderdampedLangevinDriftTerm.__module__ = "diffrax"
-UnderdampedLangevinDiffusionTerm.__module__ = "diffrax"
+# Docgen doesn't display methods if these are present, for some reason.
+if getattr(typing, "GENERATING_DOCUMENTATION", "") != "diffrax":
+    AbstractTerm.__module__ = "diffrax"
+    ODETerm.__module__ = "diffrax"
+    ControlTerm.__module__ = "diffrax"
+    WeaklyDiagonalControlTerm.__module__ = "diffrax"
+    MultiTerm.__module__ = "diffrax"
+    UnderdampedLangevinDriftTerm.__module__ = "diffrax"
+    UnderdampedLangevinDiffusionTerm.__module__ = "diffrax"

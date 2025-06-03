@@ -1,5 +1,4 @@
 from collections.abc import Callable, Sequence
-from typing import Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -13,8 +12,8 @@ def save_y(t, y, args):
 
 
 def _convert_ts(
-    ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]],
-) -> Optional[Real[Array, " times"]]:
+    ts: None | Sequence[RealScalarLike] | Real[Array, " times"],
+) -> Real[Array, " times"] | None:
     if ts is None or len(ts) == 0:
         return None
     else:
@@ -31,7 +30,7 @@ class SubSaveAt(eqx.Module):
 
     t0: bool = False
     t1: bool = False
-    ts: Optional[Real[Array, " times"]] = eqx.field(default=None, converter=_convert_ts)
+    ts: Real[Array, " times"] | None = eqx.field(default=None, converter=_convert_ts)
     steps: bool = False
     fn: Callable = save_y
 
@@ -72,7 +71,7 @@ class SaveAt(eqx.Module):
         *,
         t0: bool = False,
         t1: bool = False,
-        ts: Union[None, Sequence[RealScalarLike], Real[Array, " times"]] = None,
+        ts: None | Sequence[RealScalarLike] | Real[Array, " times"] = None,
         steps: bool = False,
         fn: Callable = save_y,
         subs: PyTree[SubSaveAt] = None,

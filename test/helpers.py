@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Callable, Optional, Union
+from collections.abc import Callable
 
 import diffrax
 import equinox as eqx
@@ -140,15 +140,15 @@ def _abstract_la_to_la(abstract_la):
 def _batch_sde_solve(
     key: PRNGKeyArray,
     get_terms: Callable[[diffrax.AbstractBrownianPath], diffrax.AbstractTerm],
-    w_shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+    w_shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct],
     t0: float,
     t1: float,
     y0: PyTree[Array],
     args: PyTree,
     solver: diffrax.AbstractSolver,
-    levy_area: Optional[type[diffrax.AbstractBrownianIncrement]],
-    dt0: Optional[float],
-    controller: Optional[diffrax.AbstractStepSizeController],
+    levy_area: type[diffrax.AbstractBrownianIncrement] | None,
+    dt0: float | None,
+    controller: diffrax.AbstractStepSizeController | None,
     bm_tol: float,
     saveat: diffrax.SaveAt,
 ):
@@ -227,7 +227,7 @@ def sde_solver_strong_order(
     y0: PyTree[Array],
     args: PyTree,
     solver: diffrax.AbstractSolver,
-    ref_solver: Optional[diffrax.AbstractSolver],
+    ref_solver: diffrax.AbstractSolver | None,
     levels: tuple[int, int],
     ref_level: int,
     get_dt_and_controller: Callable[
@@ -235,8 +235,8 @@ def sde_solver_strong_order(
     ],
     saveat: diffrax.SaveAt,
     bm_tol: float,
-    levy_area: Optional[type[diffrax.AbstractBrownianIncrement]],
-    ref_solution: Optional[PyTree[Array]],
+    levy_area: type[diffrax.AbstractBrownianIncrement] | None,
+    ref_solution: PyTree[Array] | None,
 ):
     if levy_area is None:
         levy_area1 = _get_minimal_la(solver)
@@ -302,7 +302,7 @@ class SDE:
     y0: PyTree[Array]
     t0: float
     t1: float
-    w_shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]]
+    w_shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct]
 
     def get_dtype(self):
         return jnp.result_type(*jtu.tree_leaves(self.y0))
@@ -311,11 +311,9 @@ class SDE:
         self,
         bm_key: PRNGKeyArray,
         levy_area: type[
-            Union[
-                diffrax.BrownianIncrement,
-                diffrax.SpaceTimeLevyArea,
-                diffrax.SpaceTimeTimeLevyArea,
-            ]
+            diffrax.BrownianIncrement
+            | diffrax.SpaceTimeLevyArea
+            | diffrax.SpaceTimeTimeLevyArea
         ],
         tol: float,
     ):

@@ -1,7 +1,6 @@
 import functools as ft
 from collections.abc import Callable
-from typing import cast, Optional, TYPE_CHECKING
-from typing_extensions import TypeAlias
+from typing import cast, TYPE_CHECKING, TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -70,7 +69,7 @@ class AbstractGlobalInterpolation(AbstractPath[_Control, _PathState]):
         self,
         t0: RealScalarLike,
         path_state: _PathState,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
     ) -> tuple[_Control, _PathState]:
         return self.evaluate(t0, t1, left), path_state
@@ -115,7 +114,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Array]:
         r"""Evaluate the linear interpolation.
 
@@ -241,7 +240,7 @@ class CubicInterpolation(AbstractGlobalInterpolation):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         r"""Evaluate the cubic interpolation.
 
@@ -361,7 +360,7 @@ class DenseInterpolation(AbstractGlobalInterpolation):
 
     @eqx.filter_jit
     def evaluate(
-        self, t0: RealScalarLike, t1: Optional[RealScalarLike] = None, left: bool = True
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         if t1 is not None:
             return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
@@ -473,7 +472,7 @@ def _linear_interpolation(
     fill_forward_nans_at_end: bool,
     ts: Real[Array, " times"],
     ys: Shaped[Array, " times *channels"],
-    replace_nans_at_start: Optional[Shaped[ArrayLike, " *#channels"]] = None,
+    replace_nans_at_start: Shaped[ArrayLike, " *#channels"] | None = None,
 ) -> Shaped[Array, " times *channels"]:
     ts = left_broadcast_to(ts, ys.shape)
 
@@ -499,7 +498,7 @@ def linear_interpolation(
     ys: PyTree[Shaped[Array, "times ?*shape"], "Y"],
     *,
     fill_forward_nans_at_end: bool = False,
-    replace_nans_at_start: Optional[PyTree[Shaped[ArrayLike, "?#*shape"], "Y"]] = None,
+    replace_nans_at_start: PyTree[Shaped[ArrayLike, "?#*shape"], "Y"] | None = None,
 ) -> PyTree[Shaped[Array, "times ?*shape"], "Y"]:
     """Fill in any missing values via linear interpolation.
 
@@ -535,7 +534,7 @@ def linear_interpolation(
 
 
 def _rectilinear_interpolation(
-    replace_nans_at_start: Optional[Shaped[ArrayLike, " *channels"]],
+    replace_nans_at_start: Shaped[ArrayLike, " *channels"] | None,
     ys: Shaped[Array, " times *channels"],
 ) -> Shaped[Array, " 2*times-1 *channels"]:
     ys = fill_forward(ys, replace_nans_at_start)
@@ -547,7 +546,7 @@ def _rectilinear_interpolation(
 def rectilinear_interpolation(
     ts: Real[Array, " times"],
     ys: PyTree[Shaped[Array, "times ?*shape"], "Y"],
-    replace_nans_at_start: Optional[PyTree[Shaped[ArrayLike, "?#*shape"], "Y"]] = None,
+    replace_nans_at_start: PyTree[Shaped[ArrayLike, "?#*shape"], "Y"] | None = None,
 ) -> tuple[Real[Array, " 2*times-1"], PyTree[Shaped[Array, " 2*times-1 ?*shape"], "Y"]]:
     """Rectilinearly interpolates the input. This is a variant of linear interpolation
     that is particularly useful when using neural CDEs in a real-time scenario.
@@ -690,8 +689,8 @@ def _backward_hermite_coefficients(
     fill_forward_nans_at_end: bool,
     ts: Real[Array, " times"],
     ys: Shaped[Array, " times *channels"],
-    deriv0: Optional[Shaped[Array, " *#channels"]] = None,
-    replace_nans_at_start: Optional[Shaped[ArrayLike, " *#channels"]] = None,
+    deriv0: Shaped[Array, " *#channels"] | None = None,
+    replace_nans_at_start: Shaped[ArrayLike, " *#channels"] | None = None,
 ) -> tuple[
     Shaped[Array, " times-1 *channels"],
     Shaped[Array, " times-1 *channels"],
@@ -739,8 +738,8 @@ def backward_hermite_coefficients(
     ts: Real[Array, " times"],
     ys: PyTree[Shaped[Array, "times ?*shape"], "Y"],
     *,
-    deriv0: Optional[PyTree[Shaped[Array, "?#*shape"], "Y"]] = None,
-    replace_nans_at_start: Optional[PyTree[Shaped[ArrayLike, "?#*shape"], "Y"]] = None,
+    deriv0: PyTree[Shaped[Array, "?#*shape"], "Y"] | None = None,
+    replace_nans_at_start: PyTree[Shaped[ArrayLike, "?#*shape"], "Y"] | None = None,
     fill_forward_nans_at_end: bool = False,
 ) -> tuple[
     PyTree[Shaped[Array, "times-1 ?*shape"], "Y"],

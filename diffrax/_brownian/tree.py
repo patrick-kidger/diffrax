@@ -1,6 +1,5 @@
 import math
-from typing import Literal, Optional, TypeVar, Union
-from typing_extensions import TypeAlias
+from typing import Literal, TypeAlias, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -64,7 +63,7 @@ FloatTriple: TypeAlias = tuple[
 ]
 _Spline: TypeAlias = Literal["sqrt", "quad", "zero"]
 _BrownianReturn = TypeVar("_BrownianReturn", bound=AbstractBrownianIncrement)
-_Control = Union[PyTree[Array], AbstractBrownianIncrement]
+_Control = PyTree[Array] | AbstractBrownianIncrement
 _BrownianState: TypeAlias = None
 
 
@@ -74,10 +73,10 @@ _BrownianState: TypeAlias = None
 class _LevyVal(eqx.Module):
     dt: RealScalarLike
     W: Array
-    H: Optional[Array]
-    bar_H: Optional[Array]
-    K: Optional[Array]
-    bar_K: Optional[Array]
+    H: Array | None
+    bar_H: Array | None
+    K: Array | None
+    bar_K: Array | None
 
     def __check_init__(self):
         if self.H is None:
@@ -92,8 +91,8 @@ class _State(eqx.Module):
     s: RealScalarLike  # starting time of the interval
     w_s_u_su: FloatTriple  # W_s, W_u, W_{s,u}
     key: PRNGKeyArray
-    bhh_s_u_su: Optional[FloatTriple]  # \bar{H}_s, _u, _{s,u}
-    bkk_s_u_su: Optional[FloatTriple]  # \bar{K}_s, _u, _{s,u}
+    bhh_s_u_su: FloatTriple | None  # \bar{H}_s, _u, _{s,u}
+    bkk_s_u_su: FloatTriple | None  # \bar{K}_s, _u, _{s,u}
 
 
 def _levy_diff(_, x0: _LevyVal, x1: _LevyVal) -> AbstractBrownianIncrement:
@@ -165,8 +164,8 @@ def _make_levy_val(_, x: _LevyVal) -> AbstractBrownianIncrement:
 
 
 def _split_interval(
-    pred: BoolScalarLike, x_stu: Optional[FloatTriple], x_st_tu: Optional[FloatDouble]
-) -> Optional[FloatTriple]:
+    pred: BoolScalarLike, x_stu: FloatTriple | None, x_st_tu: FloatDouble | None
+) -> FloatTriple | None:
     if x_stu is None:
         assert x_st_tu is None
         return None
@@ -241,7 +240,7 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
     levy_area: type[
-        Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+        BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
     ] = eqx.field(static=True)
     key: PyTree[PRNGKeyArray]
     _spline: _Spline = eqx.field(static=True)
@@ -252,13 +251,37 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
         t0: RealScalarLike,
         t1: RealScalarLike,
         tol: RealScalarLike,
-        shape: Union[tuple[int, ...], PyTree[jax.ShapeDtypeStruct]],
+        shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct],
         key: PRNGKeyArray,
         levy_area: type[
-            Union[BrownianIncrement, SpaceTimeLevyArea, SpaceTimeTimeLevyArea]
+            BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
         ] = BrownianIncrement,
         _spline: _Spline = "sqrt",
     ):
+        """**Arguments:**
+
+        - `t0`: the start of the time interval. Must be less than or equal to the value
+            passed to `diffeqsolve(..., t0=...)`.
+        - `t1`: the start of the time interval. Must be greater than or equal to the
+            value passed to `diffeqsolve(..., t1=...)`.
+        - `tol`: the tolerance to discretise the `[t0, t1]` time interval in to. To get
+            the correct statistical randomness, this must be smaller than time step used
+            by the differential equation solver. If using a fixed timestep (e.g. the
+            default `diffeqsolve(..., stepsize_controller=ConstantStepSize())`, then
+            setting this to `dt0 / 2` is a common choice. If using an adaptive
+            timestep then it may be desirable to set a minimum step size in the
+            step size controller (e.g. `stepsize_controller=PIDController(dtmin=...)`).)
+        - `shape`: Should be a PyTree of `jax.ShapeDtypeStruct`s, representing the
+            shape, dtype, and PyTree structure of the output. For simplicity, `shape`
+            can also just be a tuple of integers, describing the shape of a single JAX
+            array. In that case the dtype is chosen to be the default floating-point
+            dtype.
+        - `key`: A JAX random key, as from `jax.random.key(seed)`.
+        - `levy_area`: whether to additionally generate higher-order Lévy areas (in
+            addition to just the Brownian increments). This is more computationally
+            expensive, but is required for some higher-order SDE solvers, see the
+            [documentation on Lévy areas](#levy-areas).
+        """
         (t0, t1) = eqx.error_if((t0, t1), t0 >= t1, "t0 must be strictly less than t1")
         self.t0 = t0
         self.t1 = t1
@@ -316,7 +339,7 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
         self,
         t0: RealScalarLike,
         brownian_state: _BrownianState,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
     ) -> tuple[_Control, _BrownianState]:
@@ -326,10 +349,11 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
     def evaluate(
         self,
         t0: RealScalarLike,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
     ) -> _Control:
+        del left
         t0 = eqxi.nondifferentiable(t0, name="t0")
         # map the interval [self.t0, self.t1] onto [0,1]
         t0 = linear_rescale(self.t0, t0, self.t1)
@@ -529,9 +553,9 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
                     f" 'zero' splines are permitted, got {self._spline}."
                 )
 
-            hat_w_sr, hat_hh_sr, hat_kk_sr = [
+            hat_w_sr, hat_hh_sr, hat_kk_sr = (
                 x.squeeze(axis=-1) for x in jnp.split(hat_y, 3, axis=-1)
-            ]
+            )
             assert hat_w_sr.shape == hat_hh_sr.shape == hat_kk_sr.shape == shape
 
             w_sr = w_mean + hat_w_sr
@@ -628,10 +652,10 @@ class VirtualBrownianTree(AbstractBrownianPath[_Control, _BrownianState]):
         FloatTriple,
         FloatDouble,
         tuple[PRNGKeyArray, PRNGKeyArray],
-        Optional[FloatTriple],
-        Optional[FloatDouble],
-        Optional[FloatTriple],
-        Optional[FloatDouble],
+        FloatTriple | None,
+        FloatDouble | None,
+        FloatTriple | None,
+        FloatDouble | None,
     ]:
         r"""For `t = (s+u)/2` evaluates `w_t` and (optionally) `bhh_t`
          conditioned on `w_s`, `w_u`, `bhh_s`, `bhh_u`, where

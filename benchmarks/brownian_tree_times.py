@@ -7,8 +7,7 @@ sure that it is still fast.
 """
 
 import timeit
-from typing import cast, Optional, Union
-from typing_extensions import TypeAlias
+from typing import cast, TypeAlias
 
 import diffrax
 import equinox as eqx
@@ -24,7 +23,7 @@ from diffrax import AbstractBrownianPath, VirtualBrownianTree
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree, Real
 
 
-RealScalarLike: TypeAlias = Real[Union[int, float, Array, np.ndarray], ""]
+RealScalarLike: TypeAlias = Real[int | float | Array | np.ndarray, ""]
 
 
 class _State(eqx.Module):
@@ -68,7 +67,7 @@ class OldVBT(AbstractBrownianPath):
     def evaluate(
         self,
         t0: RealScalarLike,
-        t1: Optional[RealScalarLike] = None,
+        t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
     ) -> PyTree[Array]:
