@@ -242,9 +242,8 @@ def _save(
     ys = save_state.ys
     save_index = save_state.save_index
 
-    ts = lax.dynamic_update_slice_in_dim(
-        ts, jnp.broadcast_to(t, (repeat,)), save_index, axis=0
-    )
+    t_to_save = jnp.broadcast_to(static_select(pred, t, ts[save_index]), (repeat,))
+    ts = lax.dynamic_update_slice_in_dim(ts, t_to_save, save_index, axis=0)
     y_to_save = lax.cond(
         pred,
         lambda: fn(t, y, args),
@@ -484,33 +483,29 @@ def loop(
             save_ts, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
 
-        def maybe_inplace(i, u, x):
-            return eqxi.buffer_at_set(x, i, u, pred=keep_step)
-
         def save_steps(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
             if subsaveat.steps != 0:
-                save_step = (state.num_accepted_steps % subsaveat.steps) == 0
+                save_step = (num_accepted_steps % subsaveat.steps) == 0
                 should_save = keep_step & save_step
 
-                def save_fn(tprev, y, args):
-                    return subsaveat.fn(tprev, y, args)
-                    # TODO: Enable this, but I am not sure if possible? How do we know
-                    # the output shape of `.fn`? We should do a dummy call to it?
-                    if subsaveat.steps == 1:
-                        return subsaveat.fn(tprev, y, args)
-                    else:
-                        return lax.cond(
-                            should_save,
-                            lambda: subsaveat.fn(tprev, y, args),
-                            lambda: jtu.tree_map(
-                                lambda y: jnp.zeros(y.shape[1:], y.dtype), save_state.ys
-                            ),
-                        )
+                if subsaveat.steps == 1:
+                    y_to_save = subsaveat.fn(tprev, y, args)
+                else:
+                    struct = eqx.filter_eval_shape(subsaveat.fn, tprev, y, args)
+                    y_to_save = lax.cond(
+                        eqxi.unvmap_any(should_save),
+                        lambda: subsaveat.fn(tprev, y, args),
+                        lambda: jtu.tree_map(jnp.zeros_like, struct),
+                    )
 
-                ts = maybe_inplace(save_state.save_index, tprev, save_state.ts)
+                ts = eqxi.buffer_at_set(
+                    save_state.ts, save_state.save_index, tprev, pred=should_save
+                )
                 ys = jtu.tree_map(
-                    ft.partial(maybe_inplace, save_state.save_index),
-                    save_fn(tprev, y, args),
+                    lambda _y, _ys: eqxi.buffer_at_set(
+                        _ys, save_state.save_index, _y, pred=should_save
+                    ),
+                    y_to_save,
                     save_state.ys,
                 )
                 save_index = save_state.save_index + jnp.where(should_save, 1, 0)
@@ -525,9 +520,13 @@ def loop(
             save_steps, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
         if saveat.dense:
-            dense_ts = maybe_inplace(dense_save_index + 1, tprev, dense_ts)
+            dense_ts = eqxi.buffer_at_set(
+                dense_ts, dense_save_index + 1, tprev, pred=keep_step
+            )
             dense_infos = jtu.tree_map(
-                ft.partial(maybe_inplace, dense_save_index),
+                lambda _i, _is: eqxi.buffer_at_set(
+                    _is, dense_save_index, _i, pred=keep_step
+                ),
                 dense_info,
                 dense_infos,
             )
