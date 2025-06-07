@@ -191,9 +191,12 @@ def test_saveat_solution():
 
 
 def test_saveat_solution_skip_steps():
-    def _step_integrate(saveat: diffrax.SaveAt):
+    def _step_integrate(saveat: diffrax.SaveAt, with_7: bool):
         term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
-        ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        if with_7:
+            ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+        else:
+            ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         sol_ts = diffrax.diffeqsolve(
             term,
             t0=ts[0],
@@ -208,24 +211,35 @@ def test_saveat_solution_skip_steps():
         assert sol_ts is not None
         return sol_ts[jnp.isfinite(sol_ts)]
 
-    saveat = diffrax.SaveAt(steps=2)
-    ts = _step_integrate(saveat)
-    assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0]))
-    saveat = diffrax.SaveAt(steps=2, t1=True)
-    ts = _step_integrate(saveat)
-    assert jnp.allclose(ts, jnp.array([1.0, 3.0, 5.0, 6.0]))
-    saveat = diffrax.SaveAt(steps=2, t1=True, t0=True)
-    ts = _step_integrate(saveat)
-    assert jnp.allclose(ts, jnp.array([0.0, 1.0, 3.0, 5.0, 6.0]))
-    saveat = diffrax.SaveAt(steps=3)
-    ts = _step_integrate(saveat)
-    assert jnp.allclose(ts, jnp.array([1.0, 4.0]))
-    saveat = diffrax.SaveAt(steps=3, t1=True)
-    ts = _step_integrate(saveat)
-    assert jnp.allclose(ts, jnp.array([1.0, 4.0, 6.0]))
-    saveat = diffrax.SaveAt(steps=3, t1=True, t0=True)
-    ts = _step_integrate(saveat)
-    assert jnp.allclose(ts, jnp.array([0.0, 1.0, 4.0, 6.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=2), with_7=True)
+    assert jnp.allclose(ts, jnp.array([2.0, 4.0, 6.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=2), with_7=False)
+    assert jnp.allclose(ts, jnp.array([2.0, 4.0, 6.0]))
+
+    ts = _step_integrate(diffrax.SaveAt(steps=2, t1=True), with_7=True)
+    assert jnp.allclose(ts, jnp.array([2.0, 4.0, 6.0, 7.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=2, t1=True), with_7=False)
+    assert jnp.allclose(ts, jnp.array([2.0, 4.0, 6.0]))
+
+    ts = _step_integrate(diffrax.SaveAt(steps=2, t1=True, t0=True), with_7=True)
+    assert jnp.allclose(ts, jnp.array([0.0, 2.0, 4.0, 6.0, 7.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=2, t1=True, t0=True), with_7=False)
+    assert jnp.allclose(ts, jnp.array([0.0, 2.0, 4.0, 6.0]))
+
+    ts = _step_integrate(diffrax.SaveAt(steps=3), with_7=True)
+    assert jnp.allclose(ts, jnp.array([3.0, 6.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=3), with_7=False)
+    assert jnp.allclose(ts, jnp.array([3.0, 6.0]))
+
+    ts = _step_integrate(diffrax.SaveAt(steps=3, t1=True), with_7=True)
+    assert jnp.allclose(ts, jnp.array([3.0, 6.0, 7.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=3, t1=True), with_7=False)
+    assert jnp.allclose(ts, jnp.array([3.0, 6.0]))
+
+    ts = _step_integrate(diffrax.SaveAt(steps=3, t1=True, t0=True), with_7=True)
+    assert jnp.allclose(ts, jnp.array([0.0, 3.0, 6.0, 7.0]))
+    ts = _step_integrate(diffrax.SaveAt(steps=3, t1=True, t0=True), with_7=False)
+    assert jnp.allclose(ts, jnp.array([0.0, 3.0, 6.0]))
 
 
 def test_saveat_solution_skip_vs_saveat():
