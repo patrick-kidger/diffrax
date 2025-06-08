@@ -3,6 +3,7 @@ from typing import ClassVar, TypeAlias
 
 import optimistix as optx
 from equinox.internal import ω
+from jaxtyping import PyTree
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
@@ -14,6 +15,7 @@ from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
 
 
 _SolverState: TypeAlias = None
+_PathState: TypeAlias = PyTree
 
 
 def _implicit_relation(z1, nonlinear_solve_args):
@@ -59,6 +61,7 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         del terms, t0, t1, y0, args
         return None
@@ -72,9 +75,10 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, Y, DenseInfo, _SolverState, _PathState, RESULTS]:
         del made_jump
-        control = terms.contr(t0, t1)
+        control, path_state = terms.contr(t0, t1, path_state)
         # Could use FSAL here but that would mean we'd need to switch to working with
         # `f0 = terms.vf(t0, y0, args)`, and that gets quite hairy quite quickly.
         # (C.f. `AbstractRungeKutta.step`.)
@@ -97,7 +101,7 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         dense_info = dict(y0=y0, y1=y1)
         solver_state = None
         result = RESULTS.promote(nonlinear_sol.result)
-        return y1, y_error, dense_info, solver_state, result
+        return y1, y_error, dense_info, solver_state, path_state, result
 
     def func(
         self,

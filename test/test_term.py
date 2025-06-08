@@ -16,7 +16,7 @@ def test_ode_term():
         return -y
 
     term = diffrax.ODETerm(vector_field)
-    dt = term.contr(0, 1)
+    dt, state = term.contr(0, 1, None)
     vf = term.vf(0, 1, None)
     vf_prod = term.vf_prod(0, 1, None, dt)
     assert tree_allclose(vf_prod, term.prod(vf, dt))
@@ -31,9 +31,15 @@ def test_control_term(getkey):
     vector_field = lambda t, y, args: jr.normal(args, (3, 2))
     derivkey = getkey()
 
-    class Control(diffrax.AbstractPath[Shaped[Array, "2"]]):
+    class Control(diffrax.AbstractPath[Shaped[Array, "2"], None]):
         t0 = 0
         t1 = 1
+
+        def init(self, t0, t1, y0, args):
+            return None
+
+        def __call__(self, t0, path_state: None, t1=None, left=True):
+            return self.evaluate(t0, t1, left), path_state
 
         def evaluate(self, t0, t1=None, left=True):
             return jr.normal(getkey(), (2,))
@@ -44,7 +50,7 @@ def test_control_term(getkey):
     control = Control()
     term = diffrax.ControlTerm(vector_field, control)
     args = getkey()
-    dx = term.contr(0, 1)
+    dx, state = term.contr(0, 1, None)
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
@@ -58,11 +64,11 @@ def test_control_term(getkey):
 
     # `# type: ignore` is used for contrapositive static type checking as per:
     # https://github.com/microsoft/pyright/discussions/2411#discussioncomment-2028001
-    _: diffrax.ControlTerm[PyTree[Array], Array] = term
-    __: diffrax.ControlTerm[PyTree[Array], diffrax.BrownianIncrement] = term  # type: ignore
+    _: diffrax.ControlTerm[PyTree[Array], Array, None] = term
+    __: diffrax.ControlTerm[PyTree[Array], diffrax.BrownianIncrement, None] = term  # type: ignore
 
     term = term.to_ode()
-    dt = term.contr(0, 1)
+    dt, state = term.contr(0, 1, None)
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dt)
     assert vf.shape == (3,)
@@ -78,6 +84,12 @@ def test_weakly_diagional_control_term(getkey):
         t0 = 0
         t1 = 1
 
+        def init(self, t0, t1, y0, args):
+            return None
+
+        def __call__(self, t0, path_state, t1=None, left=True):
+            return self.evaluate(t0, t1, left), path_state
+
         def evaluate(self, t0, t1=None, left=True):
             return jr.normal(getkey(), (3,))
 
@@ -88,7 +100,7 @@ def test_weakly_diagional_control_term(getkey):
     with pytest.warns(match="`WeaklyDiagonalControlTerm` is now deprecated"):
         term = diffrax.WeaklyDiagonalControlTerm(vector_field, control)
     args = getkey()
-    dx = term.contr(0, 1)
+    dx, state = term.contr(0, 1, None)
     y = jnp.array([1.0, 2.0, 3.0])
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dx)
@@ -101,7 +113,7 @@ def test_weakly_diagional_control_term(getkey):
     assert tree_allclose(vf_prod, term.prod(vf, dx))
 
     term = term.to_ode()
-    dt = term.contr(0, 1)
+    dt, state = term.contr(0, 1, None)
     vf = term.vf(0, y, args)
     vf_prod = term.vf_prod(0, y, args, dt)
     assert vf.shape == (3,)
@@ -147,7 +159,7 @@ def test_cde_adjoint_term(getkey):
     randlike = lambda a: jr.normal(getkey(), a.shape)
     a_term = jtu.tree_map(randlike, eqx.filter(term, eqx.is_array))
     aug = (y, a_y, a_args, a_term)
-    dt = adjoint_term.contr(t, t + 1)
+    dt, state = adjoint_term.contr(t, t + 1, None)
 
     vf_prod1 = adjoint_term.vf_prod(t, aug, args, dt)
     vf = adjoint_term.vf(t, aug, args)
