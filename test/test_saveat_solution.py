@@ -245,7 +245,7 @@ def test_saveat_solution_skip_steps():
 def test_saveat_solution_skip_vs_saveat():
     ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     n = 2
-    saveat_skip = diffrax.SaveAt(steps=n)
+    saveat_skip = diffrax.SaveAt(steps=n, t0=True)
     saveat = diffrax.SaveAt(ts=ts[::n])
     term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
 
@@ -259,13 +259,13 @@ def test_saveat_solution_skip_vs_saveat():
             solver=diffrax.Euler(),
             saveat=saveat,
             stepsize_controller=diffrax.StepTo(ts=ts),
-            max_steps=10,
+            max_steps=6,
         )
 
     sol_skip = solve(saveat_skip)
     sol = solve(saveat)
-    assert sol_skip.ts == sol.ts
-    assert sol_skip.ys == sol.ys
+    assert jnp.allclose(sol_skip.ts, sol.ts)
+    assert jnp.allclose(sol_skip.ys, sol.ys)
 
 
 @pytest.mark.parametrize("subs", [True, False])
