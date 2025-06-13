@@ -264,6 +264,12 @@ def test_saveat_solution_skip_vs_saveat():
 
     sol_skip = solve(saveat_skip)
     sol = solve(saveat)
+    assert sol is not None
+    assert sol.ts is not None
+    assert sol.ys is not None
+    assert sol_skip is not None
+    assert sol_skip.ts is not None
+    assert sol_skip.ys is not None
     assert jnp.allclose(sol_skip.ts, sol.ts)
     assert jnp.allclose(sol_skip.ys, sol.ys)
 
