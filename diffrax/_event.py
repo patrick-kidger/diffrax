@@ -20,15 +20,15 @@ class Event(eqx.Module):
     [`diffrax.diffeqsolve`][].
     """
 
-    cond_fn: PyTree[Callable[..., Union[BoolScalarLike, RealScalarLike]]]
+    cond_fn: PyTree[Callable[..., BoolScalarLike | RealScalarLike]]
     trig_dir: PyTree[None | bool]
-    root_finder: Optional[optx.AbstractRootFinder]
+    root_finder: optx.AbstractRootFinder | None
 
     def __init__(
         self,
         cond_fn,
-        root_finder: Optional[optx.AbstractRootFinder] = None,
-        trig_dir: Union[None | bool, PyTree[None | bool]] = None,
+        root_finder: optx.AbstractRootFinder | None = None,
+        trig_dir: None | bool | PyTree[None | bool] = None,
     ):
         vals_cond, treedef_cond = flatten(cond_fn)
 

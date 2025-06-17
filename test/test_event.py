@@ -710,10 +710,7 @@ def test_event_save_subsaveat(steps):
     assert jnp.all(jnp.isclose(ys_2[steps - 1], jnp.array([thr, 0]), atol=1e-5))
     assert jnp.all(jnp.isclose(ys_1.y[ts_event - 1], last_save, atol=1e-5))
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 465bf885ee1993bc4d23f5ed527856dcd8129106
 def test_event_trig_dir():
     term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
     solver = diffrax.Tsit5()
@@ -736,11 +733,7 @@ def test_event_trig_dir():
     assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
 
 
-<<<<<<< HEAD
-def test_event_trig_dir_single_bool():
-=======
 def test_event_trig_dir_single_true():
->>>>>>> 465bf885ee1993bc4d23f5ed527856dcd8129106
     term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
     solver = diffrax.Tsit5()
     t0 = 0.0
@@ -760,6 +753,7 @@ def test_event_trig_dir_single_true():
 
     assert jnp.isclose(cast(Array, sol.ts)[-1], 5.0)
     assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
+
 
 def test_event_trig_dir_single_none():
     term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
@@ -781,6 +775,7 @@ def test_event_trig_dir_single_none():
 
     assert jnp.isclose(cast(Array, sol.ts)[-1], 4.0)
     assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([4.0, 5.0])))
+
 
 def test_event_trig_dir_pytree_structure():
     f = lambda x: x
