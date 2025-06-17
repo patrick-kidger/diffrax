@@ -584,6 +584,7 @@ def loop(
                 event.trig_dir,
                 is_leaf=callable,
             )
+
             event_structure = jtu.tree_structure(event.cond_fn, is_leaf=callable)
             event_values, event_mask = jtu.tree_transpose(
                 event_structure,

@@ -3,6 +3,7 @@ from collections.abc import Callable
 
 import equinox as eqx
 import optimistix as optx
+from jax.tree import flatten, unflatten
 from jaxtyping import Array, PyTree
 
 from ._custom_types import BoolScalarLike, FloatScalarLike, RealScalarLike
@@ -31,12 +32,11 @@ class Event(eqx.Module):
     ):
         vals_cond, treedef_cond = flatten(cond_fn)
 
-        if isinstance(trig_dir, bool):
+        if isinstance(trig_dir, bool) or trig_dir is None:
             vals_trig = [trig_dir] * len(vals_cond)
             treedef_trig = treedef_cond
         else:
             vals_trig, treedef_trig = flatten(trig_dir, is_leaf=lambda x: x is None)
-            print(vals_trig, treedef_trig)
 
         if treedef_cond != treedef_trig:
             raise ValueError("Missmatch in the structure of cond_fn and trigger_dir")
@@ -69,13 +69,10 @@ Event.__init__.__doc__ = """**Arguments:**
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
 
-<<<<<<< HEAD
-=======
 - `trig_dir`: None or bool or PyTree of None or bool of the same shape as cond_fn,
     that decides for each cond_fn if it triggers an event from a zero-cossing in both
     directions (None), from an upcrossing (True) or from a downcrossing (False).
 
->>>>>>> 76c707d (added/changed suggestions)
 !!! Example
 
     Consider a bouncing ball dropped from some intial height $x_0$. We can model 
