@@ -33,12 +33,11 @@ class Event(eqx.Module):
     ):
         vals_cond, treedef_cond = flatten(cond_fn)
 
-        if isinstance(trig_dir, bool):
+        if isinstance(trig_dir, bool) or trig_dir is None:
             vals_trig = [trig_dir] * len(vals_cond)
             treedef_trig = treedef_cond
         else:
             vals_trig, treedef_trig = flatten(trig_dir, is_leaf=lambda x: x is None)
-            print(vals_trig, treedef_trig)
 
         if treedef_cond != treedef_trig:
             raise ValueError("Missmatch in the structure of cond_fn and trigger_dir")
