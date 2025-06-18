@@ -543,7 +543,7 @@ def loop(
             event_tnext = state.tnext
             event_dense_info = dense_info
 
-            def _outer_cond_fn(cond_fn_i, old_event_value_i, trig_dir_i):
+            def _outer_cond_fn(cond_fn_i, old_event_value_i, direction_i):
                 new_event_value_i = cond_fn_i(
                     tprev,
                     y,
@@ -577,11 +577,11 @@ def loop(
                         f"{new_dtype}."
                     )
                 if jnp.issubdtype(new_dtype, jnp.floating):
-                    if trig_dir_i is None:
+                    if direction_i is None:
                         event_mask_i = jnp.sign(old_event_value_i) != jnp.sign(
                             new_event_value_i
                         )
-                    elif trig_dir_i:
+                    elif direction_i:
                         event_mask_i = (jnp.sign(old_event_value_i) <= 0) & (
                             jnp.sign(new_event_value_i) > 0
                         )
@@ -603,7 +603,7 @@ def loop(
                 _outer_cond_fn,
                 event.cond_fn,
                 state.event_values,
-                event.trig_dir,
+                event.direction,
                 is_leaf=callable,
             )
 
