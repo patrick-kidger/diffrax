@@ -5,6 +5,7 @@ import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import optimistix as optx
 import pytest
 
 from .helpers import tree_allclose
@@ -272,6 +273,47 @@ def test_saveat_solution_skip_vs_saveat():
     assert sol_skip.ys is not None
     assert jnp.allclose(sol_skip.ts, sol.ts)
     assert jnp.allclose(sol_skip.ys, sol.ys)
+
+
+def test_saveat_steps_with_event():
+    def solve(saveat):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: -0.5 * y),
+            t0=0,
+            t1=5,
+            y0=1.0,
+            dt0=1,
+            solver=diffrax.Euler(),
+            saveat=saveat,
+            event=diffrax.Event(
+                cond_fn=lambda t, y, args, **k: t - 3.5,
+                root_finder=optx.Newton(rtol=1e-5, atol=1e-5),
+            ),
+            max_steps=6,
+        )
+        assert sol.result == diffrax.RESULTS.event_occurred
+        assert sol.ts is not None
+        assert sol.ys is not None
+        return sol.ts, sol.ys
+
+    ts1, ys1 = solve(diffrax.SaveAt(steps=2))
+    assert jnp.allclose(ts1, jnp.array([2.0, 3.5, jnp.inf]))
+    # Computed using Euler
+    # y(1) = 0.5
+    # y(2) = 0.25
+    # y(3) = 0.125
+    # y(4) = 0.0625
+    # linearly interpolate => y(3.5) = 0.09375
+    assert jnp.allclose(ys1, jnp.array([0.25, 0.09375, jnp.inf]))
+    ts2, ys2 = solve(diffrax.SaveAt(steps=2, t1=True))
+    assert jnp.allclose(ts2, jnp.array([2.0, 3.5, jnp.inf]))
+    assert jnp.allclose(ys2, jnp.array([0.25, 0.09375, jnp.inf]))
+    ts3, ys3 = solve(diffrax.SaveAt(steps=3))
+    assert jnp.allclose(ts3, jnp.array([3.0, jnp.inf]))
+    assert jnp.allclose(ys3, jnp.array([0.125, jnp.inf]))
+    ts4, ys4 = solve(diffrax.SaveAt(steps=3, t1=True))
+    assert jnp.allclose(ts4, jnp.array([3.0, 3.5]))
+    assert jnp.allclose(ys4, jnp.array([0.125, 0.09375]))
 
 
 @pytest.mark.parametrize("subs", [True, False])
