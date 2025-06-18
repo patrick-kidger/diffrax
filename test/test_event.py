@@ -776,3 +776,60 @@ def test_event_trig_dir_pytree_structure():
     diffrax.Event([f, f, [f, f]], root_finder, [True, None, [False, True]])
     with pytest.raises(ValueError):
         diffrax.Event([f, f, [f, f, f]], root_finder, [True, None, [False, True]])
+
+
+def test_event_with_pytree_valued_condition_function():
+    term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
+    solver = diffrax.Tsit5()
+    t0 = 0.0
+    t1 = 10.0
+    dt0 = 1.0
+    y0 = jnp.array([0, 1])
+
+    class CondFn(eqx.Module):
+        crossing: tuple[tuple[float]]
+        downcrossing: bool
+
+        def __call__(self, t, y, args, **kwargs):
+            del t, args, kwargs
+            y0, _ = y
+            [[crossing]] = self.crossing
+            out = y0 - crossing
+            if self.downcrossing:
+                out = -out
+            return out
+
+    def another_cond_fn(t, y, args, **kwargs):
+        del t, y, args, kwargs
+        return 5.0
+
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+
+    def run(event):
+        sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+        assert sol.ts is not None
+        assert sol.ys is not None
+        [t_final] = sol.ts
+        [y_final] = sol.ys
+        return t_final, y_final
+
+    event = diffrax.Event(
+        (CondFn(((3.0,),), False), another_cond_fn), root_finder, (True, None)
+    )
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 3.0)
+    assert jnp.allclose(y_final, jnp.array([3.0, 4.0]))
+
+    event = diffrax.Event(
+        (CondFn(((3.0,),), False), another_cond_fn), root_finder, (None, False)
+    )
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 3.0)
+    assert jnp.allclose(y_final, jnp.array([3.0, 4.0]))
+
+    event = diffrax.Event(
+        (CondFn(((3.0,),), False), another_cond_fn), root_finder, (False, False)
+    )
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 10.0)
+    assert jnp.allclose(y_final, jnp.array([10.0, 11.0]))
