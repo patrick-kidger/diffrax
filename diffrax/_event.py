@@ -3,6 +3,7 @@ from collections.abc import Callable
 
 import equinox as eqx
 import optimistix as optx
+from jax.tree import flatten, unflatten
 from jaxtyping import Array, PyTree
 
 from ._custom_types import BoolScalarLike, FloatScalarLike, RealScalarLike
@@ -20,7 +21,36 @@ class Event(eqx.Module):
     """
 
     cond_fn: PyTree[Callable[..., BoolScalarLike | RealScalarLike]]
-    root_finder: optx.AbstractRootFinder | None = None
+    trig_dir: PyTree[None | bool]
+    root_finder: optx.AbstractRootFinder | None
+
+    def __init__(
+        self,
+        cond_fn,
+        root_finder: optx.AbstractRootFinder | None = None,
+        trig_dir: None | bool | PyTree[None | bool] = None,
+    ):
+        vals_cond, treedef_cond = flatten(cond_fn)
+
+        if isinstance(trig_dir, bool) or trig_dir is None:
+            vals_trig = [trig_dir] * len(vals_cond)
+            treedef_trig = treedef_cond
+        else:
+            vals_trig, treedef_trig = flatten(trig_dir, is_leaf=lambda x: x is None)
+
+        if treedef_cond != treedef_trig:
+            raise ValueError("Missmatch in the structure of cond_fn and trigger_dir")
+
+        if not all(x is None or isinstance(x, bool) for x in vals_trig):
+            raise ValueError(
+                "`trig_dir` must be a None, bool or a PyTree of None | bools"
+                + " with the same structure as cond_fn"
+            )
+
+        trig_tree = unflatten(treedef_cond, vals_trig)
+        self.cond_fn = cond_fn
+        self.root_finder = root_finder
+        self.trig_dir = trig_tree
 
 
 Event.__init__.__doc__ = """**Arguments:**
@@ -38,6 +68,10 @@ Event.__init__.__doc__ = """**Arguments:**
     just be the end of the step on which it becomes `True`.) 
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
+
+- `trig_dir`: None or bool or PyTree of None or bool of the same shape as cond_fn,
+    that decides for each cond_fn if it triggers an event from a zero-cossing in both
+    directions (None), from an upcrossing (True) or from a downcrossing (False).
 
 !!! Example
 
