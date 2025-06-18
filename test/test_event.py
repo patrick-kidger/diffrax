@@ -719,67 +719,60 @@ def test_event_trig_dir():
     dt0 = 1.0
     y0 = jnp.array([0, 1])
 
-    def cond_fn0(t, y, args, **kwargs):
-        return y[0] - 5.0
+    def up_cond(t, y, args, **kwargs):
+        del t, args, kwargs
+        y0, _ = y
+        return y0 - 5.0
 
-    def cond_fn1(t, y, args, **kwargs):
-        return y[1] - 5.0
-
-    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event = diffrax.Event((cond_fn0, cond_fn1), root_finder, (True, False))
-    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
-
-    assert jnp.isclose(cast(Array, sol.ts)[-1], 5.0)
-    assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
-
-
-def test_event_trig_dir_single_true():
-    term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
-    solver = diffrax.Tsit5()
-    t0 = 0.0
-    t1 = 10.0
-    dt0 = 1.0
-    y0 = jnp.array([0, 1])
-
-    def cond_fn0(t, y, args, **kwargs):
-        return y[0] - 5.0
-
-    def cond_fn1(t, y, args, **kwargs):
-        return -(y[1] - 5.0)
+    def down_cond(t, y, args, **kwargs):
+        del t, args, kwargs
+        _, y1 = y
+        return -(y1 - 5.0)
 
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event = diffrax.Event((cond_fn0, cond_fn1), root_finder, True)
-    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
 
-    assert jnp.isclose(cast(Array, sol.ts)[-1], 5.0)
-    assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([5.0, 6.0])))
+    def run(event):
+        sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+        assert sol.ts is not None
+        assert sol.ys is not None
+        [t_final] = sol.ts
+        [y_final] = sol.ys
+        return t_final, y_final
 
+    event = diffrax.Event((up_cond, down_cond), root_finder, True)
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 5.0)
+    assert jnp.allclose(y_final, jnp.array([5.0, 6.0]))
 
-def test_event_trig_dir_single_none():
-    term = diffrax.ODETerm(lambda t, y, args: jnp.array([1.0, 1.0]))
-    solver = diffrax.Tsit5()
-    t0 = 0.0
-    t1 = 10.0
-    dt0 = 1.0
-    y0 = jnp.array([0, 1])
+    event = diffrax.Event((up_cond, down_cond), root_finder, False)
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 4.0)
+    assert jnp.allclose(y_final, jnp.array([4.0, 5.0]))
 
-    def cond_fn0(t, y, args, **kwargs):
-        return y[0] - 5.0
+    event = diffrax.Event((up_cond, down_cond), root_finder, (True, True))
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 5.0)
+    assert jnp.allclose(y_final, jnp.array([5.0, 6.0]))
 
-    def cond_fn1(t, y, args, **kwargs):
-        return -(y[1] - 5.0)
+    event = diffrax.Event((up_cond, down_cond), root_finder, (True, False))
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 4.0)
+    assert jnp.allclose(y_final, jnp.array([4.0, 5.0]))
 
-    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    event = diffrax.Event((cond_fn0, cond_fn1), root_finder, None)
-    sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, event=event)
+    event = diffrax.Event((up_cond, down_cond), root_finder, (False, True))
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 10.0)
+    assert jnp.allclose(y_final, jnp.array([10.0, 11.0]))
 
-    assert jnp.isclose(cast(Array, sol.ts)[-1], 4.0)
-    assert jnp.all(jnp.isclose(cast(Array, sol.ys)[-1], jnp.array([4.0, 5.0])))
+    event = diffrax.Event((up_cond, down_cond), root_finder, (False, None))
+    t_final, y_final = run(event)
+    assert jnp.allclose(t_final, 4.0)
+    assert jnp.allclose(y_final, jnp.array([4.0, 5.0]))
 
 
 def test_event_trig_dir_pytree_structure():
     f = lambda x: x
     root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
-    diffrax.Event([f, f, [f, (f)]], root_finder, [True, None, [False, (True)]])
+    diffrax.Event([f, f, [f, f]], root_finder, [True, None, [False, True]])
     with pytest.raises(ValueError):
-        diffrax.Event([f, f, [f, f, f]], root_finder, [True, None, [False, (True)]])
+        diffrax.Event([f, f, [f, f, f]], root_finder, [True, None, [False, True]])
