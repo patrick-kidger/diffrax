@@ -30,7 +30,7 @@ class Event(eqx.Module):
         root_finder: optx.AbstractRootFinder | None = None,
         direction: None | bool | PyTree[None | bool] = None,
     ):
-        if direction in {None, False, True}:
+        if direction in (None, False, True):
             direction = jtu.tree_map(lambda _: direction, cond_fn, is_leaf=callable)
 
         direction_leaves, direction_structure = jtu.tree_flatten(
@@ -39,7 +39,7 @@ class Event(eqx.Module):
         if direction_structure != jtu.tree_structure(cond_fn, is_leaf=callable):
             raise ValueError("Missmatch in the structure of `cond_fn` and `direction`.")
 
-        if any(x not in {None, False, True} for x in direction_leaves):
+        if any(x not in (None, False, True) for x in direction_leaves):
             raise ValueError(
                 "`trig_dir` must be a `None`, `bool`, or a PyTree of `None | bool`s "
                 "with the same structure as `cond_fn`."
