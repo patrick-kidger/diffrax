@@ -303,11 +303,6 @@ def loop(
     t1_clip_floor = t1
     for _ in range(100):
         t1_clip_floor = eqxi.prevbefore(t1_clip_floor)
-    if jnp.sign(t1_clip_floor - t0) != jnp.sign(t1 - t0):
-        raise ValueError(
-            "t0 and t1 are within 100 units of least precision "
-            "implying a high risk of floating point error. Aborting."
-        )
 
     if saveat.dense:
         dense_ts = init_state.dense_ts
