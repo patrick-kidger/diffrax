@@ -924,7 +924,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     )
 
                 def eval_f_jac():
-                    return self.root_finder.init(  # pyright: ignore
+                    return self.root_finder.init(
                         lambda y, a: (_implicit_relation_f(y, a), None),
                         lax.stop_gradient(f_pred),
                         _filter_stop_gradient(f_implicit_args),
@@ -935,7 +935,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     )
 
                 def eval_k_jac():
-                    return self.root_finder.init(  # pyright: ignore
+                    return self.root_finder.init(
                         lambda y, a: (_implicit_relation_k(y, a), None),
                         lax.stop_gradient(k_pred),
                         _filter_stop_gradient(k_implicit_args),
@@ -980,12 +980,12 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     jac_f = eqxi.nondifferentiable(jac_f, name="jac_f")
                     nonlinear_sol = optx.root_find(
                         _implicit_relation_f,
-                        self.root_finder,  # pyright: ignore
+                        self.root_finder,
                         f_pred,
                         f_implicit_args,
                         options=dict(init_state=jac_f),
                         throw=False,
-                        max_steps=self.root_find_max_steps,  # pyright: ignore
+                        max_steps=self.root_find_max_steps,
                     )
                     implicit_fi = nonlinear_sol.value
                     implicit_ki = _unused
@@ -995,12 +995,12 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     jac_k = eqxi.nondifferentiable(jac_k, name="jac_k")
                     nonlinear_sol = optx.root_find(
                         _implicit_relation_k,
-                        self.root_finder,  # pyright: ignore
+                        self.root_finder,
                         k_pred,
                         k_implicit_args,
                         options=dict(init_state=jac_k),
                         throw=False,
-                        max_steps=self.root_find_max_steps,  # pyright: ignore
+                        max_steps=self.root_find_max_steps,
                     )
                     implicit_fi = _unused
                     implicit_ki = implicit_inc = nonlinear_sol.value
@@ -1093,7 +1093,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     args,
                     implicit_control,
                 )
-                jac_f = self.root_finder.init(  # pyright: ignore
+                jac_f = self.root_finder.init(
                     lambda y, a: (_implicit_relation_f(y, a), None),
                     jtu.tree_map(jnp.zeros_like, get_implicit(f0)),
                     _filter_stop_gradient(f_implicit_args),
@@ -1115,7 +1115,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                     implicit_control,
                 )
                 jac_f = _unused
-                jac_k = self.root_finder.init(  # pyright: ignore
+                jac_k = self.root_finder.init(
                     lambda y, a: (_implicit_relation_k(y, a), None),
                     jtu.tree_map(jnp.zeros_like, y0),
                     _filter_stop_gradient(k_implicit_args),

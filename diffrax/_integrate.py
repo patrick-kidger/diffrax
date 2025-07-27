@@ -1122,7 +1122,7 @@ def diffeqsolve(
         def _get_tols(x):
             outs = []
             for attr in ("rtol", "atol", "norm"):
-                if getattr(solver.root_finder, attr) is use_stepsize_tol:  # pyright: ignore
+                if getattr(solver.root_finder, attr) is use_stepsize_tol:
                     outs.append(getattr(x, attr))
             return tuple(outs)
 

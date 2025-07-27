@@ -89,7 +89,7 @@ _PidState = tuple[RealScalarLike, RealScalarLike]
 # PIDController(... step_ts=s, jump_ts=j) this should return a
 # ClipStepSizeController(PIDController(...), s, j).
 class _MetaPID(type(eqx.Module)):
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args, **kwargs):  # pyright: ignore[reportSelfClsParameterName]
         step_ts = kwargs.pop("step_ts", None)
         jump_ts = kwargs.pop("jump_ts", None)
         if step_ts is not None or jump_ts is not None:
