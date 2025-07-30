@@ -11,15 +11,6 @@ def save_y(t, y, args):
     return y
 
 
-def _convert_ts(
-    ts: None | Sequence[RealScalarLike] | Real[Array, " times"],
-) -> Real[Array, " times"] | None:
-    if ts is None or len(ts) == 0:
-        return None
-    else:
-        return jnp.asarray(ts)
-
-
 class SubSaveAt(eqx.Module):
     """Used for finer-grained control over what is saved. A PyTree of these should be
     passed to `SaveAt(subs=...)`.
@@ -28,11 +19,29 @@ class SubSaveAt(eqx.Module):
     relatively niche feature and most users will probably not need to use `SubSaveAt`.)
     """
 
-    t0: bool = False
-    t1: bool = False
-    ts: Real[Array, " times"] | None = eqx.field(default=None, converter=_convert_ts)
-    steps: bool = False
-    fn: Callable = save_y
+    t0: bool
+    t1: bool
+    ts: Real[Array, " times"] | None
+    steps: int
+    fn: Callable
+
+    def __init__(
+        self,
+        *,
+        t0: bool = False,
+        t1: bool = False,
+        ts: None | Sequence[RealScalarLike] | Real[Array, " times"] = None,
+        steps: bool | int = 0,
+        fn: Callable = save_y,
+    ):
+        self.t0 = t0
+        self.t1 = t1
+        self.ts = jnp.asarray(ts) if ts is not None and len(ts) > 0 else None
+        if isinstance(steps, bool):
+            self.steps = 1 if steps else 0
+        else:
+            self.steps = steps
+        self.fn = fn
 
     def __check_init__(self):
         if not self.t0 and not self.t1 and self.ts is None and not self.steps:
@@ -44,7 +53,8 @@ SubSaveAt.__init__.__doc__ = """**Arguments:**
 - `t0`: If `True`, save the initial input `y0`.
 - `t1`: If `True`, save the output at `t1`.
 - `ts`: Some array of times at which to save the output.
-- `steps`: If `True`, save the output at every step of the numerical solver.
+- `steps`: If `n>0`, save the output at every `n`th step of the numerical solver. 
+    `0` means no saving.
 - `fn`: A function `fn(t, y, args)` which specifies what to save into `sol.ys` when
     using `t0`, `t1`, `ts` or `steps`. Defaults to `fn(t, y, args) -> y`, so that the
     evolving solution is saved. This can be useful to save only statistics of your
@@ -71,7 +81,7 @@ class SaveAt(eqx.Module):
         t0: bool = False,
         t1: bool = False,
         ts: None | Sequence[RealScalarLike] | Real[Array, " times"] = None,
-        steps: bool = False,
+        steps: bool | int = False,
         fn: Callable = save_y,
         subs: PyTree[SubSaveAt] = None,
         dense: bool = False,
@@ -100,7 +110,8 @@ SaveAt.__init__.__doc__ = """**Main Arguments:**
 - `t0`: If `True`, save the initial input `y0`.
 - `t1`: If `True`, save the output at `t1`.
 - `ts`: Some array of times at which to save the output.
-- `steps`: If `True`, save the output at every step of the numerical solver.
+- `steps`: If `n>0`, save the output at every `n`th step of the numerical solver. 
+    `0` means no saving.
 - `dense`: If `True`, save dense output, that can later be evaluated at any part of
     the interval $[t_0, t_1]$ via `sol = diffeqsolve(...); sol.evaluate(...)`.
 

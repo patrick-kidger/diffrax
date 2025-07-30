@@ -11,7 +11,15 @@ from .._term import AbstractTerm
 from .base import AbstractStepSizeController
 
 
-class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike]):
+# ConstantStepSizeState = (steps_completed, num_steps, t0_sim, t1_sim_or_dt0)
+_ConstantStepSizeState = tuple[
+    IntScalarLike, IntScalarLike, RealScalarLike, RealScalarLike
+]
+
+
+class ConstantStepSize(
+    AbstractStepSizeController[_ConstantStepSizeState, RealScalarLike]
+):
     """Use a constant step size, equal to the `dt0` argument of
     [`diffrax.diffeqsolve`][].
     """
@@ -29,14 +37,22 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
         args: Args,
         func: Callable[[PyTree[AbstractTerm], RealScalarLike, Y, Args], VF],
         error_order: RealScalarLike | None,
-    ) -> tuple[RealScalarLike, RealScalarLike]:
-        del terms, t1, y0, args, func, error_order
+    ) -> tuple[RealScalarLike, _ConstantStepSizeState]:
+        del terms, y0, args, func, error_order
         if dt0 is None:
             raise ValueError(
                 "Constant step size solvers cannot select step size automatically; "
                 "please pass a value for `dt0`."
             )
-        return t0 + dt0, dt0
+        steps_completed = jnp.asarray(1, dtype=jnp.int32)
+        # `eqxi.nextafter` to handle floating point error, see
+        # https://github.com/patrick-kidger/diffrax/pull/666#discussion_r2215868590
+        num_steps = jnp.astype(jnp.ceil((t1 - t0) / eqxi.nextafter(dt0)), jnp.int32)
+        # Use `num_steps=-1` as a marker to indicate that `diffeqsolve(..., t1=...)` is
+        # infinite.
+        num_steps = jnp.where(jnp.isfinite(t1), num_steps, -1)
+        t1_sim_or_dt0 = jnp.where(jnp.isfinite(t1), t1, dt0)
+        return t0 + dt0, (steps_completed, num_steps, t0, t1_sim_or_dt0)
 
     def adapt_step_size(
         self,
@@ -47,15 +63,43 @@ class ConstantStepSize(AbstractStepSizeController[RealScalarLike, RealScalarLike
         args: Args,
         y_error: Y | None,
         error_order: RealScalarLike | None,
-        controller_state: RealScalarLike,
-    ) -> tuple[bool, RealScalarLike, RealScalarLike, bool, RealScalarLike, RESULTS]:
+        controller_state: _ConstantStepSizeState,
+    ) -> tuple[
+        bool,
+        RealScalarLike,
+        RealScalarLike,
+        bool,
+        _ConstantStepSizeState,
+        RESULTS,
+    ]:
         del t0, y0, y1_candidate, args, y_error, error_order
+        steps_already_completed, num_steps, t0_sim, t1_sim_or_dt0 = controller_state
+        # Number of steps that will be completed when this function returns.
+        steps_completed = steps_already_completed + 1
+
+        # Calculate step size by calculating fraction of `t1 - t0` -- rather than just
+        # adding up `dt0` multiple times -- to avoid compounding of truncation/rounding
+        # errors.
+        time_dtype = jnp.result_type(t0_sim, t1_sim_or_dt0)
+        t1_next = t0_sim + (t1_sim_or_dt0 - t0_sim) * (
+            jnp.astype(steps_completed, time_dtype) / jnp.astype(num_steps, time_dtype)
+        )
+
+        # If we're on the final step then use `t1` directly, this time to avoid
+        # floating-point weirdness in the above. (Not sure if necessary?)
+        t1_next = jnp.where(steps_completed == num_steps, t1_sim_or_dt0, t1_next)
+
+        # If `num_steps == -1` then we use that as a marker to indicate that we have an
+        # infinite `diffeqsolve(..., t1=...)`. In this case then never mind everything
+        # above, we really do just want to keep adding on `dt0` multiple times.
+        t1_next = jnp.where(num_steps >= 0, t1_next, t1 + t1_sim_or_dt0)
+
         return (
             True,
             t1,
-            t1 + controller_state,
+            t1_next,
             False,
-            controller_state,
+            (steps_completed, num_steps, t0_sim, t1_sim_or_dt0),
             RESULTS.successful,
         )
 

@@ -2,6 +2,7 @@ import abc
 from collections.abc import Callable
 
 import equinox as eqx
+import jax.tree_util as jtu
 import optimistix as optx
 from jaxtyping import Array, PyTree
 
@@ -20,7 +21,33 @@ class Event(eqx.Module):
     """
 
     cond_fn: PyTree[Callable[..., BoolScalarLike | RealScalarLike]]
-    root_finder: optx.AbstractRootFinder | None = None
+    direction: PyTree[None | bool]
+    root_finder: optx.AbstractRootFinder | None
+
+    def __init__(
+        self,
+        cond_fn,
+        root_finder: optx.AbstractRootFinder | None = None,
+        direction: None | bool | PyTree[None | bool] = None,
+    ):
+        if direction in (None, False, True):
+            direction = jtu.tree_map(lambda _: direction, cond_fn, is_leaf=callable)
+
+        direction_leaves, direction_structure = jtu.tree_flatten(
+            direction, is_leaf=lambda x: x is None
+        )
+        if direction_structure != jtu.tree_structure(cond_fn, is_leaf=callable):
+            raise ValueError("Missmatch in the structure of `cond_fn` and `direction`.")
+
+        if any(x not in (None, False, True) for x in direction_leaves):
+            raise ValueError(
+                "`trig_dir` must be a `None`, `bool`, or a PyTree of `None | bool`s "
+                "with the same structure as `cond_fn`."
+            )
+
+        self.cond_fn = cond_fn
+        self.root_finder = root_finder
+        self.direction = direction
 
 
 Event.__init__.__doc__ = """**Arguments:**
@@ -38,6 +65,12 @@ Event.__init__.__doc__ = """**Arguments:**
     just be the end of the step on which it becomes `True`.) 
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
+
+- `direction`: `None` or `bool` or PyTree of `None | bool` of the same shape as
+    `cond_fn`, that decides for each `cond_fn` if it triggers an event from a
+    zero-cossing in both directions (`None`), from an upcrossing (`True`) or from a
+    downcrossing (`False`). Only needed for those `cond_fn` which return floating point
+    numbers; ignored for those `cond_fn` which return booleans.
 
 !!! Example
 
