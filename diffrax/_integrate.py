@@ -263,15 +263,11 @@ def _save(
     )
 
 
-def _clip_to_end(tprev, tnext, t1, keep_step):
-    # The tolerance means that we don't end up with too-small intervals for
-    # dense output, which then gives numerically unstable answers due to floating
+def _clip_to_end(tprev, tnext, t1, t1_clip_floor, keep_step):
+    # The tolerance of ~100 ULP's means that we don't end up with too-small intervals
+    # for dense output, which then gives numerically unstable answers due to floating
     # point errors.
-    if tnext.dtype is jnp.dtype("float64"):
-        tol = 1e-10
-    else:
-        tol = 1e-6
-    clip = tnext > t1 - tol
+    clip = tnext > t1_clip_floor
     tclip = jnp.where(keep_step, t1, tprev + 0.5 * (t1 - tprev))
     return jnp.where(clip, tclip, tnext)
 
@@ -308,6 +304,11 @@ def loop(
     outer_while_loop,
     progress_meter,
 ):
+    # Calculate in advance t1 - 100 ULP's: the threshold at which to round tnext to t1
+    t1_clip_floor = t1
+    for _ in range(100):
+        t1_clip_floor = eqxi.prevbefore(t1_clip_floor)
+
     if saveat.dense:
         dense_ts = init_state.dense_ts
         dense_ts = dense_ts.at[0].set(t0)
@@ -397,7 +398,7 @@ def loop(
         #
 
         tprev = jnp.minimum(tprev, t1)
-        tnext = _clip_to_end(tprev, tnext, t1, keep_step)
+        tnext = _clip_to_end(tprev, tnext, t1, t1_clip_floor, keep_step)
 
         progress_meter_state = progress_meter.step(
             state.progress_meter_state, linear_rescale(t0, tprev, t1)
