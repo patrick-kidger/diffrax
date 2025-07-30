@@ -45,13 +45,12 @@ class ConstantStepSize(
                 "please pass a value for `dt0`."
             )
         steps_completed = jnp.asarray(1, dtype=jnp.int32)
-        # Special case for infinite t1, allow termination based on conditional tests
-        # Use num_steps=-1 to ensure finite int
-        num_steps = jnp.where(
-            jnp.isfinite(t1),
-            jnp.astype(jnp.ceil((t1 - t0) / eqxi.nextafter(dt0)), jnp.int32),
-            -1,
-        )
+        # `eqxi.nextafter` to handle floating point error, see
+        # https://github.com/patrick-kidger/diffrax/pull/666#discussion_r2215868590
+        num_steps = jnp.astype(jnp.ceil((t1 - t0) / eqxi.nextafter(dt0)), jnp.int32)
+        # Use `num_steps=-1` as a marker to indicate that `diffeqsolve(..., t1=...)` is
+        # infinite.
+        num_steps = jnp.where(jnp.isfinite(t1), num_steps, -1)
         t1_sim_or_dt0 = jnp.where(jnp.isfinite(t1), t1, dt0)
         return t0 + dt0, (steps_completed, num_steps, t0, t1_sim_or_dt0)
 
@@ -78,24 +77,22 @@ class ConstantStepSize(
         # Number of steps that will be completed when this function returns.
         steps_completed = steps_already_completed + 1
 
+        # Calculate step size by calculating fraction of `t1 - t0` -- rather than just
+        # adding up `dt0` multiple times -- to avoid compounding of truncation/rounding
+        # errors.
         time_dtype = jnp.result_type(t0_sim, t1_sim_or_dt0)
-
-        # Calculate step size by calculating fraction of `t1 - t0` to avoid compounding
-        # of truncation/rounding errors
-        t1_next = jnp.where(
-            num_steps >= 0,
-            jnp.where(
-                steps_completed == num_steps,
-                t1_sim_or_dt0,
-                t0_sim
-                + (t1_sim_or_dt0 - t0_sim)
-                * jnp.astype(steps_completed, time_dtype)
-                / jnp.astype(num_steps, time_dtype),
-            ),
-            # Special case for non-finite t1_sim
-            # in this t1_sim_or_dt0 is dt0
-            t1 + t1_sim_or_dt0,
+        t1_next = t0_sim + (t1_sim_or_dt0 - t0_sim) * (
+            jnp.astype(steps_completed, time_dtype) / jnp.astype(num_steps, time_dtype)
         )
+
+        # If we're on the final step then use `t1` directly, this time to avoid
+        # floating-point weirdness in the above. (Not sure if necessary?)
+        t1_next = jnp.where(steps_completed == num_steps, t1_sim_or_dt0, t1_next)
+
+        # If `num_steps == -1` then we use that as a marker to indicate that we have an
+        # infinite `diffeqsolve(..., t1=...)`. In this case then never mind everything
+        # above, we really do just want to keep adding on `dt0` multiple times.
+        t1_next = jnp.where(num_steps >= 0, t1_next, t1 + t1_sim_or_dt0)
 
         return (
             True,
