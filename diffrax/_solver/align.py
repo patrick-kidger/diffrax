@@ -15,6 +15,7 @@ from .._term import (
     UnderdampedLangevinTuple,
     UnderdampedLangevinX,
 )
+from .base import AbstractAdaptiveSolver
 from .foster_langevin_srk import (
     AbstractCoeffs,
     AbstractFosterLangevinSRK,
@@ -44,7 +45,9 @@ class _ALIGNCoeffs(AbstractCoeffs):
 _ErrorEstimate = UnderdampedLangevinTuple
 
 
-class ALIGN(AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate]):
+class ALIGN(
+    AbstractFosterLangevinSRK[_ALIGNCoeffs, _ErrorEstimate], AbstractAdaptiveSolver
+):
     r"""The Adaptive Langevin via Interpolated Gradients and Noise method
     designed by James Foster. This is a second order solver for the
     Underdamped Langevin Diffusion, and accepts terms of the form
