@@ -3,7 +3,7 @@ from typing import ClassVar
 import equinox.internal as eqxi
 import numpy as np
 
-from .base import AbstractStratonovichSolver
+from .base import AbstractAdaptiveSolver, AbstractStratonovichSolver
 from .srk import AbstractSRK, GeneralCoeffs, StochasticButcherTableau
 
 
@@ -35,7 +35,7 @@ _tab = StochasticButcherTableau(
 )
 
 
-class SPaRK(AbstractSRK, AbstractStratonovichSolver):
+class SPaRK(AbstractSRK, AbstractStratonovichSolver, AbstractAdaptiveSolver):
     r"""The Splitting Path Runge-Kutta method.
 
     It uses three evaluations of the drift and diffusion per step, and has the following
