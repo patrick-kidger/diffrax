@@ -1,6 +1,6 @@
 import functools as ft
 from collections.abc import Callable
-from typing import cast, TYPE_CHECKING
+from typing import cast, TYPE_CHECKING, TypeAlias
 
 import equinox as eqx
 import equinox.internal as eqxi
@@ -18,16 +18,17 @@ else:
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Real, Shaped
 
-from ._custom_types import DenseInfos, IntScalarLike, RealScalarLike, Y
+from ._custom_types import Args, DenseInfos, IntScalarLike, RealScalarLike, Y
 from ._local_interpolation import AbstractLocalInterpolation
 from ._misc import fill_forward, left_broadcast_to
-from ._path import AbstractPath
+from ._path import _Control, AbstractPath
 
 
 ω = cast(Callable, ω)
+_PathState: TypeAlias = None
 
 
-class AbstractGlobalInterpolation(AbstractPath):
+class AbstractGlobalInterpolation(AbstractPath[_Control, _PathState]):
     ts: AbstractVar[Real[Array, " times"]]
     ts_size: AbstractVar[IntScalarLike]
 
@@ -54,6 +55,24 @@ class AbstractGlobalInterpolation(AbstractPath):
     def t1(self):
         """The end of the interval over which the interpolation is defined."""
         return self.ts[-1]
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        return None
+
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: _PathState,
+        t1: RealScalarLike | None = None,
+        left: bool = True,
+    ) -> tuple[_Control, _PathState]:
+        return self.evaluate(t0, t1, left), path_state
 
 
 class LinearInterpolation(AbstractGlobalInterpolation):

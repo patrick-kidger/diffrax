@@ -7,7 +7,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
-from .base import AbstractItoSolver
+from .base import _PathState, AbstractItoSolver
 
 
 _ErrorEstimate: TypeAlias = None
@@ -41,6 +41,7 @@ class Euler(AbstractItoSolver):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         return None
 
@@ -53,12 +54,13 @@ class Euler(AbstractItoSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del solver_state, made_jump
-        control = terms.contr(t0, t1)
+        control, path_state = terms.contr(t0, t1, path_state)
         y1 = (y0**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
-        return y1, None, dense_info, None, RESULTS.successful
+        return y1, None, dense_info, None, path_state, RESULTS.successful
 
     def func(
         self,

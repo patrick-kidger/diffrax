@@ -58,9 +58,15 @@ from ._step_size_controller import (
     AbstractAdaptiveStepSizeController,
     AbstractStepSizeController,
     ConstantStepSize,
+    PIDController,
     StepTo,
 )
-from ._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
+from ._term import (
+    AbstractTerm,
+    MultiTerm,
+    ODETerm,
+    WrapTerm,
+)
 from ._typing import better_isinstance, get_args_of, get_origin_no_specials
 
 
@@ -81,6 +87,7 @@ class State(eqx.Module):
     made_jump: BoolScalarLike
     solver_state: PyTree[ArrayLike]
     controller_state: PyTree[ArrayLike]
+    path_state: PyTree
     progress_meter_state: PyTree[Array]
     result: RESULTS
     #
@@ -153,14 +160,14 @@ def _assert_term_compatible(
             # `term_cls`                | `term_args`
             # --------------------------|--------------
             # AbstractTerm              | ()
-            # AbstractTerm[VF, Control] | (VF, Control)
+            # AbstractTerm[VF, Control] | (VF, Control, Path)
             # -----------------------------------------
             term_args = get_args_of(AbstractTerm, term_cls, error_msg)
             n_term_args = len(term_args)
             if n_term_args == 0:
                 pass
-            elif n_term_args == 2:
-                vf_type_expected, control_type_expected = term_args
+            elif n_term_args == 3:
+                vf_type_expected, control_type_expected, path_type_expected = term_args
                 try:
                     vf_type = eqx.filter_eval_shape(term.vf, t, yi, args)
                 except Exception as e:
@@ -171,10 +178,11 @@ def _assert_term_compatible(
                 if not vf_type_compatible:
                     raise ValueError(f"Vector field term {term} is incompatible.")
 
+                term_contr_kwargs["control_state"] = term.init(0.0, 0.0, y, args)
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
                 try:
-                    control_type = eqx.filter_eval_shape(contr, t, t)
+                    control_type, path_type = eqx.filter_eval_shape(contr, t, t)
                 except Exception as e:
                     raise ValueError(f"Error while tracing {term}.contr: " + str(e))
                 control_type_compatible = eqx.filter_eval_shape(
@@ -186,6 +194,11 @@ def _assert_term_compatible(
                         f"Brownian motion for an SDE) was {control_type}, but this "
                         f"solver expected {control_type_expected}."
                     )
+                path_type_compatible = eqx.filter_eval_shape(
+                    better_isinstance, path_type, path_type_expected
+                )
+                if not path_type_compatible:
+                    raise ValueError(f"Control term {term} path state is incompatible.")
             else:
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
@@ -346,13 +359,12 @@ def loop(
 
     def body_fun_aux(state):
         state = _handle_static(state)
-
         #
         # Actually do some differential equation solving! Make numerical steps, adapt
         # step sizes, all that jazz.
         #
 
-        (y, y_error, dense_info, solver_state, solver_result) = solver.step(
+        (y, y_error, dense_info, solver_state, path_state, solver_result) = solver.step(
             terms,
             state.tprev,
             state.tnext,
@@ -360,6 +372,7 @@ def loop(
             args,
             state.solver_state,
             state.made_jump,
+            state.path_state,
         )
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
@@ -405,6 +418,7 @@ def loop(
         y = jtu.tree_map(keep, y, state.y)
         solver_state = jtu.tree_map(keep, solver_state, state.solver_state)
         made_jump = static_select(keep_step, made_jump, state.made_jump)
+        path_state = jtu.tree_map(keep, path_state, state.path_state)
         solver_result = RESULTS.where(keep_step, solver_result, RESULTS.successful)
 
         # TODO: if we ever support non-terminating events, then they should go in here.
@@ -598,6 +612,7 @@ def loop(
             made_jump=made_jump,  # pyright: ignore
             solver_state=solver_state,
             controller_state=controller_state,
+            path_state=path_state,
             result=result,
             num_steps=num_steps,
             num_accepted_steps=num_accepted_steps,
@@ -848,6 +863,7 @@ def diffeqsolve(
     solver_state: PyTree[ArrayLike] | None = None,
     controller_state: PyTree[ArrayLike] | None = None,
     made_jump: BoolScalarLike | None = None,
+    path_state: PyTree | None = None,
     # Exists for backward compatibility
     discrete_terminating_event: AbstractDiscreteTerminatingEvent | None = None,
 ) -> Solution:
@@ -930,6 +946,9 @@ def diffeqsolve(
 
     - `controller_state`: Some initial state for the step size controller. Generally
         obtained by `SaveAt(controller_state=True)` from a previous solve.
+
+    - `path_state`: Some initial state for the path. Generally obtained by
+        `SaveAt(path_state=True)` from a previous solve.
 
     - `made_jump`: Whether a jump has just been made at `t0`. Used to update
         `solver_state` (if passed). Generally obtained by `SaveAt(made_jump=True)`
@@ -1066,6 +1085,7 @@ def diffeqsolve(
             terms = MultiTerm(*terms)
 
     # Error checking for term compatibility
+
     _assert_term_compatible(
         t0,
         y0,
@@ -1090,9 +1110,10 @@ def diffeqsolve(
                     "method, as it may not converge to the correct solution."
                 )
     if is_unsafe_sde(terms):
-        if isinstance(stepsize_controller, AbstractAdaptiveStepSizeController):
+        if isinstance(stepsize_controller, PIDController):
             raise ValueError(
-                "`UnsafeBrownianPath` cannot be used with adaptive step sizes."
+                "`DirecBrownianPath` cannot be used with PIDController as it "
+                "may reject steps."
             )
 
     # Normalises time: if t0 > t1 then flip things around.
@@ -1202,9 +1223,21 @@ def diffeqsolve(
         else:
             tnext = t0 + dt0
     tnext = jnp.minimum(tnext, t1)
+
+    if path_state is None:
+        passed_path_state = False
+        path_state = jax.tree.map(
+            lambda term: term.init(t0, tnext, y0, args),
+            terms,
+            is_leaf=lambda x: isinstance(x, AbstractTerm),
+        )
+    else:
+        passed_path_state = True
+
     if solver_state is None:
         passed_solver_state = False
-        solver_state = solver.init(terms, t0, tnext, y0, args)
+        # pyright says it can't be PyTree | None, but None is a PyTree, so it can?
+        solver_state = solver.init(terms, t0, tnext, y0, args, path_state)  # pyright: ignore[reportArgumentType]
     else:
         passed_solver_state = True
 
@@ -1244,8 +1277,16 @@ def diffeqsolve(
     made_jump = False if made_jump is None else made_jump
     result = RESULTS.successful
     if saveat.dense or event is not None:
-        _, _, dense_info_struct, _, _ = eqx.filter_eval_shape(
-            solver.step, terms, tprev, tnext, y0, args, solver_state, made_jump
+        _, _, dense_info_struct, _, _, _ = eqx.filter_eval_shape(
+            solver.step,
+            terms,
+            tprev,
+            tnext,
+            y0,
+            args,
+            solver_state,
+            made_jump,
+            path_state,
         )
     if saveat.dense:
         if max_steps is None:
@@ -1357,6 +1398,7 @@ def diffeqsolve(
         made_jump=made_jump,
         solver_state=solver_state,
         controller_state=controller_state,
+        path_state=path_state,
         result=result,
         num_steps=num_steps,
         num_accepted_steps=num_accepted_steps,
@@ -1392,6 +1434,7 @@ def diffeqsolve(
         throw=throw,
         passed_solver_state=passed_solver_state,
         passed_controller_state=passed_controller_state,
+        passed_path_state=passed_path_state,
         progress_meter=progress_meter,
     )
 
@@ -1418,6 +1461,10 @@ def diffeqsolve(
         solver_state = final_state.solver_state
     else:
         solver_state = None
+    if saveat.path_state:
+        path_state = final_state.path_state
+    else:
+        path_state = None
     if saveat.made_jump:
         made_jump = final_state.made_jump
     else:
@@ -1458,6 +1505,7 @@ def diffeqsolve(
         result=result,
         solver_state=solver_state,
         controller_state=controller_state,
+        path_state=path_state,
         made_jump=made_jump,
         event_mask=event_mask,
     )

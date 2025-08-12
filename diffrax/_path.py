@@ -11,13 +11,14 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractVar
 
-from ._custom_types import Control, RealScalarLike
+from ._custom_types import Args, Control, RealScalarLike, Y
 
 
 _Control = TypeVar("_Control", bound=Control)
+_PathState = TypeVar("_PathState")
 
 
-class AbstractPath(eqx.Module, Generic[_Control]):
+class AbstractPath(eqx.Module, Generic[_Control, _PathState]):
     """Abstract base class for all paths.
 
     Every path has a start point `t0` and an end point `t1`. In between these values
@@ -46,6 +47,64 @@ class AbstractPath(eqx.Module, Generic[_Control]):
 
     t0: AbstractVar[RealScalarLike]
     t1: AbstractVar[RealScalarLike]
+
+    @abc.abstractmethod
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _PathState:
+        """Initialises any hidden state for the path.
+
+        **Arguments** as [`diffrax.diffeqsolve`][].
+
+        **Returns:**
+
+        The initial path state.
+        """
+
+    @abc.abstractmethod
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: _PathState,
+        t1: RealScalarLike | None = None,
+        left: bool = True,
+    ) -> tuple[_Control, _PathState]:
+        r"""Evaluate the path at any point in the interval $[t_0, t_1]$.
+
+        This is equivalent to `evaluate` but enables stateful evaluation.
+
+        **Arguments:**
+
+        - `t0`: Any point in $[t_0, t_1]$ to evaluate the path at.
+        - `path_state`: The current state for the path.
+        - `t1`: If passed, then the increment from `t1` to `t0` is evaluated instead.
+        - `left`: Across jump points: whether to treat the path as left-continuous
+            or right-continuous.
+
+        !!! faq "FAQ"
+
+            Note that we use $t_0$ and $t_1$ to refer to the overall interval, as
+            obtained via `instance.t0` and `instance.t1`. We use `t0` and `t1` to refer
+            to some subinterval of $[t_0, t_1]$. This is an API that is used for
+            consistency with the rest of the package, and just happens to be a little
+            confusing here.
+
+        **Returns:**
+
+        If `t1` is not passed:
+
+        The value of the path at `t0`.
+
+        If `t1` is passed:
+
+        The increment of the path between `t0` and `t1`.
+
+        In both cases, the updated state is also returned.
+        """
 
     @abc.abstractmethod
     def evaluate(
@@ -79,6 +138,8 @@ class AbstractPath(eqx.Module, Generic[_Control]):
         The increment of the path between `t0` and `t1`.
         """
 
+    # make a stateful derivative or just make user do this with jvp?
+    # idk where this is used, hard for me to say
     def derivative(self, t: RealScalarLike, left: bool = True) -> _Control:
         r"""Evaluate the derivative of the path. Essentially equivalent
         to `jax.jvp(self.evaluate, (t,), (jnp.ones_like(t),))` (and indeed this is its

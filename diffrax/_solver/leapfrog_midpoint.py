@@ -13,6 +13,7 @@ from .base import AbstractSolver
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = tuple[RealScalarLike, PyTree]
+_PathState: TypeAlias = PyTree
 
 
 # TODO: support arbitrary linear multistep methods
@@ -58,6 +59,7 @@ class LeapfrogMidpoint(AbstractSolver):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         del terms, t1, args
         # Corresponds to making an explicit Euler step on the first step.
@@ -72,14 +74,15 @@ class LeapfrogMidpoint(AbstractSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, _PathState, RESULTS]:
         del made_jump
         tm1, ym1 = solver_state
-        control = terms.contr(tm1, t1)
+        control, path_state = terms.contr(tm1, t1, path_state)
         y1 = (ym1**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
         solver_state = (t0, y0)
-        return y1, None, dense_info, solver_state, RESULTS.successful
+        return y1, None, dense_info, solver_state, path_state, RESULTS.successful
 
     def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
         return terms.vf(t0, y0, args)
