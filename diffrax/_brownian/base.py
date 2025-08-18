@@ -9,17 +9,60 @@ from .._custom_types import (
     BrownianIncrement,
     RealScalarLike,
     SpaceTimeLevyArea,
+    SpaceTimeTimeLevyArea,
 )
 from .._path import AbstractPath
 
 
 _Control = TypeVar("_Control", bound=PyTree[Array] | AbstractBrownianIncrement)
+_BrownianState = TypeVar("_BrownianState")
 
 
-class AbstractBrownianPath(AbstractPath[_Control]):
+class AbstractBrownianPath(AbstractPath[_Control, _BrownianState]):
     """Abstract base class for all Brownian paths."""
 
-    levy_area: AbstractVar[type[BrownianIncrement | SpaceTimeLevyArea]]
+    levy_area: AbstractVar[
+        type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea]
+    ]
+
+    @abc.abstractmethod
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        brownian_state: _BrownianState,
+        t1: RealScalarLike | None = None,
+        left: bool = True,
+        use_levy: bool = False,
+    ) -> tuple[_Control, _BrownianState]:
+        r"""Samples a Brownian increment $w(t_1) - w(t_0)$.
+
+        Each increment has distribution $\mathcal{N}(0, t_1 - t_0)$.
+
+        This is equivalent to `evaluate` but enables stateful evaluation.
+
+        **Arguments:**
+
+        - `t0`: Any point in $[t_0, t_1]$ to evaluate the path at.
+        - `brownian_state`: The current state of the path.
+        - `t1`: If passed, then the increment from `t1` to `t0` is evaluated instead.
+        - `left`: Ignored. (This determines whether to treat the path as
+            left-continuous or right-continuous at any jump points, but Brownian
+            motion has no jump points.)
+        - `use_levy`: If True, the return type will be a `LevyVal`, which contains
+            PyTrees of Brownian increments and their Lévy areas.
+
+        **Returns:**
+
+        If `t1` is not passed:
+
+        The value of the Brownian motion at `t0`.
+
+        If `t1` is passed:
+
+        The increment of the Brownian motion between `t0` and `t1`.
+
+        In both cases, the updated state is also returned.
+        """
 
     @abc.abstractmethod
     def evaluate(

@@ -41,7 +41,12 @@ from .._custom_types import (
 )
 from .._solution import is_okay, RESULTS, update_result
 from .._term import AbstractTerm, MultiTerm, ODETerm, WrapTerm
-from .base import AbstractAdaptiveSolver, AbstractImplicitSolver, vector_tree_dot
+from .base import (
+    _PathState,
+    AbstractAdaptiveSolver,
+    AbstractImplicitSolver,
+    vector_tree_dot,
+)
 
 
 # Not a pytree node!
@@ -414,6 +419,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         t1: RealScalarLike,
         y0: Y,
         args: Args,
+        path_state: _PathState,
     ) -> _SolverState:
         _, fsal = self._common(terms, t0, t1, y0, args)
         if fsal:
@@ -447,7 +453,8 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
+        path_state: _PathState,
+    ) -> tuple[Y, Y, DenseInfo, _SolverState, _PathState, RESULTS]:
         #
         # Alright, settle in for what is probably the most advanced Runge-Kutta
         # implementation on the planet.
@@ -600,6 +607,15 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
 
             return jtu.tree_map(_fn, tableaus, *trees)
 
+        def t_map_contr(fn, *trees, control, implicit_val=sentinel):
+            def _fn(tableau, _control, *_trees):
+                if tableau.implicit and implicit_val is not sentinel:
+                    return implicit_val
+                else:
+                    return fn(*_trees, _control)
+
+            return jtu.tree_map(_fn, tableaus, control, *trees)
+
         # Structure of `y` and `k`.
         def y_map(fn, *trees):
             def _fn(_, *_trees):
@@ -636,7 +652,20 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             return value
 
         dt = t1 - t0
-        control = t_map(lambda term_i: term_i.contr(t0, t1), terms)
+        tableau_mapped = t_map_contr(
+            lambda term_i, path_i: term_i.contr(t0, t1, path_i),
+            terms,
+            control=path_state,
+        )
+        # control, new_path_state = jtu.tree_map(lambda x)
+        if isinstance(tableaus, ButcherTableau):
+            control, new_path_state = tableau_mapped
+        else:  # tuple of butchers
+            control, new_path_state = (
+                tuple(i[0] for i in tableau_mapped),
+                tuple(i[1] for i in tableau_mapped),
+            )
+
         if implicit_tableau is None:
             implicit_control = _unused
         else:
@@ -1195,7 +1224,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             new_solver_state = False, f1_for_fsal
         else:
             new_solver_state = None
-        return y1, y_error, dense_info, new_solver_state, result
+        return y1, y_error, dense_info, new_solver_state, new_path_state, result
 
 
 class AbstractERK(AbstractRungeKutta):

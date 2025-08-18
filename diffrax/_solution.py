@@ -5,7 +5,7 @@ import jax
 import optimistix as optx
 from jaxtyping import Array, Bool, PyTree, Real, Shaped
 
-from ._custom_types import BoolScalarLike, RealScalarLike
+from ._custom_types import Args, BoolScalarLike, RealScalarLike, Y
 from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 
@@ -97,6 +97,7 @@ class Solution(AbstractPath):
     - `solver_state`: If saved, the final internal state of the numerical solver.
     - `controller_state`: If saved, the final internal state for the step size
         controller.
+    - `path_state`: If saved, the final internal state for the path.
     - `made_jump`: If saved, the final internal state for the jump tracker.
     - `event_mask`: If using [events](./events.md), a boolean mask indicating which
         event triggered. This is a PyTree of bools, with the same PyTree stucture as the
@@ -128,8 +129,27 @@ class Solution(AbstractPath):
     result: RESULTS
     solver_state: PyTree | None
     controller_state: PyTree | None
+    path_state: PyTree | None
     made_jump: BoolScalarLike | None
     event_mask: PyTree[BoolScalarLike] | None
+
+    def init(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> None:
+        return None
+
+    def __call__(
+        self,
+        t0: RealScalarLike,
+        path_state: None,
+        t1: RealScalarLike | None = None,
+        left: bool = True,
+    ) -> tuple[PyTree[Shaped[Array, "?*shape"], " Y"], None]:
+        return self.evaluate(t0, t1, left), path_state
 
     def evaluate(
         self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True

@@ -31,7 +31,7 @@ from .._term import (
     UnderdampedLangevinX,
     WrapTerm,
 )
-from .base import AbstractStratonovichSolver
+from .base import _PathState, AbstractStratonovichSolver
 
 
 _ErrorEstimate = TypeVar("_ErrorEstimate", None, UnderdampedLangevinTuple)
@@ -43,7 +43,9 @@ UnderdampedLangevinArgs = tuple[
 
 
 def _get_args_from_terms(
-    terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+    terms: MultiTerm[
+        tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+    ],
 ) -> tuple[
     PyTree,
     PyTree,
@@ -245,11 +247,14 @@ class AbstractFosterLangevinSRK(
 
     def init(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: UnderdampedLangevinTuple,
         args: PyTree,
+        path_state: _PathState,
     ) -> SolverState:
         """Precompute _SolverState which carries the Taylor coefficients and the
         SRK coefficients (which can be computed from h and the Taylor coefficients).
@@ -257,6 +262,7 @@ class AbstractFosterLangevinSRK(
         evaluation of grad_f.
         """
         drift, diffusion = terms.terms
+        drift_path, diffusion_path = path_state
         del diffusion
         (
             gamma_drift,
@@ -266,7 +272,10 @@ class AbstractFosterLangevinSRK(
             grad_f,
         ) = _get_args_from_terms(terms)
 
-        h = drift.contr(t0, t1)
+        # is this the only solver class that has `init` depend on the path state?
+        # feels irksome to change everything for one class, but I'm going to make
+        # `init` now depend on path state for the sake of generality
+        h, _ = drift.contr(t0, t1, drift_path)
         x0, v0 = y0
         del v0
 
@@ -364,20 +373,29 @@ class AbstractFosterLangevinSRK(
 
     def step(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: UnderdampedLangevinTuple,
         args: PyTree,
         solver_state: SolverState,
         made_jump: BoolScalarLike,
+        path_state: _PathState,
     ) -> tuple[
-        UnderdampedLangevinTuple, _ErrorEstimate, DenseInfo, SolverState, RESULTS
+        UnderdampedLangevinTuple,
+        _ErrorEstimate,
+        DenseInfo,
+        SolverState,
+        _PathState,
+        RESULTS,
     ]:
         st = solver_state
         drift, diffusion = terms.terms
+        drift_path, diffusion_path = path_state
 
-        h = drift.contr(t0, t1)
+        h, drift_path = drift.contr(t0, t1, drift_path)
         h_prev = st.h
         tay: PyTree[_Coeffs] = st.taylor_coeffs
         old_coeffs: _Coeffs = st.coeffs
@@ -396,7 +414,7 @@ class AbstractFosterLangevinSRK(
         )
 
         # compute the Brownian increment and space-time(-time) Levy area
-        levy = diffusion.contr(t0, t1, use_levy=True)
+        levy, diffusion_path = diffusion.contr(t0, t1, diffusion_path, use_levy=True)
         if not isinstance(levy, self.minimal_levy_area):
             raise ValueError(
                 f"The Brownian motion must have"
@@ -440,11 +458,20 @@ class AbstractFosterLangevinSRK(
             rho=st.rho,
             prev_f=f_fsal,
         )
-        return y1, error, dense_info, st, RESULTS.successful
+        return (
+            y1,
+            error,
+            dense_info,
+            st,
+            (drift_path, diffusion_path),
+            RESULTS.successful,
+        )
 
     def func(
         self,
-        terms: MultiTerm[tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]],
+        terms: MultiTerm[
+            tuple[AbstractTerm[Any, RealScalarLike, _PathState], AbstractTerm]
+        ],
         t0: RealScalarLike,
         y0: UnderdampedLangevinTuple,
         args: PyTree,
