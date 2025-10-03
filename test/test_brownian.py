@@ -173,6 +173,7 @@ def test_statistics(ctr, levy_area, use_levy):
 
     else:
         w = values
+    assert isinstance(w, jax.Array)
     assert w.shape == (num_samples,)
     ref_dist = stats.norm(loc=0, scale=math.sqrt(dt))
     _, pval = stats.kstest(w, ref_dist.cdf)

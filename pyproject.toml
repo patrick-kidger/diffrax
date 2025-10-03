@@ -25,13 +25,15 @@ keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning
 license = {file = "LICENSE"}
 name = "diffrax"
 readme = "README.md"
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.10"
 urls = {repository = "https://github.com/patrick-kidger/diffrax"}
 version = "0.7.0"
 
 [project.optional-dependencies]
+dev = ["pre-commit"]
 docs = [
   "hippogriffe==0.2.2",
+  "griffe==1.7.3",
   "mkdocs==1.6.1",
   "mkdocs-include-exclude-files==0.1.0",
   "mkdocs-ipynb==0.1.1",
@@ -39,6 +41,14 @@ docs = [
   "mkdocstrings==0.28.3",
   "mkdocstrings-python==1.16.8",
   "pymdown-extensions==10.14.3"
+]
+tests = [
+  "beartype",
+  "jaxlib",
+  "optax",
+  "pytest",
+  "scipy",
+  "tqdm"
 ]
 
 [tool.hatch.build]
@@ -60,9 +70,13 @@ src = []
 
 [tool.ruff.lint]
 fixable = ["I001", "F401", "UP"]
-ignore = ["E402", "E721", "E731", "E741", "F722", "UP038"]
-ignore-init-module-imports = true
+ignore = ["E402", "E721", "E731", "E741", "F722"]
 select = ["E", "F", "I001", "UP"]
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+"collections" = "co"
+"functools" = "ft"
+"itertools" = "it"
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

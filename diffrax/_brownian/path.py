@@ -62,9 +62,9 @@ class UnsafeBrownianPath(AbstractBrownianPath):
     """
 
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: type[
-        BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
-    ] = eqx.field(static=True)
+    levy_area: type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea] = (
+        eqx.field(static=True)
+    )
     key: PRNGKeyArray
 
     def __init__(

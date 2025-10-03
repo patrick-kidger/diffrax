@@ -231,9 +231,9 @@ class AbstractFosterLangevinSRK(
             if inner is sentinel:
                 inner = jtu.tree_structure(out)
             else:
-                assert (
-                    jtu.tree_structure(out) == inner
-                ), f"Expected {inner}, got {jtu.tree_structure(out)}"
+                assert jtu.tree_structure(out) == inner, (
+                    f"Expected {inner}, got {jtu.tree_structure(out)}"
+                )
 
             return out
 

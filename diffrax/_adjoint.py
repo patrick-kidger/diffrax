@@ -362,8 +362,7 @@ class DirectAdjoint(AbstractAdjoint):
         if is_unsafe_sde(terms):
             kind = "lax"
             msg = (
-                "Cannot reverse-mode autodifferentiate when using "
-                "`UnsafeBrownianPath`."
+                "Cannot reverse-mode autodifferentiate when using `UnsafeBrownianPath`."
             )
         elif max_steps is None:
             kind = "lax"

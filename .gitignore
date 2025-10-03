@@ -8,3 +8,4 @@ site/
 .pymon
 .idea/
 .venv/
+uv.lock

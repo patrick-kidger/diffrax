@@ -184,7 +184,7 @@ def _get_args_of_impl(
         if len(params) == 0:
             error_cls = cls
         else:
-            error_cls = cls[params]
+            error_cls = cls[params]  # pyright: ignore[reportIndexIssue]
         raise TypeError(
             f"{error_cls} inherits from {base_cls} in multiple incompatible ways."
         )

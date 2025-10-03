@@ -14,8 +14,8 @@ from .base import AbstractSolver
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = None
 
-Ya: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]
-Yb: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]
+Ya: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]  # pyright: ignore[reportUndefinedVariable]
+Yb: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]  # pyright: ignore[reportUndefinedVariable]
 
 
 class SemiImplicitEuler(AbstractSolver):
@@ -26,9 +26,9 @@ class SemiImplicitEuler(AbstractSolver):
     """
 
     term_structure: ClassVar = (AbstractTerm, AbstractTerm)
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     def order(self, terms):
         return 1

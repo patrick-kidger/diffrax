@@ -100,9 +100,9 @@ def test_shape(solver, dtype):
 
     # check that the output has the correct pytree structure and shape
     def check_shape(y0_leaf, sol_leaf):
-        assert (
-            sol_leaf.shape == (7,) + y0_leaf.shape
-        ), f"shape={sol_leaf.shape}, expected={(7,) + y0_leaf.shape}"
+        assert sol_leaf.shape == (7,) + y0_leaf.shape, (
+            f"shape={sol_leaf.shape}, expected={(7,) + y0_leaf.shape}"
+        )
         assert sol_leaf.dtype == dtype, f"dtype={sol_leaf.dtype}, expected={dtype}"
 
     jtu.tree_map(check_shape, sde.y0, sol.ys)
@@ -193,9 +193,9 @@ def test_uld_strong_order(
         ref_solution=true_sol,
     )
 
-    assert (
-        -0.2 < order - theoretical_order < 0.25
-    ), f"order={order}, theoretical_order={theoretical_order}"
+    assert -0.2 < order - theoretical_order < 0.25, (
+        f"order={order}, theoretical_order={theoretical_order}"
+    )
 
 
 @pytest.mark.parametrize("solver_cls", _only_uld_solvers_cls())

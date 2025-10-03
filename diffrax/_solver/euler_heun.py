@@ -29,9 +29,9 @@ class EulerHeun(AbstractStratonovichSolver):
     term_structure: ClassVar = MultiTerm[
         tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
     ]
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     def order(self, terms):
         return 1

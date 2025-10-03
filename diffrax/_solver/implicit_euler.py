@@ -35,9 +35,9 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
     #
     # We don't use it as this seems to be quite a bad choice for low-order solvers: it
     # produces very oscillatory interpolations.
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(optx.Chord)()
     root_find_max_steps: int = 10

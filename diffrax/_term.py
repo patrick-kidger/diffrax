@@ -3,7 +3,7 @@ import operator
 import typing
 import warnings
 from collections.abc import Callable
-from typing import cast, Generic, TypeAlias, TypeVar
+from typing import Any, cast, Generic, TypeAlias, TypeVar
 
 import equinox as eqx
 import jax
@@ -12,7 +12,7 @@ import jax.tree_util as jtu
 import lineax as lx
 import numpy as np
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, PyTree, PyTreeDef, Shaped
+from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
 from ._brownian import AbstractBrownianPath
 from ._custom_types import (
@@ -835,7 +835,7 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 
         jac = make_jac(_fn)(control)
         assert vf_prod_tree is not sentinel
-        vf_prod_tree = cast(PyTreeDef, vf_prod_tree)
+        vf_prod_tree = cast(Any, vf_prod_tree)
         if jtu.tree_structure(None) in (vf_prod_tree, control_tree):
             # An unusual/not-useful edge case to handle.
             raise NotImplementedError(
@@ -868,7 +868,7 @@ class AdjointTerm(AbstractTerm[_VF, _Control]):
 
         jtu.tree_map(_get_vf_tree, control, vf)
         assert vf_prod_tree is not sentinel
-        vf_prod_tree = cast(PyTreeDef, vf_prod_tree)
+        vf_prod_tree = cast(Any, vf_prod_tree)
 
         vf = jtu.tree_transpose(control_tree, vf_prod_tree, vf)
 

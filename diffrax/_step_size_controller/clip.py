@@ -220,8 +220,7 @@ class ClipStepSizeController(
         self.jump_ts = _none_or_sorted_array(jump_ts)
         if (store_rejected_steps is not None) and (store_rejected_steps <= 0):
             raise ValueError(
-                "`store_rejected_steps must either be `None`"
-                " or a non-negative integer."
+                "`store_rejected_steps must either be `None` or a non-negative integer."
             )
         self.store_rejected_steps = store_rejected_steps
         self.callback_on_reject = _callback_on_reject

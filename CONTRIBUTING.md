@@ -8,22 +8,14 @@ Contributions (pull requests) are very welcome! Here's how to get started.
 
 First fork the library on GitHub.
 
-Then clone and install the library in development mode:
+Then clone and install the library:
 
 ```bash
 git clone https://github.com/your-username-here/diffrax.git
 cd diffrax
-pip install -e .
+pip install -e '.[dev]'
+pre-commit install  # `pre-commit` is installed by `pip` on the previous line
 ```
-
-Then install the pre-commit hook:
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-These hooks use ruff to lint and format the code, and pyright to type-check it.
 
 ---
 
@@ -34,8 +26,8 @@ Now make your changes. Make sure to include additional tests if necessary.
 Next verify the tests all pass:
 
 ```bash
-pip install -r test/requirements.txt
-pytest
+pip install -e '.[tests]'
+pytest  # `pytest` is installed by `pip` on the previous line.
 ```
 
 Then push your changes back to your fork of the repository:

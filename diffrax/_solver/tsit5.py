@@ -181,9 +181,9 @@ class Tsit5(AbstractERK):
     """
 
     tableau: ClassVar[ButcherTableau] = _tsit5_tableau
-    interpolation_cls: ClassVar[
-        Callable[..., _Tsit5Interpolation]
-    ] = _Tsit5Interpolation
+    interpolation_cls: ClassVar[Callable[..., _Tsit5Interpolation]] = (
+        _Tsit5Interpolation
+    )
 
     def order(self, terms):
         return 5

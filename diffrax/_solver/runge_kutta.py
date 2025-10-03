@@ -358,6 +358,11 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
     tableau: AbstractClassVar[ButcherTableau | MultiButcherTableau]
     calculate_jacobian: AbstractClassVar[CalculateJacobian]
 
+    if TYPE_CHECKING:
+        # Pretend that we're implicit
+        root_finder: ClassVar[optx.AbstractRootFinder]
+        root_find_max_steps: ClassVar[int]
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if hasattr(cls, "tableau"):  # Abstract subclasses may not have a tableau
@@ -804,7 +809,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             )
             implicit_predictor = np.zeros(
                 (num_stages, num_stages),
-                dtype=np.result_type(*implicit_tableau.a_predictor),
+                dtype=np.result_type(*cast(tuple, implicit_tableau.a_predictor)),
             )
             for i, a_predictor_i in enumerate(implicit_tableau.a_predictor):  # pyright: ignore
                 implicit_predictor[i + 1, : i + 1] = a_predictor_i
