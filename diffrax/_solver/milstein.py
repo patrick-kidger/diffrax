@@ -44,9 +44,9 @@ class StratonovichMilstein(AbstractStratonovichSolver):
     term_structure: ClassVar = MultiTerm[
         tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
     ]
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     def order(self, terms):
         raise ValueError("`StratonovichMilstein` should not be used to solve ODEs.")
@@ -123,9 +123,9 @@ class ItoMilstein(AbstractItoSolver):
     term_structure: ClassVar = MultiTerm[
         tuple[AbstractTerm[Any, RealScalarLike], AbstractTerm]
     ]
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     def order(self, terms):
         raise ValueError("`ItoMilstein` should not be used to solve ODEs.")

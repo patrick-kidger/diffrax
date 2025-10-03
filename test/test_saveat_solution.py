@@ -1,5 +1,6 @@
 import contextlib
 import math
+from typing import cast
 
 import diffrax
 import equinox as eqx
@@ -119,6 +120,7 @@ def test_saveat_solution():
     assert sol.ts.shape == (4096,)  # pyright: ignore
     assert sol.ys.shape == (4096, 1)  # pyright: ignore
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ts = cast(jax.Array, _ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
@@ -140,6 +142,7 @@ def test_saveat_solution():
     assert sol.ts.shape == (n,)  # pyright: ignore
     assert sol.ys.shape == (n, 1)  # pyright: ignore
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ts = cast(jax.Array, _ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)
@@ -161,6 +164,7 @@ def test_saveat_solution():
     assert sol.ts.shape == (n,)  # pyright: ignore
     assert sol.ys.shape == (n, 1)  # pyright: ignore
     _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ts = cast(jax.Array, _ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
     _ys = jnp.where(jnp.isnan(_ys), jnp.inf, _ys)

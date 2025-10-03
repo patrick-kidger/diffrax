@@ -8,15 +8,15 @@ repos:
         files: ^pyproject\.toml$
         additional_dependencies: ["toml-sort==0.23.1"]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.2.2
+    rev: v0.13.0
     hooks:
       - id: ruff-format  # formatter
-        types_or: [ python, pyi, jupyter ]
+        types_or: [ python, pyi, jupyter, toml ]
       - id: ruff  # linter
-        types_or: [ python, pyi, jupyter ]
+        types_or: [ python, pyi, jupyter, toml ]
         args: [ --fix ]
   - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.350
+    rev: v1.1.405
     hooks:
     - id: pyright
       additional_dependencies: [equinox, jax, jaxtyping, optax, optimistix, lineax, pytest, typeguard==2.13.3, typing_extensions, wadler_lindig]

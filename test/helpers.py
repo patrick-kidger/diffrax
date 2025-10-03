@@ -95,8 +95,8 @@ def tree_allclose(x, y, *, rtol=1e-5, atol=1e-8, equal_nan=False):
 
 
 def path_l2_dist(
-    ys1: PyTree[Shaped[Array, "repeats times ?*channels"], " T"],
-    ys2: PyTree[Shaped[Array, "repeats times ?*channels"], " T"],
+    ys1: PyTree[Shaped[Array, "repeats times ?*channels"], " T"],  # pyright: ignore[reportUndefinedVariable]
+    ys2: PyTree[Shaped[Array, "repeats times ?*channels"], " T"],  # pyright: ignore[reportUndefinedVariable]
 ):
     # first compute the square of the difference and sum over
     # all but the first two axes (which represent the number of samples

@@ -340,9 +340,9 @@ class Dopri8(AbstractERK):
     """
 
     tableau: ClassVar[ButcherTableau] = _dopri8_tableau
-    interpolation_cls: ClassVar[
-        Callable[..., _Dopri8Interpolation]
-    ] = _Dopri8Interpolation
+    interpolation_cls: ClassVar[Callable[..., _Dopri8Interpolation]] = (
+        _Dopri8Interpolation
+    )
 
     def order(self, terms):
         del terms

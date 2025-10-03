@@ -10,7 +10,7 @@ from ._global_interpolation import DenseInterpolation
 from ._path import AbstractPath
 
 
-class RESULTS(optx.RESULTS):  # pyright: ignore
+class RESULTS(optx.RESULTS):  # pyright: ignore[reportGeneralTypeIssues]
     successful = ""
     max_steps_reached = (
         "The maximum number of solver steps was reached. Try increasing `max_steps`."
@@ -121,8 +121,8 @@ class Solution(AbstractPath):
     # the structure of `subs`.
     # SaveAt(fn=...) means that `ys` will then follow with arbitrary sub-dependent
     # PyTree structures.
-    ts: PyTree[Real[Array, " ?times"], " S"] | None
-    ys: PyTree[Shaped[Array, "?times ?*shape"], "S ..."] | None
+    ts: PyTree[Real[Array, " ?times"], " S"] | None  # pyright: ignore[reportUndefinedVariable]
+    ys: PyTree[Shaped[Array, "?times ?*shape"], "S ..."] | None  # pyright: ignore
     interpolation: DenseInterpolation | None
     stats: dict[str, Any]
     result: RESULTS
@@ -133,7 +133,7 @@ class Solution(AbstractPath):
 
     def evaluate(
         self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
-    ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:
+    ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:  # pyright: ignore[reportUndefinedVariable]
         """If dense output was saved, then evaluate the solution at any point in the
         region of integration `self.t0` to `self.t1`.
 
@@ -153,7 +153,7 @@ class Solution(AbstractPath):
 
     def derivative(
         self, t: RealScalarLike, left: bool = True
-    ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:
+    ) -> PyTree[Shaped[Array, "?*shape"], " Y"]:  # pyright: ignore[reportUndefinedVariable]
         r"""If dense output was saved, then calculate an **approximation** to the
         derivative of the solution at any point in the region of integration `self.t0`
         to `self.t1`.

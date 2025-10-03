@@ -91,9 +91,9 @@ class Dopri5(AbstractERK):
     """
 
     tableau: ClassVar[ButcherTableau] = _dopri5_tableau
-    interpolation_cls: ClassVar[
-        Callable[..., _Dopri5Interpolation]
-    ] = _Dopri5Interpolation
+    interpolation_cls: ClassVar[Callable[..., _Dopri5Interpolation]] = (
+        _Dopri5Interpolation
+    )
 
     def order(self, terms):
         del terms
