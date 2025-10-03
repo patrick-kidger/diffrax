@@ -235,9 +235,9 @@ class VirtualBrownianTree(AbstractBrownianPath):
     t1: RealScalarLike
     tol: RealScalarLike
     shape: PyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
-    levy_area: type[
-        BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
-    ] = eqx.field(static=True)
+    levy_area: type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea] = (
+        eqx.field(static=True)
+    )
     key: PyTree[PRNGKeyArray]
     _spline: _Spline = eqx.field(static=True)
 

@@ -36,9 +36,9 @@ class ReversibleHeun(AbstractAdaptiveSolver, AbstractStratonovichSolver):
     """
 
     term_structure: ClassVar = AbstractTerm
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation  # TODO use something better than this?
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation  # TODO use something better than this?
+    )
 
     def order(self, terms):
         return 2

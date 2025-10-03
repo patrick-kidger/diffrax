@@ -163,9 +163,9 @@ class KenCarp3(AbstractRungeKutta, AbstractImplicitSolver):
         _explicit_tableau, _implicit_tableau
     )
     calculate_jacobian: ClassVar[CalculateJacobian] = CalculateJacobian.second_stage
-    interpolation_cls: ClassVar[
-        Callable[..., _KenCarp3Interpolation]
-    ] = _KenCarp3Interpolation
+    interpolation_cls: ClassVar[Callable[..., _KenCarp3Interpolation]] = (
+        _KenCarp3Interpolation
+    )
 
     root_finder: optx.AbstractRootFinder = with_stepsize_controller_tols(VeryChord)()
     root_find_max_steps: int = 10

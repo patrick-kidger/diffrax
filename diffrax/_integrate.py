@@ -3,6 +3,7 @@ import warnings
 from collections.abc import Callable
 from typing import (  # noqa: UP035
     Any,
+    cast,
     get_args,
     get_origin,
     Tuple,
@@ -1164,7 +1165,10 @@ def diffeqsolve(
         def _get_tols(x):
             outs = []
             for attr in ("rtol", "atol", "norm"):
-                if getattr(solver.root_finder, attr) is use_stepsize_tol:
+                if (
+                    getattr(cast(AbstractImplicitSolver, solver).root_finder, attr)
+                    is use_stepsize_tol
+                ):
                     outs.append(getattr(x, attr))
             return tuple(outs)
 

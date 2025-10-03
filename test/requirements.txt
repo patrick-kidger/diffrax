@@ -1,6 +1,0 @@
-beartype
-jaxlib
-optax
-pytest
-scipy
-tqdm

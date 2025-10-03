@@ -54,8 +54,7 @@ class AbstractStochasticCoeffs(eqx.Module):
     b_error: eqx.AbstractVar[Float[np.ndarray, " s"] | None]
 
     @abc.abstractmethod
-    def check(self) -> int:
-        ...
+    def check(self) -> int: ...
 
 
 class AdditiveCoeffs(AbstractStochasticCoeffs):
