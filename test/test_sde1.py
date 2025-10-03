@@ -157,7 +157,8 @@ def test_sde_strong_limit(
     ts_coarse = jnp.linspace(t0, t1, 2**level_coarse + 1, endpoint=True)
     contr_fine = diffrax.StepTo(ts=ts_fine)
     contr_coarse = diffrax.StepTo(ts=ts_coarse)
-    save_ts = jnp.linspace(t0, t1, 2**5 + 1, endpoint=True)
+    save_ts = ts_coarse[:: 2 ** (level_coarse - 5)]
+    assert len(save_ts) == 2**5 + 1
     assert len(jnp.intersect1d(ts_fine, save_ts)) == len(save_ts)
     assert len(jnp.intersect1d(ts_coarse, save_ts)) == len(save_ts)
     saveat = diffrax.SaveAt(ts=save_ts)
