@@ -352,27 +352,7 @@ HalfSolver.__init__.__doc__ = """**Arguments:**
 """
 
 
-class PostProcessSolver(
-    AbstractAdaptiveSolver[_SolverState], AbstractWrappedSolver[_SolverState]
-):
-    """Wraps another solver and postprocesses every step it returns. This lets you
-    tweak the outputs of an existing solver – for example adjusting error estimates,
-    projecting onto constraints, or populating additional dense output fields –
-    without reimplementing the solver itself.
-
-    Each call to `step` runs the wrapped solver once, then forwards the tuple
-    `(y1, y_error, dense_info, solver_state, result)` to `postprocess_fn`. The return
-    value of that function becomes the value returned to the caller, so you can modify
-    or augment any part of the solver's outputs. Aside from whatever work your
-    post-processing does, no extra solver evaluations are required.
-
-    !!! tip
-
-        This is a lightweight way to customise off-the-shelf solvers – use it to add
-        safety checks, change convergence diagnostics, or integrate with external
-        bookkeeping, all while keeping the solver implementation untouched.
-    """
-
+class PostProcessSolver(AbstractWrappedSolver[_SolverState]):
     solver: AbstractSolver[_SolverState]
     postprocess_fn: Callable[
         [Y, Y | None, DenseInfo, _SolverState, RESULTS],
@@ -433,5 +413,4 @@ class PostProcessSolver(
 PostProcessSolver.__init__.__doc__ = """**Arguments:**
 
 - `solver`: The solver to wrap.
-- `postprocess_fn`: Callable applied to every tuple returned by `solver.step`.
 """
