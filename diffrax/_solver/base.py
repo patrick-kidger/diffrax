@@ -350,3 +350,88 @@ HalfSolver.__init__.__doc__ = """**Arguments:**
 
 - `solver`: The solver to wrap.
 """
+
+
+class PostProcessSolver(
+    AbstractAdaptiveSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+):
+    """Wraps another solver and postprocesses every step it returns. This lets you
+    tweak the outputs of an existing solver – for example adjusting error estimates,
+    projecting onto constraints, or populating additional dense output fields –
+    without reimplementing the solver itself.
+
+    Each call to `step` runs the wrapped solver once, then forwards the tuple
+    `(y1, y_error, dense_info, solver_state, result)` to `postprocess_fn`. The return
+    value of that function becomes the value returned to the caller, so you can modify
+    or augment any part of the solver's outputs. Aside from whatever work your
+    post-processing does, no extra solver evaluations are required.
+
+    !!! tip
+
+        This is a lightweight way to customise off-the-shelf solvers – use it to add
+        safety checks, change convergence diagnostics, or integrate with external
+        bookkeeping, all while keeping the solver implementation untouched.
+    """
+
+    solver: AbstractSolver[_SolverState]
+    postprocess_fn: Callable[
+        [Y, Y | None, DenseInfo, _SolverState, RESULTS],
+        tuple[Y, Y | None, DenseInfo, _SolverState, RESULTS],
+    ]
+
+    @property
+    def term_structure(self):
+        return self.solver.term_structure
+
+    @property
+    def interpolation_cls(self):  # pyright: ignore
+        return self.solver.interpolation_cls
+
+    @property
+    def term_compatible_contr_kwargs(self):
+        return self.solver.term_compatible_contr_kwargs
+
+    def order(self, terms: PyTree[AbstractTerm]) -> int | None:
+        return self.solver.order(terms)
+
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
+        return self.solver.strong_order(terms)
+
+    def error_order(self, terms: PyTree[AbstractTerm]) -> RealScalarLike | None:
+        self.solver.error_order(terms)
+
+    def init(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _SolverState:
+        return self.solver.init(terms, t0, t1, y0, args)
+
+    def step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[Y, Y | None, DenseInfo, _SolverState, RESULTS]:
+        return self.postprocess_fn(
+            *self.solver.step(terms, t0, t1, y0, args, solver_state, made_jump)
+        )
+
+    def func(
+        self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args
+    ) -> VF:
+        return self.solver.func(terms, t0, y0, args)
+
+
+PostProcessSolver.__init__.__doc__ = """**Arguments:**
+
+- `solver`: The solver to wrap.
+- `postprocess_fn`: Callable applied to every tuple returned by `solver.step`.
+"""
