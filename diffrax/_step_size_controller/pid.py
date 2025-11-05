@@ -81,8 +81,8 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-# _PidState = (prev_inv_scaled_error, prev_prev_inv_scaled_error)
-_PidState = tuple[RealScalarLike, RealScalarLike]
+# _PidState = (prev_inv_scaled_error, prev_prev_inv_scaled_error, keep_next_step)
+_PidState = tuple[RealScalarLike, RealScalarLike, BoolScalarLike]
 
 
 # We use a metaclass for backwards compatibility. When a user calls
@@ -388,6 +388,7 @@ class PIDController(
         return t1, (
             jnp.array(1.0, dtype=real_dtype),
             jnp.array(1.0, dtype=real_dtype),
+            False,
         )
 
     def adapt_step_size(
@@ -469,6 +470,7 @@ class PIDController(
         (
             prev_inv_scaled_error,
             prev_prev_inv_scaled_error,
+            keep_next_step,
         ) = controller_state
         error_order = self._get_error_order(error_order)
         prev_dt = t1 - t0
@@ -489,9 +491,9 @@ class PIDController(
 
         scaled_error = self.norm(jtu.tree_map(_scale, y0, y1_candidate, y_error))
         keep_step = scaled_error < 1
-        # Automatically keep the step if we're at dtmin.
+        # Automatically keep the step if it was at dtmin.
         if self.dtmin is not None:
-            keep_step = keep_step | (prev_dt <= self.dtmin)
+            keep_step = keep_step | keep_next_step
         # Make sure it's not a Python scalar and thus getting a ZeroDivisionError.
         inv_scaled_error = 1 / jnp.asarray(scaled_error)
         inv_scaled_error = lax.stop_gradient(
@@ -545,6 +547,9 @@ class PIDController(
         if self.dtmin is not None:
             if not self.force_dtmin:
                 result = RESULTS.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
+            # flag next step to be kept if dtmin is reached
+            # or if it was reached previously and dt is unchanged
+            keep_next_step = (dt <= self.dtmin) | (keep_next_step & (factor == 1))
             dt = jnp.maximum(dt, self.dtmin)
 
         next_t0 = jnp.where(keep_step, t1, t0)
@@ -554,7 +559,7 @@ class PIDController(
         prev_inv_scaled_error = jnp.where(
             keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
         )
-        controller_state = inv_scaled_error, prev_inv_scaled_error
+        controller_state = inv_scaled_error, prev_inv_scaled_error, keep_next_step
         # made_jump is handled by ClipStepSizeController, so we automatically set it to
         # False
         return keep_step, next_t0, next_t1, False, controller_state, result
