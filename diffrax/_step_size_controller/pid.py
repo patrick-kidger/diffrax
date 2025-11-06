@@ -81,7 +81,7 @@ def _select_initial_step(
     return jnp.minimum(100 * h0, h1)
 
 
-# _PidState = (prev_inv_scaled_error, prev_prev_inv_scaled_error, keep_next_step)
+# _PidState = (prev_inv_scaled_error, prev_prev_inv_scaled_error, at_dtmin)
 _PidState = tuple[RealScalarLike, RealScalarLike, BoolScalarLike]
 
 
@@ -470,7 +470,7 @@ class PIDController(
         (
             prev_inv_scaled_error,
             prev_prev_inv_scaled_error,
-            keep_next_step,
+            at_dtmin,
         ) = controller_state
         error_order = self._get_error_order(error_order)
         prev_dt = t1 - t0
@@ -493,7 +493,7 @@ class PIDController(
         keep_step = scaled_error < 1
         # Automatically keep the step if it was at dtmin.
         if self.dtmin is not None:
-            keep_step = keep_step | keep_next_step
+            keep_step = keep_step | at_dtmin
         # Make sure it's not a Python scalar and thus getting a ZeroDivisionError.
         inv_scaled_error = 1 / jnp.asarray(scaled_error)
         inv_scaled_error = lax.stop_gradient(
@@ -547,9 +547,11 @@ class PIDController(
         if self.dtmin is not None:
             if not self.force_dtmin:
                 result = RESULTS.where(dt < self.dtmin, RESULTS.dt_min_reached, result)
-            # flag next step to be kept if dtmin is reached
-            # or if it was reached previously and dt is unchanged
-            keep_next_step = (dt <= self.dtmin) | (keep_next_step & (factor == 1))
+            # if we are already at dtmin and dt is unchanged (factor == 1),
+            # reset dt to dtmin to avoid accumulating float precision errors
+            dt = jnp.where(at_dtmin & (factor == 1), self.dtmin, dt)
+            # this flags the next loop to accept step
+            at_dtmin = dt <= self.dtmin
             dt = jnp.maximum(dt, self.dtmin)
 
         next_t0 = jnp.where(keep_step, t1, t0)
@@ -559,7 +561,7 @@ class PIDController(
         prev_inv_scaled_error = jnp.where(
             keep_step, prev_inv_scaled_error, prev_prev_inv_scaled_error
         )
-        controller_state = inv_scaled_error, prev_inv_scaled_error, keep_next_step
+        controller_state = inv_scaled_error, prev_inv_scaled_error, at_dtmin
         # made_jump is handled by ClipStepSizeController, so we automatically set it to
         # False
         return keep_step, next_t0, next_t1, False, controller_state, result
