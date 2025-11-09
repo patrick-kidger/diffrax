@@ -1084,6 +1084,22 @@ def diffeqsolve(
     y0 = jtu.tree_map(_promote, y0)
     del timelikes
 
+    # Check if the solver is an instance of AbstractSolver and provide an informative
+    # error if it is not. Addresses https://github.com/patrick-kidger/diffrax/issues/705
+    if not isinstance(solver, AbstractSolver):
+        if issubclass(solver, AbstractSolver):
+            msg = (
+                "It looks like you forgot to instantiate your solver, e.g. by passing "
+                "`dfx.Euler` instead of `dfx.Euler()`."
+            )
+            raise ValueError(msg)
+        else:
+            msg = (
+                "Argument `solver` must be an instance of (some subclass of) "
+                "`dfx.AbstractSolver`, but its type is not recognised."
+            )
+            raise ValueError(msg)
+
     # Backward compatibility
     if isinstance(solver, (EulerHeun, ItoMilstein, StratonovichMilstein)):
         try:
