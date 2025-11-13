@@ -40,6 +40,14 @@ docs = [
   "mkdocstrings-python==1.16.8",
   "pymdown-extensions==10.14.3"
 ]
+tests = [
+  "beartype>=0.22.5",
+  "jaxlib>=0.6.2",
+  "optax>=0.2.6",
+  "pytest>=9.0.1",
+  "scipy>=1.15.3",
+  "tqdm>=4.67.1",
+]
 
 [tool.hatch.build]
 include = ["diffrax/*"]
