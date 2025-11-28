@@ -427,8 +427,8 @@ def _test(solver, problems, higher):
         else:
             dt0 = None
             if solver.order(term) < 4:  # pyright: ignore
-                rtol = 1e-3
-                atol = 1e-3
+                rtol = 1e-6
+                atol = 1e-6
             else:
                 rtol = 1e-8
                 atol = 1e-8
@@ -467,8 +467,8 @@ def _test(solver, problems, higher):
         scipy_y1 = unravel(scipy_sol.y[:, 0])
 
         if solver.order(term) < 4:  # pyright: ignore
-            rtol = 1e-1
-            atol = 1e-1
+            rtol = 1e-3
+            atol = 1e-3
         else:
             rtol = 4e-5
             atol = 4e-5
