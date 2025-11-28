@@ -31,6 +31,7 @@ from .milstein import (
 from .quicsort import QUICSORT as QUICSORT
 from .ralston import Ralston as Ralston
 from .reversible_heun import ReversibleHeun as ReversibleHeun
+from .ros3p import Ros3p as Ros3p
 from .runge_kutta import (
     AbstractDIRK as AbstractDIRK,
     AbstractERK as AbstractERK,
@@ -55,4 +56,3 @@ from .srk import (
     StochasticButcherTableau as StochasticButcherTableau,
 )
 from .tsit5 import Tsit5 as Tsit5
-from .ros3p import Ros3p as Ros3p
