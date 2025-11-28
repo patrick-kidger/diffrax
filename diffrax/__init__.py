@@ -106,6 +106,7 @@ from ._solver import (
     QUICSORT as QUICSORT,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
+    Ros3p as Ros3p,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
     ShARK as ShARK,
@@ -117,7 +118,6 @@ from ._solver import (
     StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
-    Ros3p as Ros3p
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,

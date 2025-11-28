@@ -57,6 +57,10 @@ def test_derivative(dtype, getkey):
     paths.append((local_linear_interp, "local linear", ys[0], ys[-1]))
 
     for solver in all_ode_solvers:
+        if isinstance(solver, diffrax.Ros3p) and dtype == jnp.complex128:
+            # ros3p does not support complex type.
+            continue
+
         solver = implicit_tol(solver)
         y0 = jr.normal(getkey(), (3,), dtype=dtype)
 

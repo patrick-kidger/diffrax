@@ -38,6 +38,7 @@ all_ode_solvers = (
     diffrax.Kvaerno3(),
     diffrax.Kvaerno4(),
     diffrax.Kvaerno5(),
+    diffrax.Ros3p(),
 )
 
 all_split_solvers = (

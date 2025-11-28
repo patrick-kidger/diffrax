@@ -150,6 +150,10 @@ def test_ode_order(solver, dtype):
 
     A = jr.normal(akey, (10, 10), dtype=dtype) * 0.5
 
+    if isinstance(solver, diffrax.Ros3p) and dtype == jnp.complex128:
+        ## complex support is not added to ros3p.
+        return
+
     if (
         solver.term_structure
         == diffrax.MultiTerm[tuple[diffrax.AbstractTerm, diffrax.AbstractTerm]]
