@@ -25,7 +25,6 @@ from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver
 
-
 _SolverState: TypeAlias = VF
 
 
