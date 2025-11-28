@@ -80,8 +80,8 @@ _tableau = _RosenbrockTableau(
 class Ros3p(AbstractAdaptiveSolver):
     r"""Ros3p method.
 
-    3rd order Rosenbrock method for solving stiff equation. Uses a 1st order local linear
-    interpolation for dense output.
+    3rd order Rosenbrock method for solving stiff equation. Uses third-order Hermite
+    polynomial interpolation for dense output.
 
     ??? cite "Reference"
 
