@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax as lx
 import numpy as np
-from equinox.internal import ω
 from jaxtyping import ArrayLike
 
 from .._custom_types import (
@@ -24,6 +23,7 @@ from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver
+
 
 _SolverState: TypeAlias = VF
 
