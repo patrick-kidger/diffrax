@@ -159,9 +159,7 @@ class Ros3p(AbstractAdaptiveSolver):
 
         def use_saved_vf(u):
             stage_0_vf = solver_state
-            stage_0_b = (
-                stage_0_vf**ω + (control**ω * γ[0] ** ω * time_derivative**ω)
-            ).ω
+            stage_0_b = stage_0_vf + ((control * γ[0]) * time_derivative)
             stage_0_u = lx.linear_solve(A, stage_0_b).value
 
             u = u.at[0].set(stage_0_u)
@@ -176,21 +174,20 @@ class Ros3p(AbstractAdaptiveSolver):
             )
 
         def body(u, stage):
+            # Σ_j a_{stage j} · u_j
+            y0_increment = jnp.tensordot(a_lower[stage], u, axes=[[0], [0]])
             vf = terms.vf(
-                (t0**ω + α[stage] ** ω * control**ω).ω,
-                (
-                    y0**ω
-                    + (a_lower[stage][0] ** ω * u[0] ** ω)
-                    + (a_lower[stage][1] ** ω * u[1] ** ω)
-                ).ω,
+                t0 + (α[stage] * control),
+                y0 + y0_increment,
                 args,
             )
-            b = (
-                vf**ω
-                + ((c_lower[stage][0] ** ω / control**ω) * u[0] ** ω)
-                + ((c_lower[stage][1] ** ω / control**ω) * u[1] ** ω)
-                + (control**ω * γ[stage] ** ω * time_derivative**ω)
-            ).ω
+
+            # Σ_j (c_{stage j}/control) · u_j
+            c_scaled_control = jax.vmap(lambda c: c / control)(c_lower[stage])
+            vf_increment = jnp.tensordot(c_scaled_control, u, axes=[[0], [0]])
+
+            b = vf + vf_increment + ((control * γ[stage]) * time_derivative)
+            # solving Ax=b
             stage_u = lx.linear_solve(A, b).value
             u = u.at[stage].set(stage_u)
             return u, vf
@@ -199,18 +196,8 @@ class Ros3p(AbstractAdaptiveSolver):
             f=body, init=u, xs=jnp.arange(start_stage, self.tableau.num_stages)
         )
 
-        y1 = (
-            y0**ω
-            + m_sol[0] ** ω * u[0] ** ω
-            + m_sol[1] ** ω * u[1] ** ω
-            + m_sol[2] ** ω * u[2] ** ω
-        ).ω
-        y1_lower = (
-            y0**ω
-            + m_error[0] ** ω * u[0] ** ω
-            + m_error[1] ** ω * u[1] ** ω
-            + m_error[2] ** ω * u[2] ** ω
-        ).ω
+        y1 = y0 + jnp.tensordot(m_sol, u, axes=[[0], [0]])
+        y1_lower = y0 + jnp.tensordot(m_error, u, axes=[[0], [0]])
         y1_error = y1 - y1_lower
 
         if start_stage == 0:
