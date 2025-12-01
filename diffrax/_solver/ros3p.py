@@ -24,7 +24,6 @@ _tableau = RosenbrockTableau(
             -1.0773502691896260,
         ]
     ),
-    num_stages=3,
 )
 
 
@@ -54,6 +53,7 @@ class Ros3p(AbstractRosenbrock):
     tableau: ClassVar[RosenbrockTableau] = _tableau
 
     def order(self, terms):
+        del terms
         return 3
 
 
