@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 from typing import ClassVar, TypeAlias
 
 import equinox.internal as eqxi
@@ -41,7 +41,7 @@ class RosenbrockTableau:
     α: np.ndarray
     γ: np.ndarray
 
-    num_stages: int
+    num_stages: int = field(init=False)
 
     def __post_init__(self):
         assert self.α.ndim == 1
