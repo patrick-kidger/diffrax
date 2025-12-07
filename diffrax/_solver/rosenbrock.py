@@ -22,7 +22,7 @@ from .._custom_types import (
 )
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm,ODETerm,WrapTerm
+from .._term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver
 
 
