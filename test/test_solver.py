@@ -419,7 +419,7 @@ def test_sil3(dtype):
         diffrax.Rodas4(),
         diffrax.Rodas42(),
         diffrax.Rodas5(),
-        diffrax.Rodas5p()
+        diffrax.Rodas5p(),
     ),
 )
 def test_rober(solver):
@@ -484,9 +484,18 @@ def test_implicit_closure_convert():
     f(1.0)
 
 
-def test_ros3p():
+@pytest.mark.parametrize(
+    "solver",
+    (
+        diffrax.Ros3p(),
+        diffrax.Rodas4(),
+        diffrax.Rodas42(),
+        diffrax.Rodas5(),
+        diffrax.Rodas5p(),
+    ),
+)
+def test_rosenbrock(solver):
     term = diffrax.ODETerm(lambda t, y, args: -50.0 * y + jnp.sin(t))
-    solver = diffrax.Ros3p()
     t0 = 0
     t1 = 5
     y0 = 0
