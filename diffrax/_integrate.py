@@ -1035,10 +1035,6 @@ def diffeqsolve(
         eqx.is_array_like(xi) and jnp.iscomplexobj(xi)
         for xi in jtu.tree_leaves((terms, y0, args))
     ):
-        if isinstance(solver, Ros3p):
-            # TODO: add complex dtype support to ros3p.
-            raise ValueError("Ros3p does not support complex dtypes.")
-
         warnings.warn(
             "Complex dtype support in Diffrax is a work in progress and may not yet "
             "produce correct results. Consider splitting your computation into real "

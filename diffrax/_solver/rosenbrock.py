@@ -1,15 +1,16 @@
 from collections.abc import Callable
-from dataclasses import dataclass,field
+from dataclasses import dataclass, field
 from typing import ClassVar, TypeAlias
 
+import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.lax as lax
+import jax.flatten_util as fu
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax as lx
 import numpy as np
-from jaxtyping import ArrayLike
+from equinox.internal import ω
 
 from .._custom_types import (
     Args,
@@ -25,7 +26,7 @@ from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver
 
 
-_SolverState: TypeAlias = VF
+_SolverState: TypeAlias = None
 
 
 @dataclass(frozen=True)
@@ -97,20 +98,27 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
     instance of `diffrax.RosenbrockTableau`.
     """
 
-    term_structure: ClassVar = AbstractTerm[ArrayLike, ArrayLike]
+    term_structure: ClassVar = AbstractTerm
     interpolation_cls: ClassVar[
         Callable[..., ThirdOrderHermitePolynomialInterpolation]
     ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     tableau: ClassVar[RosenbrockTableau]
 
+    linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=True)
+
     def init(self, terms, t0, t1, y0, args) -> _SolverState:
-        del t1
-        return terms.vf(t0, y0, args)
+        del t0, t1
+        if any(
+            eqx.is_array_like(xi) and jnp.iscomplexobj(xi)
+            for xi in jtu.tree_leaves((terms, y0, args))
+        ):
+            # TODO: add complex dtype support.
+            raise ValueError("rosenbrock does not support complex dtypes.")
 
     def step(
         self,
-        terms: AbstractTerm[ArrayLike, ArrayLike],
+        terms: AbstractTerm,
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: Y,
@@ -118,10 +126,13 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
     ) -> tuple[Y, Y, DenseInfo, _SolverState, RESULTS]:
+        del solver_state, made_jump
+
         y0_leaves = jtu.tree_leaves(y0)
         sol_dtype = jnp.result_type(*y0_leaves)
 
         time_derivative = jax.jacfwd(lambda t: terms.vf(t, y0, args))(t0)
+        time_derivative, unravel_t = fu.ravel_pytree(time_derivative)
         control = terms.contr(t0, t1)
 
         γ = jnp.array(self.tableau.γ, dtype=sol_dtype)
@@ -141,8 +152,8 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         m_error = jnp.array(self.tableau.m_error, dtype=sol_dtype)
 
         # common L.H.S
-        eye_shape = jax.ShapeDtypeStruct(time_derivative.shape, dtype=sol_dtype)
-        A = (lx.IdentityLinearOperator(eye_shape) / (control * γ[0])) - (
+        in_structure = jax.eval_shape(lambda: y0)
+        A = (lx.IdentityLinearOperator(in_structure) / (control * γ[0])) - (
             lx.JacobianLinearOperator(
                 lambda y, args: terms.vf(t0, y, args), y0, args=args
             )
@@ -152,62 +163,65 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
             (self.tableau.num_stages,) + time_derivative.shape, dtype=sol_dtype
         )
 
-        def use_saved_vf(u):
-            stage_0_vf = solver_state
-            stage_0_b = stage_0_vf + ((control * γ[0]) * time_derivative)
-            stage_0_u = lx.linear_solve(A, stage_0_b).value
-
-            u = u.at[0].set(stage_0_u)
-            start_stage = 1
-            return u, start_stage
-
-        if made_jump is False:
-            u, start_stage = use_saved_vf(u)
-        else:
-            u, start_stage = lax.cond(
-                eqxi.unvmap_any(made_jump), lambda u: (u, 0), use_saved_vf, u
-            )
-
-        def body(u, stage):
+        def body(buffer, stage):
             # Σ_j a_{stage j} · u_j
+            u = buffer[...]
             y0_increment = jnp.tensordot(a_lower[stage], u, axes=[[0], [0]])
-            vf = terms.vf(
-                t0 + (α[stage] * control),
-                y0 + y0_increment,
-                args,
-            )
-
             # Σ_j (c_{stage j}/control) · u_j
             c_scaled_control = jax.vmap(lambda c: c / control)(c_lower[stage])
             vf_increment = jnp.tensordot(c_scaled_control, u, axes=[[0], [0]])
+            # control * γ_i * Ft
+            scaled_time_derivative = control * γ[stage] * time_derivative
 
-            b = vf + vf_increment + ((control * γ[stage]) * time_derivative)
+            y0_increment = unravel_t(y0_increment)
+            vf_increment = unravel_t(vf_increment)
+            scaled_time_derivative = unravel_t(scaled_time_derivative)
+
+            vf = terms.vf(
+                (t0**ω + (α[stage] ** ω * control**ω)).ω,
+                (y0**ω + y0_increment**ω).ω,
+                args,
+            )
+            b = (vf**ω + vf_increment**ω + scaled_time_derivative**ω).ω
             # solving Ax=b
-            stage_u = lx.linear_solve(A, b).value
-            u = u.at[stage].set(stage_u)
-            return u, vf
+            stage_u = lx.linear_solve(A, b, self.linear_solver).value
+            stage_u, _ = fu.ravel_pytree(stage_u)
+            buffer = buffer.at[stage].set(stage_u)
+            return buffer, vf
 
-        u, stage_vf = lax.scan(
-            f=body, init=u, xs=jnp.arange(start_stage, self.tableau.num_stages)
+        u, stage_vf = eqxi.scan(
+            f=body,
+            init=u,
+            xs=jnp.arange(0, self.tableau.num_stages),
+            kind="checkpointed",
+            buffers=lambda x: x,
+            checkpoints="all",
         )
 
-        y1 = y0 + jnp.tensordot(m_sol, u, axes=[[0], [0]])
-        y1_lower = y0 + jnp.tensordot(m_error, u, axes=[[0], [0]])
-        y1_error = y1 - y1_lower
+        y1_increment = jnp.tensordot(m_sol, u, axes=[[0], [0]])
+        y1_lower_increment = jnp.tensordot(m_error, u, axes=[[0], [0]])
+        y1_increment = unravel_t(y1_increment)
+        y1_lower_increment = unravel_t(y1_lower_increment)
 
-        if start_stage == 0:
-            vf0 = stage_vf[0]  # type: ignore
-        else:
-            vf0 = solver_state
+        y1 = (y0**ω + y1_increment**ω).ω
+        y1_lower = (y0**ω + y1_lower_increment**ω).ω
+        y1_error = (y1**ω - y1_lower**ω).ω
+
+        vf0 = jtu.tree_map(lambda stage_vf: stage_vf[0], stage_vf)
         vf1 = terms.vf(t1, y1, args)
-        k = jnp.stack((terms.prod(vf0, control), terms.prod(vf1, control)))
+        k = jnp.stack(
+            (
+                jnp.asarray(terms.prod(vf0, control)),
+                jnp.asarray(terms.prod(vf1, control)),
+            )
+        )
+        dense_info = dict(y0=jnp.asarray(y0), y1=jnp.asarray(y1), k=k)
 
-        dense_info = dict(y0=y0, y1=y1, k=k)
-        return y1, y1_error, dense_info, vf1, RESULTS.successful
+        return y1, y1_error, dense_info, None, RESULTS.successful
 
     def func(
         self,
-        terms: AbstractTerm[ArrayLike, ArrayLike],
+        terms: AbstractTerm,
         t0: RealScalarLike,
         y0: Y,
         args: Args,

@@ -31,6 +31,10 @@ from .milstein import (
 from .quicsort import QUICSORT as QUICSORT
 from .ralston import Ralston as Ralston
 from .reversible_heun import ReversibleHeun as ReversibleHeun
+from .rodas4 import Rodas4 as Rodas4
+from .rodas5 import Rodas5 as Rodas5
+from .rodas5p import Rodas5p as Rodas5p
+from .rodas42 import Rodas42 as Rodas42
 from .ros3p import Ros3p as Ros3p
 from .runge_kutta import (
     AbstractDIRK as AbstractDIRK,
