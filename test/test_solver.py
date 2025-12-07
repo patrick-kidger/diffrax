@@ -58,9 +58,9 @@ class _DoubleDopri5(diffrax.AbstractRungeKutta):
     tableau: ClassVar[diffrax.MultiButcherTableau] = diffrax.MultiButcherTableau(
         diffrax.Dopri5.tableau, diffrax.Dopri5.tableau
     )
-    calculate_jacobian: ClassVar[
-        diffrax.CalculateJacobian
-    ] = diffrax.CalculateJacobian.never
+    calculate_jacobian: ClassVar[diffrax.CalculateJacobian] = (
+        diffrax.CalculateJacobian.never
+    )
 
     @staticmethod
     def interpolation_cls(**kwargs):
@@ -416,6 +416,10 @@ def test_sil3(dtype):
         diffrax.KenCarp4(),
         diffrax.KenCarp5(),
         diffrax.Ros3p(),
+        diffrax.Rodas4(),
+        diffrax.Rodas42(),
+        diffrax.Rodas5(),
+        diffrax.Rodas5p()
     ),
 )
 def test_rober(solver):
