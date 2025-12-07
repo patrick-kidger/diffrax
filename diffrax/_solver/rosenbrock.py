@@ -79,11 +79,11 @@ Let `k` denote the number of stages of the solver.
     be of shape `(2,)`, `(3,)` etc. The final array should have shape `(k - 1,)`.
 - `m_sol`: the linear combination of stages to take to produce the output at each step.
     Should be a NumPy array of shape `(k,)`.
-- `m_error`: the linear combination of stages to take to produce the error estimate at
-    each step. Should be a NumPy array of shape `(k,)`. Note that this is *not*
-    differenced against `b_sol` prior to evaluation. (i.e. `b_error` gives the linear
-    combination for producing the error estimate directly, not for producing some
-    alternate solution that is compared against the main solution).
+- `m_error`: the linear combination of stages to produce a lower-order solution
+    for error estimation. Should be a NumPy array of shape `(k,)`. The error is
+    calculated as the difference between the main solution (using `m_sol`) and
+    this lower-order solution (using `m_error`), providing an estimate of the
+    local truncation error for adaptive step size control.
 - `α`: the time increment.
 - `γ`: the vector field increment.
 """
@@ -115,20 +115,19 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         ):
             # TODO: add complex dtype support.
             raise ValueError("rosenbrock does not support complex dtypes.")
-        
+
         if isinstance(terms, ODETerm):
             return
-        
+
         if isinstance(terms, WrapTerm):
             inner_term = terms.term
             if isinstance(inner_term, ODETerm):
                 return
-            
+
         raise NotImplementedError(
-                f"Cannot use `terms={type(terms).__name__}`."
-                "Consider using terms=ODETerm(...)."
-            )
-        
+            f"Cannot use `terms={type(terms).__name__}`."
+            "Consider using terms=ODETerm(...)."
+        )
 
     def step(
         self,
