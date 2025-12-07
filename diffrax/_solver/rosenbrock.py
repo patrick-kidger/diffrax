@@ -22,7 +22,7 @@ from .._custom_types import (
 )
 from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
 from .._solution import RESULTS
-from .._term import AbstractTerm
+from .._term import AbstractTerm,ODETerm,WrapTerm
 from .base import AbstractAdaptiveSolver
 
 
@@ -115,6 +115,20 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         ):
             # TODO: add complex dtype support.
             raise ValueError("rosenbrock does not support complex dtypes.")
+        
+        if isinstance(terms, ODETerm):
+            return
+        
+        if isinstance(terms, WrapTerm):
+            inner_term = terms.term
+            if isinstance(inner_term, ODETerm):
+                return
+            
+        raise NotImplementedError(
+                f"Cannot use `terms={type(terms).__name__}`."
+                "Consider using terms=ODETerm(...)."
+            )
+        
 
     def step(
         self,
