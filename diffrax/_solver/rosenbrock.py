@@ -24,7 +24,7 @@ from .._local_interpolation import (
     ThirdOrderHermitePolynomialInterpolation,
 )
 from .._solution import RESULTS
-from .._term import AbstractTerm, ODETerm, WrapTerm
+from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver
 
 
@@ -118,19 +118,6 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
             # TODO: add complex dtype support.
             raise ValueError("rosenbrock does not support complex dtypes.")
 
-        if isinstance(terms, ODETerm):
-            return
-
-        if isinstance(terms, WrapTerm):
-            inner_term = terms.term
-            if isinstance(inner_term, ODETerm):
-                return
-
-        raise NotImplementedError(
-            f"Cannot use `terms={type(terms).__name__}`."
-            "Consider using terms=ODETerm(...)."
-        )
-
     def step(
         self,
         terms: AbstractTerm,
@@ -146,9 +133,11 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         y0_leaves = jtu.tree_leaves(y0)
         sol_dtype = jnp.result_type(*y0_leaves)
 
-        time_derivative = jax.jacfwd(lambda t: terms.vf(t, y0, args))(t0)
-        time_derivative, unravel_t = fu.ravel_pytree(time_derivative)
         control = terms.contr(t0, t1)
+        identity = jtu.tree_map(lambda leaf: jnp.ones_like(leaf), control)
+
+        time_derivative = jax.jacfwd(lambda t: terms.vf_prod(t, y0, args, identity))(t0)
+        time_derivative, unravel_t = fu.ravel_pytree(time_derivative)
 
         γ = jnp.array(self.tableau.γ, dtype=sol_dtype)
         α = jnp.array(self.tableau.α, dtype=sol_dtype)
@@ -168,9 +157,10 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
 
         # common L.H.S
         in_structure = jax.eval_shape(lambda: y0)
-        A = (lx.IdentityLinearOperator(in_structure) / (control * γ[0])) - (
+        dt = jtu.tree_leaves(control)[0]
+        A = (lx.IdentityLinearOperator(in_structure) / (dt * γ[0])) - (
             lx.JacobianLinearOperator(
-                lambda y, args: terms.vf(t0, y, args), y0, args=args
+                lambda y, args: terms.vf_prod(t0, y, args, identity), y0, args=args
             )
         )
 
@@ -183,19 +173,20 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
             u = buffer[...]
             y0_increment = jnp.tensordot(a_lower[stage], u, axes=[[0], [0]])
             # Σ_j (c_{stage j}/control) · u_j
-            c_scaled_control = jax.vmap(lambda c: c / control)(c_lower[stage])
+            c_scaled_control = jax.vmap(lambda c: c / dt)(c_lower[stage])
             vf_increment = jnp.tensordot(c_scaled_control, u, axes=[[0], [0]])
             # control * γ_i * Ft
-            scaled_time_derivative = control * γ[stage] * time_derivative
+            scaled_time_derivative = dt * γ[stage] * time_derivative
 
             y0_increment = unravel_t(y0_increment)
             vf_increment = unravel_t(vf_increment)
             scaled_time_derivative = unravel_t(scaled_time_derivative)
 
-            vf = terms.vf(
-                (t0**ω + (α[stage] ** ω * control**ω)).ω,
+            vf = terms.vf_prod(
+                (t0 + (α[stage] * dt)),
                 (y0**ω + y0_increment**ω).ω,
                 args,
+                identity,
             )
             b = (vf**ω + vf_increment**ω + scaled_time_derivative**ω).ω
             # solving Ax=b
@@ -226,7 +217,7 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         vf1 = terms.vf(t1, y1, args)
         k = jtu.tree_map(
             lambda k1, k2: jnp.stack([k1, k2]),
-            terms.prod(vf0, control),
+            jtu.tree_map(lambda x: x * dt, vf0),
             terms.prod(vf1, control),
         )
         dense_info = dict(y0=y0, y1=y1, k=k)
@@ -240,4 +231,5 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         y0: Y,
         args: Args,
     ) -> VF:
-        return terms.vf(t0, y0, args)
+        identity = jtu.tree_map(lambda leaf: jnp.ones_like(leaf), t0)
+        return terms.vf_prod(t0, y0, args, identity)
