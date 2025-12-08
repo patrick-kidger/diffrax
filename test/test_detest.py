@@ -373,6 +373,27 @@ def test_b(solver):
 
 
 @pytest.mark.parametrize("solver", all_ode_solvers)
+def test_nested_pytree(solver):
+    problems = [_b1, _b2, _b3, _b4, _b5]
+
+    def nested_problem(problem):
+        df, init = problem()
+
+        def diffeq(t, y, args):
+            vf = df(t, y[0][0][0], args)
+            return [[[vf]]]
+
+        def curry():
+            return diffeq, [[[init]]]
+
+        return curry
+
+    transformed_problems = list(map(nested_problem, problems))
+
+    _test(solver, transformed_problems, higher=True)
+
+
+@pytest.mark.parametrize("solver", all_ode_solvers)
 def test_c(solver):
     _test(solver, [_c1, _c2, _c3, _c4, _c5], higher=True)
 
@@ -419,8 +440,8 @@ def _test(solver, problems, higher):
             dt0 = 0.001
             stepsize_controller = diffrax.ConstantStepSize()
         elif type(solver) is diffrax.Ros3p and problem is _a1:
-            # Ros3p underestimates the error for _a1. This causes the step-size controller
-            # to take larger steps and results in an inaccurate solution.
+            # Ros3p underestimates the error for _a1. This causes the step-size
+            # controller to take larger steps and results in an inaccurate solution.
             dt0 = 0.0001
             max_steps = 20_000_001
             stepsize_controller = diffrax.ConstantStepSize()

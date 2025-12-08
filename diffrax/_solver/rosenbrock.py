@@ -20,7 +20,9 @@ from .._custom_types import (
     VF,
     Y,
 )
-from .._local_interpolation import ThirdOrderHermitePolynomialInterpolation
+from .._local_interpolation import (
+    ThirdOrderHermitePolynomialInterpolation,
+)
 from .._solution import RESULTS
 from .._term import AbstractTerm, ODETerm, WrapTerm
 from .base import AbstractAdaptiveSolver
@@ -222,13 +224,12 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
 
         vf0 = jtu.tree_map(lambda stage_vf: stage_vf[0], stage_vf)
         vf1 = terms.vf(t1, y1, args)
-        k = jnp.stack(
-            (
-                jnp.asarray(terms.prod(vf0, control)),
-                jnp.asarray(terms.prod(vf1, control)),
-            )
+        k = jtu.tree_map(
+            lambda k1, k2: jnp.stack([k1, k2]),
+            terms.prod(vf0, control),
+            terms.prod(vf1, control),
         )
-        dense_info = dict(y0=jnp.asarray(y0), y1=jnp.asarray(y1), k=k)
+        dense_info = dict(y0=y0, y1=y1, k=k)
 
         return y1, y1_error, dense_info, None, RESULTS.successful
 
