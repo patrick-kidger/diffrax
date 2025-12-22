@@ -356,7 +356,7 @@ class ClipStepSizeController(
             step_info = None
         else:
             step_index, step_ts = controller_state.step_info
-            # We actaully bump `next_t0` past any `step_ts` whilst checking where to
+            # We actually bump `next_t0` past any `step_ts` whilst checking where to
             # clip `next_t1`. This is in case we have a set up like the following:
             # ```python
             # ClipStepSizeController(
@@ -376,6 +376,24 @@ class ClipStepSizeController(
         else:
             jump_index, jump_ts = controller_state.jump_info
             next_t0, made_jump2 = _bump_next_t0(next_t0, jump_ts)
+            # This next line is to fix
+            # https://github.com/patrick-kidger/diffrax/issues/713
+            # TODO: should we add this to the `step_ts` branch as well?
+            #
+            # What's going on here is that we may have
+            # the `diffeqsolve(t0=...)` be prevbefore a jump time (for example due to a
+            # previous diffeqsolve targeting that time), in which case during `.init`
+            # we will obtain `t0 = t1 = prevbefore(jump_time)`.
+            # The `_bump_next_t0` will then move `next_t0` to after the `jump_time`...
+            # whilst leaving `next_t1` unchanged! We actually end up `next_t1 < next_t0`
+            # which is very not okay.
+            #
+            # The fix is to ensure that `next_t1` is itself bumped to at least this
+            # value. As a final detail, we need to make it `nextafter` so that we don't
+            # have a zero-length interval – in this case an underlying PID controller
+            # would just never change the interval size at all, since it acts
+            # multiplicatively. (And even just 1 ULP is enough to unstick it.)
+            next_t1 = jnp.maximum(eqxi.nextafter(next_t0), next_t1)
             made_jump = made_jump | made_jump2
             jump_index = _find_idx_with_hint(next_t0, jump_ts, jump_index)
             next_t1 = _clip_t(next_t1, jump_index, jump_ts, True)

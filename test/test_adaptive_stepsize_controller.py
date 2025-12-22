@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import optimistix as optx
 import pytest
 from diffrax._step_size_controller.clip import _find_idx_with_hint
 from jaxtyping import Array
@@ -361,3 +362,29 @@ def test_jump_at_t1_with_large_t1_in_float32():
         saveat=saveat,
     )
     assert sol.ts == jnp.array([t1])
+
+
+# https://github.com/patrick-kidger/diffrax/issues/713
+def test_t0_at_jump_time():
+    jump_time = 0.98
+    controller = diffrax.PIDController(rtol=1e-6, atol=1e-6)
+    controller = diffrax.ClipStepSizeController(controller, jump_ts=[jump_time])
+    sol = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: jnp.zeros_like(y)),
+        diffrax.Heun(),
+        t0=eqxi.prevbefore(jnp.asarray(jump_time)),
+        t1=1.2,
+        dt0=None,
+        y0=jnp.array([0, 0, 0, 0.0]),
+        stepsize_controller=controller,
+        event=diffrax.Event(
+            cond_fn=lambda t, y, args, **kw: jump_time - t,
+            root_finder=optx.Newton(atol=1e-4, rtol=1e-4),
+            direction=True,
+        ),
+        max_steps=100,
+    )
+    # And in particular not an event.
+    # What used to happen was something very weird where we'd oscillate across the
+    # jump time.
+    assert sol.result == diffrax.RESULTS.successful
