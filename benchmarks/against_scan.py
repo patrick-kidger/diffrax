@@ -36,7 +36,7 @@ def speedtest(fn, name):
 # INTEGRATE WITH scan
 
 
-@jax.checkpoint  # pyright: ignore
+@jax.checkpoint
 def body(carry, t):
     u, v, dt = carry
     u = u + du(t, v, None) * dt
