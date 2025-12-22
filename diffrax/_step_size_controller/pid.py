@@ -93,7 +93,7 @@ class _MetaPID(type(eqx.Module)):
         step_ts = kwargs.pop("step_ts", None)
         jump_ts = kwargs.pop("jump_ts", None)
         if step_ts is not None or jump_ts is not None:
-            return ClipStepSizeController(cls(*args, **kwargs), step_ts, jump_ts)
+            return ClipStepSizeController(cls(*args, **kwargs), step_ts, jump_ts)  # pyright: ignore
         return super().__call__(*args, **kwargs)
 
 
