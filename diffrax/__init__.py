@@ -45,6 +45,7 @@ from ._local_interpolation import (
     AbstractLocalInterpolation as AbstractLocalInterpolation,
     FourthOrderPolynomialInterpolation as FourthOrderPolynomialInterpolation,
     LocalLinearInterpolation as LocalLinearInterpolation,
+    RodasInterpolation as RodasInterpolation,  # noqa: E501
     ThirdOrderHermitePolynomialInterpolation as ThirdOrderHermitePolynomialInterpolation,  # noqa: E501
 )
 from ._misc import adjoint_rms_seminorm as adjoint_rms_seminorm
@@ -106,10 +107,8 @@ from ._solver import (
     QUICSORT as QUICSORT,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
-    Rodas4 as Rodas4,
-    Rodas5 as Rodas5,
     Rodas5p as Rodas5p,
-    Rodas42 as Rodas42,
+    Rodas6p as Rodas6p,
     Ros3p as Ros3p,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,

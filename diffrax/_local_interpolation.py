@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from typing import ClassVar as AbstractVar
 else:
     from equinox import AbstractVar
+import jax.flatten_util as fu
 from equinox.internal import ω
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
@@ -137,3 +138,88 @@ class FourthOrderPolynomialInterpolation(AbstractLocalInterpolation):
                 return jnp.polyval(_coeffs, t)
 
         return jtu.tree_map(_eval, self.coeffs)
+
+
+class RodasInterpolation(AbstractLocalInterpolation):
+    r"""Interpolation method for Rodas type solver.
+
+    ??? cite "Reference"
+       ```bibtex
+       @book{book,
+         author = {Hairer, Ernst and Wanner, Gerhard},
+         year = {1996},
+         month = {01},
+         pages = {},
+         title = {Solving Ordinary Differential Equations II. Stiff and
+                  Differential-Algebraic Problems},
+         volume = {14},
+         journal = {Springer Verlag Series in Comput. Math.},
+         doi = {10.1007/978-3-662-09947-6}
+         }
+        ```
+    """
+
+    coeff: AbstractVar[np.ndarray]
+
+    stage_poly_coeffs: PyTree[Shaped[Array, "order stage"], "float"]
+    t0: RealScalarLike
+    t1: RealScalarLike
+    y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"]
+    k: PyTree[Shaped[Array, "stage ?*dims"], "float"]
+
+    def __init__(
+        self,
+        *,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"],
+        k: PyTree[Shaped[Array, "stage ?*dims"], "float"],
+    ):
+        stage_poly_coeffs = []
+        for i in range(len(self.coeff)):
+            if i == len(self.coeff) - 1:
+                stage_poly_coeffs.append(self.coeff[i])
+                continue
+            stage_poly_coeffs.append(self.coeff[i] - self.coeff[i + 1])
+
+        self.stage_poly_coeffs = jnp.array(
+            np.transpose(stage_poly_coeffs), dtype=jnp.float64
+        )
+        self.y0 = y0
+        self.k = k
+        self.t0 = t0
+        self.t1 = t1
+
+    def evaluate(
+        self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
+    ) -> PyTree[Array]:
+        del left
+        if t1 is not None:
+            return self.evaluate(t1) - self.evaluate(t0)
+
+        t = linear_rescale(self.t0, t0, self.t1)
+        weighted_increment = jax.vmap(
+            lambda coeff, stage_k: (t * jnp.polyval(jnp.flip(coeff), t)) * stage_k
+        )(self.stage_poly_coeffs, self.k)
+
+        y0, unravel = fu.ravel_pytree(self.y0)
+        y1 = y0 + jnp.sum(weighted_increment, axis=0)
+        return unravel(y1)
+
+    @classmethod
+    def from_k(
+        cls,
+        *,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"],
+        k: PyTree[Shaped[Array, "stage ?*dims"], "float"],
+    ):
+        return cls(t0=t0, t1=t1, y0=y0, k=k)
+
+
+RodasInterpolation.__init__.__doc__ = """**Arguments:**
+Let `k` and `order` denote the stages and order of the solver.
+- `coeff`: The coefficients of the Rodas interpolation. They represent the coefficients
+    of b(τ). Should be a numpy array of shape `(order - 1, k)`.
+"""

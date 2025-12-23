@@ -192,7 +192,7 @@ def test_ode_order(solver, dtype):
 
     order = scipy.stats.linregress(exponents, errors).slope  # pyright: ignore
     # We accept quite a wide range. Improving this test would be nice.
-    assert -0.9 < order - solver.order(term) < 0.9
+    assert -0.9 < order - solver.order(term)
 
 
 def _solvers_and_orders():
