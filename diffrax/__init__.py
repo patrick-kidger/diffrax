@@ -108,7 +108,6 @@ from ._solver import (
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
     Rodas5p as Rodas5p,
-    Rodas6p as Rodas6p,
     Ros3p as Ros3p,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,

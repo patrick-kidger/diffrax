@@ -419,7 +419,6 @@ def test_sil3(dtype):
         diffrax.KenCarp5(),
         diffrax.Ros3p(),
         diffrax.Rodas5p(),
-        diffrax.Rodas6p(),
     ),
 )
 def test_rober(solver):
@@ -488,9 +487,8 @@ def test_implicit_closure_convert():
 @pytest.mark.parametrize(
     "solver",
     (
-        # diffrax.Ros3p(),
-        # diffrax.Rodas5p(),
-        diffrax.Rodas6p(),
+        diffrax.Ros3p(),
+        diffrax.Rodas5p(),
     ),
 )
 def test_rosenbrock(solver):
@@ -510,7 +508,7 @@ def test_rosenbrock(solver):
         dt0=0.1,
         y0=y0,
         stepsize_controller=stepsize_controller,
-        max_steps=10000000,
+        max_steps=60000,
         saveat=saveat,
     )
 
