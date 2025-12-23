@@ -1,7 +1,11 @@
+from collections.abc import Callable
 from typing import ClassVar
 
 import numpy as np
 
+from .._local_interpolation import (
+    ThirdOrderHermitePolynomialInterpolation,
+)
 from .rosenbrock import AbstractRosenbrock, RosenbrockTableau
 
 
@@ -51,6 +55,10 @@ class Ros3p(AbstractRosenbrock):
     """
 
     tableau: ClassVar[RosenbrockTableau] = _tableau
+
+    interpolation_cls: ClassVar[
+        Callable[..., ThirdOrderHermitePolynomialInterpolation]
+    ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     def order(self, terms):
         del terms

@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar, TypeAlias
 
@@ -19,9 +18,6 @@ from .._custom_types import (
     RealScalarLike,
     VF,
     Y,
-)
-from .._local_interpolation import (
-    ThirdOrderHermitePolynomialInterpolation,
 )
 from .._solution import RESULTS
 from .._term import AbstractTerm
@@ -94,20 +90,18 @@ Let `k` denote the number of stages of the solver.
 class AbstractRosenbrock(AbstractAdaptiveSolver):
     r"""Abstract base class for Rosenbrock solvers for stiff equations.
 
-    Uses third-order Hermite polynomial interpolation for dense output.
-
-    Subclasses should define `tableau` as a class-level attribute that is an
-    instance of `diffrax.RosenbrockTableau`.
+    Subclasses should define `tableau` and `interpolation_cls` as class-level attributes
+    `tableau` should be an instance of `diffrax.RosenbrockTableau`, and
+    `interpolation_cls` should be an instance of `diffrax.AbstractLocalInterpolation`.
     """
 
     term_structure: ClassVar = AbstractTerm
-    interpolation_cls: ClassVar[
-        Callable[..., ThirdOrderHermitePolynomialInterpolation]
-    ] = ThirdOrderHermitePolynomialInterpolation.from_k
 
     tableau: ClassVar[RosenbrockTableau]
 
-    linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=True)
+    rodas: ClassVar[bool] = False
+
+    linear_solver: lx.AbstractLinearSolver = lx.LU()
 
     def init(self, terms, t0, t1, y0, args) -> _SolverState:
         del t0, t1
@@ -139,6 +133,10 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         time_derivative = jax.jacfwd(lambda t: terms.vf_prod(t, y0, args, identity))(t0)
         time_derivative, unravel_t = fu.ravel_pytree(time_derivative)
 
+        jacobian = jax.jacfwd(lambda y: terms.vf_prod(t0, y, args, identity))(y0)
+        jacobian, _ = fu.ravel_pytree(jacobian)
+        jacobian = jnp.reshape(jacobian, time_derivative.shape * 2)
+
         γ = jnp.array(self.tableau.γ, dtype=sol_dtype)
         α = jnp.array(self.tableau.α, dtype=sol_dtype)
 
@@ -156,15 +154,14 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         m_error = jnp.array(self.tableau.m_error, dtype=sol_dtype)
 
         # common L.H.S
-        in_structure = jax.eval_shape(lambda: y0)
         dt = jtu.tree_leaves(control)[0]
-        A = (lx.IdentityLinearOperator(in_structure) / (dt * γ[0])) - (
-            lx.JacobianLinearOperator(
-                lambda y, args: terms.vf_prod(t0, y, args, identity), y0, args=args
-            )
-        )
+        eye = jnp.eye(len(time_derivative))
+        if self.rodas:
+            A = lx.MatrixLinearOperator(eye - dt * γ[0] * jacobian)
+        else:
+            A = lx.MatrixLinearOperator((eye / (dt * γ[0])) - jacobian)
 
-        u = jnp.zeros(
+        k = jnp.zeros(
             (self.tableau.num_stages,) + time_derivative.shape, dtype=sol_dtype
         )
 
@@ -172,40 +169,52 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
             # Σ_j a_{stage j} · u_j
             u = buffer[...]
             y0_increment = jnp.tensordot(a_lower[stage], u, axes=[[0], [0]])
-            # Σ_j (c_{stage j}/control) · u_j
-            c_scaled_control = jax.vmap(lambda c: c / dt)(c_lower[stage])
-            vf_increment = jnp.tensordot(c_scaled_control, u, axes=[[0], [0]])
-            # control * γ_i * Ft
-            scaled_time_derivative = dt * γ[stage] * time_derivative
 
-            y0_increment = unravel_t(y0_increment)
-            vf_increment = unravel_t(vf_increment)
-            scaled_time_derivative = unravel_t(scaled_time_derivative)
+            if self.rodas:
+                # control . Fy . Σ_j (c_{stage j}) · u_j
+                vf_increment = jnp.tensordot(c_lower[stage], u, axes=[[0], [0]])
+                vf_increment = dt * (jacobian @ vf_increment)
+            else:
+                # Σ_j (c_{stage j}/control) · u_j
+                c_scaled_control = jax.vmap(lambda c: c / control)(c_lower[stage])
+                vf_increment = jnp.tensordot(c_scaled_control, u, axes=[[0], [0]])
+
+            scaled_time_derivative = γ[stage] * time_derivative
+            if self.rodas:
+                # sqrt(control) * γ_i * Ft
+                scaled_time_derivative = jnp.power(dt, 2) * scaled_time_derivative
+            else:
+                # control * γ_i * Ft
+                scaled_time_derivative = dt * scaled_time_derivative
 
             vf = terms.vf_prod(
                 (t0 + (α[stage] * dt)),
-                (y0**ω + y0_increment**ω).ω,
+                (y0**ω + unravel_t(y0_increment) ** ω).ω,
                 args,
                 identity,
             )
-            b = (vf**ω + vf_increment**ω + scaled_time_derivative**ω).ω
-            # solving Ax=b
-            stage_u = lx.linear_solve(A, b, self.linear_solver).value
-            stage_u, _ = fu.ravel_pytree(stage_u)
-            buffer = buffer.at[stage].set(stage_u)
-            return buffer, vf
+            vf, unravel = fu.ravel_pytree(vf)
+            if self.rodas:
+                vf = dt * vf
 
-        u, stage_vf = eqxi.scan(
+            b = vf + vf_increment + scaled_time_derivative
+            # solving Ax=b
+            stage_k = lx.linear_solve(A, b).value
+
+            buffer = buffer.at[stage].set(stage_k)
+            return buffer, unravel(vf)
+
+        k, stage_vf = eqxi.scan(
             f=body,
-            init=u,
+            init=k,
             xs=jnp.arange(0, self.tableau.num_stages),
             kind="checkpointed",
             buffers=lambda x: x,
             checkpoints="all",
         )
 
-        y1_increment = jnp.tensordot(m_sol, u, axes=[[0], [0]])
-        y1_lower_increment = jnp.tensordot(m_error, u, axes=[[0], [0]])
+        y1_increment = jnp.tensordot(m_sol, k, axes=[[0], [0]])
+        y1_lower_increment = jnp.tensordot(m_error, k, axes=[[0], [0]])
         y1_increment = unravel_t(y1_increment)
         y1_lower_increment = unravel_t(y1_lower_increment)
 
@@ -213,14 +222,17 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         y1_lower = (y0**ω + y1_lower_increment**ω).ω
         y1_error = (y1**ω - y1_lower**ω).ω
 
-        vf0 = jtu.tree_map(lambda stage_vf: stage_vf[0], stage_vf)
-        vf1 = terms.vf(t1, y1, args)
-        k = jtu.tree_map(
-            lambda k1, k2: jnp.stack([k1, k2]),
-            jtu.tree_map(lambda x: x * dt, vf0),
-            terms.prod(vf1, control),
-        )
-        dense_info = dict(y0=y0, y1=y1, k=k)
+        if self.rodas:
+            dense_info = dict(y0=y0, k=k)
+        else:
+            vf0 = jtu.tree_map(lambda stage_vf: stage_vf[0], stage_vf)
+            vf1 = terms.vf(t1, y1, args)
+            k = jtu.tree_map(
+                lambda k1, k2: jnp.stack([k1, k2]),
+                terms.prod(vf0, control),
+                terms.prod(vf1, control),
+            )
+            dense_info = dict(y0=y0, y1=y1, k=k)
 
         return y1, y1_error, dense_info, None, RESULTS.successful
 

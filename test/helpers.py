@@ -39,12 +39,9 @@ all_ode_solvers = (
     diffrax.Kvaerno4(),
     diffrax.Kvaerno5(),
     diffrax.Ros3p(),
-    diffrax.Rodas4(),
-    diffrax.Rodas42(),
-    diffrax.Rodas5(),
     diffrax.Rodas5p(),
+    diffrax.Rodas6p(),
 )
-
 
 
 all_split_solvers = (
