@@ -176,7 +176,7 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
                 vf_increment = dt * (jacobian @ vf_increment)
             else:
                 # Σ_j (c_{stage j}/control) · u_j
-                c_scaled_control = jax.vmap(lambda c: c / control)(c_lower[stage])
+                c_scaled_control = jax.vmap(lambda c: c / dt)(c_lower[stage])
                 vf_increment = jnp.tensordot(c_scaled_control, u, axes=[[0], [0]])
 
             scaled_time_derivative = γ[stage] * time_derivative
@@ -225,11 +225,11 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
         if self.rodas:
             dense_info = dict(y0=y0, k=k)
         else:
-            vf0 = jtu.tree_map(lambda stage_vf: stage_vf[0], stage_vf)
+            k1 = jtu.tree_map(lambda leaf: leaf[0] * dt, stage_vf)
             vf1 = terms.vf(t1, y1, args)
             k = jtu.tree_map(
                 lambda k1, k2: jnp.stack([k1, k2]),
-                terms.prod(vf0, control),
+                k1,
                 terms.prod(vf1, control),
             )
             dense_info = dict(y0=y0, y1=y1, k=k)

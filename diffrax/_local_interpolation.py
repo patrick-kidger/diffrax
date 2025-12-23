@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+from jaxtyping import Float64
 
 
 if TYPE_CHECKING:
@@ -161,11 +162,11 @@ class RodasInterpolation(AbstractLocalInterpolation):
 
     coeff: AbstractVar[np.ndarray]
 
-    stage_poly_coeffs: PyTree[Shaped[Array, "order stage"], "float"]
+    stage_poly_coeffs: Float64[Array, "order stage"]
     t0: RealScalarLike
     t1: RealScalarLike
     y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"]
-    k: PyTree[Shaped[Array, "stage ?*dims"], "float"]
+    k: Float64[Array, "stage dims"]
 
     def __init__(
         self,
@@ -173,7 +174,7 @@ class RodasInterpolation(AbstractLocalInterpolation):
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"],
-        k: PyTree[Shaped[Array, "stage ?*dims"], "float"],
+        k: Float64[Array, "stage dims"],
     ):
         stage_poly_coeffs = []
         for i in range(len(self.coeff)):
@@ -213,7 +214,7 @@ class RodasInterpolation(AbstractLocalInterpolation):
         t0: RealScalarLike,
         t1: RealScalarLike,
         y0: PyTree[Shaped[ArrayLike, " ?*dims"], "Y"],
-        k: PyTree[Shaped[Array, "stage ?*dims"], "float"],
+        k: Float64[Array, "stage dims"],
     ):
         return cls(t0=t0, t1=t1, y0=y0, k=k)
 
