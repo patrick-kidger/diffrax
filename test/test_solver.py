@@ -465,7 +465,6 @@ def test_rober(solver):
             [6.1723488239606716e-01, 6.1535912746388841e-06, 3.8275896401264059e-01],
         ]
     )
-    print(sol.ys)
     assert jnp.allclose(sol.ys, true_ys, rtol=1e-3, atol=1e-8)  # pyright: ignore
 
 

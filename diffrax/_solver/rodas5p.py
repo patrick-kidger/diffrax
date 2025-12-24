@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from typing import ClassVar
-from xmlrpc.client import Boolean
 
 import numpy as np
 
@@ -229,7 +228,7 @@ class Rodas5p(AbstractRosenbrock):
         _Rodas5pInterpolation.from_k
     )
 
-    rodas: ClassVar[Boolean] = True
+    rodas: ClassVar[bool] = True
 
     def order(self, terms):
         del terms
