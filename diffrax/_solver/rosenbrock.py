@@ -101,7 +101,7 @@ class AbstractRosenbrock(AbstractAdaptiveSolver):
 
     rodas: ClassVar[bool] = False
 
-    linear_solver: lx.AbstractLinearSolver = lx.LU()
+    linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=True)
 
     def init(self, terms, t0, t1, y0, args) -> _SolverState:
         del t0, t1

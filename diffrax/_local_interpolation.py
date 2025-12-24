@@ -199,12 +199,17 @@ class RodasInterpolation(AbstractLocalInterpolation):
             return self.evaluate(t1) - self.evaluate(t0)
 
         t = linear_rescale(self.t0, t0, self.t1)
-        weighted_increment = jax.vmap(
-            lambda coeff, stage_k: (t * jnp.polyval(jnp.flip(coeff), t)) * stage_k
-        )(self.stage_poly_coeffs, self.k)
+
+        def eval_increment():
+            with jax.numpy_dtype_promotion("standard"):
+                weighted_increment = jax.vmap(
+                    lambda coeff, stage_k: (t * jnp.polyval(jnp.flip(coeff), t))
+                    * stage_k
+                )(self.stage_poly_coeffs, self.k)
+                return jnp.sum(weighted_increment, axis=0).astype(self.k.dtype)
 
         y0, unravel = fu.ravel_pytree(self.y0)
-        y1 = y0 + jnp.sum(weighted_increment, axis=0)
+        y1 = y0 + eval_increment()
         return unravel(y1)
 
     @classmethod

@@ -152,7 +152,7 @@ def test_ode_order(solver, dtype):
     A = jr.normal(akey, (10, 10), dtype=dtype) * 0.5
 
     if isinstance(solver, AbstractRosenbrock) and dtype == jnp.complex128:
-        ## complex support is not added to rosenbrock.
+        # complex support is not added to rosenbrock.
         return
 
     if (
