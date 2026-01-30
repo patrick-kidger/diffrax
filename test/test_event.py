@@ -833,3 +833,30 @@ def test_event_with_pytree_valued_condition_function():
     t_final, y_final = run(event)
     assert jnp.allclose(t_final, 10.0)
     assert jnp.allclose(y_final, jnp.array([10.0, 11.0]))
+
+
+# https://github.com/patrick-kidger/diffrax/issues/720
+def test_boolean_with_root_find_terminating_on_first_step():
+    controller = diffrax.PIDController(rtol=1e-6, atol=1e-6)
+    steady_state_event = diffrax.steady_state_event(rtol=1e-6, atol=1e-6)
+    root_finder = optx.Newton(atol=1e-4, rtol=1e-4)
+
+    sol = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: jnp.zeros_like(y)),
+        diffrax.Kvaerno5(),
+        t0=0.0,
+        t1=1.2,
+        dt0=None,
+        y0=jnp.array([10.0]),
+        stepsize_controller=controller,
+        event=diffrax.Event(
+            cond_fn=steady_state_event,
+            root_finder=root_finder,
+        ),
+        saveat=diffrax.SaveAt(t1=True),
+        max_steps=100,
+    )
+    assert sol.ts is not None
+    assert sol.ys is not None
+    assert jnp.allclose(sol.ts, jnp.array([0.0]))
+    assert jnp.allclose(sol.ys, jnp.array([[10.0]]))
