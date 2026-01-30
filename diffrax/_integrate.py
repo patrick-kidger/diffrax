@@ -761,7 +761,11 @@ def loop(
             _tfinal = _event_root_find.value
             # TODO: we might need to change the way we evaluate `_yfinal` in order to
             # get more accurate derivatives?
-            _yfinal = _interpolator.evaluate(_tfinal)
+            _yfinal = lax.cond(
+                final_state.num_steps == 0,
+                lambda: final_state.y,
+                lambda: _interpolator.evaluate(_tfinal),
+            )
             _result = RESULTS.where(
                 _event_root_find.result == optx.RESULTS.successful,
                 result,
@@ -1323,7 +1327,7 @@ def diffeqsolve(
         event_mask = None
     else:
         event_tprev = tprev
-        event_tnext = tnext
+        event_tnext = tprev
         # Fill the dense-info with dummy values on the first step, when we haven't yet
         # made any steps.
         # Note that we're threading a needle here! What if we terminate on the very
@@ -1334,8 +1338,9 @@ def diffeqsolve(
         #   to the end of the interval).
         # - A floating event can't terminate on the first step (it requires a sign
         #   change).
+        # c.f. https://github.com/patrick-kidger/diffrax/issues/720
         event_dense_info = jtu.tree_map(
-            lambda x: jnp.empty(x.shape, x.dtype),
+            lambda x: jnp.zeros(x.shape, x.dtype),
             dense_info_struct,  # pyright: ignore[reportPossiblyUnboundVariable]
         )
 
