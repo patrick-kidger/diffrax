@@ -17,7 +17,7 @@ jobs:
                 cp -r ${{ github.workspace }}/test ./test
                 cp ${{ github.workspace }}/pyproject.toml ./pyproject.toml
                 uv sync --extra tests --no-install-project --inexact
-                uv run --no-sync pytest
+                uv run --no-sync python -m test
             pypi-token: ${{ secrets.pypi_token }}
             github-user: patrick-kidger
             github-token: ${{ github.token }}

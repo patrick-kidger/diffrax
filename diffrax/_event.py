@@ -41,7 +41,7 @@ class Event(eqx.Module):
 
         if any(x not in (None, False, True) for x in direction_leaves):
             raise ValueError(
-                "`trig_dir` must be a `None`, `bool`, or a PyTree of `None | bool`s "
+                "`direction` must be a `None`, `bool`, or a PyTree of `None | bool`s "
                 "with the same structure as `cond_fn`."
             )
 
