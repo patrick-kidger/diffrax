@@ -72,7 +72,7 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         ts = ...
         interp = LinearInterpolation(ts=ts, ...)
         term = ControlTerm(..., control=interp)
-        stepsize_controller = PIDController(..., jump_ts=ts)
+        stepsize_controller = ClipStepSizeController(PIDController(...), jump_ts=ts)
         ```
     """
 
