@@ -100,12 +100,16 @@ class State(eqx.Module):
     #
     # Information about the most recent step, used for events.
     #
-    # Not recorded anywhere else: this is the previous state's `tprev`.
+    # Not recorded anywhere else: this is the previous state's `y`, `tprev`, etc.
+    event_y: PyTree[Array] | None
     event_tprev: FloatScalarLike | None
-    # This is the previous state's `tnext`. This is not necessarily the same as our
-    # `tprev`, as the two can differ a little bit when crossing jumps.
+    # (This is not necessarily the same as our `tprev`, as the two can differ a little
+    # bit when crossing jumps.)
     event_tnext: FloatScalarLike | None
+    event_made_jump: BoolScalarLike | None
+    event_solver_state: PyTree[ArrayLike] | None
     event_dense_info: DenseInfo | None
+    # Other event information
     event_values: PyTree[BoolScalarLike | RealScalarLike] | None
     event_mask: PyTree[BoolScalarLike] | None
 
@@ -529,14 +533,20 @@ def loop(
             dense_save_index = dense_save_index + jnp.where(keep_step, 1, 0)
 
         if event is None:
+            event_y = None
             event_tprev = None
             event_tnext = None
+            event_solver_state = None
+            event_made_jump = None
             event_dense_info = None
             event_values = None
             event_mask = None
         else:
+            event_y = state.y
             event_tprev = state.tprev
             event_tnext = state.tnext
+            event_solver_state = state.solver_state
+            event_made_jump = state.made_jump
             event_dense_info = dense_info
 
             def _outer_cond_fn(cond_fn_i, old_event_value_i, direction_i):
@@ -625,7 +635,7 @@ def loop(
             y=y,
             tprev=tprev,
             tnext=tnext,
-            made_jump=made_jump,  # pyright: ignore
+            made_jump=made_jump,  # pyright: ignore[reportArgumentType]
             solver_state=solver_state,
             controller_state=controller_state,
             result=result,
@@ -637,8 +647,11 @@ def loop(
             dense_infos=dense_infos,
             dense_save_index=dense_save_index,
             progress_meter_state=progress_meter_state,
+            event_y=event_y,
             event_tprev=event_tprev,
             event_tnext=event_tnext,
+            event_solver_state=event_solver_state,
+            event_made_jump=event_made_jump,
             event_dense_info=event_dense_info,
             event_values=event_values,
             event_mask=event_mask,
@@ -696,11 +709,37 @@ def loop(
                 **final_state.event_dense_info,
             )
 
+            def _make_final_step(_t):
+                _y, _, _, _, _result = solver.step(
+                    terms,
+                    final_state.event_tprev,
+                    _t,
+                    final_state.event_y,
+                    args,
+                    final_state.solver_state,
+                    final_state.made_jump,
+                )
+                # I'm not sure if we ever expect this to fail, but just in case we do
+                # have a backup option available as a best-effort.
+                _y = jnp.where(
+                    _result == RESULTS.successful, _y, _interpolator.evaluate(_t)
+                )
+                return _y
+
             def _to_root_find(_t, _):
                 _distance_from_t_end = final_state.event_tnext - _t
 
                 def _call_real(_event_mask_i, _cond_fn_i):
                     def _call_real_impl():
+                        # TODO: should we replace this `evaluate` with
+                        # `_make_final_step`?
+                        # For specifically events with state dependence then I think
+                        # this would affect the gradient calculation.
+                        # The difficulty is that e.g. by default `optx.Newton` wants to
+                        # do forward-mode autodiff but by default our RK solvers only
+                        # support reverse mode (and need `scan_kind="lax"` to handle
+                        # forward), else we get a jvp-of-custom-vjp error.
+
                         # First evaluate the triggered event.
                         _y = _interpolator.evaluate(_t)
                         _value = _cond_fn_i(
@@ -759,12 +798,11 @@ def loop(
                 throw=False,
             )
             _tfinal = _event_root_find.value
-            # TODO: we might need to change the way we evaluate `_yfinal` in order to
-            # get more accurate derivatives?
+
             _yfinal = lax.cond(
                 final_state.num_steps == 0,
                 lambda: final_state.y,
-                lambda: _interpolator.evaluate(_tfinal),
+                lambda: _make_final_step(_tfinal),
             )
             _result = RESULTS.where(
                 _event_root_find.result == optx.RESULTS.successful,
@@ -1320,14 +1358,20 @@ def diffeqsolve(
 
     # Events
     if event is None:
+        event_y = None
         event_tprev = None
         event_tnext = None
+        event_solver_state = None
+        event_made_jump = None
         event_dense_info = None
         event_values = None
         event_mask = None
     else:
+        event_y = y0
         event_tprev = tprev
         event_tnext = tprev
+        event_solver_state = solver_state
+        event_made_jump = False
         # Fill the dense-info with dummy values on the first step, when we haven't yet
         # made any steps.
         # Note that we're threading a needle here! What if we terminate on the very
@@ -1421,8 +1465,11 @@ def diffeqsolve(
         dense_infos=dense_infos,
         dense_save_index=dense_save_index,
         progress_meter_state=progress_meter_state,
+        event_y=event_y,
         event_tprev=event_tprev,
         event_tnext=event_tnext,
+        event_solver_state=event_solver_state,
+        event_made_jump=event_made_jump,
         event_dense_info=event_dense_info,
         event_values=event_values,
         event_mask=event_mask,
