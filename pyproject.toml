@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Information Analysis",
   "Topic :: Scientific/Engineering :: Mathematics"
 ]
-dependencies = ["jax>=0.4.38", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "equinox>=0.11.10", "lineax>=0.0.5", "optimistix>=0.0.10", "wadler_lindig>=0.1.1"]
+dependencies = ["jax>=0.4.38", "jaxtyping>=0.2.24", "typing_extensions>=4.5.0", "equinox>=0.11.10", "lineax>=0.0.5", "optimistix>=0.1.0", "wadler_lindig>=0.1.1"]
 description = "GPU+autodiff-capable ODE/SDE/CDE solvers written in JAX."
 keywords = ["jax", "dynamical-systems", "differential-equations", "deep-learning", "equinox", "neural-differential-equations", "diffrax"]
 license = {file = "LICENSE"}
