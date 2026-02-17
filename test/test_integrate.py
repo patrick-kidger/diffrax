@@ -864,3 +864,15 @@ def test_vmap_backprop_with_event():
 
     assert not jnp.isnan(grad).any(), "Gradient should not be NaN."
     assert not jnp.isinf(grad).any(), "Gradient should not be infinite."
+
+
+def test_nice_errors():
+    def vf1(t, y, args):
+        raise ValueError("Oh no!")
+
+    def vf2(t, y, args):
+        raise TypeError("Oh no!")
+
+    for vf, etype in ((vf1, ValueError), (vf2, TypeError)):
+        with pytest.raises(etype, match="Oh no!"):
+            diffrax.diffeqsolve(diffrax.ODETerm(vf), diffrax.Euler(), 0, 1, 0.1, 0)
