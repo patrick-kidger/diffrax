@@ -114,6 +114,10 @@ def _is_none(x: Any) -> bool:
     return x is None
 
 
+class TermAndSolverIncompatible(ValueError):
+    pass
+
+
 def _assert_term_compatible(
     t: FloatScalarLike,
     y: PyTree[ArrayLike],
@@ -137,7 +141,7 @@ def _assert_term_compatible(
                 ):
                     _assert_term_compatible(t, yi, args, term, arg, term_contr_kwarg)
             else:
-                raise ValueError(
+                raise TermAndSolverIncompatible(
                     f"Term {term} is not a MultiTerm but is expected to be."
                 )
         else:
@@ -147,7 +151,9 @@ def _assert_term_compatible(
             if origin_cls is None:
                 origin_cls = term_cls
             if not isinstance(term, origin_cls):
-                raise ValueError(f"Term {term} is not an instance of {origin_cls}.")
+                raise TermAndSolverIncompatible(
+                    f"Term {term} is not an instance of {origin_cls}."
+                )
 
             # Now check the generic parametrization of `term_cls`; can be one of:
             # -----------------------------------------
@@ -167,7 +173,9 @@ def _assert_term_compatible(
                     better_isinstance, vf_type, vf_type_expected
                 )
                 if not vf_type_compatible:
-                    raise ValueError(f"Vector field term {term} is incompatible.")
+                    raise TermAndSolverIncompatible(
+                        f"Vector field term {term} is incompatible."
+                    )
 
                 contr = ft.partial(term.contr, **term_contr_kwargs)
                 # Work around https://github.com/google/jax/issues/21825
@@ -176,7 +184,7 @@ def _assert_term_compatible(
                     better_isinstance, control_type, control_type_expected
                 )
                 if not control_type_compatible:
-                    raise ValueError(
+                    raise TermAndSolverIncompatible(
                         "Control term is incompatible: the returned control (e.g. "
                         f"Brownian motion for an SDE) was {control_type}, but this "
                         f"solver expected {control_type_expected}."
@@ -185,14 +193,23 @@ def _assert_term_compatible(
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
 
+    try:  # check for JAX pytree mismatches first
+        jtu.tree_map(lambda *a: None, term_structure, terms, contr_kwargs, y)
+    except ValueError as e:
+        pretty_term = wl.pformat(terms)
+        pretty_expected = wl.pformat(term_structure)
+        raise TermAndSolverIncompatible(
+            f"Terms are not compatible with solver! Got:\n{pretty_term}\nbut expected:"
+            f"\n{pretty_expected}\nNote that terms are checked recursively: if you "
+            "scroll up you may find a root-cause error that is more specific."
+        ) from e
     try:
         with jax.numpy_dtype_promotion("standard"):
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
-    except ValueError as e:
-        # ValueError may also arise from mismatched tree structures
+    except TermAndSolverIncompatible as e:
         pretty_term = wl.pformat(terms)
         pretty_expected = wl.pformat(term_structure)
-        raise ValueError(
+        raise TermAndSolverIncompatible(
             f"Terms are not compatible with solver! Got:\n{pretty_term}\nbut expected:"
             f"\n{pretty_expected}\nNote that terms are checked recursively: if you "
             "scroll up you may find a root-cause error that is more specific."
