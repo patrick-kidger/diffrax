@@ -24,6 +24,9 @@ def _fn2(x, args):
 @jax.jit
 def _fn3(x, args):
     mlp = eqx.nn.MLP(4, 4, 256, 2, key=jr.PRNGKey(678))
+    dynamic, static = eqx.partition(mlp, eqx.is_array)
+    dynamic = jtu.tree_map(lambda x: x * 0.1, dynamic)
+    mlp = eqx.combine(dynamic, static)
     return mlp(x) - x
 
 
