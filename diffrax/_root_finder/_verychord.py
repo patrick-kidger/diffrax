@@ -162,7 +162,7 @@ class VeryChord(optx.AbstractRootFinder):
         converged = _converged(factor, self.kappa)
         terminate = at_least_two & (small | diverged | converged)
         terminate_result = optx.RESULTS.where(
-            jnp.invert(small) & (diverged | jnp.invert(converged)),
+            at_least_two & jnp.invert(small) & (diverged | jnp.invert(converged)),
             optx.RESULTS.nonlinear_divergence,
             optx.RESULTS.successful,
         )
