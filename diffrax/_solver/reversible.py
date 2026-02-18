@@ -1,0 +1,186 @@
+from collections.abc import Callable
+from typing import cast, ClassVar, Optional
+
+import equinox as eqx
+from equinox.internal import ω
+from jaxtyping import PyTree
+
+from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
+from .._local_interpolation import LocalLinearInterpolation
+from .._solution import RESULTS, update_result
+from .._solver.base import (
+    AbstractReversibleSolver,
+    AbstractWrappedSolver,
+)
+from .._term import AbstractTerm
+from .runge_kutta import AbstractERK
+
+
+ω = cast(Callable, ω)
+_SolverState = Y
+
+
+class UReversible(
+    AbstractReversibleSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+):
+    """
+    U-Reversible solver method.
+
+    Allows any explicit Runge-Kutta solver ([`diffrax.AbstractERK`][]) to be made
+    algebraically reversible.
+
+    **Arguments:**
+
+    - `solver`: base solver to be made reversible
+    - `coupling_parameter`: determines coupling between the two evolving solutions.
+    Must be within the range `0 < coupling_parameter < 1`. Unless you need finer control
+    over stability, the default value of `0.999` should be sufficient.
+
+    !!! note
+
+        When solving SDEs, the base `solver` must converge to the Statonovich solution.
+
+    ??? cite "References"
+
+        This method was developed in:
+
+        ```bibtex
+        @article{mccallum2024efficient,
+            title={Efficient, Accurate and Stable Gradients for Neural ODEs},
+            author={McCallum, Sam and Foster, James},
+            journal={arXiv preprint arXiv:2410.11648},
+            year={2024}
+        }
+        ```
+
+        And built on previous work by:
+
+        ```bibtex
+        @article{kidger2021efficient,
+            title={Efficient and accurate gradients for neural sdes},
+            author={Kidger, Patrick and Foster, James and Li, Xuechen Chen and Lyons,
+                    Terry},
+            journal={Advances in Neural Information Processing Systems},
+            volume={34},
+            pages={18747--18761},
+            year={2021}
+        }
+
+        @article{zhuang2021mali,
+            title={Mali: A memory efficient and reverse accurate integrator for neural
+                    odes},
+            author={Zhuang, Juntang and Dvornek, Nicha C and Tatikonda, Sekhar and
+            Duncan, James S},
+            journal={arXiv preprint arXiv:2102.04668},
+            year={2021}
+        }
+        ```
+    """
+
+    solver: AbstractERK
+    coupling_parameter: float
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
+
+    @property
+    def term_structure(self):
+        return self.solver.term_structure
+
+    @property
+    def term_compatible_contr_kwargs(self):
+        return self.solver.term_compatible_contr_kwargs
+
+    @property
+    def root_finder(self):
+        return self.solver.root_finder
+
+    @property
+    def root_find_max_steps(self):
+        return self.solver.root_find_max_steps
+
+    def order(self, terms: PyTree[AbstractTerm]) -> Optional[int]:
+        return self.solver.order(terms)
+
+    def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
+        return self.solver.strong_order(terms)
+
+    def __init__(self, solver: AbstractERK, coupling_parameter: float = 0.999):
+        self.solver = eqx.tree_at(lambda s: s.disable_fsal, solver, True)
+        self.coupling_parameter = coupling_parameter
+
+    def init(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+    ) -> _SolverState:
+        if not isinstance(self.solver, AbstractERK):
+            raise ValueError(
+                "`UReversible` is only compatible with `AbstractERK` base solvers."
+            )
+        return y0
+
+    def step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y0: Y,
+        args: Args,
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
+        del made_jump
+        z0 = solver_state
+
+        step_z0, _, _, _, result1 = self.solver.step(
+            terms, t0, t1, z0, args, None, True
+        )
+        y1 = (self.coupling_parameter * (ω(y0) - ω(z0)) + ω(step_z0)).ω
+
+        step_y1, y_error, _, _, result2 = self.solver.step(
+            terms, t1, t0, y1, args, None, True
+        )
+        z1 = (ω(y1) + ω(z0) - ω(step_y1)).ω
+
+        solver_state = z1
+        dense_info = dict(y0=y0, y1=y1)
+        result = update_result(result1, result2)
+
+        return y1, y_error, dense_info, solver_state, result
+
+    def backward_step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y1: Y,
+        args: Args,
+        ts_state: PyTree[RealScalarLike],
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
+        del made_jump, ts_state
+        z1 = solver_state
+        step_y1, _, _, _, result1 = self.solver.step(
+            terms, t1, t0, y1, args, None, True
+        )
+        z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
+        step_z0, _, _, _, result2 = self.solver.step(
+            terms, t0, t1, z0, args, None, True
+        )
+        y0 = ((1 / self.coupling_parameter) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
+
+        solver_state = z0
+        dense_info = dict(y0=y0, y1=y1)
+        result = update_result(result1, result2)
+
+        return y0, dense_info, solver_state, result
+
+    def func(
+        self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args
+    ) -> VF:
+        return self.solver.func(terms, t0, y0, args)

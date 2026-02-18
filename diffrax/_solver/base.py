@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractClassVar, AbstractVar
 from equinox.internal import ω
-from jaxtyping import PyTree
+from jaxtyping import Array, PyTree
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
@@ -350,3 +350,59 @@ HalfSolver.__init__.__doc__ = """**Arguments:**
 
 - `solver`: The solver to wrap.
 """
+
+
+class AbstractReversibleSolver(AbstractSolver[_SolverState]):
+    """Indicates that this is a reversible differential equation solver. This means
+    that the state at `t0` can be reconstructed (in closed form) from the state at `t1`.
+
+    The reconstruction must be implemented by
+    [`diffrax.AbstractReversibleSolver.backward_step`][].
+
+    This solver can be combined with `adjoint=diffrax.ReversibleAdjoint` for exact
+    gradient backpropagation in $O(n)$ time and $O(1)$ memory, for $n$ time steps.
+    """
+
+    @abc.abstractmethod
+    def backward_step(
+        self,
+        terms: PyTree[AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y1: Y,
+        args: Args,
+        ts_state: PyTree[RealScalarLike],
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
+        """
+        Make a single backward step with the reversible solver.
+
+        Each step is made over the specified interval $[t_1, t_0]$.
+
+        **Arguments:**
+
+        - `terms`: The PyTree of terms representing the vector fields and controls.
+        - `t0`: The end of the interval that the backward step is made over.
+        - `t1`: The start of the interval that the backward step is made over.
+        - `y1`: The current value of the solution at `t1`.
+        - `args`: Any extra arguments passed to the vector field.
+        - `ts_state`: Any `ts` state required to reverse the forward `step`.
+        - `solver_state`: Any evolving state for the solver itself, at `t1`.
+        - `made_jump`: Whether there was a discontinuity in the vector field at `t1`.
+            Some solvers (notably FSAL Runge--Kutta solvers) usually assume that there
+            are no jumps and for efficiency re-use information between steps; this
+            indicates that a jump has just occurred and this assumption is not true.
+
+        **Returns:**
+
+        A tuple of four objects:
+
+        - The value of the solution at `t0`.
+        - Some dictionary of information that is passed to the solver's interpolation
+            routine to calculate dense output. Note that this is assumed to be the same
+            information returned on the forward step.
+        - The value of the solver state at `t0`.
+        - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
+            happened successfully, or if (unusually) it failed for some reason.
+        """
