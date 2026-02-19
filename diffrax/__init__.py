@@ -129,6 +129,8 @@ from ._step_size_controller import (
 from ._term import (
     AbstractTerm as AbstractTerm,
     ControlTerm as ControlTerm,
+    KLState as KLState,
+    make_kl_terms as make_kl_terms,
     MultiTerm as MultiTerm,
     ODETerm as ODETerm,
     UnderdampedLangevinDiffusionTerm as UnderdampedLangevinDiffusionTerm,
