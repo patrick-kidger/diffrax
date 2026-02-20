@@ -89,6 +89,7 @@ from ._solver import (
     Dopri8 as Dopri8,
     Euler as Euler,
     EulerHeun as EulerHeun,
+    ExponentialEuler as ExponentialEuler,
     GeneralShARK as GeneralShARK,
     HalfSolver as HalfSolver,
     Heun as Heun,
@@ -117,6 +118,7 @@ from ._solver import (
     StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
+    
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,
@@ -129,11 +131,13 @@ from ._step_size_controller import (
 from ._term import (
     AbstractTerm as AbstractTerm,
     ControlTerm as ControlTerm,
+    LinearODETerm as LinearODETerm,
     MultiTerm as MultiTerm,
     ODETerm as ODETerm,
     UnderdampedLangevinDiffusionTerm as UnderdampedLangevinDiffusionTerm,
     UnderdampedLangevinDriftTerm as UnderdampedLangevinDriftTerm,
     WeaklyDiagonalControlTerm as WeaklyDiagonalControlTerm,
+    
 )
 
 
