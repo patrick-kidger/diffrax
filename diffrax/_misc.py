@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, cast
+from typing import cast
 
 import jax
 import jax.core
@@ -13,22 +13,17 @@ from jaxtyping import Array, ArrayLike, PyTree, Shaped
 from ._custom_types import BoolScalarLike, RealScalarLike
 
 
-_itemsize_kind_type: dict[tuple[int, str], Any] = {
-    (1, "i"): jnp.int8,
-    (2, "i"): jnp.int16,
-    (4, "i"): jnp.int32,
-    (8, "i"): jnp.int64,
-    (2, "f"): jnp.float16,
-    (4, "f"): jnp.float32,
-    (8, "f"): jnp.float64,
-}
-
-
 def force_bitcast_convert_type(val, new_type):
     val = jnp.asarray(val)
-    intermediate_type = _itemsize_kind_type[new_type.dtype.itemsize, val.dtype.kind]
-    val = val.astype(intermediate_type)
-    return lax.bitcast_convert_type(val, new_type)
+    result = lax.bitcast_convert_type(val, new_type)
+
+    # If downcasting (larger -> smaller type), bitcast returns multiple values.
+    # Combine them via XOR to ensure nearby input values map to different outputs.
+    if result.shape != val.shape:
+        result = jnp.bitwise_xor.reduce(result, axis=-1)
+        assert val.shape == result.shape
+        assert result.dtype == new_type
+    return result
 
 
 def _fill_forward(
