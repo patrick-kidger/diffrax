@@ -53,6 +53,7 @@ from ._solver import (
     Euler,
     EulerHeun,
     ItoMilstein,
+    Ros3p,
     StratonovichMilstein,
 )
 from ._step_size_controller import (
