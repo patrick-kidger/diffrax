@@ -8,7 +8,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF
 from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
-from .base import AbstractSolver
+from .base import AbstractReversibleSolver
 
 
 _ErrorEstimate: TypeAlias = None
@@ -18,11 +18,17 @@ Ya: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]  # pyright: ignore[reportU
 Yb: TypeAlias = PyTree[Float[ArrayLike, "?*y"], " Y"]  # pyright: ignore[reportUndefinedVariable]
 
 
-class SemiImplicitEuler(AbstractSolver):
+class SemiImplicitEuler(AbstractReversibleSolver):
     """Semi-implicit Euler's method.
 
     Symplectic method. Does not support adaptive step sizing. Uses 1st order local
     linear interpolation for dense/ts output.
+
+    !!! note
+        This solver is algebraically reversible, meaning that the state at `t0` can be
+        reconstructed (in closed form) from the state at `t1`. This allows exact
+        gradient backpropagation in $O(n)$ time and $O(1)$ memory when using
+        [`diffrax.ReversibleAdjoint`][].
     """
 
     term_structure: ClassVar = (AbstractTerm, AbstractTerm)
@@ -66,6 +72,31 @@ class SemiImplicitEuler(AbstractSolver):
         y1 = (y1_1, y1_2)
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
+
+    def backward_step(
+        self,
+        terms: tuple[AbstractTerm, AbstractTerm],
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        y1: tuple[Ya, Yb],
+        args: Args,
+        ts_state: PyTree[RealScalarLike],
+        solver_state: _SolverState,
+        made_jump: BoolScalarLike,
+    ) -> tuple[tuple[Ya, Yb], DenseInfo, _SolverState, RESULTS]:
+        del solver_state, made_jump, ts_state
+
+        term_1, term_2 = terms
+        y1_1, y1_2 = y1
+
+        control1 = term_1.contr(t0, t1)
+        control2 = term_2.contr(t0, t1)
+        y0_2 = (y1_2**ω - term_2.vf_prod(t0, y1_1, args, control2) ** ω).ω
+        y0_1 = (y1_1**ω - term_1.vf_prod(t0, y0_2, args, control1) ** ω).ω
+
+        y0 = (y0_1, y0_2)
+        dense_info = dict(y0=y0, y1=y1)
+        return y0, dense_info, None, RESULTS.successful
 
     def func(
         self,
