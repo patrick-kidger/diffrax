@@ -35,6 +35,7 @@ all_ode_solvers = (
     diffrax.ReversibleHeun(),
     diffrax.Tsit5(),
     diffrax.ImplicitEuler(),
+    diffrax.Alexander2(),
     diffrax.Kvaerno3(),
     diffrax.Kvaerno4(),
     diffrax.Kvaerno5(),
