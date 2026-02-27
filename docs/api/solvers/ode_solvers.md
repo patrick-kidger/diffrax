@@ -69,6 +69,11 @@ Each of these takes a `root_finder` argument at initialisation, defaulting to a 
         members:
             - __init__
 
+::: diffrax.Alexander2
+    options:
+        members:
+            - __init__
+
 ::: diffrax.Kvaerno3
     options:
         members:

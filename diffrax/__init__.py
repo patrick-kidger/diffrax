@@ -81,6 +81,7 @@ from ._solver import (
     AbstractSRK as AbstractSRK,
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
+    Alexander2 as Alexander2,
     ALIGN as ALIGN,
     Bosh3 as Bosh3,
     ButcherTableau as ButcherTableau,
