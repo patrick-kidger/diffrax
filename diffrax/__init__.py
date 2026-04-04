@@ -105,6 +105,7 @@ from ._solver import (
     MultiButcherTableau as MultiButcherTableau,
     QUICSORT as QUICSORT,
     Ralston as Ralston,
+    RKC as RKC,
     ReversibleHeun as ReversibleHeun,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
