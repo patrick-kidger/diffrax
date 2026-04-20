@@ -119,7 +119,7 @@ def test_saveat_solution():
     assert sol.t1 == _t1
     assert sol.ts.shape == (4096,)  # pyright: ignore
     assert sol.ys.shape == (4096, 1)  # pyright: ignore
-    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)  # pyright: ignore[reportArgumentType]
     _ts = cast(jax.Array, _ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
@@ -141,7 +141,7 @@ def test_saveat_solution():
     n = (4096 - 1) // 2 + 1
     assert sol.ts.shape == (n,)  # pyright: ignore
     assert sol.ys.shape == (n, 1)  # pyright: ignore
-    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)  # pyright: ignore[reportArgumentType]
     _ts = cast(jax.Array, _ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]
@@ -163,7 +163,7 @@ def test_saveat_solution():
     n = (4096 - 1) // 2 + 1
     assert sol.ts.shape == (n,)  # pyright: ignore
     assert sol.ys.shape == (n, 1)  # pyright: ignore
-    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)
+    _ts = jnp.where(sol.ts == jnp.inf, jnp.nan, sol.ts)  # pyright: ignore[reportArgumentType]
     _ts = cast(jax.Array, _ts)
     with jax.numpy_rank_promotion("allow"):
         _ys = _y0 * jnp.exp(-0.5 * (_ts - _t0))[:, None]

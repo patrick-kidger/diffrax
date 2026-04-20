@@ -2,6 +2,34 @@
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
+[dependency-groups]
+dev = [
+  "prek==0.3.9",
+  "pyright==1.1.405",
+  "ruff==0.13.0",
+  "toml-sort==0.23.1"
+]
+docs = [
+  "hippogriffe==0.2.2",
+  "griffe==1.7.3",
+  "mkdocs==1.6.1",
+  "mkdocs-include-exclude-files==0.1.0",
+  "mkdocs-ipynb==0.1.1",
+  "mkdocs-material==9.6.7",
+  "mkdocstrings==0.28.3",
+  "mkdocstrings-python==1.16.8",
+  "pygments==2.20.0",
+  "pymdown-extensions==10.21.2"
+]
+tests = [
+  "beartype",
+  "jaxlib",
+  "optax",
+  "pytest",
+  "scipy",
+  "tqdm"
+]
+
 [project]
 authors = [
   {email = "contact@kidger.site", name = "Patrick Kidger"}
@@ -28,29 +56,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 urls = {repository = "https://github.com/patrick-kidger/diffrax"}
 version = "0.7.2"
-
-[project.optional-dependencies]
-dev = ["pre-commit"]
-docs = [
-  "hippogriffe==0.2.2",
-  "griffe==1.7.3",
-  "mkdocs==1.6.1",
-  "mkdocs-include-exclude-files==0.1.0",
-  "mkdocs-ipynb==0.1.1",
-  "mkdocs-material==9.6.7",
-  "mkdocstrings==0.28.3",
-  "mkdocstrings-python==1.16.8",
-  "pygments==2.20.0",
-  "pymdown-extensions==10.21.2"
-]
-tests = [
-  "beartype",
-  "jaxlib",
-  "optax",
-  "pytest",
-  "scipy",
-  "tqdm"
-]
 
 [tool.hatch.build]
 include = ["diffrax/*"]
@@ -84,3 +89,6 @@ combine-as-imports = true
 extra-standard-library = ["typing_extensions"]
 lines-after-imports = 2
 order-by-type = false
+
+[tool.uv]
+default-groups = ["dev", "docs", "tests"]

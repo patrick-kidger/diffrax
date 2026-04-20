@@ -222,7 +222,7 @@ def _backsolve_adjoint(adjoint, terms=None):
                 r"""
     % You are backpropagating through an SDE using optimise-then-discretise
     % (`adjoint=BacksolveAdjoint(...)`)
-    % This technique was introduced in 
+    % This technique was introduced in
     """
                 + vbt_ref
                 + r"""
@@ -273,10 +273,10 @@ def _discrete_adjoint(adjoint):
 % If using forward-mode autodifferentiation, then this was studied in:
 @inproceedings{ma2021comparison,
   title={A Comparison of Automatic Differentiation and Continuous Sensitivity Analysis
-         for Derivatives of Differential Equation Solutions}, 
+         for Derivatives of Differential Equation Solutions},
   author={Ma, Yingbo and Dixit, Vaibhav and Innes, Michael J and Guo, Xingjian and
           Rackauckas, Chris},
-  booktitle={2021 IEEE High Performance Extreme Computing Conference (HPEC)}, 
+  booktitle={2021 IEEE High Performance Extreme Computing Conference (HPEC)},
   year={2021},
   pages={1-9},
   doi={10.1109/HPEC49654.2021.9622796}

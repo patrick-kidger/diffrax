@@ -190,8 +190,8 @@ class TqdmProgressMeter(AbstractProgressMeter):
             )
 
     @staticmethod
-    def _init_bar() -> "tqdm.tqdm":  # pyright: ignore  # noqa: F821
-        import tqdm  # pyright: ignore
+    def _init_bar() -> "tqdm.tqdm":  # pyright: ignore[reportUndefinedVariable]  # noqa: F821
+        import tqdm
 
         bar_format = (
             "{percentage:.2f}%|{bar}| [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
