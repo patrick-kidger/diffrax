@@ -19,6 +19,10 @@ import lineax.internal as lxi
 import numpy as np
 import optimistix as optx
 import wadler_lindig as wl
+from equinox.internal import (
+    AbstractProgressMeter,
+    NoProgressMeter,
+)
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint
@@ -38,10 +42,6 @@ from ._event import (
 from ._global_interpolation import DenseInterpolation
 from ._heuristics import is_sde, is_unsafe_sde
 from ._misc import linear_rescale, static_select
-from ._progress_meter import (
-    AbstractProgressMeter,
-    NoProgressMeter,
-)
 from ._root_finder import use_stepsize_tol
 from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solution import is_okay, is_successful, RESULTS, Solution
