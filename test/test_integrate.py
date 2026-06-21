@@ -587,6 +587,35 @@ def test_static(capfd):
         diffrax._integrate._PRINT_STATIC = False
 
 
+def test_uninstantiated_solver_error():
+    msg = (
+        r"It looks like you forgot to instantiate your solver, e.g. by passing "
+        r"`diffrax\.Euler` instead of `diffrax\.Euler\(\)`."
+    )
+    term = ODETerm(lambda t, y, args: -y)
+    with pytest.raises(ValueError, match=msg):
+        diffrax.diffeqsolve(term, diffrax.Euler, 0, 1, 0.1, 1.0)
+    with pytest.raises(ValueError, match=msg):
+        diffrax.diffeqsolve(
+            MultiTerm(
+                ODETerm(lambda t, y, args: -y),
+                ControlTerm(
+                    lambda t, y, args: 0.1 * t,
+                    diffrax.VirtualBrownianTree(
+                        0, 1, tol=1e-3, shape=(), key=jr.key(0)
+                    ),
+                ),
+            ),
+            diffrax.EulerHeun,
+            0,
+            1,
+            0.1,
+            1.0,
+        )
+    with pytest.raises(ValueError, match=r"not recognised"):
+        diffrax._integrate._validate_solver("not a solver")
+
+
 def test_implicit_tol_error():
     msg = "the tolerances for the implicit solver have not been specified"
     with pytest.raises(ValueError, match=msg):
