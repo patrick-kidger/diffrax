@@ -53,7 +53,7 @@ print(sol.ys)  # DeviceArray([1.   , 0.368, 0.135, 0.0498])
     - Where to save the result (e.g. to obtain dense output) can be adjusted by changing [`diffrax.SaveAt`][].
     - Step sizes and locations can be changed.
         - The initial step size can be selected adaptively by setting `dt0=None`.
-        - A constant step size can be used by setting `stepsize_controller = ConstantStepSize()`. (This is also the default choice for `stepsize_controller` if you do not pass one at all.)
+        - Fixed steps can be used by setting `stepsize_controller = ConstantStepSize()`. On finite intervals this uses `dt0` to determine how many steps to take, then spaces those steps so the solve lands exactly on `t1`. (This is also the default choice for `stepsize_controller` if you do not pass one at all.)
         - Things like solver tolerances, jumps in the vector field, etc. can be passed as arguments to the step size controller.
         - See the page on [Step size controllers](../api/stepsize_controller.md).
     - Any static arguments (that do not change during the integration) for the `vector_field` can be passed as `diffeqsolve(..., args=...)`.

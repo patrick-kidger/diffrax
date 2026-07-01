@@ -247,6 +247,39 @@ def test_saveat_solution_skip_steps():
     assert jnp.allclose(ts, jnp.array([0.0, 3.0, 6.0]))
 
 
+def test_constant_stepsize_rescales_finite_interval_steps():
+    term = diffrax.ODETerm(lambda t, y, args: 0.0)
+    sol = diffrax.diffeqsolve(
+        term,
+        solver=diffrax.Euler(),
+        t0=0.0,
+        t1=1.05,
+        dt0=0.1,
+        y0=0.0,
+        saveat=diffrax.SaveAt(t0=True, steps=True),
+        stepsize_controller=diffrax.ConstantStepSize(),
+    )
+
+    assert sol.ts is not None
+    ts = sol.ts[jnp.isfinite(sol.ts)]
+    expected_ts = jnp.concatenate(
+        [jnp.array([0.0, 0.1]), jnp.linspace(2 * 1.05 / 11, 1.05, 10)]
+    )
+    assert jnp.allclose(ts, expected_ts)
+
+
+def test_constant_stepsize_docs_describe_rescaled_finite_steps():
+    constant_doc = diffrax.ConstantStepSize.__doc__
+    solve_doc = diffrax.diffeqsolve.__doc__
+
+    assert constant_doc is not None
+    assert solve_doc is not None
+    constant_doc = " ".join(constant_doc.split())
+    solve_doc = " ".join(solve_doc.split())
+    assert "hit `t1` exactly" in constant_doc
+    assert "rescales the remaining fixed steps to land exactly on `t1`" in solve_doc
+
+
 def test_saveat_solution_skip_vs_saveat():
     ts = jnp.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     n = 2
