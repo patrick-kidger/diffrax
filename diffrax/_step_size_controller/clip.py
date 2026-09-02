@@ -201,7 +201,7 @@ class ClipStepSizeController(
         - `jump_ts`: Denotes extra times that must be stepped to, and at which the
             vector field has a known discontinuity. (This is used to force FSAL solvers
             to re-evaluate the vector field.)
-        `store_rejected_steps`: If this is set to a positive integer, then any
+        - `store_rejected_steps`: If this is set to a positive integer, then any
             rejected steps will have their time stored, and that time will be stepped to
             exactly in a later step. This is used when solving SDEs with noncommutative
             noise, for which this ensures that the distribution coming from Lévy area
