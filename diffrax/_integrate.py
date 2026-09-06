@@ -929,10 +929,11 @@ def diffeqsolve(
         choose a solver](../usage/how-to-choose-a-solver.md).
     - `t0`: The start of the region of integration.
     - `t1`: The end of the region of integration.
-    - `dt0`: The step size to use for the first step. If using fixed step sizes then
-        this will also be the step size for all other steps. (Except the last one,
-        which may be slightly smaller and clipped to `t1`.) If set as `None` then the
-        initial step size will be determined automatically.
+    - `dt0`: The step size to use for the first step. If using
+        [`diffrax.ConstantStepSize`][] on a finite interval, let
+        `n = ceil((t1 - t0) / dt0)`. The first step targets `t0 + dt0`; subsequent
+        steps target `t0 + k * (t1 - t0) / n` for `k = 2, ..., n`. If set as `None`
+        then the initial step size will be determined automatically.
     - `y0`: The initial value. This can be any PyTree of JAX arrays. (Or types that
         can be coerced to JAX arrays, like Python floats.)
     - `args`: Any additional arguments to pass to the vector field.

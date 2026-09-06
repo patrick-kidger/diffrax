@@ -20,8 +20,12 @@ _ConstantStepSizeState = tuple[
 class ConstantStepSize(
     AbstractStepSizeController[_ConstantStepSizeState, RealScalarLike]
 ):
-    """Use a constant step size, equal to the `dt0` argument of
+    """Use a fixed number of constant steps determined by the `dt0` argument of
     [`diffrax.diffeqsolve`][].
+
+    On a finite interval, let `n = ceil((t1 - t0) / dt0)`. The first step targets
+    `t0 + dt0`; subsequent steps target `t0 + k * (t1 - t0) / n` for
+    `k = 2, ..., n`.
     """
 
     def wrap(self, direction: IntScalarLike):

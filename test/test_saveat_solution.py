@@ -4,6 +4,7 @@ from typing import cast
 
 import diffrax
 import equinox as eqx
+import equinox.internal as eqxi
 import jax
 import jax.numpy as jnp
 import optimistix as optx
@@ -245,6 +246,46 @@ def test_saveat_solution_skip_steps():
     assert jnp.allclose(ts, jnp.array([0.0, 3.0, 6.0, 7.0]))
     ts = _step_integrate(diffrax.SaveAt(steps=3, t1=True, t0=True), with_7=False)
     assert jnp.allclose(ts, jnp.array([0.0, 3.0, 6.0]))
+
+
+def test_constant_stepsize_rescales_finite_interval_steps():
+    t0 = 0.0
+    t1 = 1.05
+    dt0 = 0.1
+    term = diffrax.ODETerm(lambda t, y, args: 0.0)
+    sol = diffrax.diffeqsolve(
+        term,
+        solver=diffrax.Euler(),
+        t0=t0,
+        t1=t1,
+        dt0=dt0,
+        y0=0.0,
+        saveat=diffrax.SaveAt(t0=True, steps=True),
+        stepsize_controller=diffrax.ConstantStepSize(),
+    )
+
+    assert sol.ts is not None
+    ts = sol.ts[jnp.isfinite(sol.ts)]
+    num_steps = int(jnp.ceil((t1 - t0) / eqxi.nextafter(dt0)))
+    expected_ts = jnp.concatenate(
+        [
+            jnp.array([t0, t0 + dt0]),
+            t0 + jnp.arange(2, num_steps + 1) * (t1 - t0) / num_steps,
+        ]
+    )
+    assert jnp.allclose(ts, expected_ts)
+
+
+def test_constant_stepsize_docs_describe_rescaled_finite_steps():
+    constant_doc = diffrax.ConstantStepSize.__doc__
+    solve_doc = diffrax.diffeqsolve.__doc__
+
+    assert constant_doc is not None
+    assert solve_doc is not None
+    constant_doc = " ".join(constant_doc.split())
+    solve_doc = " ".join(solve_doc.split())
+    assert "subsequent steps target `t0 + k * (t1 - t0) / n`" in constant_doc
+    assert "steps target `t0 + k * (t1 - t0) / n`" in solve_doc
 
 
 def test_saveat_solution_skip_vs_saveat():
