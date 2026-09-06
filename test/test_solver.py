@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import lineax as lx
 import optimistix as optx
 import pytest
 
@@ -501,4 +502,102 @@ def test_adaptive_dt0_milstein(getkey):
     stepsize_controller = diffrax.PIDController(rtol=1e-5, atol=1e-5)
     diffrax.diffeqsolve(
         terms, solver, 0, 1, None, 1, stepsize_controller=stepsize_controller
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for AbstractImplicitSolver._residual_tags
+# ---------------------------------------------------------------------------
+
+# Use concrete solvers to exercise the inherited method.
+# negate_J=True  → DIRK (residual ≈ I - c·J)
+# negate_J=False → ImplicitEuler (residual ≈ h·J - I)
+_dirk_solver = diffrax.Kvaerno3()
+_impl_solver = diffrax.ImplicitEuler()
+# y_struct size must be > 1; lineax treats size-1 operators as diagonal.
+_y_struct = jax.ShapeDtypeStruct((5,), jnp.float64)
+
+
+@pytest.mark.parametrize(
+    "input_tags, negate_J, expected_tags",
+    [
+        # nsd → psd for DIRK (I - NSD is PSD), preserved for ImplicitEuler (NSD - I)
+        (
+            frozenset({lx.negative_semidefinite_tag}),
+            True,
+            frozenset({lx.positive_semidefinite_tag, lx.symmetric_tag}),
+        ),
+        (
+            frozenset({lx.negative_semidefinite_tag}),
+            False,
+            frozenset({lx.negative_semidefinite_tag, lx.symmetric_tag}),
+        ),
+        # psd → dropped (sign of residual depends on step size); symmetric preserved
+        (
+            frozenset({lx.positive_semidefinite_tag}),
+            True,
+            frozenset({lx.symmetric_tag}),
+        ),
+        (
+            frozenset({lx.positive_semidefinite_tag}),
+            False,
+            frozenset({lx.symmetric_tag}),
+        ),
+        # unit_diagonal → dropped (I ± J never has unit diagonal in general)
+        (frozenset({lx.unit_diagonal_tag}), True, frozenset()),
+        (frozenset({lx.unit_diagonal_tag}), False, frozenset()),
+        # diagonal → preserved; identity is diagonal+tridiagonal → symmetric too
+        (
+            frozenset({lx.diagonal_tag}),
+            True,
+            frozenset({lx.diagonal_tag, lx.symmetric_tag, lx.tridiagonal_tag}),
+        ),
+        (
+            frozenset({lx.diagonal_tag}),
+            False,
+            frozenset({lx.diagonal_tag, lx.symmetric_tag, lx.tridiagonal_tag}),
+        ),
+        # symmetric → preserved
+        (frozenset({lx.symmetric_tag}), True, frozenset({lx.symmetric_tag})),
+        (frozenset({lx.symmetric_tag}), False, frozenset({lx.symmetric_tag})),
+        # tridiagonal → preserved
+        (frozenset({lx.tridiagonal_tag}), True, frozenset({lx.tridiagonal_tag})),
+        (frozenset({lx.tridiagonal_tag}), False, frozenset({lx.tridiagonal_tag})),
+        # lower_triangular → preserved
+        (
+            frozenset({lx.lower_triangular_tag}),
+            True,
+            frozenset({lx.lower_triangular_tag}),
+        ),
+        (
+            frozenset({lx.lower_triangular_tag}),
+            False,
+            frozenset({lx.lower_triangular_tag}),
+        ),
+        # upper_triangular → preserved
+        (
+            frozenset({lx.upper_triangular_tag}),
+            True,
+            frozenset({lx.upper_triangular_tag}),
+        ),
+        (
+            frozenset({lx.upper_triangular_tag}),
+            False,
+            frozenset({lx.upper_triangular_tag}),
+        ),
+        # empty → empty
+        (frozenset(), True, frozenset()),
+        (frozenset(), False, frozenset()),
+    ],
+)
+def test_residual_tags(input_tags, negate_J, expected_tags):
+    solver = _dirk_solver if negate_J else _impl_solver
+    if negate_J:
+        op_relation = lambda J: lx.IdentityLinearOperator(J.in_structure()) - J
+    else:
+        op_relation = lambda J: J - lx.IdentityLinearOperator(J.in_structure())
+    result = solver._residual_tags(input_tags, _y_struct, op_relation)
+    assert result == expected_tags, (
+        f"input={input_tags!r}, negate_J={negate_J}: "
+        f"got {result!r}, expected {expected_tags!r}"
     )

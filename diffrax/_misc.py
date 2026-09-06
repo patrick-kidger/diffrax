@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import cast
 
 import jax
@@ -11,6 +11,15 @@ import optimistix as optx
 from jaxtyping import Array, ArrayLike, PyTree, Shaped
 
 from ._custom_types import BoolScalarLike, RealScalarLike
+
+
+def _frozenset(x: object | Iterable[object]) -> frozenset[object]:
+    try:
+        iter_x = iter(x)  # pyright: ignore
+    except TypeError:
+        return frozenset([x])
+    else:
+        return frozenset(iter_x)
 
 
 def force_bitcast_convert_type(val, new_type):

@@ -24,7 +24,7 @@ from ._custom_types import (
     VF,
     Y,
 )
-from ._misc import upcast_or_raise
+from ._misc import _frozenset, upcast_or_raise
 from ._path import AbstractPath
 
 
@@ -189,6 +189,9 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
     """
 
     vector_field: Callable[[RealScalarLike, Y, Args], _VF]
+    tags: frozenset[object] = eqx.field(
+        default_factory=frozenset, converter=_frozenset, static=True
+    )
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
         out = self.vector_field(t, y, args)
@@ -232,6 +235,11 @@ ODETerm.__init__.__doc__ = """**Arguments:**
     arguments `(t, y, args)`. `t` is a scalar representing the integration time. `y` is
     the evolving state of the system. `args` are any static arguments as passed to
     [`diffrax.diffeqsolve`][].
+- `tags`: optional lineax tags (e.g. `lineax.symmetric_tag`,
+    `lineax.tridiagonal_tag`) describing structural properties of the vector
+    field Jacobian `∂f/∂y`. Implicit solvers use these to automatically select an
+    appropriate linear solver (e.g. Tridiagonal or Cholesky).
+    Leave empty if unsure.
 """
 
 

@@ -1,8 +1,10 @@
 from collections.abc import Callable
 from typing import ClassVar, TypeAlias
 
+import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax as lx
 import optimistix as optx
 from equinox.internal import ω
 
@@ -11,7 +13,7 @@ from .._heuristics import is_sde
 from .._local_interpolation import LocalLinearInterpolation
 from .._root_finder import with_stepsize_controller_tols
 from .._solution import is_okay, RESULTS
-from .._term import AbstractTerm
+from .._term import AbstractTerm, WrapTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
 
 
@@ -22,6 +24,12 @@ def _implicit_relation(z1, nonlinear_solve_args):
     vf_prod, t1, y0, args, control = nonlinear_solve_args
     diff = (vf_prod(t1, (y0**ω + z1**ω).ω, args, control) ** ω - z1**ω).ω
     return diff
+
+
+def _implicit_op_relation(J: lx.AbstractLinearOperator) -> lx.AbstractLinearOperator:
+    # Mirrors `_implicit_relation`: residual(z) ≈ h·vf(y0 + z) - z, so the residual
+    # Jacobian is h·J - I. The scalar h is omitted (tag inference is sign-only).
+    return J - lx.IdentityLinearOperator(J.in_structure())
 
 
 class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
@@ -82,6 +90,13 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         # (C.f. `AbstractRungeKutta.step`.)
         # If we wanted FSAL then really the correct thing to do would just be to
         # write out a `ButcherTableau` and use `AbstractSDIRK`.
+        _inner = terms.term if isinstance(terms, WrapTerm) else terms
+        y_struct = jax.tree_util.tree_map(
+            lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), y0
+        )
+        residual_tags = self._residual_tags(
+            getattr(_inner, "tags", frozenset()), y_struct, _implicit_op_relation
+        )
         k0 = terms.vf_prod(t0, y0, args, control)
         args = (terms.vf_prod, t1, y0, args, control)
         nonlinear_sol = optx.root_find(
@@ -91,6 +106,7 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
             args,
             throw=False,
             max_steps=self.root_find_max_steps,
+            tags=residual_tags,
         )
         k1 = nonlinear_sol.value
         y1 = (y0**ω + k1**ω).ω

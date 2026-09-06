@@ -14,6 +14,7 @@ import equinox as eqx
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import lineax as lx
 import optimistix as optx
 
 
@@ -213,6 +214,47 @@ class AbstractImplicitSolver(AbstractSolver[_SolverState]):
 
     root_finder: AbstractVar[optx.AbstractRootFinder]
     root_find_max_steps: AbstractVar[int]
+
+    def _residual_tags(
+        self,
+        jac_tags: frozenset,
+        y_struct,
+        implicit_op_relation: Callable[
+            [lx.AbstractLinearOperator], lx.AbstractLinearOperator
+        ],
+    ) -> frozenset:
+        """Derive residual Jacobian tags from ODE Jacobian tags via lineax composition.
+
+        `implicit_op_relation` is an `op -> op` function that mirrors the solver's
+        `implicit_relation`: given a dummy ODE Jacobian operator `J`, it returns the
+        corresponding residual Jacobian operator (e.g. `I - J` for DIRK, `J - I` for
+        ImplicitEuler). Tags are then read off the composed operator via lineax's
+        operator arithmetic, avoiding any manual tag-mapping logic.
+        """
+        if not jac_tags:
+            return frozenset()
+        dummy_J = lx.FunctionLinearOperator(
+            lambda v: v, y_struct, tags=jac_tags, closure_convert=False
+        )
+        composed = implicit_op_relation(dummy_J)
+        result: set[object] = set()
+        if lx.is_symmetric(composed):
+            result.add(lx.symmetric_tag)
+        if lx.is_positive_semidefinite(composed):
+            result.add(lx.positive_semidefinite_tag)
+        if lx.is_negative_semidefinite(composed):
+            result.add(lx.negative_semidefinite_tag)
+        if lx.is_diagonal(composed):
+            result.add(lx.diagonal_tag)
+        if lx.is_tridiagonal(composed):
+            result.add(lx.tridiagonal_tag)
+        if lx.has_unit_diagonal(composed):
+            result.add(lx.unit_diagonal_tag)
+        if lx.is_lower_triangular(composed):
+            result.add(lx.lower_triangular_tag)
+        if lx.is_upper_triangular(composed):
+            result.add(lx.upper_triangular_tag)
+        return frozenset(result)
 
 
 class AbstractItoSolver(AbstractSolver[_SolverState]):

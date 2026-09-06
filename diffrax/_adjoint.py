@@ -1,7 +1,7 @@
 import abc
 import functools as ft
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import Any, cast
 
 import equinox as eqx
@@ -15,6 +15,7 @@ import optimistix.internal as optxi
 from equinox.internal import ω
 
 from ._heuristics import is_sde, is_unsafe_sde
+from ._misc import _frozenset
 from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solver import (
     AbstractItoSolver,
@@ -450,15 +451,6 @@ if _vf.__globals__["__name__"].startswith("jaxtyping"):
     _vf = _vf.__wrapped__  # pyright: ignore[reportFunctionMemberAccess]
 if _solve.__globals__["__name__"].startswith("jaxtyping"):
     _solve = _solve.__wrapped__  # pyright: ignore[reportFunctionMemberAccess]
-
-
-def _frozenset(x: object | Iterable[object]) -> frozenset[object]:
-    try:
-        iter_x = iter(x)  # pyright: ignore
-    except TypeError:
-        return frozenset([x])
-    else:
-        return frozenset(iter_x)
 
 
 class ImplicitAdjoint(AbstractAdjoint):
