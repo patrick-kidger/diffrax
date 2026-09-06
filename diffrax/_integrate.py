@@ -1294,10 +1294,21 @@ def diffeqsolve(
         saveat_ts_index = 0
         save_index = 0
         ts = jnp.full(out_size, direction * jnp.inf, dtype=time_dtype)
-        struct = eqx.filter_eval_shape(subsaveat.fn, t0, y0, args)
-        ys = jtu.tree_map(
-            lambda y: jnp.full((out_size,) + y.shape, jnp.inf, dtype=y.dtype), struct
-        )
+
+        # Allocate the buffer *via* an operation on the saved value, not from its
+        # shape: `jnp.full` conjures an array with no operand, so an array-ish
+        # abstraction wrapping `y0` (a `quax.Value`) is erased as soon as a saved
+        # value round-trips through it (`_save` slices it opposite `y` in a `cond`).
+        # The select's predicate is a compile-time constant, so XLA folds it away
+        # and DCEs the `subsaveat.fn` call feeding the dead branch. `stop_gradient`
+        # is required: without it the buffer gains a tangent path back to `y0` and
+        # `BacksolveAdjoint` trips its `nondifferentiable` guard.
+        def _alloc(y):
+            shape = (out_size,) + jnp.shape(y)
+            fill = jnp.full(shape, jnp.inf, dtype=jnp.result_type(y))
+            return jnp.where(True, fill, lax.stop_gradient(jnp.broadcast_to(y, shape)))
+
+        ys = jtu.tree_map(_alloc, subsaveat.fn(t0, y0, args))
         return SaveState(
             ts=ts, ys=ys, save_index=save_index, saveat_ts_index=saveat_ts_index
         )

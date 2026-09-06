@@ -26,6 +26,7 @@ tests = [
   "jaxlib",
   "optax",
   "pytest",
+  "quax",
   "scipy",
   "tqdm"
 ]
