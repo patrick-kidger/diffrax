@@ -3,6 +3,7 @@ from .base import (
     AbstractAdaptiveSolver as AbstractAdaptiveSolver,
     AbstractImplicitSolver as AbstractImplicitSolver,
     AbstractItoSolver as AbstractItoSolver,
+    AbstractReversibleSolver as AbstractReversibleSolver,
     AbstractSolver as AbstractSolver,
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
@@ -30,6 +31,7 @@ from .milstein import (
 )
 from .quicsort import QUICSORT as QUICSORT
 from .ralston import Ralston as Ralston
+from .reversible import UReversible as UReversible
 from .reversible_heun import ReversibleHeun as ReversibleHeun
 from .runge_kutta import (
     AbstractDIRK as AbstractDIRK,
