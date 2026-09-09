@@ -4,26 +4,24 @@ As the solve progresses, progress meters offer the ability to have some kind of 
 
 ??? abstract "`diffrax.AbstractProgressMeter`"
 
-    ::: diffrax.AbstractProgressMeter
-        options:
-            members:
-                - init
-                - step
-                - close
+    An abstract base class for all progress meters.
+
+    **Methods:**
+
+    - `init()`
+    - `step()`
+    - `close()`
 
 ---
 
-::: diffrax.NoProgressMeter
-    options:
-        members:
-            - __init__
+### `diffrax.NoProgressMeter`
 
-::: diffrax.TextProgressMeter
-    options:
-        members:
-            - __init__
+A progress meter that does nothing.
 
-::: diffrax.TqdmProgressMeter
-    options:
-        members:
-            - __init__
+### `diffrax.TextProgressMeter`
+
+A progress meter that prints text to the console.
+
+### `diffrax.TqdmProgressMeter`
+
+A progress meter that displays a tqdm progress bar.

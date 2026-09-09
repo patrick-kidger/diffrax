@@ -81,6 +81,10 @@ plugins:
             - lineax.AutoLinearSolver
             - optimistix.AbstractRootFinder
             - optimistix.Chord
+            - equinox.internal._progress_meter.AbstractProgressMeter
+            - equinox.internal._progress_meter.NoProgressMeter
+            - equinox.internal._progress_meter.TextProgressMeter
+            - equinox.internal._progress_meter.TqdmProgressMeter
     - mkdocstrings:
         handlers:
             python:
