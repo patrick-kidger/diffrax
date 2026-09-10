@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 else:
     from equinox import AbstractClassVar, AbstractVar
 from equinox.internal import ω
-from jaxtyping import PyTree
+from jaxtyping import PyTree, Int, Array
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
 from .._heuristics import is_sde
@@ -147,6 +147,7 @@ class AbstractSolver(eqx.Module, Generic[_SolverState], **_set_metaclass):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
+        index: Int[Array, ""] | None
     ) -> tuple[Y, Y | None, DenseInfo, _SolverState, RESULTS]:
         """Make a single step of the solver.
 

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import Array, PRNGKeyArray, PyTree, Int, Float
 from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
@@ -25,7 +25,6 @@ from .._misc import (
     split_by_tree,
 )
 from .base import AbstractBrownianPath
-
 
 class UnsafeBrownianPath(AbstractBrownianPath):
     """Brownian simulation that is only suitable for certain cases.
@@ -66,6 +65,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         eqx.field(static=True)
     )
     key: PRNGKeyArray
+    arr: PyTree[Float[Array, " steps"]] | None
 
     def __init__(
         self,
@@ -74,6 +74,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         levy_area: type[
             BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
         ] = BrownianIncrement,
+        precompute: int | None = None
     ):
         """**Arguments:**
 
@@ -91,14 +92,42 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             if is_tuple_of_ints(shape)
             else shape
         )
+        key, subkey = jax.random.split(key)
         self.key = key
         self.levy_area = levy_area
+        # seems bad to define precompute and max_steps, should be the same I imagine? make eqx.tree_at in integrate? Idk
+        if precompute is None:
+            self.arr = None
+        else:
+            subkeys = split_by_tree(subkey, self.shape)
+            self.arr = jax.tree.map(
+                lambda subkey, shape: self._generate_noise(subkey, shape, precompute),
+                subkeys,
+                self.shape,
+            )
 
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
             for x in jtu.tree_leaves(self.shape)
         ):
             raise ValueError("UnsafeBrownianPath dtypes all have to be floating-point.")
+
+    def _generate_noise(
+        self,
+        key: PRNGKeyArray,
+        shape: jax.ShapeDtypeStruct,
+        max_steps: int,
+    ) -> Float[Array, "..."]:
+        if self.levy_area is SpaceTimeTimeLevyArea:
+            noise = jr.normal(key, (max_steps, 3, *shape.shape), shape.dtype)
+        elif self.levy_area is SpaceTimeLevyArea:
+            noise = jr.normal(key, (max_steps, 2, *shape.shape), shape.dtype)
+        elif self.levy_area is BrownianIncrement:
+            noise = jr.normal(key, (max_steps, *shape.shape), shape.dtype)
+        else:
+            assert False
+
+        return noise
 
     @property
     def t0(self):
@@ -115,6 +144,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
+        index: None | Int[Array, ""] = None
     ) -> PyTree[Array] | AbstractBrownianIncrement:
         """Implements [`diffrax.AbstractBrownianPath.evaluate`][]."""
         del left
@@ -127,6 +157,20 @@ class UnsafeBrownianPath(AbstractBrownianPath):
                 dtype = jnp.result_type(t0, t1)
             t0 = jnp.astype(t0, dtype)
             t1 = jnp.astype(t1, dtype)
+
+        if self.arr is not None:
+            out = jax.tree.map(
+                lambda shape, noise: self._evaluate_leaf_precomputed(
+                    t0, t1, shape, self.levy_area, use_levy, noise
+                ),
+                self.shape,
+                jax.tree.map(lambda x: x[index], self.arr),
+            )
+            if use_levy:
+                out = levy_tree_transpose(self.shape, out)
+                assert isinstance(out, self.levy_area)
+            return out
+
         t0 = eqxi.nondifferentiable(t0, name="t0")
         t1 = eqxi.nondifferentiable(t1, name="t1")
         t1 = cast(RealScalarLike, t1)
@@ -176,6 +220,41 @@ class UnsafeBrownianPath(AbstractBrownianPath):
             levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
         elif levy_area is BrownianIncrement:
             w = jr.normal(key, shape.shape, shape.dtype) * w_std
+            levy_val = BrownianIncrement(dt=dt, W=w)
+        else:
+            assert False
+
+        if use_levy:
+            return levy_val
+        return w
+
+    @staticmethod
+    def _evaluate_leaf_precomputed(
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        shape: jax.ShapeDtypeStruct,
+        levy_area: type[BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea],
+        use_levy: bool,
+        noises: Float[Array, "..."],
+    ):
+        w_std = jnp.sqrt(t1 - t0).astype(shape.dtype)
+        dt = jnp.asarray(t1 - t0, dtype=complex_to_real_dtype(shape.dtype))
+
+        if levy_area is SpaceTimeTimeLevyArea:
+            w = noises[0] * w_std
+            hh_std = w_std / math.sqrt(12)
+            hh = noises[1] * hh_std
+            kk_std = w_std / math.sqrt(720)
+            kk = noises[2] * kk_std
+            levy_val = SpaceTimeTimeLevyArea(dt=dt, W=w, H=hh, K=kk)
+
+        elif levy_area is SpaceTimeLevyArea:
+            w = noises[0] * w_std
+            hh_std = w_std / math.sqrt(12)
+            hh = noises[1] * hh_std
+            levy_val = SpaceTimeLevyArea(dt=dt, W=w, H=hh)
+        elif levy_area is BrownianIncrement:
+            w = noises * w_std
             levy_val = BrownianIncrement(dt=dt, W=w)
         else:
             assert False

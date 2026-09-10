@@ -62,7 +62,13 @@ class AbstractTerm(eqx.Module, Generic[_VF, _Control]):
         pass
 
     @abc.abstractmethod
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        index: IntScalarLike | None = None,
+        **kwargs,
+    ) -> _Control:
         r"""The control.
 
         Represents the $\mathrm{d}t$ in an ODE, or the $\mathrm{d}w(t)$ in an SDE, etc.
@@ -210,7 +216,13 @@ class ODETerm(AbstractTerm[_VF, RealScalarLike]):
 
         return jtu.tree_map(_broadcast_and_upcast, out, y)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> RealScalarLike:
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        index: IntScalarLike | None = None,
+        **kwargs,
+    ) -> RealScalarLike:
         return t1 - t0
 
     def prod(self, vf: _VF, control: RealScalarLike) -> Y:
@@ -417,8 +429,14 @@ class ControlTerm(AbstractTerm[_VF, _Control]):
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> VF:
         return self.vector_field(t, y, args)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
-        return self.control.evaluate(t0, t1, **kwargs)
+    def contr(
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        index: IntScalarLike | None = None,
+        **kwargs,
+    ) -> _Control:
+        return self.control.evaluate(t0, t1, index=index, **kwargs)
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         if isinstance(vf, lx.AbstractLinearOperator):
@@ -695,9 +713,15 @@ class MultiTerm(AbstractTerm, Generic[_Terms]):
         return tuple(term.vf(t, y, args) for term in self.terms)
 
     def contr(
-        self, t0: RealScalarLike, t1: RealScalarLike, **kwargs
+        self,
+        t0: RealScalarLike,
+        t1: RealScalarLike,
+        index: IntScalarLike | None = None,
+        **kwargs,
     ) -> tuple[PyTree[ArrayLike], ...]:
-        return tuple(term.contr(t0, t1, **kwargs) for term in self.terms)
+        return tuple(
+            term.contr(t0, t1, index, **kwargs) for term in self.terms
+        )
 
     def prod(
         self, vf: tuple[PyTree[ArrayLike], ...], control: tuple[PyTree[ArrayLike], ...]
@@ -740,10 +764,10 @@ class WrapTerm(AbstractTerm[_VF, _Control]):
             t = t * self.direction
         return self.term.vf(t, y, args)
 
-    def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
+    def contr(self, t0: RealScalarLike, t1: RealScalarLike, index: IntScalarLike | None = None, **kwargs) -> _Control:
         _t0 = jnp.where(self.direction == 1, t0, -t1)
         _t1 = jnp.where(self.direction == 1, t1, -t0)
-        return (self.direction * self.term.contr(_t0, _t1, **kwargs) ** ω).ω
+        return (self.direction * self.term.contr(_t0, _t1, index, **kwargs) ** ω).ω
 
     def prod(self, vf: _VF, control: _Control) -> Y:
         with jax.numpy_dtype_promotion("standard"):

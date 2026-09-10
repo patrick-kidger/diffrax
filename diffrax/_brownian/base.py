@@ -11,7 +11,7 @@ from .._custom_types import (
     SpaceTimeLevyArea,
 )
 from .._path import AbstractPath
-
+from jaxtyping import Int, Array
 
 _Control = TypeVar("_Control", bound=PyTree[Array] | AbstractBrownianIncrement)
 
@@ -28,6 +28,7 @@ class AbstractBrownianPath(AbstractPath[_Control]):
         t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
+        index: None | Int[Array, ""] = None
     ) -> _Control:
         r"""Samples a Brownian increment $w(t_1) - w(t_0)$.
 

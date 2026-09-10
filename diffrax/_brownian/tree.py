@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
-from jaxtyping import Array, Inexact, PRNGKeyArray, PyTree
+from jaxtyping import Array, Inexact, PRNGKeyArray, PyTree, Int
 from lineax.internal import complex_to_real_dtype
 
 from .._custom_types import (
@@ -329,6 +329,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t1: RealScalarLike | None = None,
         left: bool = True,
         use_levy: bool = False,
+        index: None | Int[Array, ""] = None
     ) -> PyTree[Array] | AbstractBrownianIncrement:
         """Implements [`diffrax.AbstractBrownianPath.evaluate`][]."""
         del left

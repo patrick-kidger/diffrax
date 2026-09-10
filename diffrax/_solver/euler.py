@@ -8,7 +8,7 @@ from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS
 from .._term import AbstractTerm
 from .base import AbstractItoSolver
-
+from jaxtyping import Int, Array
 
 _ErrorEstimate: TypeAlias = None
 _SolverState: TypeAlias = None
@@ -53,9 +53,10 @@ class Euler(AbstractItoSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
+        index: Int[Array, ""] | None
     ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
-        control = terms.contr(t0, t1)
+        control = terms.contr(t0, t1, index)
         y1 = (y0**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful

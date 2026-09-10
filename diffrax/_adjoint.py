@@ -274,12 +274,12 @@ class RecursiveCheckpointAdjoint(AbstractAdjoint):
         **kwargs,
     ):
         del throw, passed_solver_state, passed_controller_state
-        if is_unsafe_sde(terms):
-            raise ValueError(
-                "`adjoint=RecursiveCheckpointAdjoint()` does not support "
-                "`UnsafeBrownianPath`. Consider using `adjoint=ForwardMode()` "
-                "instead."
-            )
+        # if is_unsafe_sde(terms):
+        #     raise ValueError(
+        #         "`adjoint=RecursiveCheckpointAdjoint()` does not support "
+        #         "`UnsafeBrownianPath`. Consider using `adjoint=ForwardMode()` "
+        #         "instead."
+        #     )
         if self.checkpoints is None and max_steps is None:
             inner_while_loop = ft.partial(_inner_loop, kind="lax")
             outer_while_loop = ft.partial(_outer_loop, kind="lax")

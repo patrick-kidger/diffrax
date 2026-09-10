@@ -378,6 +378,7 @@ def loop(
             args,
             state.solver_state,
             state.made_jump,
+            state.num_steps
         )
 
         # e.g. if someone has a sqrt(y) in the vector field, and dt0 is so large that
