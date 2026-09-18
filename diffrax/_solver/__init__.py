@@ -1,3 +1,4 @@
+from .alexander2 import Alexander2 as Alexander2
 from .align import ALIGN as ALIGN
 from .base import (
     AbstractAdaptiveSolver as AbstractAdaptiveSolver,
