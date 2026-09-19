@@ -74,8 +74,7 @@ def update_result(old_result: RESULTS, new_result: RESULTS) -> RESULTS:
     error_n | error_n error_n error_o
     """
     out_result = RESULTS.where(is_okay(old_result), new_result, old_result)
-    with jax.ensure_compile_time_eval():
-        pred = is_okay(new_result) & is_event(old_result)
+    pred = is_okay(new_result) & is_event(old_result)
     return RESULTS.where(pred, old_result, out_result)
 
 
