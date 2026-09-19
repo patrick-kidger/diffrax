@@ -1,7 +1,6 @@
 import warnings
 from typing import Any
 
-import jax
 import optimistix as optx
 from jaxtyping import Array, Bool, PyTree, Real, Shaped
 
@@ -50,8 +49,7 @@ RESULTS.discrete_terminating_event_occurred = discrete_terminating_event_occurre
 
 
 def is_okay(result: RESULTS) -> Bool[Array, ""]:
-    with jax.ensure_compile_time_eval():  # for the `|` between two `Bool[Array, ""]`.
-        return is_successful(result) | is_event(result)
+    return is_successful(result) | is_event(result)
 
 
 def is_successful(result: RESULTS) -> Bool[Array, ""]:
