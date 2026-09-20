@@ -6,10 +6,12 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import numpy as np
 import optimistix as optx
 import pytest
+import scipy.integrate as integrate
 
-from .helpers import implicit_tol, tree_allclose
+from .helpers import all_ode_solvers, implicit_tol, tree_allclose
 
 
 def test_half_solver():
@@ -415,6 +417,8 @@ def test_sil3(dtype):
         diffrax.KenCarp3(),
         diffrax.KenCarp4(),
         diffrax.KenCarp5(),
+        diffrax.Ros3p(),
+        diffrax.Rodas5p(),
     ),
 )
 def test_rober(solver):
@@ -477,6 +481,91 @@ def test_implicit_closure_convert():
         return out.ys[0]  # pyright: ignore
 
     f(1.0)
+
+
+@pytest.mark.parametrize(
+    "solver",
+    (
+        diffrax.Ros3p(),
+        diffrax.Rodas5p(),
+    ),
+)
+def test_rosenbrock(solver):
+    term = diffrax.ODETerm(lambda t, y, args: -50.0 * y + jnp.sin(t))
+    t0 = 0
+    t1 = 5
+    y0 = 0
+    ts = jnp.array([1.0, 2.0, 3.0], dtype=jnp.float64)
+    saveat = diffrax.SaveAt(ts=ts)
+
+    stepsize_controller = diffrax.PIDController(rtol=1e-10, atol=1e-12)
+    sol = diffrax.diffeqsolve(
+        term,
+        solver,
+        t0=t0,
+        t1=t1,
+        dt0=0.1,
+        y0=y0,
+        stepsize_controller=stepsize_controller,
+        max_steps=60000,
+        saveat=saveat,
+    )
+
+    def exact_sol(t):
+        return (
+            jnp.exp(-50.0 * t) * (y0 + 1 / 2501)
+            + (50.0 * jnp.sin(t) - jnp.cos(t)) / 2501
+        )
+
+    ys_ref = jtu.tree_map(exact_sol, ts)
+    tree_allclose(ys_ref, sol.ys)
+
+
+@pytest.mark.parametrize(
+    "solver",
+    all_ode_solvers,
+)
+def test_multiterm(solver):
+    term = diffrax.MultiTerm(
+        diffrax.ODETerm(lambda t, y, args: -0.5 * y**3),
+        diffrax.ODETerm(lambda t, y, args: t),
+    )
+    t0 = 0.0
+    t1 = 20.0
+    y0 = 1
+    dt0 = 0.1
+    if not isinstance(solver, diffrax.AbstractAdaptiveSolver):
+        stepsize_controller = diffrax.ConstantStepSize()
+    elif isinstance(solver, diffrax.ReversibleHeun):
+        stepsize_controller = diffrax.ConstantStepSize()
+        dt0 = 0.001
+    else:
+        stepsize_controller = diffrax.PIDController(rtol=1e-10, atol=1e-12)
+
+    sol = diffrax.diffeqsolve(
+        term,
+        solver,
+        t0=t0,
+        t1=t1,
+        dt0=dt0,
+        y0=y0,
+        stepsize_controller=stepsize_controller,
+        max_steps=60000000,
+    )
+
+    def scipy_fn(t, y):
+        return np.asarray((-0.5 * y**3) + t)
+
+    scipy_sol = integrate.solve_ivp(
+        scipy_fn,
+        (0, 20),
+        [y0],
+        method="DOP853",
+        rtol=1e-8,
+        atol=1e-8,
+        t_eval=[20],
+    )
+    tree_allclose(scipy_sol.y[0], sol.ys)
 
 
 # Doesn't crash
