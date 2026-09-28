@@ -243,7 +243,9 @@ def test_grad_of_discontinuous_forcing():
 # length, d(jump) - d(t0), is O(1). This used to be carried into all later steps by
 # `PIDController` (whose `dt = prev_dt * factor` only stopped the gradient of `factor`)
 # and grew jump after jump, so that the gradient with respect to several close jump
-# times was wrong by many orders of magnitude.
+# times was wrong by many orders of magnitude. With `step_ts` too, the steps that land
+# on a `step_ts` time did the same.
+@pytest.mark.parametrize("with_step_ts", [False, True])
 @pytest.mark.parametrize(
     "adjoint",
     [
@@ -252,7 +254,7 @@ def test_grad_of_discontinuous_forcing():
         diffrax.ForwardMode(),
     ],
 )
-def test_grad_wrt_close_jump_ts(adjoint):
+def test_grad_wrt_close_jump_ts(adjoint, with_step_ts):
     def run(shift):
         # A train of 7 pulses 0.04 apart, whose 14 edges all move with `shift`.
         length = (1.78 - 6 * 0.04) / 7
@@ -264,9 +266,11 @@ def test_grad_wrt_close_jump_ts(adjoint):
             forcing = jnp.sum(jnp.where((t >= starts) & (t < ends), 15.0, 0.0))
             return -20.0 * y + forcing, y**2
 
-        pid_controller = diffrax.PIDController(rtol=1e-8, atol=1e-8)
+        pid_controller = diffrax.PIDController(rtol=1e-10, atol=1e-10)
         stepsize_controller = diffrax.ClipStepSizeController(
-            pid_controller, jump_ts=jnp.sort(jnp.concatenate([starts, ends]))
+            pid_controller,
+            jump_ts=jnp.sort(jnp.concatenate([starts, ends])),
+            step_ts=jnp.linspace(0.0, 2.0, 101) if with_step_ts else None,
         )
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(vector_field),
