@@ -239,6 +239,59 @@ def test_grad_of_discontinuous_forcing():
     assert tree_allclose(finite_diff, autodiff)
 
 
+# The step clipped to just before a jump is often tiny, whilst the tangent of its
+# length, d(jump) - d(t0), is O(1). This used to be carried into all later steps by
+# `PIDController` (whose `dt = prev_dt * factor` only stopped the gradient of `factor`)
+# and grew jump after jump, so that the gradient with respect to several close jump
+# times was wrong by many orders of magnitude.
+@pytest.mark.parametrize(
+    "adjoint",
+    [
+        diffrax.RecursiveCheckpointAdjoint(),
+        diffrax.DirectAdjoint(),
+        diffrax.ForwardMode(),
+    ],
+)
+def test_grad_wrt_close_jump_ts(adjoint):
+    def run(shift):
+        # A train of 7 pulses 0.04 apart, whose 14 edges all move with `shift`.
+        length = (1.78 - 6 * 0.04) / 7
+        starts = 0.1 + jnp.arange(7.0) * (length + 0.04) + shift
+        ends = starts + length
+
+        def vector_field(t, y, args):
+            y, _ = y
+            forcing = jnp.sum(jnp.where((t >= starts) & (t < ends), 15.0, 0.0))
+            return -20.0 * y + forcing, y**2
+
+        pid_controller = diffrax.PIDController(rtol=1e-8, atol=1e-8)
+        stepsize_controller = diffrax.ClipStepSizeController(
+            pid_controller, jump_ts=jnp.sort(jnp.concatenate([starts, ends]))
+        )
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(vector_field),
+            diffrax.Tsit5(),
+            0.0,
+            2.0,
+            None,
+            (0.0, 0.0),
+            stepsize_controller=stepsize_controller,
+            adjoint=adjoint,
+        )
+        _, integral = cast(Array, sol.ys)
+        (integral,) = integral
+        return integral
+
+    shift = 0.013
+    eps = 1e-6
+    finite_diff = (run(shift + eps) - run(shift - eps)) / (2 * eps)
+    if isinstance(adjoint, diffrax.ForwardMode):
+        _, autodiff = jax.jit(lambda s: jax.jvp(run, (s,), (1.0,)))(shift)
+    else:
+        autodiff = jax.jit(jax.grad(run))(shift)
+    assert tree_allclose(finite_diff, autodiff, rtol=1e-4)
+
+
 def test_pid_meta():
     ts = jnp.array([3, 4], dtype=jnp.float64)
     pid1 = diffrax.PIDController(rtol=1e-4, atol=1e-6)

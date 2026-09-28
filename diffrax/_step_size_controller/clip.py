@@ -98,6 +98,17 @@ def _bump_next_t0(next_t0, ts):
     return next_t0, made_jump1 | made_jump2
 
 
+def _drop_step_tangent(next_t0, next_t1, landed):
+    # After a step that landed on a clip time, the proposed step keeps its value but
+    # not its tangent: see the comment at its use in `adapt_step_size`.
+    # (Written so that the value is exactly `next_t1`, and the tangent that of
+    # `next_t0`.)
+    rigid_t1 = jax.lax.stop_gradient(next_t1) + (
+        next_t0 - jax.lax.stop_gradient(next_t0)
+    )
+    return jnp.where(landed, rigid_t1, next_t1)
+
+
 def _find_idx_with_hint(t: RealScalarLike, ts: Array | None, hint: IntScalarLike):
     # Find index of first element of `ts` strictly greater than `t`.
     # Uses a linear search starting from `hint`. The value `hint` is assumed to be in
@@ -367,7 +378,8 @@ class ClipStepSizeController(
             # propose a step over the interval [something, prevbefore(x)], then on the
             # next step the inner controller will propose a step over [prevbefore(x), x]
             # which definitely isn't desired!
-            _next_t0, _ = _bump_next_t0(next_t0, step_ts)
+            _next_t0, landed_on_step = _bump_next_t0(next_t0, step_ts)
+            next_t1 = _drop_step_tangent(next_t0, next_t1, landed_on_step)
             step_index = _find_idx_with_hint(_next_t0, step_ts, step_index)
             next_t1 = _clip_t(next_t1, step_index, step_ts, False)
             step_info = step_index, step_ts
@@ -376,6 +388,15 @@ class ClipStepSizeController(
         else:
             jump_index, jump_ts = controller_state.jump_info
             next_t0, made_jump2 = _bump_next_t0(next_t0, jump_ts)
+            # The step we just made was clipped to (just before) this jump time, so it
+            # is often very short, whilst the tangent of its length, d(jump) - d(t0),
+            # is O(1). The inner controller proposes the next step as a multiple of
+            # that length, and keeping its tangent would scale the tangents of all the
+            # following step times by (step size / clipped step size): with several
+            # close traced `jump_ts`, the derivative with respect to them blows up.
+            # Instead, the proposed step moves rigidly with the jump time. (Likewise
+            # after landing on a `step_ts` time, above.)
+            next_t1 = _drop_step_tangent(next_t0, next_t1, made_jump2)
             # This next line is to fix
             # https://github.com/patrick-kidger/diffrax/issues/713
             # TODO: should we add this to the `step_ts` branch as well?
