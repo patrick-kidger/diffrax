@@ -487,7 +487,15 @@ class PIDController(
             _y1_candidate = jnp.where(_nan, _y0, _y1_candidate)
             _y = jnp.maximum(jnp.abs(_y0), jnp.abs(_y1_candidate))
             with jax.numpy_dtype_promotion("standard"):
-                return _y_error / (self.atol + _y * self.rtol)
+                _scale = self.atol + _y * self.rtol
+                if jnp.iscomplexobj(_y_error):
+                    # Divide the real and imaginary parts separately. A failed step
+                    # (e.g. an implicit solve that did not converge) reports
+                    # `y_error = inf`, i.e. `inf + 0j`. Complex division by `_scale`
+                    # would give `inf + nanj`, hence a NaN norm and a NaN step size,
+                    # and the solve would never recover.
+                    return lax.complex(_y_error.real / _scale, _y_error.imag / _scale)
+                return _y_error / _scale
 
         scaled_error = self.norm(jtu.tree_map(_scale, y0, y1_candidate, y_error))
         keep_step = scaled_error < 1
