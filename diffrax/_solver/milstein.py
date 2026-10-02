@@ -311,7 +311,9 @@ class ItoMilstein(AbstractItoSolver):
         def __dot(_v0, _ΔwΔw):
             # _v0 has structure (leaf(y0), leaf(Δw), leaf(Δw))
             # _ΔwΔw has structure (leaf(Δw), leaf(Δw))
-            _out = jnp.tensordot(jnp.conj(_v0), _ΔwΔw, axes=jnp.ndim(_ΔwΔw))
+            # This contracts a directional derivative against the iterated noise
+            # increments; it is not a Hermitian inner product.
+            _out = jnp.tensordot(_v0, _ΔwΔw, axes=jnp.ndim(_ΔwΔw))
             # _out has structure (leaf(y0),)
             return _out
 
