@@ -313,6 +313,21 @@ def test_find_idx_with_hint():
         assert idx == 3  # not 2; we want the first value *strictly* greater.
         idx = _find_idx_with_hint(1.9, ts, hint)
         assert idx == 2
+        assert _find_idx_with_hint(-1.0, ts, hint) == 0
+        assert _find_idx_with_hint(4.0, ts, hint) == 5
+        assert _find_idx_with_hint(7.0, ts, hint) == 5
+
+
+def test_find_idx_with_hint_is_loop_free():
+    # A `while_loop` costs a device-to-host synchronisation per iteration on GPU, and
+    # this search runs on every step of an adaptive solve.
+    ts = jnp.linspace(0.0, 1.0, 100)
+    hint = jnp.array(3)
+    jaxpr = jax.make_jaxpr(lambda t: _find_idx_with_hint(t, ts, hint))(0.5)
+    assert "while" not in str(jaxpr)
+    idx = jax.jit(lambda t: _find_idx_with_hint(t, ts, hint))(0.5)
+    assert idx == 50
+    assert jnp.result_type(idx) == hint.dtype
 
 
 # https://github.com/patrick-kidger/diffrax/issues/607

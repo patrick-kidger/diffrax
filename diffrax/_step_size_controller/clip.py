@@ -100,21 +100,14 @@ def _bump_next_t0(next_t0, ts):
 
 def _find_idx_with_hint(t: RealScalarLike, ts: Array | None, hint: IntScalarLike):
     # Find index of first element of `ts` strictly greater than `t`.
-    # Uses a linear search starting from `hint`. The value `hint` is assumed to be in
-    # `{0, 1, ..., len(ts)}`
+    # The value `hint` is assumed to be in `{0, 1, ..., len(ts)}`; it is only used for
+    # its dtype. We use an unrolled binary search rather than a `while_loop` walking
+    # from `hint`: each iteration of a `while_loop` costs a device-to-host
+    # synchronisation on GPU, whilst this is a handful of fused comparisons.
     if ts is None:
         return 0
-
-    def cond_up(_i):
-        return (_i < len(ts)) & (ts[_i] <= t)
-
-    def cond_down(_i):
-        return (_i > 0) & (ts[_i - 1] > t)
-
-    i = hint
-    i = jax.lax.while_loop(cond_up, lambda _i: _i + 1, i)
-    i = jax.lax.while_loop(cond_down, lambda _i: _i - 1, i)
-    return i
+    i = jnp.searchsorted(ts, t, side="right", method="scan_unrolled")
+    return i.astype(jnp.result_type(hint))
 
 
 class ClipStepSizeController(
