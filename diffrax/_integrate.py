@@ -114,6 +114,19 @@ def _is_none(x: Any) -> bool:
     return x is None
 
 
+class _WrapEventCondFn(eqx.Module):
+    cond_fn: Callable
+    direction: IntScalarLike
+    original_kwargs: dict[str, Any]
+
+    def __call__(self, t, y, args, **kwargs):
+        # Keep traced dependencies in PyTree fields, rather than a Python closure,
+        # so that custom differentiation rules can account for them.
+        return self.cond_fn(
+            self.direction * t, y, args, **(kwargs | self.original_kwargs)
+        )
+
+
 class TermAndSolverIncompatible(ValueError):
     pass
 
@@ -1155,6 +1168,28 @@ def diffeqsolve(
 
     # Normalises time: if t0 > t1 then flip things around.
     direction = jnp.where(t0 < t1, 1, -1)
+    if event is not None:
+        # Event callbacks describe the original problem, just like vector fields
+        # and SaveAt callbacks. Keep their times and associated problem data in
+        # physical coordinates throughout initialisation, stepping, and root finding.
+        event_kwargs = dict(
+            terms=terms,
+            t0=t0,
+            t1=t1,
+            dt0=dt0,
+            saveat=saveat,
+            stepsize_controller=stepsize_controller,
+        )
+
+        event = eqx.tree_at(
+            lambda e: e.cond_fn,
+            event,
+            jtu.tree_map(
+                lambda cond_fn: _WrapEventCondFn(cond_fn, direction, event_kwargs),
+                event.cond_fn,
+                is_leaf=callable,
+            ),
+        )
     t0 = t0 * direction
     t1 = t1 * direction
     if dt0 is not None:
