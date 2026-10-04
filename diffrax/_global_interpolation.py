@@ -405,7 +405,7 @@ def _check_ts(ts: Real[Array, " times"]) -> Real[Array, " times"]:
         raise ValueError(f"`ts` must be of length at least 2; got {ts.shape[0]}")
     # Also catches any NaN times.
     ts = eqxi.error_if(
-        ts, ts[:-1] >= ts[1:], "`ts` must be monotonically strictly increasing."
+        ts, ~(ts[:-1] < ts[1:]), "`ts` must be monotonically strictly increasing."
     )
     return ts
 
