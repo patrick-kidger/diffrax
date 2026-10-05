@@ -4,6 +4,18 @@
 
 Try switching to 64-bit precision. (Instead of the 32-bit that is the default in JAX.) [See here](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision).
 
+### Why do autodiff gradients disagree with finite differences of an adaptive solve?
+
+There are two different checks: differentiating the numerical computation, and approximating the derivative of the exact differential equation solution. Accurate solution values alone do not guarantee accurate sensitivities. See [Diffrax issue #499](https://github.com/patrick-kidger/diffrax/issues/499) and [Section 4.1.2.4 of this review](https://arxiv.org/html/2406.09699v2) for discussion.
+
+For [`diffrax.PIDController`][], the automatically chosen initial step size and step-size update factors use `jax.lax.stop_gradient`. Autodiff therefore does not differentiate these choices. A finite-difference check reruns the solver on perturbed inputs, which can change the step sizes and accepted/rejected steps. The two calculations need not agree, especially at loose tolerances.
+
+When investigating a discrepancy:
+
+- Check sensitivity accuracy as well as solution accuracy against an analytic solution or an independently validated reference.
+- Vary the solver tolerances and the finite-difference perturbation size. Reducing the perturbation alone does not remove numerical solution error or guarantee agreement.
+- To isolate the effect of adaptivity, compare autodiff and finite differences using the same fixed time grid, e.g. with [`diffrax.StepTo`][]. This checks the fixed-grid numerical computation, rather than proving accuracy for the original differential equation.
+
 ### Diffrax seem to be slower than <some other library\>?
 
 Questions of this form are a fairly common source of issues in the Diffrax issue tracker! In practice, Diffrax is consistently amongst the fastest ODE solvers, and these usually stem from incorrect usage (e.g. recompiling your JAX program on each invocation) or comparisons (e.g. using different solvers/tolerances in each implementation).
