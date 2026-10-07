@@ -16,7 +16,7 @@ For non-stiff problems then [`diffrax.Tsit5`][] is a good general-purpose solver
     
     For a long time the recommend default solver for many problems was [`diffrax.Dopri5`][]. This is the default solver used in [`torchdiffeq`](https://github.com/rtqichen/torchdiffeq/), and is the solver used in MATLAB's `ode45`. However `Tsit5` is now reckoned on being slightly more efficient overall. (Try both if you wish.)
 
-If you need accurate solutions at tight tolerances then try [`diffrax.Dopri8`][].
+If you need accurate solutions at tight tolerances then try [`diffrax.Dopri8`][] or [`diffrax.Vern9`][]. For smooth problems at very tight tolerances (around `rtol=1e-9` or smaller) `Vern9` is often cheaper still, but its dense output is only third-order accurate.
 
 If you are solving a neural differential equation, and training via discretise-then-optimise (corresponding to `diffeqsolve(..., adjoint=RecursiveCheckpointAdjoint())`, which is the default), then accurate solutions are often not needed and a low-order solver will be most efficient. For example something like [`diffrax.Heun`][].
 

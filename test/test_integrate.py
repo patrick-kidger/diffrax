@@ -141,7 +141,12 @@ def test_basic(solver, t_dtype, y_dtype, treedef, stepsize_controller, getkey):
         assert tree_allclose(y1, true_y1, atol=1e-2, rtol=1e-2)
 
 
-@pytest.mark.parametrize("solver", all_ode_solvers + all_split_solvers)
+# `Vern9` is covered by `test_vern9_order`.
+@pytest.mark.parametrize(
+    "solver",
+    [s for s in all_ode_solvers if not isinstance(s, diffrax.Vern9)]
+    + list(all_split_solvers),
+)
 @pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
 def test_ode_order(solver, dtype):
     solver = implicit_tol(solver)

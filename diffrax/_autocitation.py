@@ -34,6 +34,7 @@ from ._solver import (
     SPaRK,
     SRA1,
     Tsit5,
+    Vern9,
 )
 from ._step_size_controller import ClipStepSizeController, PIDController
 
@@ -361,9 +362,8 @@ def _virtual_brownian_tree(terms):
 
 @citation_rules.append
 def _space_time_levy_area(terms):
-    has_levy_area = (
-        lambda x: isinstance(x, AbstractBrownianPath)
-        and x.levy_area != BrownianIncrement
+    has_levy_area = lambda x: (
+        isinstance(x, AbstractBrownianPath) and x.levy_area != BrownianIncrement
     )
     leaves = jtu.tree_leaves(terms, is_leaf=has_levy_area)
     if any(has_levy_area(leaf) for leaf in leaves):
@@ -487,6 +487,7 @@ _is_subsaveat = lambda x: isinstance(x, SubSaveAt)
 def _solvers(solver, saveat=None):
     if type(solver) in (
         Tsit5,
+        Vern9,
         Kvaerno3,
         Kvaerno4,
         Kvaerno5,

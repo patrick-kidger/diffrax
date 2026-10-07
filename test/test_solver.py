@@ -6,8 +6,10 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import numpy as np
 import optimistix as optx
 import pytest
+import scipy.stats
 
 from .helpers import implicit_tol, tree_allclose
 
@@ -502,3 +504,45 @@ def test_adaptive_dt0_milstein(getkey):
     diffrax.diffeqsolve(
         terms, solver, 0, 1, None, 1, stepsize_controller=stepsize_controller
     )
+
+
+def test_vern9_tableau():
+    tableau = diffrax.Vern9.tableau
+    # The stage times are `(0, c)`; row `i` of `a_lower` is stage `i+1`.
+    c = np.concatenate([[0.0], tableau.c])
+    for i, row in enumerate(tableau.a_lower):
+        np.testing.assert_allclose(np.sum(row), c[i + 1], atol=1e-15)
+    # The solution is 9th order, and the embedded solution (the difference of which is
+    # `b_error`) is 8th order. Written as quadrature conditions `sum_i b_i c_i^(q-1)`.
+    for q in range(1, 10):
+        np.testing.assert_allclose(
+            np.sum(tableau.b_sol * c ** (q - 1)), 1 / q, atol=1e-15
+        )
+    for q in range(1, 9):
+        np.testing.assert_allclose(
+            np.sum(tableau.b_error * c ** (q - 1)), 0, atol=1e-15
+        )
+    assert abs(np.sum(tableau.b_error * c**8)) > 1e-8
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
+def test_vern9_order(dtype):
+    akey, ykey = jr.split(jr.PRNGKey(5678))
+    A = jr.normal(akey, (10, 10), dtype=dtype) * 0.5
+    y0 = jr.normal(ykey, (10,), dtype=dtype)
+    true_y1 = jax.scipy.linalg.expm(4 * A) @ y0
+    exponents = [0, -1, -2, -3]  # Smaller steps are dominated by round-off.
+    errors = []
+    for exponent in exponents:
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: A @ y),
+            diffrax.Vern9(),
+            0,
+            4,
+            2.0**exponent,
+            y0,
+        )
+        errors.append(jnp.log2(jnp.sum(jnp.abs(sol.ys[-1] - true_y1))))
+    order = scipy.stats.linregress(exponents, errors).slope
+    # Four points are not asymptotic: we measure 8.1 (real) and 10.2 (complex).
+    assert abs(order - 9) < 1.3

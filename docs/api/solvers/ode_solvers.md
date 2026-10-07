@@ -54,6 +54,11 @@ These methods are suitable for most problems.
         members:
             - __init__
 
+::: diffrax.Vern9
+    options:
+        members:
+            - __init__
+
 ---
 
 ### Implicit Runge--Kutta (IRK) methods
