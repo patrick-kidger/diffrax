@@ -157,7 +157,10 @@ class VeryChord(optx.AbstractRootFinder):
         at_least_two = state.step >= 2
         rate = state.diffsize / state.diffsize_prev
         factor = state.diffsize * rate / (1 - rate)
-        small = _small(state.diffsize)
+        # An increment well below the tolerances has converged, whatever its ratio to
+        # the previous one. (If the initial guess is already exact then the increments
+        # are just rounding errors, and their ratio is meaningless.)
+        small = _small(state.diffsize) | (state.diffsize < self.kappa)
         diverged = _diverged(rate)
         converged = _converged(factor, self.kappa)
         terminate = at_least_two & (small | diverged | converged)

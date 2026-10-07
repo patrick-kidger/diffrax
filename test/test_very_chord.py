@@ -84,3 +84,24 @@ def test_very_chord():
         )
         assert sol.result == optx.RESULTS.successful
         assert tree_allclose(fn(sol.value, args), zero, rtol=tol, atol=tol)
+
+
+def test_exact_prediction():
+    # The vector field is almost constant, so the prediction of each implicit stage is
+    # exact up to rounding error. The chord increments are then just rounding errors,
+    # and their ratio should not be read as a divergence. See #782.
+    term = diffrax.ODETerm(lambda t, y, args: (t / 60 / (y / 0.01) + 3) * 0.01 / 60)
+    stepsize_controller = diffrax.PIDController(rtol=1e-10, atol=1e-12, dtmax=0.2)
+    sol = diffrax.diffeqsolve(
+        term,
+        diffrax.Kvaerno5(),
+        0.0,
+        10.0,
+        None,
+        jnp.array([1.0]),
+        stepsize_controller=stepsize_controller,
+        max_steps=2000,
+        throw=False,
+    )
+    assert sol.result == diffrax.RESULTS.successful
+    assert sol.stats["num_rejected_steps"] == 0
