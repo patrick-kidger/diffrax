@@ -9,7 +9,6 @@ import jax.tree_util as jtu
 import numpy as np
 import optimistix as optx
 import pytest
-import scipy.stats
 
 from .helpers import implicit_tol, tree_allclose
 
@@ -542,7 +541,8 @@ def test_vern9_order(dtype):
             2.0**exponent,
             y0,
         )
+        assert sol.ys is not None
         errors.append(jnp.log2(jnp.sum(jnp.abs(sol.ys[-1] - true_y1))))
-    order = scipy.stats.linregress(exponents, errors).slope
-    # Four points are not asymptotic: we measure 8.1 (real) and 10.2 (complex).
+    order, _ = np.polyfit(exponents, errors, 1)
+    # Few points poorly estimate the asymptotic convergence for high order methods.
     assert abs(order - 9) < 1.3
