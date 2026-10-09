@@ -446,3 +446,43 @@ def test_t0_at_jump_time():
     # What used to happen was something very weird where we'd oscillate across the
     # jump time.
     assert sol.result == diffrax.RESULTS.successful
+
+
+@pytest.mark.parametrize("time_sign", [-1, 1])
+def test_rejected_step_rounding(time_sign):
+    # Four ULPs leave room to reduce the step, even when the PID factor rounds
+    # the proposed endpoint back to the endpoint that was just rejected.
+    t0 = jnp.asarray(time_sign * 100_000, dtype=jnp.float32)
+    t1 = t0 + jnp.float32(0.03125)
+    controller = diffrax.PIDController(rtol=0, atol=1)
+    state = (jnp.float32(1), jnp.float32(1), False)
+    keep, next_t0, next_t1, _, _, result = eqx.filter_jit(controller.adapt_step_size)(
+        t0, t1, jnp.float32(0), jnp.float32(0), None, jnp.float32(1.1), 5, state
+    )
+    assert not keep
+    assert next_t0 == t0
+    assert t0 < next_t1 < t1
+    assert result == diffrax.RESULTS.successful
+
+
+@pytest.mark.parametrize("backwards", [False, True])
+def test_large_time_rejected_step(backwards):
+    # Translating an autonomous ODE should not leave the solver repeatedly
+    # rejecting exactly the same representable interval.
+    t0 = jnp.float32(100_000)
+    sign = -1 if backwards else 1
+    term = diffrax.ODETerm(lambda t, y, args: -sign * 20 * y)
+    solution = diffrax.diffeqsolve(
+        term,
+        diffrax.Dopri5(),
+        t0=t0,
+        t1=t0 + sign * jnp.float32(0.125),
+        dt0=sign * jnp.float32(0.03125),
+        y0=jnp.float32(1),
+        stepsize_controller=diffrax.PIDController(rtol=0, atol=6e-5),
+        max_steps=64,
+        throw=False,
+    )
+    assert solution.result == diffrax.RESULTS.successful
+    assert solution.stats["num_rejected_steps"] > 0
+    assert jnp.allclose(cast(Array, solution.ys), jnp.exp(-2.5), atol=6e-5, rtol=0)
