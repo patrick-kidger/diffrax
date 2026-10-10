@@ -556,6 +556,14 @@ class PIDController(
 
         next_t0 = jnp.where(keep_step, t1, t0)
         next_t1 = next_t0 + dt
+        if self.dtmin is None:
+            # A smaller dt can round back to the same rejected endpoint. Move to
+            # the previous representable time if it still gives a nonzero step.
+            smaller_t1 = eqxi.prevbefore(
+                jnp.asarray(t1, dtype=jnp.result_type(next_t1))
+            )
+            rounded_rejection = (~keep_step) & (next_t1 >= t1) & (smaller_t1 > next_t0)
+            next_t1 = jnp.where(rounded_rejection, smaller_t1, next_t1)
 
         inv_scaled_error = jnp.where(keep_step, inv_scaled_error, prev_inv_scaled_error)
         prev_inv_scaled_error = jnp.where(
