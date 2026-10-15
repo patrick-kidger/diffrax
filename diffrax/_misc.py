@@ -134,7 +134,9 @@ def split_by_tree(key, tree, is_leaf: Callable[[PyTree], bool] | None = None):
 
 
 def is_tuple_of_ints(obj):
-    return isinstance(obj, tuple) and all(isinstance(x, int) for x in obj)
+    return isinstance(obj, tuple) and all(
+        isinstance(x, (int, np.integer)) and not isinstance(x, bool) for x in obj
+    )
 
 
 def static_select(pred: BoolScalarLike, a: ArrayLike, b: ArrayLike) -> ArrayLike:

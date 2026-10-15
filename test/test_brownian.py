@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import numpy as np
 import pytest
 import scipy.stats as stats
 
@@ -693,3 +694,41 @@ def test_levy_area_reverse_time():
     assert jtu.tree_map(
         lambda fwd, bck: jnp.allclose(fwd, -bck), fwd_increments, back_increments
     )
+
+
+@pytest.mark.parametrize(
+    "ctr", [diffrax.VirtualBrownianTree, diffrax.UnsafeBrownianPath]
+)
+def test_brownian_shape_validation(ctr):
+    import jaxtyping
+
+    key = jr.PRNGKey(0)
+
+    def _make(shape):
+        if ctr is diffrax.VirtualBrownianTree:
+            return ctr(t0=0.0, t1=1.0, tol=1e-3, shape=shape, key=key)
+        return ctr(shape=shape, key=key)
+
+    with pytest.raises((ValueError, jaxtyping.TypeCheckError)):
+        _make((jnp.int32(2),))
+
+    for bad_shape in (
+        jax.ShapeDtypeStruct((jnp.int32(2),), jnp.float32),
+        (True,),
+    ):
+        with pytest.raises(ValueError, match="shapes must be"):
+            _make(bad_shape)
+
+    def _run_once(s):
+        @jax.jit
+        def _eval(p):
+            return p.evaluate(0.0, 0.5)
+
+        return _eval(_make(s))
+
+    for good_shape in (
+        (np.int64(2),),
+        jax.ShapeDtypeStruct((np.int64(2),), jnp.float32),
+    ):
+        assert _run_once(good_shape).shape == (2,)
+        assert _run_once(good_shape).shape == (2,)

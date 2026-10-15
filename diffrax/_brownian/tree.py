@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
+import numpy as np
 from jaxtyping import Array, Inexact, PRNGKeyArray, PyTree
 from lineax.internal import complex_to_real_dtype
 
@@ -247,7 +248,7 @@ class VirtualBrownianTree(AbstractBrownianPath):
         t0: RealScalarLike,
         t1: RealScalarLike,
         tol: RealScalarLike,
-        shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct],
+        shape: tuple[int | np.integer, ...] | PyTree[jax.ShapeDtypeStruct],
         key: PRNGKeyArray,
         levy_area: type[
             BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
@@ -291,6 +292,14 @@ class VirtualBrownianTree(AbstractBrownianPath):
             if is_tuple_of_ints(shape)
             else shape
         )
+        if any(
+            not isinstance(x, jax.ShapeDtypeStruct) or not is_tuple_of_ints(x.shape)
+            for x in jtu.tree_leaves(self.shape)
+        ):
+            raise ValueError(
+                "VirtualBrownianTree shapes must be tuples of ints or PyTrees of "
+                "`jax.ShapeDtypeStruct`s with static integer tuple shapes."
+            )
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
             for x in jtu.tree_leaves(self.shape)

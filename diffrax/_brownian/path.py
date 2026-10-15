@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
 import lineax.internal as lxi
+import numpy as np
 from jaxtyping import Array, PRNGKeyArray, PyTree
 from lineax.internal import complex_to_real_dtype
 
@@ -69,7 +70,7 @@ class UnsafeBrownianPath(AbstractBrownianPath):
 
     def __init__(
         self,
-        shape: tuple[int, ...] | PyTree[jax.ShapeDtypeStruct],
+        shape: tuple[int | np.integer, ...] | PyTree[jax.ShapeDtypeStruct],
         key: PRNGKeyArray,
         levy_area: type[
             BrownianIncrement | SpaceTimeLevyArea | SpaceTimeTimeLevyArea
@@ -94,6 +95,14 @@ class UnsafeBrownianPath(AbstractBrownianPath):
         self.key = key
         self.levy_area = levy_area
 
+        if any(
+            not isinstance(x, jax.ShapeDtypeStruct) or not is_tuple_of_ints(x.shape)
+            for x in jtu.tree_leaves(self.shape)
+        ):
+            raise ValueError(
+                "UnsafeBrownianPath shapes must be tuples of ints or PyTrees of "
+                "`jax.ShapeDtypeStruct`s with static integer tuple shapes."
+            )
         if any(
             not jnp.issubdtype(x.dtype, jnp.inexact)
             for x in jtu.tree_leaves(self.shape)
