@@ -455,9 +455,13 @@ def loop(
 
         def save_ts_impl(ts, fn, save_state: SaveState) -> SaveState:
             def _cond_fun(_save_state):
+                # A checkpoint recompute can round `tnext` two ULPs below the
+                # forward step end. A save that landed on that end still
+                # belongs to this step.
+                tnext = eqxi.nextafter(eqxi.nextafter(state.tnext))
                 return (
                     keep_step
-                    & (ts[_save_state.saveat_ts_index] <= state.tnext)
+                    & (ts[_save_state.saveat_ts_index] <= tnext)
                     & (_save_state.saveat_ts_index < len(ts))
                 )
 
