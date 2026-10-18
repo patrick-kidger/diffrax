@@ -453,3 +453,32 @@ def test_forward_mode_runge_kutta(solver, getkey):
         return jax.jvp(run, (y0,), (jnp.ones_like(y0),))
 
     run_jvp(jnp.array(1.0))
+
+
+def test_recursive_checkpoint_adjoint_save_on_step_end():
+    # Save times that land on constant-step ends. See issue #788.
+    ts = jnp.linspace(0.0, 6.0, 11)
+    y0 = jnp.array([1.0, 0.0])
+
+    def loss(a, adjoint):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, a: jnp.stack([y[1], -a * y[0]])),
+            diffrax.Tsit5(),
+            0.0,
+            6.0,
+            0.6,
+            y0,
+            args=a,
+            saveat=diffrax.SaveAt(ts=ts),
+            stepsize_controller=diffrax.ConstantStepSize(),
+            adjoint=adjoint,
+            max_steps=20,
+        )
+        return jnp.sum(sol.ys[:, 0] * jnp.cos(ts))
+
+    a = jnp.array(0.7)
+    direct = jax.grad(lambda a: loss(a, diffrax.DirectAdjoint()))(a)
+    for checkpoints in (None, 4, 5, 6):
+        adjoint = diffrax.RecursiveCheckpointAdjoint(checkpoints=checkpoints)
+        got = jax.grad(lambda a: loss(a, adjoint))(a)
+        assert tree_allclose(got, direct)
