@@ -428,6 +428,48 @@ def test_t0_eq_t1_complicated():
     assert tree_allclose(yc, true_yc)
 
 
+@pytest.mark.parametrize("batch_t0", [False, True])
+def test_t0_eq_t1_no_save_buffer_copy(batch_t0):
+    """Handling t0 == t1 must not cost an extra copy of the save buffer.
+    Compares XLA's planned temporary memory against a constant t0, for which the
+    t0 == t1 check is constant-folded away. `throw=False` keeps the `error_if` on the
+    solution, which can cost a copy of its own on GPU, out of the comparison.
+    """
+    num_batch, num_ts, size = 16, 200, 16
+    ts = jnp.linspace(0.0, 1.0, num_ts)
+
+    def _solve(y0, t0):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: -y),
+            diffrax.Tsit5(),
+            t0=t0,
+            t1=1.0,
+            dt0=0.1,
+            y0=y0,
+            saveat=diffrax.SaveAt(ts=ts),
+            # On CPU, the old cond-based handling only cost a copy with an adaptive
+            # controller; with a constant step size XLA happened to fold it.
+            stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-6),
+            throw=False,
+        )
+        return sol.ys
+
+    def _temp_bytes(fn, *args):
+        analysis = jax.jit(fn).lower(*args).compile().memory_analysis()
+        if analysis is None:
+            pytest.skip("memory analysis is unavailable on this backend")
+        return analysis.temp_size_in_bytes
+
+    y0 = jnp.ones((num_batch, size))
+    constant = _temp_bytes(jax.vmap(lambda y: _solve(y, 0.0)), y0)
+    if batch_t0:
+        traced = _temp_bytes(jax.vmap(_solve), y0, jnp.zeros(num_batch))
+    else:
+        traced = _temp_bytes(jax.vmap(_solve, in_axes=(0, None)), y0, jnp.array(0.0))
+    save_buffer = num_batch * num_ts * size * y0.dtype.itemsize
+    assert traced - constant < save_buffer / 2
+
+
 def test_trivial_dense():
     term = diffrax.ODETerm(lambda t, y, args: -0.5 * y)
     y0 = jnp.array([2.1])

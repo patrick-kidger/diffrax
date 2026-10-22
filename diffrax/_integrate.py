@@ -820,28 +820,34 @@ def loop(
             unsave, saveat.subs, save_state, is_leaf=_is_subsaveat
         )
 
-    def _save_if_t0_equals_t1(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
-        if subsaveat.ts is not None:
-            save_state = _save(
-                t0, yfinal, args, subsaveat.fn, save_state, repeat=len(subsaveat.ts)
-            )
-        return save_state
-
     # if t0 == t1 then we don't enter the integration loop. In this case we have to
     # manually update the saved ts and ys if we want to save at "intermediate"
     # times specified by saveat.subs.ts
-    save_state = jax.lax.cond(
-        eqxi.unvmap_any(t0 == t1),
-        lambda __save_state: jax.lax.cond(
-            t0 == t1,
-            lambda _save_state: jtu.tree_map(
-                _save_if_t0_equals_t1, saveat.subs, _save_state, is_leaf=_is_subsaveat
-            ),
-            lambda _save_state: _save_state,
-            __save_state,
-        ),
-        lambda __save_state: __save_state,
-        save_state,
+    #
+    # For subsaveat states, only 't0' row has been written. Hence, the 'ts' rows start
+    # at a static offset. Instead of lax.cond, we can statically calculate what slice
+    # of the state to update. This coaxes XLA optimizer to not emit an extra copy buffer
+    # of the full difeq state needlessly
+    #
+    def _save_if_t0_equals_t1(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+        if subsaveat.ts is None:
+            return save_state
+        pred = t0 == t1
+        start = 1 if subsaveat.t0 else 0
+        stop = start + len(subsaveat.ts)
+
+        def _update(buffer, value):
+            return buffer.at[start:stop].set(jnp.where(pred, value, buffer[start:stop]))
+
+        ts = _update(save_state.ts, t0)
+        ys = jtu.tree_map(_update, save_state.ys, subsaveat.fn(t0, yfinal, args))
+        save_index = jnp.where(pred, stop, save_state.save_index)
+        return eqx.tree_at(
+            lambda s: [s.ts, s.ys, s.save_index], save_state, [ts, ys, save_index]
+        )
+
+    save_state = jtu.tree_map(
+        _save_if_t0_equals_t1, saveat.subs, save_state, is_leaf=_is_subsaveat
     )
 
     def _save_t1(subsaveat, save_state):
