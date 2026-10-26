@@ -353,10 +353,22 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
     instance of [`diffrax.CalculateJacobian`][].
     """
 
-    scan_kind: None | Literal["lax", "checkpointed", "bounded"] = None
+    scan_kind: None | Literal["lax", "checkpointed", "bounded", "unrolled"] = None
 
     tableau: AbstractClassVar[ButcherTableau | MultiButcherTableau]
     calculate_jacobian: AbstractClassVar[CalculateJacobian]
+
+    def __check_init__(self):
+        if self.scan_kind == "unrolled":
+            if isinstance(self.tableau, MultiButcherTableau):
+                implicit = any(tab.implicit for tab in self.tableau.tableaus)
+            else:
+                implicit = self.tableau.implicit
+            if implicit:
+                raise ValueError(
+                    "`scan_kind='unrolled'` is only supported by explicit Runge--Kutta "
+                    "methods."
+                )
 
     if TYPE_CHECKING:
         # Pretend that we're implicit
@@ -695,6 +707,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
                 k0 = prod(f0)
         else:
             # Non-FSAL solvers just iterate over all stages.
+            eval_first_stage = True
             f0 = _unused
             k0 = _unused
             init_stage_index = 0
@@ -1141,27 +1154,78 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
             ks,
             RESULTS.successful,
         )
-        const_result = const_result_sentinel = object()
-        # Needs to be an `eqxi.while_loop` as:
-        # (a) we may have variable length: e.g. an FSAL explicit RK scheme will have one
-        #     more stage on the first step.
-        # (b) to work around a limitation of JAX's autodiff being unable to express
-        #     "triangular computations" (every stage depends on all previous stages)
-        #     without spurious copies.
-        final_val = eqxi.while_loop(
-            cond_stage,
-            rk_stage,
-            init_val,
-            max_steps=num_stages,
-            buffers=buffers,
-            kind="checkpointed" if self.scan_kind is None else self.scan_kind,
-            checkpoints=num_stages,
-            base=num_stages,
-        )
-        _, y1, f1_for_fsal, _, _, fs, ks, result = final_val
-        assert const_result is not const_result_sentinel
-        if const_result:
+
+        def unrolled_stages():
+            # Explicit tableaus only (see `__check_init__`). The stages are traced one
+            # after another rather than in a `while_loop`: on GPU, every check of a
+            # while loop's predicate is a device-to-host copy that the host waits for,
+            # once per stage. The price is tracing the vector field once per stage.
+            # Each stage is kept as its own array rather than written into a buffer:
+            # with static indices, XLA rebuilds the whole buffer at every write.
+            ks_list = []
+            yi, fi = y0, _unused
+            for stage_index in range(num_stages):
+                increments = []
+
+                def _increment(tab, *k_js):
+                    if stage_index > 0:
+                        for a_ij, k_j in zip(tab.a_lower[stage_index - 1], k_js):
+                            if a_ij != 0:
+                                increments.append(y_map(lambda k: float(a_ij) * k, k_j))
+
+                def _time(tab):
+                    c_i = tab.c1 if stage_index == 0 else tab.c[stage_index - 1]
+                    # No floating point error
+                    return t1 if c_i == 1 else t0 + float(c_i) * dt
+
+                jtu.tree_map(_increment, tableaus, *ks_list)
+                yi = y_map(_sum, y0, *increments) if increments else y0
+                ti = jtu.tree_map(_time, tableaus)
+                if eval_fs:
+                    if fsal and stage_index == 0:
+                        # Only the first step, or a step after a jump, evaluates the
+                        # first stage of an FSAL method. A `lax.cond` rather than a
+                        # select, so that no step evaluates the vector field once more.
+                        fi = lax.cond(
+                            eval_first_stage,
+                            lambda: vf(ti, yi, implicit_val=sentinel),
+                            lambda: f0,
+                        )
+                    else:
+                        fi = vf(ti, yi, implicit_val=sentinel)
+                    ki = prod(fi)
+                else:
+                    fi = _unused
+                    ki = vf_prod(ti, yi, implicit_val=sentinel)
+                ks_list.append(ki)
+            ks = jtu.tree_map(lambda *k: jnp.stack(k), *ks_list)
+            return yi, fi if fsal else _unused, ks
+
+        if self.scan_kind == "unrolled":
+            y1, f1_for_fsal, ks = unrolled_stages()
             result = RESULTS.successful
+        else:
+            const_result = const_result_sentinel = object()
+            # Needs to be an `eqxi.while_loop` as:
+            # (a) we may have variable length: e.g. an FSAL explicit RK scheme will
+            #     have one more stage on the first step.
+            # (b) to work around a limitation of JAX's autodiff being unable to
+            #     express "triangular computations" (every stage depends on all
+            #     previous stages) without spurious copies.
+            final_val = eqxi.while_loop(
+                cond_stage,
+                rk_stage,
+                init_val,
+                max_steps=num_stages,
+                buffers=buffers,
+                kind="checkpointed" if self.scan_kind is None else self.scan_kind,
+                checkpoints=num_stages,
+                base=num_stages,
+            )
+            _, y1, f1_for_fsal, _, _, fs, ks, result = final_val
+            assert const_result is not const_result_sentinel
+            if const_result:
+                result = RESULTS.successful
 
         #
         # Calculate outputs: the final `y1` from our step, any dense information, etc.

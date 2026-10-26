@@ -502,3 +502,168 @@ def test_adaptive_dt0_milstein(getkey):
     diffrax.diffeqsolve(
         terms, solver, 0, 1, None, 1, stepsize_controller=stepsize_controller
     )
+
+
+_explicit_rk = (
+    diffrax.Heun,
+    diffrax.Midpoint,
+    diffrax.Ralston,
+    diffrax.Bosh3,
+    diffrax.Tsit5,
+    diffrax.Dopri5,
+    diffrax.Dopri8,
+)
+
+
+def _pytree_vf(t, y, args):
+    x, v = y
+    return v * jnp.ones_like(x), -jnp.sum(args * jnp.sin(x)) + jnp.cos(t)
+
+
+_pytree_y0 = (jnp.array([0.3, -0.2]), jnp.array(0.5))
+_pytree_args = jnp.array([1.5, 0.7])
+
+
+def _unrolled(solver):
+    return eqx.tree_at(
+        lambda s: s.scan_kind, solver, "unrolled", is_leaf=lambda x: x is None
+    )
+
+
+@pytest.mark.parametrize("solver_ctr", _explicit_rk)
+@pytest.mark.parametrize("adaptive", (False, True))
+def test_unrolled_stages(solver_ctr, adaptive):
+    # `scan_kind="unrolled"` computes the same steps as the stage loop, with the same
+    # dense output and gradients. The jump makes an FSAL method re-evaluate its first
+    # stage partway through the solve.
+    if adaptive:
+        controller = diffrax.ClipStepSizeController(
+            diffrax.PIDController(rtol=1e-6, atol=1e-8), jump_ts=[0.45]
+        )
+    else:
+        controller = diffrax.ConstantStepSize()
+    saveat = diffrax.SaveAt(ts=jnp.linspace(0, 1, 7))
+
+    def solve(solver, y0, args):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(_pytree_vf),
+            solver,
+            0,
+            1,
+            0.05,
+            y0,
+            args,
+            saveat=saveat,
+            stepsize_controller=controller,
+        )
+        return sol.ys, sol.stats["num_steps"]
+
+    def loss(solver, y0, args):
+        return sum(jnp.sum(y) for y in jtu.tree_leaves(solve(solver, y0, args)[0]))
+
+    solver = solver_ctr()
+    ys, steps = solve(solver, _pytree_y0, _pytree_args)
+    ys_unrolled, steps_unrolled = solve(_unrolled(solver), _pytree_y0, _pytree_args)
+    assert steps == steps_unrolled
+    assert tree_allclose(ys, ys_unrolled, rtol=1e-10, atol=1e-12)
+    grads = jax.grad(loss, argnums=(1, 2))(solver, _pytree_y0, _pytree_args)
+    grads_unrolled = jax.grad(loss, argnums=(1, 2))(
+        _unrolled(solver), _pytree_y0, _pytree_args
+    )
+    assert tree_allclose(grads, grads_unrolled, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "adjoint",
+    (diffrax.ForwardMode(), diffrax.DirectAdjoint(), diffrax.BacksolveAdjoint()),
+)
+def test_unrolled_stages_adjoints(adjoint):
+    # `DirectAdjoint` and `ForwardMode` replace a `scan_kind` of `None`, but not
+    # "unrolled"; `BacksolveAdjoint` solves its adjoint equation with the same solver.
+    def final(solver, y0):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(_pytree_vf),
+            solver,
+            0,
+            1,
+            0.05,
+            y0,
+            _pytree_args,
+            stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-8),
+            adjoint=adjoint,
+        )
+        return sum(jnp.sum(y) for y in jtu.tree_leaves(sol.ys))
+
+    def derivative(solver):
+        if isinstance(adjoint, diffrax.ForwardMode):
+            tangent = jtu.tree_map(jnp.ones_like, _pytree_y0)
+            return jax.jvp(lambda y0: final(solver, y0), (_pytree_y0,), (tangent,))[1]
+        return jax.grad(final, argnums=1)(solver, _pytree_y0)
+
+    solver = diffrax.Tsit5()
+    assert tree_allclose(
+        derivative(solver), derivative(_unrolled(solver)), rtol=1e-8, atol=1e-10
+    )
+
+
+def test_unrolled_stages_vmap():
+    def solve(solver, y0):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(_pytree_vf),
+            solver,
+            0,
+            1,
+            0.05,
+            y0,
+            _pytree_args,
+            stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-8),
+        )
+        return sol.ys
+
+    y0s = (
+        jnp.array([[0.3, -0.2], [0.1, 0.4], [-0.5, 0.0]]),
+        jnp.array([0.5, 0.0, 1.0]),
+    )
+    solver = diffrax.Tsit5()
+    ys = jax.vmap(lambda y0: solve(solver, y0))(y0s)
+    ys_unrolled = jax.vmap(lambda y0: solve(_unrolled(solver), y0))(y0s)
+    assert tree_allclose(ys, ys_unrolled, rtol=1e-10, atol=1e-12)
+
+
+def test_unrolled_stages_sde(getkey):
+    bm = diffrax.VirtualBrownianTree(0, 1, 1e-3, (2,), key=getkey())
+    drift = diffrax.ODETerm(lambda t, y, args: -args * y)
+    diffusion = diffrax.ControlTerm(lambda t, y, args: 0.3 * jnp.diag(y), bm)
+    terms = diffrax.MultiTerm(drift, diffusion)
+
+    def solve(solver):
+        sol = diffrax.diffeqsolve(
+            terms, solver, 0, 1, 0.01, jnp.array([1.0, 2.0]), _pytree_args
+        )
+        return sol.ys
+
+    solver = diffrax.Heun()
+    assert tree_allclose(
+        solve(solver), solve(_unrolled(solver)), rtol=1e-10, atol=1e-12
+    )
+
+
+@pytest.mark.parametrize("solver_ctr", (diffrax.Tsit5, diffrax.Heun))
+def test_unrolled_stages_have_no_loop(solver_ctr):
+    # The point of `scan_kind="unrolled"`: on GPU, every check of a while loop's
+    # predicate is a device-to-host copy, once per stage.
+    solver = solver_ctr(scan_kind="unrolled")
+    term = diffrax.ODETerm(_pytree_vf)
+    state = solver.init(term, 0.0, 0.1, _pytree_y0, _pytree_args)
+
+    def step(y0):
+        return solver.step(term, 0.0, 0.1, y0, _pytree_args, state, made_jump=False)
+
+    assert "while" not in str(jax.make_jaxpr(step)(_pytree_y0))
+
+
+def test_unrolled_stages_explicit_only():
+    with pytest.raises(ValueError, match="unrolled"):
+        diffrax.Kvaerno5(scan_kind="unrolled")
+    with pytest.raises(ValueError, match="unrolled"):
+        diffrax.KenCarp4(scan_kind="unrolled")
