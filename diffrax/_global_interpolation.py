@@ -333,7 +333,12 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         jtu.tree_map(_check, self.infos)
 
     def _get_local_interpolation(self, t: RealScalarLike, left: bool):
-        index, _ = self._interpret_t(t, left)
+        # Reversing time also reverses which side of a knot is physically left.
+        index, _ = lax.cond(
+            self.direction == 1,
+            lambda: self._interpret_t(t, left),
+            lambda: self._interpret_t(t, not left),
+        )
         prev_t = self.ts[index]
         next_t = self.ts[index + 1]
         infos = ω(self.infos)[index].ω

@@ -388,3 +388,60 @@ def test_dense_interpolation_vmap(solver, getkey):
         diffrax.Ralston: 1e-3,
     }.get(type(solver), 1e-6)
     assert tree_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize("left", [True, False])
+def test_dense_interpolation_one_sided_derivative(dtype, direction, left):
+    y0 = {"scalar": jnp.zeros((), dtype), "vector": jnp.zeros((2,), dtype)}
+    term = diffrax.ODETerm(
+        lambda t, y, args: jtu.tree_map(lambda yi: jnp.full_like(yi, t), y)
+    )
+    sol = diffrax.diffeqsolve(
+        term,
+        diffrax.Euler(),
+        t0=jnp.array(0.0 if direction == 1 else 1.0, dtype),
+        t1=jnp.array(1.0 if direction == 1 else 0.0, dtype),
+        dt0=jnp.array(direction * 0.5, dtype),
+        y0=y0,
+        saveat=diffrax.SaveAt(dense=True),
+        max_steps=2,
+    )
+    t = jnp.array(0.5, dtype)
+    h = jnp.array(0.125, dtype)
+    if left:
+        differences = jtu.tree_map(operator.sub, sol.evaluate(t), sol.evaluate(t - h))
+    else:
+        differences = jtu.tree_map(operator.sub, sol.evaluate(t + h), sol.evaluate(t))
+    expected = jtu.tree_map(lambda dy: dy / h, differences)
+    derivative = sol.derivative(t, left=left)
+    assert tree_allclose(derivative, expected)
+    _, tangent = jax.jvp(
+        lambda ti: sol.evaluate(ti, left=left), (t,), (jnp.ones_like(t),)
+    )
+    assert tree_allclose(tangent, expected)
+    for result, initial in zip(jtu.tree_leaves(derivative), jtu.tree_leaves(y0)):
+        assert result.dtype == initial.dtype
+        assert result.shape == initial.shape
+
+
+@pytest.mark.parametrize("left", [True, False])
+def test_dense_interpolation_one_sided_derivative_vmap(left):
+    @jax.jit
+    @jax.vmap
+    def run(direction):
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(lambda t, y, args: t),
+            diffrax.Euler(),
+            t0=jnp.where(direction == 1, 0.0, 1.0),
+            t1=jnp.where(direction == 1, 1.0, 0.0),
+            dt0=direction * 0.5,
+            y0=0.0,
+            saveat=diffrax.SaveAt(dense=True),
+            max_steps=2,
+        )
+        return sol.derivative(0.5, left=left)
+
+    expected = jnp.array([0.0, 0.5]) if left else jnp.array([0.5, 1.0])
+    assert tree_allclose(run(jnp.array([1.0, -1.0])), expected)
