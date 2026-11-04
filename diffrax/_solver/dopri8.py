@@ -296,7 +296,7 @@ class _Dopri8Interpolation(AbstractLocalInterpolation):
     ) -> Y:
         del left
         if t1 is not None:
-            return self.evaluate(t1) - self.evaluate(t0)
+            return (self.evaluate(t1) ** ω - self.evaluate(t0) ** ω).ω
         t = linear_rescale(self.t0, t0, self.t1)
         coeffs = _vmap_polyval(jnp.asarray(self.eval_coeffs, dtype=t.dtype), t) * t
         with jax.numpy_dtype_promotion("standard"):

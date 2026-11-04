@@ -388,3 +388,80 @@ def test_dense_interpolation_vmap(solver, getkey):
         diffrax.Ralston: 1e-3,
     }.get(type(solver), 1e-6)
     assert tree_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
+
+
+@pytest.mark.parametrize("kind", ["linear", "cubic"])
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_pytree_interpolation_increments(kind, dtype):
+    ts = jnp.array([0.0, 0.5, 1.0], dtype)
+    slopes = {"a": jnp.array(2.0, dtype), "b": (jnp.array([-1.0, 3.0], dtype),)}
+
+    def make_path(scale):
+        ys = jtu.tree_map(lambda s: scale * jnp.multiply.outer(ts, s), slopes)
+        if kind == "linear":
+            return diffrax.LinearInterpolation(ts, ys)
+        coeffs = diffrax.backward_hermite_coefficients(ts, ys)
+        return diffrax.CubicInterpolation(ts, coeffs)
+
+    for t0, t1 in [(0.25, 0.75), (0.75, 0.25), (0.5, 0.5)]:
+        t0, t1 = jnp.array(t0, dtype), jnp.array(t1, dtype)
+        expected = jtu.tree_map(lambda s: (t1 - t0) * s, slopes)
+        for left in [True, False]:
+            fn = lambda scale: make_path(scale).evaluate(t0, t1, left=left)
+            value, tangent = jax.jvp(
+                fn, (jnp.array(1.0, dtype),), (jnp.array(1.0, dtype),)
+            )
+            assert tree_allclose(value, expected)
+            assert tree_allclose(tangent, expected)
+        empty = (
+            diffrax.LinearInterpolation(ts, {})
+            if kind == "linear"
+            else diffrax.CubicInterpolation(ts, ({}, {}, {}, {}))
+        )
+        assert empty.evaluate(t0, t1) == {}
+
+
+@pytest.mark.parametrize("kind", ["linear", "cubic"])
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_pytree_control_interpolation(kind, direction, dtype):
+    ts = jnp.array([0.0, 0.5, 1.0], dtype)
+    ys = {
+        "a": jnp.array([1.0, 2.0, 3.0], dtype),
+        "b": (jnp.array([[-1.0, 1.0], [0.5, 0.0], [2.0, -1.0]], dtype),),
+    }
+    if kind == "linear":
+        path = diffrax.LinearInterpolation(ts, ys)
+    else:
+        path = diffrax.CubicInterpolation(
+            ts, diffrax.backward_hermite_coefficients(ts, ys)
+        )
+    term = diffrax.ControlTerm(
+        lambda t, y, scale: {"a": scale, "b": (scale * jnp.eye(2, dtype=dtype),)}, path
+    )
+    y0 = {"a": jnp.array(0.0, dtype), "b": (jnp.zeros(2, dtype),)}
+    t0, t1 = (0.0, 1.0) if direction == 1 else (1.0, 0.0)
+    t0, t1 = jnp.array(t0, dtype), jnp.array(t1, dtype)
+
+    def solve(scale):
+        sol = diffrax.diffeqsolve(
+            term,
+            diffrax.Euler(),
+            t0,
+            t1,
+            direction * 0.25,
+            y0,
+            args=scale,
+            saveat=diffrax.SaveAt(dense=True),
+            adjoint=diffrax.DirectAdjoint(),
+            max_steps=16,
+        )
+        return sol.evaluate(t0 + direction * 0.25, t0 + direction * 0.75)
+
+    expected = {
+        "a": jnp.array(direction * 2.0, dtype),
+        "b": (jnp.array([direction * 3.0, direction * -2.0], dtype),),
+    }
+    value, tangent = jax.jvp(solve, (jnp.array(2.0, dtype),), (jnp.array(2.0, dtype),))
+    assert tree_allclose(value, expected)
+    assert tree_allclose(tangent, expected)

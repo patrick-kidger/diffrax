@@ -1,8 +1,10 @@
 import diffrax
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
+import pytest
 
-from .helpers import tree_allclose
+from .helpers import implicit_tol, tree_allclose
 
 
 def test_local_linear_interpolation():
@@ -58,3 +60,39 @@ def test_third_order_hermite():
         t0=t0, t1=t1, y0=y0, y1=y1, k0=k0, k1=k1
     )
     assert tree_allclose(interp.evaluate(2.6), y(2.6))
+
+
+@pytest.mark.parametrize(
+    "solver",
+    [
+        diffrax.Euler(),
+        diffrax.Midpoint(),
+        diffrax.Dopri5(),
+        diffrax.Tsit5(),
+        diffrax.Dopri8(),
+        diffrax.KenCarp3(),
+    ],
+)
+def test_local_pytree_increment(solver):
+    dtype = jnp.float64
+    solver = implicit_tol(solver)
+    slopes = {"a": jnp.array(2.0, dtype), "b": (jnp.array([-1.0, 3.0], dtype),)}
+    y0 = jtu.tree_map(jnp.zeros_like, slopes)
+    term = diffrax.ODETerm(lambda t, y, args: slopes)
+    if isinstance(solver, diffrax.KenCarp3):
+        half = diffrax.ODETerm(
+            lambda t, y, args: jtu.tree_map(lambda s: 0.5 * s, slopes)
+        )
+        term = diffrax.MultiTerm(half, diffrax.ODETerm(half.vector_field))
+    start, end = jnp.array(0.0, dtype), jnp.array(1.0, dtype)
+    state = solver.init(term, start, end, y0, None)
+    _, _, dense_info, _, _ = solver.step(term, start, end, y0, None, state, False)
+    interpolation = solver.interpolation_cls(t0=start, t1=end, **dense_info)
+    for t0, t1 in [(0.25, 0.75), (0.75, 0.25), (0.5, 0.5)]:
+        t0, t1 = jnp.array(t0, dtype), jnp.array(t1, dtype)
+        expected = jtu.tree_map(lambda s: (t1 - t0) * s, slopes)
+        fn = lambda start, end: interpolation.evaluate(start, end)
+        assert tree_allclose(fn(t0, t1), expected)
+        assert tree_allclose(jax.jit(fn)(t0, t1), expected)
+        _, tangent = jax.jvp(fn, (t0, t1), (jnp.ones_like(t0), jnp.zeros_like(t1)))
+        assert tree_allclose(tangent, jtu.tree_map(lambda s: -s, slopes))
