@@ -112,7 +112,7 @@ class KenCarpInterpolation(AbstractLocalInterpolation):
     ) -> PyTree:
         del left
         if t1 is not None:
-            return self.evaluate(t1) - self.evaluate(t0)
+            return (self.evaluate(t1) ** ω - self.evaluate(t0) ** ω).ω
 
         t = linear_rescale(self.t0, t0, self.t1)
         explicit_k, implicit_k = self.k

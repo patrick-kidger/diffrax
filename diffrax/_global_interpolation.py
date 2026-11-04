@@ -131,7 +131,9 @@ class LinearInterpolation(AbstractGlobalInterpolation):
         """
 
         if t1 is not None:
-            return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
+            return (
+                self.evaluate(t1, left=left) ** ω - self.evaluate(t0, left=left) ** ω
+            ).ω
         index, fractional_part = self._interpret_t(t0, left)
 
         def _index(_ys):
@@ -253,7 +255,9 @@ class CubicInterpolation(AbstractGlobalInterpolation):
         """
 
         if t1 is not None:
-            return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
+            return (
+                self.evaluate(t1, left=left) ** ω - self.evaluate(t0, left=left) ** ω
+            ).ω
         index, frac = self._interpret_t(t0, left)
 
         d, c, b, a = self.coeffs
@@ -344,7 +348,9 @@ class DenseInterpolation(AbstractGlobalInterpolation):
         self, t0: RealScalarLike, t1: RealScalarLike | None = None, left: bool = True
     ) -> PyTree[Shaped[Array, "?*shape"], "Y"]:
         if t1 is not None:
-            return self.evaluate(t1, left=left) - self.evaluate(t0, left=left)
+            return (
+                self.evaluate(t1, left=left) ** ω - self.evaluate(t0, left=left) ** ω
+            ).ω
         t = t0 * self.direction
         t_bounded = self._nan_if_out_of_bounds(t)
         out = self._get_local_interpolation(t_bounded, left).evaluate(
