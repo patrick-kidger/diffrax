@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import ClassVar, TypeAlias
 
+import jax.numpy as jnp
+import jax.tree_util as jtu
 from equinox.internal import ω
 from jaxtyping import PyTree
 
@@ -73,8 +75,13 @@ class LeapfrogMidpoint(AbstractSolver):
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
     ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
-        del made_jump
-        tm1, ym1 = solver_state
+        # Restart the multistep history after a discontinuity, using the same
+        # explicit Euler startup as in `init`.
+        tm1, ym1 = jtu.tree_map(
+            lambda previous, current: jnp.where(made_jump, current, previous),
+            solver_state,
+            (t0, y0),
+        )
         control = terms.contr(tm1, t1)
         y1 = (ym1**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)

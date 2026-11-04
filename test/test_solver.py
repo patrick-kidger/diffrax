@@ -502,3 +502,61 @@ def test_adaptive_dt0_milstein(getkey):
     diffrax.diffeqsolve(
         terms, solver, 0, 1, None, 1, stepsize_controller=stepsize_controller
     )
+
+
+@pytest.mark.parametrize("direction", (1, -1))
+def test_leapfrog_restart_after_jump(direction):
+    term = diffrax.ODETerm(
+        lambda t, y, args: jtu.tree_map(lambda yi: args * jnp.ones_like(yi), y)
+    )
+    solver = diffrax.LeapfrogMidpoint()
+    y0 = {"a": jnp.array([0.2, 0.5]), "b": jnp.array(-0.7)}
+
+    def solve(rates):
+        first = diffrax.diffeqsolve(
+            term,
+            solver,
+            0,
+            direction,
+            direction * 0.25,
+            y0,
+            args=rates[0],
+            saveat=diffrax.SaveAt(t1=True, solver_state=True),
+        )
+        second = diffrax.diffeqsolve(
+            term,
+            solver,
+            direction,
+            direction * 1.25,
+            direction * 0.25,
+            jtu.tree_map(lambda yi: yi[-1], first.ys),
+            args=rates[1],
+            solver_state=first.solver_state,
+            made_jump=jnp.array(True),
+        )
+        ys = jtu.tree_map(lambda yi: yi[-1], second.ys)
+        return sum(jnp.sum(yi) for yi in jtu.tree_leaves(ys)), ys
+
+    rates = jnp.array([0.7, -1.3])
+    (_, actual), grad = jax.value_and_grad(solve, has_aux=True)(rates)
+    expected = jtu.tree_map(lambda yi: yi + direction * (0.7 - 0.25 * 1.3), y0)
+    assert tree_allclose(actual, expected)
+    assert jnp.allclose(grad, direction * jnp.array([3.0, 0.75]))
+
+
+@pytest.mark.parametrize("case", ("time", "state"))
+def test_leapfrog_no_jump_scalar_promotion(case):
+    solver = diffrax.LeapfrogMidpoint()
+    term = diffrax.ODETerm(lambda t, y, args: y)
+    t0 = 0 if case == "time" else 0.0
+    y0 = jnp.asarray(1.0, dtype=jnp.float64 if case == "time" else jnp.float32)
+    state = solver.init(term, t0, 0.25, y0, None)
+    promotion = "strict" if case == "time" else "standard"
+    with jax.numpy_dtype_promotion(promotion):
+        y1, _, _, state, _ = solver.step(term, t0, 0.25, y0, None, state, False)
+        y2, _, _, _, _ = solver.step(
+            term, 0.25, 0.5, jnp.asarray(y1, dtype=jnp.float64), None, state, False
+        )
+    # Euler starts at 1.25; preserving leapfrog history then gives 1.625.
+    assert jnp.allclose(jnp.array([y1, y2]), jnp.array([1.25, 1.625]))
+    assert y2.dtype == jnp.float64
