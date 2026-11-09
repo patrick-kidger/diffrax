@@ -364,6 +364,107 @@ def test_jump_at_t1_with_large_t1_in_float32():
     assert sol.ts == jnp.array([t1])
 
 
+@pytest.mark.parametrize("backwards", [False, True])
+@pytest.mark.parametrize("complex_state", [False, True])
+def test_save_times_across_terminal_jump(backwards, complex_state):
+    direction = -1 if backwards else 1
+    t0 = jnp.float32(5.0 if backwards else 2.0)
+    t1 = t0 + direction * jnp.float32(3.0)
+    elapsed = jnp.linspace(0.0, 3.0, 11, dtype=jnp.float32)
+    ts = t0 + direction * elapsed
+    jumps = t0 + direction * jnp.array([1.5, 3.0], dtype=jnp.float32)
+    dtype = jnp.complex64 if complex_state else jnp.float32
+    y0 = jnp.array([1.0, 0.0], dtype=dtype)
+
+    def vector_field(t, y, args):
+        local_t = direction * (t - t0)
+        speed = jnp.where(local_t < 1.5, 1.6, jnp.where(local_t < 3.0, -1.1, 0.0))
+        if complex_state:
+            return -1j * direction * speed * jnp.stack([y[1], y[0]])
+        return direction * speed * jnp.stack([-y[1], y[0]])
+
+    def solve(initial):
+        return diffrax.diffeqsolve(
+            diffrax.ODETerm(vector_field),
+            diffrax.Tsit5(),
+            t0=t0,
+            t1=t1,
+            dt0=None,
+            y0=initial,
+            stepsize_controller=diffrax.ClipStepSizeController(
+                diffrax.PIDController(rtol=1e-9, atol=1e-9), jump_ts=jumps
+            ),
+            saveat=diffrax.SaveAt(
+                subs=[diffrax.SubSaveAt(ts=ts), diffrax.SubSaveAt(t1=True)]
+            ),
+        )
+
+    sol = solve(y0)
+    angle = 1.6 * jnp.minimum(elapsed, 1.5) - 1.1 * jnp.maximum(elapsed - 1.5, 0)
+    first = jnp.cos(angle).astype(dtype)
+    second = jnp.sin(angle).astype(dtype)
+    if complex_state:
+        second = -1j * second
+    expected = jnp.stack([first, second], axis=-1)
+    assert sol.result == diffrax.RESULTS.successful
+    assert sol.stats["num_rejected_steps"] > 0
+    assert sol.ts is not None
+    assert sol.ys is not None
+    assert jnp.array_equal(sol.ts[0], ts)
+    assert tree_allclose(sol.ys[0], expected, rtol=1e-5, atol=1e-5)
+    assert tree_allclose(sol.ys[0][-1], sol.ys[1][0], rtol=1e-6, atol=1e-6)
+    if not complex_state:
+
+        def final_value(initial):
+            solution = solve(initial)
+            assert solution.ys is not None
+            return solution.ys[0][-1]
+
+        jacobian = jax.jacrev(final_value)(y0)
+        cosine, sine = first[-1], second[-1]
+        expected_jacobian = jnp.array([[cosine, -sine], [sine, cosine]])
+        assert tree_allclose(jacobian, expected_jacobian, rtol=1e-5, atol=1e-5)
+
+
+def test_save_jump_gap_carries_state_and_requested_time():
+    jump = jnp.float32(0.5)
+    before, after = eqxi.prevbefore(jump), eqxi.nextafter(jump)
+    ts = jnp.array([0.25, before, jump, after, 0.75], dtype=jnp.float32)
+    sol = diffrax.diffeqsolve(
+        diffrax.ODETerm(
+            lambda t, y, args: jnp.where(t < jump, jnp.ones_like(y), jnp.zeros_like(y))
+        ),
+        diffrax.Heun(),
+        t0=jnp.float32(0.0),
+        t1=jnp.float32(1.0),
+        dt0=jnp.float32(0.3),
+        y0=jnp.float32(0.0),
+        stepsize_controller=diffrax.ClipStepSizeController(
+            diffrax.PIDController(rtol=1e-6, atol=1e-6), jump_ts=jump[None]
+        ),
+        saveat=diffrax.SaveAt(
+            dense=True,
+            subs={
+                "requested": diffrax.SubSaveAt(ts=ts, fn=lambda t, y, args: (t, y)),
+                "steps": diffrax.SubSaveAt(steps=True),
+            },
+        ),
+    )
+    assert sol.ts is not None
+    assert sol.ys is not None
+    saved_times, saved_values = sol.ys["requested"]
+    assert jnp.array_equal(saved_times, ts)
+    jump_step = jnp.argmin(jnp.abs(sol.ts["steps"] - after))
+    assert sol.ts["steps"][jump_step] == after
+    carried_value = sol.ys["steps"][jump_step]
+    assert saved_values[2] == carried_value
+    assert saved_values[3] == carried_value
+    # Inside an actual step, saving still agrees with its dense interpolation.
+    assert saved_values[0] == sol.evaluate(ts[0])
+    assert jnp.abs(saved_values[1] - before) <= 4 * (jump - before)
+    assert saved_values[4] == carried_value
+
+
 # https://github.com/patrick-kidger/diffrax/issues/756
 # In float32 with a large t1, the 100-ULP clip window is wide enough to contain
 # the PID controller's desired step. If tprev sits just outside the clip window
