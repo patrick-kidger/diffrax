@@ -457,13 +457,19 @@ def loop(
             def _cond_fun(_save_state):
                 return (
                     keep_step
-                    & (ts[_save_state.saveat_ts_index] <= state.tnext)
+                    & (ts[_save_state.saveat_ts_index] <= tprev)
                     & (_save_state.saveat_ts_index < len(ts))
                 )
 
             def _body_fun(_save_state):
                 _t = ts[_save_state.saveat_ts_index]
-                _y = interpolator.evaluate(_t)
+                # A jump controller advances tprev beyond the step endpoint while
+                # carrying y unchanged. Save that state for times in the gap.
+                _y = lax.cond(
+                    _t <= state.tnext,
+                    lambda: interpolator.evaluate(_t),
+                    lambda: y,
+                )
                 _ts = _save_state.ts.at[_save_state.save_index].set(_t)
                 _ys = jtu.tree_map(
                     lambda __y, __ys: __ys.at[_save_state.save_index].set(__y),
