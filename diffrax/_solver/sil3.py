@@ -56,8 +56,11 @@ _explicit_tableau = ButcherTableau(
 class Sil3(AbstractRungeKutta, AbstractImplicitSolver):
     """Whitaker--Kar's fast-slow IMEX method.
 
-    3rd order in the explicit (ERK) term; 2nd order in the implicit (EDIRK) term. Uses
-    a 2nd-order embedded Heun method for adaptive step sizing. Uses 4 stages with FSAL.
+    Second-order IMEX method. When the implicit term is zero, the explicit
+    tableau is third order for autonomous linear ODEs.
+
+    Uses a 2nd-order embedded Heun method for adaptive step sizing. Uses 4 stages
+    with FSAL.
     Uses 2nd order Hermite interpolation for dense/ts output.
 
     This should be called with `terms=MultiTerm(explicit_term, implicit_term)`.
