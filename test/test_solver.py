@@ -409,6 +409,7 @@ def test_sil3(dtype):
 @pytest.mark.parametrize(
     "solver",
     (
+        diffrax.Alexander2(),
         diffrax.Kvaerno3(),
         diffrax.Kvaerno4(),
         diffrax.Kvaerno5(),

@@ -358,6 +358,7 @@ def test_dense_interpolation(solver):
         diffrax.Euler: 1e-3,
         diffrax.ImplicitEuler: 1e-3,
         diffrax.Ralston: 1e-3,
+        diffrax.Alexander2: 1e-3,
     }.get(type(solver), 1e-6)
     assert tree_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
 
@@ -386,5 +387,6 @@ def test_dense_interpolation_vmap(solver, getkey):
         diffrax.Euler: 1e-3,
         diffrax.ImplicitEuler: 1e-3,
         diffrax.Ralston: 1e-3,
+        diffrax.Alexander2: 1e-3,
     }.get(type(solver), 1e-6)
     assert tree_allclose(derivs, true_derivs, atol=deriv_tol, rtol=deriv_tol)
