@@ -17,6 +17,7 @@ _alexander2_tableau = ButcherTableau(
     b_sol=np.array([1 - gamma, gamma]),
     b_error=np.array([1 - gamma, gamma - 1]),
     c=np.array([1.0]),
+    c1=gamma,
     a_diagonal=np.array([gamma, gamma]),
     a_predictor=(np.array([1.0]),),
 )
