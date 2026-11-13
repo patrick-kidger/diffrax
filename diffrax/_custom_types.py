@@ -133,4 +133,4 @@ def levy_tree_transpose(
     )
 
 
-del Array, ArrayLike, PyTree, Bool, Int, Shaped, Float, AbstractDtype
+del Array, ArrayLike, PyTree, Bool, Int, Shaped, Float, AbstractDtype, Real

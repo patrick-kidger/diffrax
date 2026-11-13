@@ -275,13 +275,13 @@ def _save(
     )
 
 
-def _clip_to_end(tprev, tnext, t1, t1_clip_floor, keep_step):
+def _clip_to_end(tnext, t1, t1_clip_floor, keep_step):
     # The tolerance of ~100 ULP's means that we don't end up with too-small intervals
     # for dense output, which then gives numerically unstable answers due to floating
     # point errors.
-    clip = tnext > t1_clip_floor
-    tclip = jnp.where(keep_step, t1, tprev + 0.5 * (t1 - tprev))
-    return jnp.where(clip, tclip, tnext)
+    # Only clip on accepted steps: on a rejection the controller has just shrunk its
+    # proposal, so overriding it can cause an infinite rejection loop (see #756).
+    return jnp.where(keep_step & (tnext > t1_clip_floor), t1, tnext)
 
 
 def _maybe_static(static_x: ArrayLike | None, x: ArrayLike) -> ArrayLike:
@@ -410,7 +410,7 @@ def loop(
         #
 
         tprev = jnp.minimum(tprev, t1)
-        tnext = _clip_to_end(tprev, tnext, t1, t1_clip_floor, keep_step)
+        tnext = _clip_to_end(tnext, t1, t1_clip_floor, keep_step)
 
         progress_meter_state = progress_meter.step(
             state.progress_meter_state, linear_rescale(t0, tprev, t1)

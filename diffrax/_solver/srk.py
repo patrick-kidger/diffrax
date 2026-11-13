@@ -360,8 +360,15 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         else:
             ignore_stage_g = jnp.array(self.tableau.ignore_stage_g)
 
-        # time increment
+        # The internal time step, h, is always positive. The direction is
+        # handled by _term.py. However, the drift control should be the signed
+        # value of h, `signed_h`.
+        # Futher, since _term.py blanket multiplies the output of the control
+        # by `direction`, we must preserve the symmetry of the SpaceTimeLevyArea,
+        # H, such that H(h) = H(-h).
         h = t1 - t0
+        signed_h = drift.contr(t0, t1)
+        direction = jnp.sign(signed_h)
 
         # First the drift related stuff
         a = self._embed_a_lower(self.tableau.a, dtype)
@@ -402,7 +409,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         levy_areas = []
         if self.tableau.coeffs_hh is not None:  # space-time Lévy area
             assert isinstance(bm_inc, AbstractSpaceTimeLevyArea)
-            levy_areas.append(bm_inc.H)
+            with jax.numpy_dtype_promotion("standard"):
+                levy_areas.append((direction * bm_inc.H**ω).ω)
             b_levy_list.append(jnp.asarray(self.tableau.coeffs_hh.b_sol, dtype=dtype))
 
             if self.tableau.coeffs_kk is not None:  # space-time-time Lévy area
@@ -443,7 +451,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
 
             if self.tableau.coeffs_hh is not None:  # space-time Lévy area
                 assert isinstance(bm_inc, AbstractSpaceTimeLevyArea)
-                levylist_kgs.append(diffusion.prod(g0, bm_inc.H))
+                with jax.numpy_dtype_promotion("standard"):
+                    levylist_kgs.append(diffusion.prod(g0, (direction * bm_inc.H**ω).ω))
                 a_levy.append(jnp.asarray(self.tableau.coeffs_hh.a, dtype=dtype))
 
             if self.tableau.coeffs_kk is not None:  # space-time-time Lévy area
@@ -545,7 +554,7 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             z_j = (y0**ω + _drift_result**ω + _diffusion_result**ω).ω
 
             def compute_and_insert_kf_j(_h_kfs_in):
-                h_kf_j = drift.vf_prod(t0 + c_j * h, z_j, args, h)
+                h_kf_j = drift.vf_prod(t0 + c_j * h, z_j, args, signed_h)
                 return insert_jth_stage(_h_kfs_in, h_kf_j, j)
 
             if ignore_stage_f is None:
@@ -611,7 +620,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             # g depends on t. This term is of the form $(g1 - g0) * (0.5*W_n - H_n)$.
             if self.tableau.coeffs_hh is not None:  # space-time Lévy area
                 assert isinstance(bm_inc, AbstractSpaceTimeLevyArea)
-                time_var_contr = (bm_inc.W**ω - 2.0 * bm_inc.H**ω).ω
+                with jax.numpy_dtype_promotion("standard"):
+                    time_var_contr = (bm_inc.W**ω - 2.0 * direction * bm_inc.H**ω).ω
                 time_var_term = diffusion.prod(g_delta, time_var_contr)
             else:
                 time_var_term = diffusion.prod(g_delta, bm_inc.W)

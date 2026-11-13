@@ -62,7 +62,7 @@ Event.__init__.__doc__ = """**Arguments:**
     the exact time of the event. If the triggered condition function returns a real
     number, then the final time will be the time at which that real number equals zero.
     (If the triggered condition function returns a boolean, then the returned time will
-    just be the end of the step on which it becomes `True`.) 
+    just be the end of the step on which it becomes `True`.)
     [`optimistix.Newton`](https://docs.kidger.site/optimistix/api/root_find/#optimistix.Newton)
     would be a typical choice here.
 
@@ -74,12 +74,12 @@ Event.__init__.__doc__ = """**Arguments:**
 
 !!! Example
 
-    Consider a bouncing ball dropped from some intial height $x_0$. We can model 
+    Consider a bouncing ball dropped from some intial height $x_0$. We can model
     the ball by a 2-dimensional ODE
 
     $\\frac{dx_t}{dt} = v_t, \\quad \\frac{dv_t}{dt} = -g,$
 
-    where $x_t$ represents the height of the ball, $v_t$ its velocity, 
+    where $x_t$ represents the height of the ball, $v_t$ its velocity,
     and $g$ is the gravitational constant. With $g=8$, this corresponds to the
     vector field:
 
@@ -89,8 +89,8 @@ Event.__init__.__doc__ = """**Arguments:**
         return jnp.array([v, -8.0])
     ```
 
-    Figuring out exactly when the ball hits the ground amounts to 
-    solving the ODE until the event $x_t=0$ is triggered. This can be done by using 
+    Figuring out exactly when the ball hits the ground amounts to
+    solving the ODE until the event $x_t=0$ is triggered. This can be done by using
     the real-valued condition function:
 
     ```python

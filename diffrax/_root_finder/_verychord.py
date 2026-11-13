@@ -162,7 +162,7 @@ class VeryChord(optx.AbstractRootFinder):
         converged = _converged(factor, self.kappa)
         terminate = at_least_two & (small | diverged | converged)
         terminate_result = optx.RESULTS.where(
-            at_least_two & jnp.invert(small) & (diverged | jnp.invert(converged)),
+            at_least_two & jnp.invert(small) & diverged,
             optx.RESULTS.nonlinear_divergence,
             optx.RESULTS.successful,
         )
@@ -189,7 +189,7 @@ VeryChord.__init__.__doc__ = """**Arguments:**
 
 - `rtol`: Relative tolerance for terminating the solve.
 - `atol`: Absolute tolerance for terminating the solve.
-- `norm`: The norm used to determine the difference between two iterates in the 
+- `norm`: The norm used to determine the difference between two iterates in the
     convergence criteria. Should be any function `PyTree -> Scalar`, for example
     `optimistix.max_norm`.
 - `kappa`: A tolerance for the early convergence check.

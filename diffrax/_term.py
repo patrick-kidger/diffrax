@@ -736,7 +736,8 @@ class WrapTerm(AbstractTerm[_VF, _Control]):
     direction: IntScalarLike
 
     def vf(self, t: RealScalarLike, y: Y, args: Args) -> _VF:
-        t = t * self.direction
+        with jax.numpy_dtype_promotion("standard"):
+            t = t * self.direction
         return self.term.vf(t, y, args)
 
     def contr(self, t0: RealScalarLike, t1: RealScalarLike, **kwargs) -> _Control:
@@ -749,7 +750,8 @@ class WrapTerm(AbstractTerm[_VF, _Control]):
             return self.term.prod(vf, control)
 
     def vf_prod(self, t: RealScalarLike, y: Y, args: Args, control: _Control) -> Y:
-        t = t * self.direction
+        with jax.numpy_dtype_promotion("standard"):
+            t = t * self.direction
         return self.term.vf_prod(t, y, args, control)
 
     def is_vf_expensive(

@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import ClassVar, TypeAlias
 
+import jax.numpy as jnp
+import jax.tree_util as jtu
 import optimistix as optx
 from equinox.internal import ω
 
@@ -8,7 +10,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._heuristics import is_sde
 from .._local_interpolation import LocalLinearInterpolation
 from .._root_finder import with_stepsize_controller_tols
-from .._solution import RESULTS
+from .._solution import is_okay, RESULTS
 from .._term import AbstractTerm
 from .base import AbstractAdaptiveSolver, AbstractImplicitSolver
 
@@ -94,9 +96,13 @@ class ImplicitEuler(AbstractImplicitSolver, AbstractAdaptiveSolver):
         y1 = (y0**ω + k1**ω).ω
         # Use the trapezoidal rule for adaptive step sizing.
         y_error = (0.5 * (k1**ω - k0**ω)).ω
+        result = RESULTS.promote(nonlinear_sol.result)
+        y_error = jtu.tree_map(
+            lambda _y_error: jnp.where(is_okay(result), _y_error, jnp.inf),
+            y_error,
+        )  # i.e. an implicit step failed to converge
         dense_info = dict(y0=y0, y1=y1)
         solver_state = None
-        result = RESULTS.promote(nonlinear_sol.result)
         return y1, y_error, dense_info, solver_state, result
 
     def func(

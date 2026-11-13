@@ -631,6 +631,8 @@ def test_term_compatibility():
             return (jax.ShapeDtypeStruct((2, 3), jnp.float64),)
 
     @lx.is_symmetric.register(TestLinearOperator)
+    @lx.is_positive_semidefinite.register(TestLinearOperator)
+    @lx.is_negative_semidefinite.register(TestLinearOperator)
     def _(operator):
         del operator
         return False

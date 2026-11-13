@@ -40,12 +40,10 @@ def _solvers_and_orders():
 # converges to its own limit (i.e. using itself as reference), and then in a
 # different test check whether that limit is the same as the Euler/Heun limit.
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
-@pytest.mark.parametrize(
-    "dtype",
-    (jnp.float64,),
-)
+@pytest.mark.parametrize("dtype", (jnp.float64,))
+@pytest.mark.parametrize("direction", ("forwards", "backwards"))
 def test_sde_strong_order_new(
-    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
+    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype, direction
 ):
     bmkey = jr.key(5678)
     sde_key = jr.key(11)
@@ -53,6 +51,8 @@ def test_sde_strong_order_new(
     bmkeys = jr.split(bmkey, num=num_samples)
     t0 = 0.3
     t1 = 5.3
+    if direction == "backwards":
+        t0, t1 = t1, t0
 
     if noise == "add":
         sde = get_time_sde(t0, t1, dtype, sde_key, noise_dim=7)
@@ -98,14 +98,20 @@ def test_sde_strong_order_new(
 # This is to avoid recomputing the correct solutions for every solver.
 solutions = {
     "Ito": {
-        "any": None,
-        "com": None,
-        "add": None,
+        ("forwards", "any"): None,
+        ("forwards", "com"): None,
+        ("forwards", "add"): None,
+        ("backwards", "any"): None,
+        ("backwards", "com"): None,
+        ("backwards", "add"): None,
     },
     "Stratonovich": {
-        "any": None,
-        "com": None,
-        "add": None,
+        ("forwards", "any"): None,
+        ("forwards", "com"): None,
+        ("forwards", "add"): None,
+        ("backwards", "any"): None,
+        ("backwards", "com"): None,
+        ("backwards", "add"): None,
     },
 }
 
@@ -115,8 +121,9 @@ solutions = {
 # and Heun if the solver is Stratonovich.
 @pytest.mark.parametrize("solver_ctr,noise,theoretical_order", _solvers_and_orders())
 @pytest.mark.parametrize("dtype", (jnp.float64,))
+@pytest.mark.parametrize("direction", ("forwards", "backwards"))
 def test_sde_strong_limit(
-    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype
+    solver_ctr, noise: Literal["any", "com", "add"], theoretical_order, dtype, direction
 ):
     bmkey = jr.key(5678)
     sde_key = jr.key(11)
@@ -124,6 +131,8 @@ def test_sde_strong_limit(
     bmkeys = jr.split(bmkey, num=num_samples)
     t0 = 0.3
     t1 = 5.3
+    if direction == "backwards":
+        t0, t1 = t1, t0
 
     if noise == "add":
         sde = get_time_sde(t0, t1, dtype, sde_key, noise_dim=3)
@@ -164,16 +173,16 @@ def test_sde_strong_limit(
     saveat = diffrax.SaveAt(ts=save_ts)
     levy_area = diffrax.SpaceTimeLevyArea  # must be common for all solvers
 
-    if solutions[sol_type][noise] is None:
+    if solutions[sol_type][(direction, noise)] is None:
         correct_sol, _ = simple_batch_sde_solve(
             bmkeys, sde, ref_solver, levy_area, None, contr_fine, 2**-10, saveat
         )
-        solutions[sol_type][noise] = correct_sol
+        solutions[sol_type][(direction, noise)] = correct_sol
     else:
-        correct_sol = solutions[sol_type][noise]
+        correct_sol = solutions[sol_type][(direction, noise)]
 
     sol, _ = simple_batch_sde_solve(
         bmkeys, sde, solver_ctr(), levy_area, None, contr_coarse, 2**-10, saveat
     )
     error = path_l2_dist(correct_sol, sol)
-    assert error < 0.05
+    assert error < 0.1

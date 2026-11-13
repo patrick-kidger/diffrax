@@ -161,8 +161,8 @@ def _batch_sde_solve(
     else:
         struct = w_shape
     bm = diffrax.VirtualBrownianTree(
-        t0=t0,
-        t1=t1,
+        t0=jnp.minimum(t0, t1),
+        t1=jnp.maximum(t0, t1),
         shape=struct,
         tol=bm_tol,
         key=key,

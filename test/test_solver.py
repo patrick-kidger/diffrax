@@ -50,7 +50,7 @@ def test_implicit_euler_adaptive():
         stepsize_controller=stepsize_controller,
         throw=False,
     )
-    assert out1.result == diffrax.RESULTS.nonlinear_divergence
+    assert out1.result == diffrax.RESULTS.nonlinear_max_steps_reached
     assert out2.result == diffrax.RESULTS.successful
 
 
