@@ -139,6 +139,11 @@ In particular this includes Hamiltonian systems.
         members:
             - __init__
 
+::: diffrax.StormerVerlet
+    options:
+        members:
+            - __init__
+
 ---
 
 ### Reversible methods

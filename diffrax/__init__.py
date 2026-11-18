@@ -115,6 +115,7 @@ from ._solver import (
     SPaRK as SPaRK,
     SRA1 as SRA1,
     StochasticButcherTableau as StochasticButcherTableau,
+    StormerVerlet as StormerVerlet,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
 )
