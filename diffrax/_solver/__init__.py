@@ -54,4 +54,5 @@ from .srk import (
     AbstractSRK as AbstractSRK,
     StochasticButcherTableau as StochasticButcherTableau,
 )
+from .stormer_verlet import StormerVerlet as StormerVerlet
 from .tsit5 import Tsit5 as Tsit5

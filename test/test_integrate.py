@@ -443,14 +443,17 @@ def test_reverse_time_saveat(saveat):
     assert tree_allclose(sol1.ys, sol1.ts)
 
 
-def test_semi_implicit_euler():
+@pytest.mark.parametrize(
+    "solver", [diffrax.SemiImplicitEuler(), diffrax.StormerVerlet()]
+)
+def test_symplectic_solvers(solver):
     term1 = diffrax.ODETerm(lambda t, y, args: -y)
     term2 = diffrax.ODETerm(lambda t, y, args: y)
     y0 = (1.0, -0.5)
     dt0 = 0.00001
     sol1 = diffrax.diffeqsolve(
         (term1, term2),
-        diffrax.SemiImplicitEuler(),
+        solver,
         0,
         1,
         dt0,
@@ -460,6 +463,97 @@ def test_semi_implicit_euler():
     term_combined = diffrax.ODETerm(lambda t, y, args: (-y[1], y[0]))
     sol2 = diffrax.diffeqsolve(term_combined, diffrax.Tsit5(), 0, 1, 0.001, y0)
     assert tree_allclose(sol1.ys, sol2.ys)
+
+
+@pytest.mark.parametrize(
+    "solver", [diffrax.SemiImplicitEuler(), diffrax.StormerVerlet()]
+)
+def test_symplectic_ode_order(solver):
+    # Harmonic oscillator dv/dt = w, dw/dt = -k v.
+    k = 2.0
+    term = (
+        diffrax.ODETerm(lambda t, w, args: w),
+        diffrax.ODETerm(lambda t, v, args: -k * v),
+    )
+    y0 = (jnp.array(0.7), jnp.array(0.2))
+    t0, t1 = 0, 4
+    omega = math.sqrt(k)
+    true_vT = y0[0] * jnp.cos(omega * t1) + y0[1] / omega * jnp.sin(omega * t1)
+    true_wT = -y0[0] * omega * jnp.sin(omega * t1) + y0[1] * jnp.cos(omega * t1)
+    exponents = []
+    errors = []
+    for exponent in [-2, -3, -4, -5, -6, -7, -8]:
+        dt0 = 2**exponent
+        sol = diffrax.diffeqsolve(term, solver, t0, t1, dt0, y0, max_steps=None)
+        vT, wT = sol.ys
+        error = jnp.abs(vT[-1] - true_vT) + jnp.abs(wT[-1] - true_wT)
+        exponents.append(exponent)
+        errors.append(jnp.log2(error))
+    order = scipy.stats.linregress(exponents, errors).slope  # pyright: ignore
+    assert -0.2 < order - solver.order(term) < 0.2
+
+
+def _stormer_verlet_terms(force_scale=1.0):
+    # A time-dependent, nonlinear force, so that evaluating it at the wrong time or
+    # position shows up.
+    return (
+        diffrax.ODETerm(lambda t, w, args: w),
+        diffrax.ODETerm(lambda t, v, args: -force_scale * jnp.sin(v) * (1 + 0.1 * t)),
+    )
+
+
+def test_stormer_verlet_matches_kick_drift_kick():
+    terms = _stormer_verlet_terms()
+    y0 = (jnp.array(1.0), jnp.array(0.3))
+    dt = 0.1
+    sol = diffrax.diffeqsolve(terms, diffrax.StormerVerlet(), 0.0, 1.0, dt, y0)
+    f = lambda t, w: w
+    g = lambda t, v: -jnp.sin(v) * (1 + 0.1 * t)
+    v, w = y0
+    for i in range(10):
+        t0, t1 = i * dt, (i + 1) * dt
+        w = w + 0.5 * dt * g(t0, v)
+        v = v + dt * f(t0, w)
+        w = w + 0.5 * dt * g(t1, v)
+    assert tree_allclose(sol.ys, (v[None], w[None]))
+
+
+def test_stormer_verlet_backwards():
+    terms = _stormer_verlet_terms()
+    y0 = (jnp.array(1.0), jnp.array(0.3))
+    forward = diffrax.diffeqsolve(terms, diffrax.StormerVerlet(), 0.0, 1.0, 0.01, y0)
+    y1 = jtu.tree_map(lambda x: x[-1], forward.ys)
+    backward = diffrax.diffeqsolve(terms, diffrax.StormerVerlet(), 1.0, 0.0, -0.01, y1)
+    assert tree_allclose(jtu.tree_map(lambda x: x[-1], backward.ys), y0)
+
+
+def test_stormer_verlet_made_jump():
+    # Solve to t=1, then resume with a different vector field and the stored
+    # solver state. With made_jump=True this has to match a fresh solve.
+    y0 = (jnp.array(1.0), jnp.array(0.3))
+    first = diffrax.diffeqsolve(
+        _stormer_verlet_terms(),
+        diffrax.StormerVerlet(),
+        0.0,
+        1.0,
+        0.1,
+        y0,
+        saveat=diffrax.SaveAt(t1=True, solver_state=True),
+    )
+    y1 = jtu.tree_map(lambda x: x[-1], first.ys)
+    new_terms = _stormer_verlet_terms(force_scale=3.0)
+    resumed = diffrax.diffeqsolve(
+        new_terms,
+        diffrax.StormerVerlet(),
+        1.0,
+        2.0,
+        0.1,
+        y1,
+        solver_state=first.solver_state,
+        made_jump=jnp.array(True),
+    )
+    fresh = diffrax.diffeqsolve(new_terms, diffrax.StormerVerlet(), 1.0, 2.0, 0.1, y1)
+    assert tree_allclose(resumed.ys, fresh.ys)
 
 
 @pytest.mark.parametrize(

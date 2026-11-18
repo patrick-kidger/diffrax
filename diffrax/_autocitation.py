@@ -33,6 +33,7 @@ from ._solver import (
     SlowRK,
     SPaRK,
     SRA1,
+    StormerVerlet,
     Tsit5,
 )
 from ._step_size_controller import ClipStepSizeController, PIDController
@@ -433,7 +434,7 @@ def _implicit_solver(solver, terms=None):
 
 @citation_rules.append
 def _symplectic_solver(solver, terms=None):
-    if type(solver) is SemiImplicitEuler and not is_sde(terms):
+    if type(solver) in (SemiImplicitEuler, StormerVerlet) and not is_sde(terms):
         return r"""
 You are using a symplectic solver, and may wish to cite the textbook:
 @book{hairer2013geometric,
