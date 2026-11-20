@@ -3,6 +3,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
+import scipy.stats
 
 from .helpers import all_ode_solvers, all_split_solvers, implicit_tol, tree_allclose
 
@@ -96,3 +97,30 @@ def test_derivative(dtype, getkey):
     for path, name, y0, y1 in paths:
         _test_path_derivative(path, name)
         _test_path_endpoints(path, name, y0, y1)
+
+
+def test_dopri8_interpolation_order():
+    # Dopri8 is 8th order at the end of each step, but its dense output is only 5th
+    # order, so its O(dt0^6) local error dominates in between steps.
+    term = diffrax.ODETerm(lambda t, y, args: y * jnp.cos(t))
+    t0 = 0
+    t1 = 4
+    y0 = jnp.array(1.0)
+    exponents = [0, -1, -2, -3]
+    step_errors = []
+    mid_errors = []
+    for exponent in exponents:
+        dt0 = 2**exponent
+        saveat = diffrax.SaveAt(dense=True)
+        sol = diffrax.diffeqsolve(
+            term, diffrax.Dopri8(), t0, t1, dt0, y0, saveat=saveat
+        )
+        step_ts = jnp.arange(t0 + dt0, t1 + dt0 / 2, dt0)
+        mid_ts = step_ts - dt0 / 2
+        for ts, errors in ((step_ts, step_errors), (mid_ts, mid_errors)):
+            error = jnp.max(jnp.abs(jax.vmap(sol.evaluate)(ts) - jnp.exp(jnp.sin(ts))))
+            errors.append(jnp.log2(error))
+    step_order = scipy.stats.linregress(exponents, step_errors).slope  # pyright: ignore
+    mid_order = scipy.stats.linregress(exponents, mid_errors).slope  # pyright: ignore
+    assert -0.5 < step_order - 8 < 0.5
+    assert -0.5 < mid_order - 6 < 0.5
